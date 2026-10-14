@@ -21,7 +21,7 @@ We propose four **bounded contexts**, each with private data ownership:
 
 The manually laid-out overview below shows the **four logical bounded contexts**, their **private data ownership**, and the **four asynchronous event contracts**. It intentionally separates events into dedicated horizontal lanes rather than connecting every entity across service boundaries.
 
-![Proposed ShareWise bounded contexts, owned data, and event contracts](./diagrams/ShareWise-service-boundaries.svg)
+![Proposed ShareWise bounded contexts, owned data, and event contracts](./diagrams/ShareWise-service-boundaries.png)
 
 The overview excludes the UI and individual local entity relationships to remain readable. Clients invoke the relevant context's interface with an IAM identity token; **IAM is not a forwarding service and does not own group permissions**. Solid entity-level relationships and full attributes appear in the ER diagrams in §3.
 
