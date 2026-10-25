@@ -1,12 +1,12 @@
 # ShareWise: Scoped Authorization Attestations and Generic File ACLs
 
-**Status:** Proposal for team review · **Date:** 2026-10-17  
+**Status:** Optional design alternative; **not adopted as the implementation contract** · **Originally explored:** 2026-10-17
 **Scope:** Cross-context authorization, with File Management as the primary use case  
 **Not a decision to implement a custom authentication system.**
 
 ## 1. Problem and motivation
 
-ShareWise has separate bounded contexts for **Identity & Access Management (IAM)**, **Group Management**, **Financial Management**, and **File Management**. IAM knows who a user is. Group Management knows which groups the user belongs to and their group-specific permissions. Financial Management owns expenses and transfers; File Management stores uploaded documents (such as receipts) without needing to understand expenses or groups.
+ShareWise has a **User & Identity Management** context (including the IAM identity model), **Group Management**, **Financial Management**, and **File Management**. IAM knows who a user is. Group Management knows which groups the user belongs to and their group-specific permissions. Financial Management owns expenses and settlements; File Management stores uploaded documents (such as receipts) without needing to understand expenses or groups.
 
 A user who requests an expense receipt may be entitled to read it *because they belong to the group that owns it*. But File Management should ideally not have to:
 
@@ -188,7 +188,7 @@ The boundary should be designed around the decision (`may this authenticated pri
 - Keep Finance's participant eligibility and financial invariants separate from SAT-based caller authorization.
 - Build the modular monolith with clear in-process module APIs first; revisit SAT-based distribution when extracting services.
 
-This preserves the proposed separation of bounded contexts while making the additional security and operational costs visible for the team to evaluate.
+This alternative preserves bounded-context ownership but remains subject to explicit review. The [accepted architecture](architecture.md) starts with a published in-process authorization capability; implementing SAT issuance/verification is not a prerequisite for the modular monolith.
 
 ---
 

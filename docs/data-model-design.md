@@ -1,268 +1,216 @@
-# ShareWise data model: design rationale and handoff
+# ShareWise domain model and financial history
 
-**Status:** Working design for team review, not an approved implementation specification  
-**Updated:** 2026-10-17  
-**Purpose:** Explain the intent behind the accompanying ER-style diagrams, the decisions already made, and the requirements or implementation details that remain open.
+**Status:** Agreed conceptual model and business contracts for implementation. The repository currently contains
+starter code; the model is not yet fully implemented. Specific policies in [open decisions](#open-decisions)
+remain unresolved.
 
-## 1. Reading the accompanying diagrams
+## Domain scope and diagrams
 
-- [Overall context/data model](./assets/data-model-versioned.svg): the five current bounded contexts and their principal entities, including copy-on-write (COW) revisions and the financial group journal:
+ShareWise records group expenses and **settlements** (reports of money transferred externally), derives
+balances, and lets members review historical financial states. ShareWise neither processes payments nor verifies
+that external transfers took place. A settlement need not correspond to a particular expense or outstanding
+obligation.
 
-![](./assets/data-model-versioned.svg)
+The [tactical domain overview](assets/domain-model-overview.svg) illustrates bounded contexts, aggregate
+ownership, logical identities, and value objects. The [versioned relational
+sketch](assets/data-model-versioned.svg) documents the earlier physical copy-on-write (COW) model. The latter
+retains some exploratory names such as `FinancialTransfer` and diagrams physical revision-row identifiers; where
+the drawings differ, this document's **logical domain terminology and boundaries** take precedence. The
+`docs/assets/src/` files are editable diagram sources.
 
-The diagrams intentionally mix relational notation (primary/foreign keys, cardinalities) with business rules and architectural annotations. They were developed *data-first as an exploration tool*; they are **not** intended to imply that every drawn table becomes a DDD entity or aggregate, or that every annotation is a database constraint.
+![Tactical bounded-context overview](assets/domain-model-overview.svg)
 
-For the remainder of this document:
+The diagram is a conceptual guide, not a mandate for ORM graph loading, one class per root, or one Java class
+per drawn relationship. UML aggregate envelopes describe **business consistency and ownership**, not necessarily
+the runtime shape of application-service or persistence objects.
 
-- **Decided / current model** means a working agreement already reflected in the diagrams.
-- **Proposed invariant** means a rule the model is intended to preserve, but whose precise enforcement may need refinement.
-- **Open** means team input is still needed; don't silently treat it as settled.
-- **Implementation detail** means deliberately postponed schema, ORM, indexing, infrastructure, or transport work.
+## Bounded contexts and ownership
 
-`*` and `+` in the diagrams denote the author's key/reference notation, not requirements for public API field names. References crossing bounded contexts are **logical identifiers**, not cross-context SQL foreign keys.
+| Bounded context | Owns | External references |
+| --- | --- | --- |
+| **User & Identity Management** | Generic IAM identity, credentials/refresh tokens, application-specific UserProfile and preferences as **separate aggregates** | Other contexts retain stable user IDs, not shared IAM entities |
+| **Group Management** | Group metadata, membership, roles, invitations, organizational existence | User IDs and optional File IDs |
+| **Financial Management** | FinancialGroup lifecycle/accounting currency, FinancialActors, expenses, settlements, allocations, financial change history | Logical group ID from Group Management; File IDs for attachments |
+| **File Management** | Uploaded file bytes/metadata and generic access policies | External authorities may prove resource access, but File does not model groups/expenses |
+| **Notification Management** | Recipient channels, Notification instances/attempts, templates/variables | User identity and external event IDs |
 
-## 2. Design intent in one page
+Subdomain classification and bounded contexts are not one-to-one: User & Identity Management encompasses generic
+identity/access and supporting user profiles. No independent Settlement context is required. Bounded-context
+references are opaque logical identifiers, **not physical cross-context foreign keys or cascades**. Group
+Management is authoritative for membership; Finance has a minimal, eventually synchronized representation for
+its own operations.
 
-ShareWise is a collaborative bookkeeping tool for shared expenses **between friends**. Actual payments always happen outside the application; ShareWise records reported transactions and calculates balances. We are not implementing payment processing, bank reconciliation, or enforceable settlement obligations.
+### Organizational versus financial membership
 
-We selected the **dynamic, unified Financial Management model (Model 4)**:
+A Group retains at least one member and at least one administrator. The final member cannot leave except through
+group deletion, and an administrator must transfer administration before leaving if they are the last one.
+Pending invitations are removed when their group is deleted. The deletion/retention implementation is a separate
+lifecycle concern.
 
-1. An **expense** records a cost paid by one member and split among participants.
-2. A **financial transfer** records externally exchanged money between two participants, without requiring an existing expense or debt to justify it.
-3. Both affect **derived group net balances**, but retain different business meanings and separate normalized data structures.
-4. Financial data is owned by **one bounded context**, enabling consistent reads and transactionally enforced lifecycle rules. This does **not** imply that the entire group is a single DDD aggregate.
-5. Expenses and transfers are editable subject to the group's state, and historical financial values must remain reviewable.
-6. We maintain a **group-local ordered financial history** to support the glossary's *Revision*, *Change History*, and *Historical Balance* concepts.
+Within a surviving FinancialGroup, `FinancialActor` records are **retained when organizational membership
+ends**. Departing deactivates the financial actor locally; rejoining reactivates the *same* `(groupId, userId)`
+identity. Existing expenses/settlements and their audit history remain associated with that actor. A
+FinancialGroup contains `1..*` actors; this does **not** imply every actor is currently active. Temporary
+cross-context replication lag must be tolerated. Caller authorization is a separate question from eligibility of
+referenced participants.
 
-With a consistent sign convention, a participant's balance is:
+## Finance consistency boundary
+
+The **FinancialGroup is the sole aggregate root for the group's finance domain model**. Its conceptual
+consistency boundary encompasses FinancialActor, Expense, Settlement, ChangeRecord, and Expense's owned
+Allocation and Attachment entities. It is one aggregate **per financial group**, not an application-wide global
+aggregate. Group lifecycle, revision ordering, balances, and journal atomicity motivate this broader-than-usual
+aggregate boundary.
+
+This model does **not** require constructing an enormous in-memory FinancialGroup object graph or mutating
+objects through one facade. Focused Expense, Settlement, Lifecycle and History application services can
+collaborate inside the same **group-scoped transaction protocol**, with targeted database projections and direct
+SQL. Their published entry points must preserve the aggregate's business invariants.
+[Architecture](architecture.md) describes the intended application-port-adapter realization.
+
+### Expenses and allocations
+
+An Expense has a stable **logical ID**, an individual version/revision, payer (`owner` in the current diagram),
+group, total, split strategy, allocations, attachments and deletion status. The actor who recorded/corrected the
+expense can differ from its payer and is captured in history. Its `SplitStrategy` is one of `equal`, `fixed`, or
+`percentage`. `Money`, `Percentage` and strategy values have value semantics, not independently managed entity
+identities.
+
+An Allocation represents one participant's **materialized share** of an expense revision. Invariants include:
+
+- Total expense amount is positive, exactly represented in the group's accounting currency (for instance integer
+  minor units, not floating-point money).
+- Every allocation belongs to a FinancialActor in the same group; at most one allocation for a given participant
+  per expense revision.
+- Percentage input is present for percentage splits and sums to 100% in that strategy; absent for other strategies.
+- The **sum of stored allocation amounts equals the expense total**, including after deterministic rounding.
+- Changing the amount, strategy or participant set produces a valid **new expense revision**; the old committed
+  revision is immutable.
+
+Persisting computed allocation amounts is intentional; balance queries must not rerun historical split
+algorithms. A payer may also receive an allocation for their own expense; do not introduce an exclusion
+invariant without a real business requirement.
+
+### Settlements
+
+A Settlement records money exchanged *outside* ShareWise from a sending FinancialActor to a receiving
+FinancialActor. Its sender and recipient must be different and belong to the same financial group; amount must
+be positive. It does not consume or match individual expenses/debts. Corrections and removals produce immutable
+revisions. The journal's modifying actor can differ from the sender/recipient.
+
+### Current balances
+
+A group's financial positions are derived from the **latest non-deleted logical revisions** of expenses and
+settlements:
 
 ```text
-balance = expenses paid - allocated expense shares
-        + transfers sent - transfers received
+balance = paid expense totals - assigned expense shares
+        + settlements sent - settlements received
 ```
 
-A **positive** balance means the participant is owed money; a **negative** balance means they owe money. All changes within a group should conserve value so the group's balances sum to zero. Suggested transfers are recommendations, not authoritative bilateral debts. A transfer can overpay or occur without a prior expense, causing balances to change sign.
+A positive balance indicates a member is owed money; a negative balance indicates they owe money. Group balances
+sum to zero. A settlement can overpay or reverse a balance; suggested future settlements are recommendations
+only, not authoritative debts. An archived group remains readable.
 
-These are recorded **financial positions**, not proof that the real-world events occurred.
+## Financial lifecycle
 
-## 3. Bounded contexts and authoritative ownership
-
-| Bounded context | Owns | Does *not* own |
-| --- | --- | --- |
-| **IAM** | Authentication, user identities, credentials, sessions/refresh tokens, optional global roles | Group membership or group-scoped roles |
-| **Group Management** | Group identity/metadata, memberships and roles, invitations | Financial lifecycle, expenses, transfers, balances |
-| **Financial Management** | Financial group state, accounting currency, financial participants, expenses, allocations, transfers, financial history, expense attachment associations | Group metadata/membership authority, binary file content |
-| **File Management** | Uploaded file content, metadata, storage access rules | Expense/group business semantics or membership authority |
-| **Notification Management** | Notification instances, templates, bindings, delivery channels and attempts | Business transactions that produce the notifications |
-
-There is not presently an independent Settlement Management context. **Expenses and transfers are separate concepts within Financial Management** because both contribute to the same financial balance model and benefit from one local consistency boundary.
-
-An application-specific **User Profile** model (name, avatar, default currency, locale/preferences) is still under discussion. It could be an internal module or a separate bounded context; neither the present IAM schema nor the replicated `User` reference rows settle that decision.
-
-### Integration boundaries
-
-- Other contexts refer to IAM identities through a stable user identifier, not by sharing IAM's user database.
-- Group Management is authoritative for group existence and current group membership. Finance receives the group reference and a **minimal group-member/actor projection**. The projection is not a second source of membership truth.
-- Finance's `FinancialGroup.state` and `currency` are **locally authoritative**. A composite UI group view might combine Group Management metadata with Finance state and therefore be briefly inconsistent; financial write eligibility is always determined by Finance.
-- `ExpenseAttachment.fileId` and `Group.imageFileId` are **logical references** to files stored by File Management. No cross-context foreign key or cascade is implied.
-- Notification Management is a consumer of business integration events. Delivery failures do not roll back the originating business operation.
-- Context mapping remains useful in the initial **modular monolith**; module APIs and internal events are appropriate. REST/messaging are optional implementation choices for future extraction, not requirements between in-process modules.
-
-## 4. Financial Management: core entities and relationships
-
-| Concept | Meaning in this model | Important qualification |
-| --- | --- | --- |
-| `FinancialGroup` | Finance-owned group reference, financial state, accounting currency and latest group revision | Group identity/metadata still belong to Group Management |
-| `User` | Local identity reference | Not a complete user profile or duplicated IAM account |
-| `FinancialActor` | Group-specific financial participant, identified by `(userId, groupId)` | Kept for historical references after leaving the group; `isDeleted` currently represents deactivation of the local membership projection |
-| `Expense` | Cost paid by an owner/payer and distributed among participants | Current diagram uses `owner = payer`; recording actor may be distinct |
-| `ExpenseAllocation` | A participant's computed monetary share of a **specific physical expense revision** | Allocation data changes holistically with its expense |
-| `FinancialTransfer` | Reported external transfer from one financial actor to another | Not linked to a particular expense or outstanding debt |
-| `ExpenseAttachment` | Association of a receipt/document file with a physical expense revision | File bytes and storage ACLs belong to File Management |
-| `FinancialGroupJournal` | Group-local ordered index of financial revisions and lifecycle changes | Primarily a mechanism supporting domain-visible history, not necessarily an aggregate root |
-
-### Financial actors versus active members
-
-A person may stop being an active group member yet remain the payer, participant, sender or recipient in historical financial records. **Membership removal must not cascade-delete financial records.** If the user rejoins, the same `(groupId, userId)` financial identity can be reactivated. The `isDeleted` column is therefore a membership-projection flag, not a declaration that historical data has been erased.
-
-Authorization to *perform* an operation and eligibility to be *referenced by* an operation are separate questions. Finance needs membership/participant information for its own domain validation even if caller permissions eventually use signed scoped authorization tokens. The precise policy for transfers involving former members is still open.
-
-### Expenses and allocation splitting
-
-The expense owns one `ExpenseSplitStrategy`: `equal`, `fixed`, or `percentage`. Each allocation stores its **materialized** `amountMinor` and, for percentage splitting, its percentage input. Balance calculation uses the computed amounts and never needs to replay the original split algorithm.
-
-Current proposed invariants:
-
-- `Expense.totalAmountMinor > 0`; amounts are exact (the `Minor` suffix means minor currency units, such as cents for EUR).
-- Each `(expenseId, participantId)` occurs at most once.
-- An allocation's participant belongs to the same financial group as the expense.
-- `ExpenseAllocation.percentage` is populated **iff** `Expense.splitStrategy = percentage`; percentage inputs total 100% when that strategy is used.
-- `sum(ExpenseAllocation.amountMinor) = Expense.totalAmountMinor` after deterministic rounding.
-- Split changes, total changes, and allocation changes are validated and written **atomically** as one expense modification.
-
-Storing derived `amountMinor` values is intentional denormalization/materialization for predictable, inexpensive balance reads. The write path establishes the invariant; reads need not recalculate strategies.
-
-### Transfers
-
-A transfer records `senderId`, `recipientId`, and `amountMinor`. Proposed invariants:
-
-- Sender and recipient differ and belong to the same financial group.
-- Amount is positive; sender/recipient determine the direction of the balance effect.
-- The group's financial lifecycle permits the operation.
-
-The diagram notes that the sender and recipient may perform certain CRUD operations. **Exactly which actor may create, edit, confirm, or delete a transfer on another person's behalf is not yet a finalized policy.** The journal's `actorId` records *who made the change*, which may differ from the sender/recipient.
-
-## 5. Financial lifecycle
-
-| State | Expense writes | Transfer writes | Historical reads |
+| FinancialGroup state | Expense modifications | Settlement modifications | Historical reads |
 | --- | --- | --- | --- |
-| **OPEN** | Allowed for authorized operations | Allowed | Allowed |
-| **CLOSED** | Rejected | Allowed | Allowed |
-| **ARCHIVED** | Rejected | Rejected | Allowed |
+| **OPEN** | Allowed subject to authorization/invariants | Allowed | Allowed |
+| **CLOSED** | Frozen | Allowed | Allowed |
+| **ARCHIVED** | Forbidden | Forbidden | Allowed |
 
-`OPEN -> CLOSED` freezes expenses, **not** the current group balance; transfers may still change that balance. `CLOSED -> OPEN` (reopen) is allowed in the current working model. `ARCHIVED` is final and read-only. There is no required vote, zero-balance precondition, or link from each transfer to a debt in this design.
+`OPEN → CLOSED`, `CLOSED → OPEN` and transitions to terminal `ARCHIVED` are business operations. Closing is not
+equivalent to settling all balances. Business archival is final and read-only; physical offloading, retention
+and hard deletion are separate decisions. Finance alone authorizes financial writes against its own state within
+its transaction; group metadata and membership remain owned by Group Management.
 
-The transitions and all financial writes must be checked against **Finance's authoritative state** within the relevant database transaction. An asynchronous state projection maintained by Group Management cannot authorize financial writes.
+## Financial revisions and history
 
-Physical cold-storage export or eventual deletion is a separate infrastructure decision. **Business archival currently means immutable/read-only financial records**, not immediate deletion from the live database.
+**Revision**, **Change History**, and **Historical Balance** are explicit business capabilities. A successful
+expense/settlement creation has at least one ChangeRecord; each later correction or tombstone adds another. A
+ChangeRecord references **zero or one Expense** and **zero or one Settlement**, because lifecycle changes
+reference neither. Each logical Expense/Settlement is referenced by `1..*` change records. Each change has
+exactly one relevant operation kind and actor/timestamp metadata. The ledger is ordered **within one
+FinancialGroup**, not globally across all bounded contexts.
 
-## 6. Revisioning and historical balances
+An individual Expense or Settlement revision identifies a historical state of **that logical record**. A
+separate `FinancialGroup.currentRevision` identifies a position in the group's **total financial change
+sequence**. A logical entity's ID remains stable across revisions. The ER sketch's physical row ID +
+`identityKey` pair is a possible SQL representation, not part of that logical identity model.
 
-### What the business model promises
+A correction has immutable **domain semantics**: it creates a valid new record state while preserving the
+preceding committed state. COW insertion, copying child rows, physical IDs, current-row indexes and ORM mappings
+are persistence choices. Domain contracts must not expose those physical artifacts as public identity.
 
-The accompanying glossary introduces:
+### Atomicity and ordering
 
-- **Revision:** An immutable version of an expense or transfer after a change.
-- **Change History:** Who changed what and when, ordered within a group.
-- **Historical Balance:** Group balances as they were at an earlier financial revision.
+Every committed financial mutation obeys one group-local transaction protocol:
 
-This is **financial history only**. It does not promise a globally ordered timeline across Group Management, File Management, IAM, and Notification Management. Nor does it promise reconstruction of those contexts' historical state.
+1. Serialize financial writes for the group (for example a `FinancialGroup` row lock); verify the authoritative
+   lifecycle state, authorization, and expected individual revision.
+2. Check domain invariants, using database-side predicates/targeted projections where efficient.
+3. Allocate the next group financial revision, persist a complete immutable revised expense/settlement state (or
+   valid lifecycle transition), and append the corresponding ChangeRecord.
+4. Commit atomically, together with any required durable integration-event publication record. On failure, none
+   of these changes becomes visible.
 
-### Why the diagram has several identities/revisions
+A standalone auto-increment ID doesn't establish business commit ordering. Historical queries select the
+**latest version of each logical record at or before a selected group revision**, omit tombstones and aggregate
+the stored amounts. Reads must use one consistent committed snapshot.
 
-| Field | Interpretation |
-| --- | --- |
-| `Expense.id` / `FinancialTransfer.id` | Physical primary key of one immutable COW revision row |
-| `Expense.identityKey` / `FinancialTransfer.identityKey` | Stable logical identity of one expense/transfer across its revisions |
-| `Expense.revision` / `FinancialTransfer.revision` | Version number **within that logical record** |
-| `FinancialGroup.currentRevision` | Latest group-wide **financial** revision |
-| `FinancialGroupJournal.(groupId, revision)` | Unique position in the committed, group-local financial change sequence |
-
-`UNIQUE(identityKey, revision)` is proposed for each revisioned entity type. Public expense/transfer APIs should identify a **logical record**, not rely on the physical row ID of its latest revision. Children such as allocations and attachment associations refer to the **physical revision ID**, preserving each expense revision's coherent structure.
-
-An expense/transfer creation creates revision 1; updating creates a new row with the same logical identity and an incremented entity revision; deleting creates an immutable `isDeleted = true` **tombstone revision**. Prior rows remain unchanged. Tombstones remove records from current balance calculations while preserving their history.
-
-### The journal
-
-`FinancialGroupJournal` records `groupId`, group `revision`, `discriminator`, `timestamp`, `actorId`, and either the physical `expenseId`, physical `transferId`, or lifecycle `previousState`/`newState`. Its discriminator distinguishes the type of change, and the applicable columns must be populated consistently.
-
-Required journal behavior:
-
-1. Exactly **one applicable payload type** per row (expense revision, transfer revision, or lifecycle transition); unused columns must be null.
-2. The referenced revision belongs to the journal's group. Transfer group consistency may be established via its two actor references, or through an explicit group reference in the eventual schema.
-3. Each successful financial mutation and corresponding history entry are **atomic**. Every persisted expense/transfer revision has the corresponding journal entry.
-4. Revision and journal rows are immutable. Deletions are modeled by tombstones and new entries, not removal of history.
-5. Journal `timestamp` records when ShareWise registered a change, **not** necessarily when an external payment happened.
-
-### Write transaction and ordering
-
-A group-local database lock protects `FinancialGroup.currentRevision` and the lifecycle state while a financial mutation commits:
-
-```text
-BEGIN
-  Lock FinancialGroup row
-  Validate group state and operation-specific invariants
-  Check the expected logical entity revision (optimistic concurrency)
-  Increment FinancialGroup.currentRevision
-  Insert the immutable expense/transfer revision and its owned child snapshots
-       OR apply an allowed financial lifecycle transition
-  Insert the corresponding FinancialGroupJournal entry
-COMMIT
-```
-
-This applies to **creations, modifications, deletions and financial state transitions**. Per-group serialization means independently committed changes have an unambiguous local order; writes in different groups remain independent. A standalone auto-incrementing journal ID would *not* provide the same commit-order guarantee.
-
-### Worked history example
-
-| Group revision | Recorded change | Current logical financial state after commit |
+| Group revision | Change | Logical state after commit |
 | --- | --- | --- |
-| 1 | Create Expense A (v1) | A v1 |
-| 2 | Create Expense B (v1) | A v1, B v1 |
-| 3 | Update Expense A (v2) | A v2, B v1 |
-| 4 | Record Transfer T (v1) | A v2, B v1, T v1 |
-| 5 | Delete Expense B (v2 tombstone) | A v2, T v1 |
-| 6 | Close financial group | A v2, T v1; expense writes forbidden |
+| 1 | Expense A created (v1) | A v1 |
+| 2 | Expense B created (v1) | A v1, B v1 |
+| 3 | Expense A corrected (v2) | A v2, B v1 |
+| 4 | Settlement S recorded (v1) | A v2, B v1, S v1 |
+| 5 | Expense B removed (v2 tombstone) | A v2, S v1 |
+| 6 | Group closed | A v2, S v1; expenses frozen |
 
-To reconstruct balances at **group revision 4**, select the latest journal-referenced revision of each logical expense and transfer with group revision `<= 4`, exclude tombstones, and sum the stored allocation/transfer effects. Historical reads should see a **consistent database snapshot**, not a mixture of different committed query moments.
+A point-in-time view at group revision 4 shows A v2, B v1, settlement S v1, and the balances derived from that
+snapshot. History is a **group-internal audit aid**, not evidence that an external payment was genuine.
 
-**Current-state lookup/indexing optimization** (e.g., a materialized latest-revision pointer table) is deferred to physical schema design. It does not belong in the DDD conceptual diagram.
+### Attachments and historical scope
 
-### Deliberate attachment-history exception: confirm with the team
+ExpenseAttachment associates an expense with an opaque File ID; File Management owns content and file access.
+Earlier ER sketches allowed attachment-only changes without their own financial journal entries, so not every
+historical attachment set would be reconstructable. **Whether attachment-only operations must create an Expense
+revision remains open**; do not claim point-in-time attachment reconstruction until that contract is decided.
+Historical file access may additionally depend on file retention and ACL lifecycle. A file can be referenced by
+multiple historical attachment revisions; do not constrain File-to-Attachment references to one physical
+association.
 
-The detailed diagram currently says **attachment-only changes do not produce their own financial revision/journal entry**. When an expense is otherwise revised, its attachment associations are copied into the new expense revision. This preserves attachments attached to *earlier expense revisions*, but does **not** guarantee an exact attachment list for every group-wide revision if attachments are changed independently between financial revisions.
+## Notification and File models
 
-That is a narrower promise than fully reconstructing every aspect of an expense at every point in time. If exact attachment history is required, attachment modifications must also trigger an expense revision or be separately journaled. **This is an explicit open business decision, not something to silently resolve in implementation.** Likewise, referenced file bytes must be retained by File Management if historical receipt content is expected to remain readable.
+Notification has separate `Recipient`, `Notification`, and `Template` aggregate roots. Recipient owns
+DeliveryChannels, Notification owns VariableBindings and DeliveryAttempts, and Template owns Variables. A
+VariableBinding references the template's variable ID; a delivery attempt references a channel owned by the
+notification recipient. Every event-driven notification needs an idempotency policy; changing templates/channels
+must not silently rewrite recorded delivery history. Published event names should be versionable integration
+contracts rather than a global enum shared between contexts.
 
-## 7. Notification and file subsystems
+File Management owns File and FileAccessPolicy. Generic ACLs are a possible way to avoid embedding group
+semantics in the file service. For the initial modulith, use an authorized published Group/Finance capability
+where needed. Additional short-lived scoped attestations are an **unadopted design alternative**, documented in
+[Scoped Authorization Attestations](scoped-authorization-attestations-proposal.md). Group/Finance association
+with files does not confer access by merely supplying a file or group ID.
 
-These are distinct contexts in the overall diagram. Their implementation details should not be forced into the Financial Management aggregate model.
+## Open decisions
 
-### Notification Management
+These points remain intentionally unresolved and require business clarification before features rely on them:
 
-- `Recipient` is a local user reference; `Notification` is one logical user-facing message.
-- `NotificationTemplate` and `TemplateVariable` describe supported content; `TemplateVariableBinding` supplies values for a particular notification.
-- `DeliveryChannel` describes a destination; `DeliveryAttempt` records attempts independently from the notification. One notification can have multiple attempts, including retries and multiple channels.
-- `Notification.idempotencyToken` is intended to help deduplicate event-driven creation; exact uniqueness scope and source event identity require definition.
-- Delivery-channel ownership must match the notification recipient. Historical attempts must not be accidentally rewritten by changes to a recipient's email/phone configuration.
-- Templates may be static or managed records; content versioning, redaction and `isSensitive` handling are additional design choices.
-
-Notification events should use **published integration contracts** rather than import domain entities or a globally owned cross-context event enum. The final diagram's event identifier is an illustrative stable string, potentially translated from a publisher event through an anti-corruption layer.
-
-### File Management
-
-- `File` owns opaque file data and metadata; `FileAccess` owns generic access rules.
-- The proposed generic ACL checks verified claims against an issuer, claim scope/key, optional required value, and permission. An absent required value may have presence-check semantics; the exact matching grammar and policy-combination rules must be specified.
-- A claimed group ID is **not itself proof of group membership**. Issuer trust, subject binding, expiration, audience and applicable resource scope must be validated before ACL matching.
-- The **Scoped Authorization Token (SAT)** idea is a **separate proposal for later review**, not an accepted prerequisite of this data model. Initial modular-monolith authorization may use published module APIs instead.
-- Finance/Group Management own the business association between a financial record/group and a file. File Management should not need to replicate group membership simply to understand receipt ACLs.
-
-## 8. Domain model versus persistence model
-
-The diagrams are a starting point for tactical DDD modeling. In that transformation:
-
-- `Expense`, `FinancialTransfer`, and `FinancialGroup` are **candidate aggregate roots**, not one enormous aggregate containing all group data.
-- `ExpenseAllocation` and expense attachment associations are children of an expense version and typically governed by its aggregate operations.
-- `Money`/minor amount, percentage, split strategy, and identity types can enforce **value-object-local invariants** on construction.
-- Expense-level allocation totals and split consistency are **aggregate-level invariants**.
-- Lifecycle checks, actor eligibility, consistent financial version allocation, and any multi-aggregate write coordination require **application-level transactional orchestration**, not necessarily one giant aggregate root.
-- The journal, COW physical row IDs, index choices, ORM inheritance mappings, and any current-revision lookup optimization are largely **persistence mechanisms** supporting domain-observable versioning and history.
-
-The DDD diagrams should therefore prioritize **identity, behavior, ownership, aggregate boundaries and invariants**. They need not replicate this ER-style database schema or imply a direct table-to-domain-class mapping.
-
-## 9. Open decisions and explicit exclusions
-
-| Topic | Current position / question |
+| Topic | Decision still needed |
 | --- | --- |
-| **User Profile** | **Open:** Where should ShareWise-specific profile information, display names, avatar references and default currency preferences live? |
-| **Multicurrency and FX** | **Open:** `FinancialGroup.currency` represents one accounting currency. Whether expenses/transfers can originate in other currencies, and how conversion rates are recorded, is undecided. No exchange-rate microservice is assumed. |
-| **Financial actor access** | **Open:** Must actor references be currently active for every operation? How are repayments involving former members recorded? |
-| **Who may edit transfers?** | **Open:** Can sender/recipient, any authorized group member, or both parties create/change/delete or confirm a transfer? The diagram's `C(R)UD` note is not a complete policy. |
-| **Expense authorship** | **Working model:** `owner = payer`; the journal records the modification actor independently. Whether a different member may create an expense on behalf of the payer remains to be agreed. |
-| **Attachment history** | **Open:** Attachment-only changes are currently excluded from financial journal revisions. Is the resulting weaker historical attachment view acceptable? |
-| **Revocation consistency** | **Open:** Decide acceptable authorization delay for replicated memberships or future scoped JWT attestations. Finance must still validate referenced participants independently. |
-| **Invitations** | **Working model:** Group Management owns invitation records, target user/role, expiry. Acceptance, cancellation and duplicate invitation rules may need more detail. |
-| **Notification semantics** | **Open:** Template lifecycle, sensitive variable retention, channel availability, and deduplication policy. |
-| **Archival storage** | **Not yet designed:** Business archival is terminal read-only state. Moving old records to another service or hard-deleting primary data is only a future infrastructure optimization. |
-| **Global timeline** | **Explicitly not promised:** There is no globally transactional or totally ordered history across all bounded contexts. The ordered journal covers **Finance** only. |
+| **Currency conversion** | One accounting currency per group is established; whether to accept and fix historical exchange rates for foreign-origin entries is not. |
+| **Inactive FinancialActors** | Which new operations may reference former members, particularly settlements. |
+| **Settlement authority** | Who may record, change or confirm a settlement on behalf of another participant. |
+| **Expense authorship** | Whether a member can register an expense paid by another member. |
+| **Attachment history** | Whether attachment-only edits must be revisioned/journaled for exact point-in-time reconstruction. |
+| **Deletion and retention** | Hard group deletion behavior versus read-only business archival and history retention. |
+| **Notification delivery** | Channel snapshots, template/version retention, idempotency scope and privacy rules. |
+| **Distributed authorization** | Revocation/staleness guarantees and whether extra scoped attestations are worth the cost. |
 
-## 10. Next steps for the team
-
-1. **Review the domain promises**, especially financial history scope, attachment behavior, former-member participation and who may record transfers on behalf of others. Confirm which constraints are actual business requirements rather than convenient implementation choices.
-2. **Convert the ER-style view into tactical DDD diagrams**: define aggregate roots, child entities/value objects, domain operations, and which layer owns each invariant. Keep storage-specific COW fields out of the business-facing class diagrams unless they express public behavior.
-3. **Define module-facing contracts** for creating/modifying expenses and transfers, querying current/historical balances, checking membership, and referencing files. Share DTO contracts rather than private ORM entities.
-4. **Derive the persistence schema** from the approved behavior: local foreign keys and unique constraints, COW revision references, group lock/revision protocol, typed journal payload checks, indexes and migrations.
-5. **Plan integration failure handling** when Group Management's membership projection is delayed or when notifications/file storage are unavailable. No cross-context database transaction is assumed.
-
-### Design principles to retain
-
-**One financial model, separate business record types. One authoritative owner per concept. Immutable local financial history. Business-visible guarantees first; ORM/database optimizations later.**
+Keep these open questions visible; don't turn a convenient physical schema assumption into a business rule.
+Detailed infrastructure structure is in [architecture](architecture.md), and the actual installed toolchains are
+in [development](development.md).
