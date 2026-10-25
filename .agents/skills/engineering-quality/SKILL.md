@@ -1,112 +1,118 @@
 ---
 name: engineering-quality
-description: Plan, implement, refactor, and review nontrivial software changes with invariant-driven design, explicit ownership, strong tests, careful API and transaction semantics, and reviewable patches. Use for coding, architecture changes, migrations, bug fixes, and PR reviews in any language or framework.
+description: Apply proactive, architecture-aware software engineering when implementing, refactoring, debugging, or reviewing code. Use to preserve coherent ownership and data flow, find and eliminate redundant infrastructure, challenge questionable patterns, improve maintainability, and validate behavior and invariants across the whole system.
 ---
 
 # Engineering quality
 
-Prioritize correctness, coherent architecture, maintainability, testability, and long-term evolution over a
-quick result that happens to compile. Apply this skill to any codebase; **follow project-specific contracts and
-established conventions first**. Do not mechanically impose ShareWise, .NET, DDD, or any other project's
-patterns on unrelated code.
+Optimize for a **coherent, correct, maintainable codebase**, not merely a working local change. Reason about the
+system that will remain after the task: its responsibilities, invariants, data flow, dependency structure,
+and ease of future modification. A little more work now is justified when it removes duplication or avoids
+permanent architectural debt.
 
-## Before changing code
+Use sound judgment rather than enforcing a fashionable architecture mechanically. Follow genuine project
+requirements and established contracts, but **question existing patterns when their rationale is weak or a
+better design is available**. Repetition is evidence of a convention, not proof that the convention is good.
 
-1. Inspect the repository, relevant documentation, tests, dependency wiring, and neighboring implementations.
-   Map the actual data/control flow, lifetime boundaries, and public API before editing.
-2. Determine observable behavior, explicit invariants, consistency boundaries, failure modes, compatibility
-   constraints, and the users of any contract being changed. Differentiate established requirements from
-   speculative enhancements.
-3. Choose the smallest **coherent and durable** design, not the fewest lines. Prefer an incremental task with an
-   inspectable diff; avoid unrelated cleanup and gratuitous migration.
-4. Consider alternatives when they genuinely affect correctness, coupling, performance, or extensibility. State
-   the selected tradeoff; do not design a large framework without a concrete need.
+## Understand the system before adding to it
 
-## Architecture and API design
+1. Read the relevant architecture, domain and API documentation; examine neighboring implementations and
+   tests. Trace the complete operation through entry points, services, data access, side effects and consumers.
+2. Search beyond the immediately affected files for existing abstractions, validators, parsers, utilities,
+   state machines, models, and infrastructure serving the same purpose. Prefer extending or consolidating a
+   sound existing capability over building a parallel implementation.
+3. Identify state ownership, invariants, transactional and concurrency boundaries, lifecycle assumptions,
+   failure modes, and externally observable contracts. Consider whether the proposed change belongs in the
+   component where it first appears, or in a shared owner elsewhere.
+4. Examine the *reason* for existing design choices. Preserve conventions that serve a real purpose; improve
+   conventions that introduce avoidable coupling, duplication or incidental complexity. Do not reproduce an
+   awkward pattern merely because similar code already exists.
+5. Consider how the change will interact with other operations, current consumers, new use cases, and eventual
+   architectural evolution. Avoid solving one symptom while leaving the underlying structural problem intact.
 
-- Keep responsibilities, state ownership and dependencies explicit. A component owns its writes; other
-  components access published contracts. Avoid circular or hidden cross-module dependencies and incidental
-  shared mutable state.
-- Favor small, cohesive operation-oriented services and interfaces **where the boundary is meaningful**. Do not
-  create pass-through services, interfaces-per-method, facade chains, or abstraction factories solely to satisfy
-  an architectural diagram.
-- Design contracts around domain meaning, not ORM shape, storage columns, framework-specific types, or a
-  convenient present implementation. Do not leak database entities into public transport or domain APIs.
-- Keep data transfer/query projections narrowly tailored. Execute filters, joins, aggregations and conditional
-  updates close to the data when appropriate; avoid N+1 calls, materializing complete graphs, or copying
-  collections unnecessarily.
-- Separate business decisions from execution mechanics. Adapters may efficiently enforce core-specified
-  invariants, but must not invent contradictory business rules. Treat external inputs and consumed integration
-  events as untrusted.
-- Prefer clear, explicit data flow and lifecycle ownership over implicit ambient state. When using DI, choose
-  lifetime and composition deliberately; keep shared services stateless/thread-safe and operation state
-  operation-local.
-- Reuse existing well-formed abstractions and patterns rather than duplicating parsers, validators, state
-  machines, or data models with ad hoc string parsing and positional assumptions.
-- Preserve behavior and compatibility unless the change explicitly authorizes a break. Remove redundant code
-  when safe; resist adding complexity for hypothetical needs.
+## Design and implementation preferences
 
-## Correctness, concurrency and security
+- **Clear separation of concerns:** Keep responsibility, ownership and dependency direction explicit. Expose
+  purposeful contracts between modules; avoid reaching into neighboring components' internal state or data.
+  Favor operation-focused interfaces and cohesive service boundaries over broad all-purpose abstractions.
+- **Dependency-injected services:** Prefer dedicated, DI-managed services for meaningful behavior, orchestration,
+  policies or functionality with dependencies. Avoid manually managed singletons, global mutable state, static
+  service locators, and large static utility classes that hide dependencies or accumulate unrelated behavior.
+  Small, pure and stateless helper functions are fine when introducing a service would add no real value.
+- **No ceremonial layers:** Do not introduce interfaces-per-class, pass-through facades, chains of wrappers,
+  dependency injection for plain data objects, or needless micro-services/classes. Abstractions should provide
+  testable boundaries, meaningful capabilities, or genuine reuse—not satisfy a diagram.
+- **Reuse before reinvention:** Consolidate duplicated code and remove obsolete implementations when safe.
+  Extend a parser, query builder, validation framework, transaction mechanism or other established capability
+  rather than hand-rolling a second version. Reuse is not an excuse to preserve an abstraction that is itself
+  flawed: refactor the common mechanism when that is the cleaner solution.
+- **Deliberate data flow:** Keep APIs and data representations suited to their operations. Favor typed inputs,
+  explicit results and narrow projections. Where appropriate, evaluate filtering, aggregation, predicates and
+  atomic conditional writes close to the data instead of materializing full object graphs. Do not make
+  efficiency an excuse to duplicate or contradict business policy inside adapters.
+- **Appropriate scope of state:** Make lifetime, mutability, thread-safety and resource ownership evident.
+  Prefer simple, explicit dependencies and operation-local state over implicit shared state or caching.
+- **Meaningful names and organization:** Use cohesive packages/modules and accurate domain terminology.
+  Split overloaded classes and crowded namespaces when responsibility boundaries warrant it; avoid gratuitous
+  fragmentation. Favor code that a future maintainer can understand without reconstructing the author’s path.
+- **Pragmatic extensibility:** Design for realistic change and known integration boundaries, without inventing
+  speculative frameworks or indirection. Prefer removing an accidental constraint to adding another workaround.
 
-- Specify invariants at appropriate boundaries (construction, aggregate/operation, persistence, integration) and
-  verify **all** mutation paths preserve them, not only the happy path.
-- Trace ordering and state transitions through retries, cancellation, conflicting edits, duplicate inputs,
-  partial failures, cleanup, and concurrent calls. Distinguish local guarantees from eventually consistent or
-  networked state.
-- Require explicit commit/rollback ownership and atomicity when multiple writes form one business operation. A
-  successful sub-operation must not silently authorize an enclosing failed operation to commit. After
-  transaction-fatal failures, fail closed; do not continue using poisoned sessions.
-- Model expected rejections as typed results/diagnostics when practical (not-found, conflict, invalid
-  transition). Reserve exceptions for unexpected faults, broken contracts, or errors that cannot safely be
-  represented as ordinary outcomes. Never suppress unexpected exceptions to disguise a failed operation.
-- Validate at trust boundaries, including cross-context identity/authorization, deserialization, external data
-  and permission checks. Do not equate possessing a resource identifier with having access.
-- Preserve temporal/historical invariants, stable logical IDs, provenance and ordered revisions when the
-  business depends on them. Avoid subtly changed semantics through optimization or refactor.
-- Be intentional about resource lifetime, disposal, thread safety, async/cancellation and error propagation. Do
-  not swallow diagnostics or replace a structural problem with a fragile workaround.
+## Proactive improvement and task scope
 
-## Maintainable implementation
+Do not interpret the request's initial file list or immediate symptom as a prohibition on improving nearby
+code. Assess opportunities by **coherence, risk and contract impact**, not just by line count:
 
-- Prefer precise names and cohesive packages/namespaces. Split crowded modules by responsibilities when it
-  reduces navigation cost or coupling; do not proliferate microscopic types for their own sake.
-- Write idiomatic code for the *actual* language/runtime/toolchain; use modern standard language/library
-  facilities when supported. Avoid importing familiar C# patterns into Java (or vice versa) without considering
-  ecosystem conventions.
-- Favor explicit invariants, typed models, declarative validation and structured errors over scattered manual
-  checks. Avoid exception-driven expected control flow.
-- Keep diffs focused, formats consistent, source easy to review, and documentation focused on **steady-state
-  behavior** rather than a changelog. Explain why non-obvious contracts or decisions exist; describe what a
-  component does before listing exclusions.
-- Resist hidden allocations, redundant materialization, redundant dependency layers, or premature
-  generalization. Maintain reasonable production performance without sacrificing clarity or correctness.
+- **Minor improvements:** Make small, clearly beneficial refactorings directly while working: eliminate a
+  duplicate, simplify a misleading helper, correct naming, reuse a common validator, or remove unnecessary
+  indirection. Keep these changes cohesive with the task and verify affected behavior.
+- **Larger, low-risk refactorings:** It is acceptable to expand the task to consolidate shared behavior, fix an
+  unsuitable boundary, or reorganize closely related code when existing contracts and behavior can be
+  preserved with high confidence. Include the necessary callers and tests; do not leave two competing paths.
+- **Very large or high-risk refactorings:** Surface the architectural problem, explain why the better design is
+  preferable, what it affects, and an incremental migration path. **Seek maintainer approval before executing**
+  a disruptive redesign, especially when it changes public contracts, persistence semantics, or ownership.
 
-## Tests and review
+This is not a mandate to refactor everything encountered. Weigh benefits against regression risk, integration
+cost and comprehensibility. But equally, do not reject an important improvement solely because a quick local
+workaround would be easier or involves fewer files. If the best long-term solution is out of scope, say so
+explicitly rather than silently installing another redundant mechanism.
 
-1. Add focused tests for new/changed behavior and important invariants. Include invalid and hostile inputs,
-   boundary values, concurrency/races, duplication/idempotency, rollback/commit, and retry/recovery cases as
-   relevant.
-2. Test **observable contracts** without requiring one preferred implementation. Unit-test pure rules;
-   integration-test SQL/ORM/locking, serialization and real adapter behavior where mocks would miss bugs. Add
-   regression tests for defects and changed edge cases.
-3. Run available build, test, format/static-analysis and architecture checks; distinguish
-   environmental/toolchain limits from code failures. Do not claim to have run tools you could not run.
-4. Review the full final diff, not only edited lines. Trace interactions with callers, persisted state, parallel
-   operations, integration consumers, and docs. Prioritize correctness and unintended regressions over minor
-   stylistic preferences.
-5. Report meaningful findings with precise file/contract references, severity and reproducible reasoning. If
-   implementing, provide a concise summary, validation matrix, reviewable commit/patch and unresolved risks.
-   Never bury significant defects in a list of optional polish.
+## Correctness is architectural, not just local
 
-## Handoff discipline
+- Validate invariants across **all** relevant entry points and mutation paths, including updates, deletion,
+  retries, reordering, partial failure, and reconciliation. Prefer typed models and centralized validation
+  rather than brittle re-parsing or scattered ad hoc checks.
+- Trace concurrent and asynchronous flows: stale inputs, competing writes, ordering, cancellation,
+  idempotency, resource disposal, and transaction finalization. Distinguish local atomicity from eventual
+  consistency across boundaries.
+- Use ordinary typed outcomes for expected conditions when practical; reserve exceptions for unexpected
+  failures or violated contracts. Preserve useful diagnostics. A failed lower-level operation must not
+  accidentally permit a higher-level transaction to commit inconsistent state.
+- Treat external data, authentication, authorization and serialization as trust boundaries. Fail closed when
+  an ambiguous state would otherwise compromise correctness or security.
+- Preserve historical identity, provenance and version semantics whenever the domain depends on them.
+  Optimization must not silently alter the behavior or precision of an established contract.
+- Consider performance as part of design: avoid redundant work, excessive allocations, unnecessary data
+  transfers, N+1 queries and repeated parsing. Optimize thoughtfully, backed by evidence where feasible.
 
-Use the repository's documented approval workflow. Keep an approved baseline separate from unreviewed changes;
-bundle tightly related steps into coherent patches, and stop at a reviewable boundary. Don't merge or publish
-external changes without the requested approval. Document steady-state contracts and brief
-implementation/testing constraints so another maintainer can continue without reconstructing an entire
-conversation.
+## Testing, review and documentation
 
-## Additional guidance
+- Test observable behavior and invariants, not incidental private implementation shapes. Cover negative and
+  adversarial inputs, boundary conditions, concurrency conflicts, rollback/recovery, and compatibility where
+  relevant. Add regression tests when fixing defects.
+- Test real integration boundaries when mocks cannot prove their semantics—particularly persistence,
+  transactions, query behavior, serialization and event delivery. Favor deterministic and focused tests.
+- Validate with the available build, test, formatter, static-analysis and architectural checks. Distinguish
+  tooling limitations from product defects; never claim checks ran when they did not.
+- Review the surrounding call graph and impacted contracts, not only the directly edited code. Actively look
+  for existing redundant paths, stale assumptions, cross-component inconsistencies and missed simplification
+  opportunities. Report meaningful systemic issues even when a narrowly scoped change appears correct.
+- Keep documentation oriented around **steady-state responsibilities, data flow, guarantees and rationale**.
+  Explain what a component does and why non-obvious decisions matter. Update related documentation when a
+  change affects its contracts; avoid narrating development history.
+- Communicate material tradeoffs, residual risks and architectural alternatives clearly. Separate necessary
+  corrections from optional improvements, and avoid burying a serious design concern under stylistic notes.
 
-For a more detailed pre-merge checklist, consult [review-checklist](references/review-checklist.md). Do not
-blindly apply every entry to trivial changes; scale validation to actual risk.
+Use [the review checklist](references/review-checklist.md) for a deeper pass when the change warrants it.
+Apply it proportionally to the actual risks rather than as a mechanical checklist for every trivial edit.

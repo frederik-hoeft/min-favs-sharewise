@@ -16,7 +16,7 @@ intended implementation; they are not a claim that all those features already ex
 | `src/frontend/` | Next.js 16.4 / React 19 / TypeScript frontend |
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
 | `docs/architecture.md` | Component-level hexagonal/modulith architecture and service conventions |
-| `docs/development.md` | Local development, validation, and offline-toolchain requirements |
+| `docs/development.md` | Local development, build and validation guidance |
 | `docs/scoped-authorization-attestations-proposal.md` | Optional **unaccepted** distributed authorization design for later evaluation |
 | `.agents/skills/` | Repository-local agent skills |
 
@@ -48,9 +48,9 @@ npm run dev
 The frontend runs on port 3000 and the backend on port 8080 in the provided starter setup. The backend contains
 a greeting example; the full financial APIs are not yet implemented.
 
-For a reproducible offline environment or when developing in an isolated agent workspace, follow [development
-setup](docs/development.md). The starter currently includes H2/JPA dependencies; PostgreSQL and
-database-specific adapter contracts are architectural targets, not yet implemented dependencies.
+For setup, builds and tests, consult the [development guide](docs/development.md). The starter
+currently includes H2/JPA dependencies; PostgreSQL and database-specific adapter contracts are
+architectural targets, not yet implemented dependencies.
 
 ## Architecture and contribution guidance
 
@@ -61,4 +61,4 @@ its own strongly consistent group-scoped transaction boundary and immutable revi
 
 Read [architecture](docs/architecture.md) and [domain model](docs/data-model-design.md) before implementing
 business features. Coding agents should also read [AGENTS.md](AGENTS.md); its associated [engineering-quality
-skill](.agents/skills/engineering-quality/SKILL.md) provides a reusable change/review procedure.
+skill](.agents/skills/engineering-quality/SKILL.md) provides reusable architectural and engineering-quality guidance.

@@ -12,7 +12,9 @@ database-side projections through ports; keep JPA/JDBC infrastructure private to
 cross-context data access or synchronous distributed coupling. Treat authorization and financial history as
 correctness-critical.
 
-For new features, refactors and reviews, use [engineering-quality](.agents/skills/engineering-quality/SKILL.md).
+For new features, refactors and reviews, use [engineering-quality](.agents/skills/engineering-quality/SKILL.md),
+which emphasizes proactive reuse, questioning unjustified conventions, and improving surrounding architecture
+when appropriate to the task.
 For architecture/documentation editing, use
 [technical-documentation](.agents/skills/technical-documentation/SKILL.md). The authoritative product
 documentation lives in `docs/`, not in an agent skill; do not duplicate it across agent configurations.
@@ -20,7 +22,3 @@ documentation lives in `docs/`, not in an agent skill; do not duplicate it acros
 The backend uses **Maven**, not Gradle; frontend uses **npm**, not pnpm. Follow the actual `pom.xml`,
 `package-lock.json`, and the frontend's generated [Next.js agent notes](src/frontend/AGENTS.md). Validate the
 strongest applicable checks supported by the environment and state any tooling gaps precisely.
-
-When working on supplied archive baselines, preserve the approved local `main`, use one reviewable feature
-branch per coherent task, provide a patch against that baseline, and do **not** merge until the user approves.
-Keep changes focused and report a concrete commit message and validation results.
