@@ -19,7 +19,7 @@ build-backend:
     - ./mvnw clean package -DskipTests
   artifacts:
     paths:
-      - backend/favsdemobe/target/*.jar
+      - src/backend/favsdemobe/target/*.jar
     expire_in: 1 hour
 
 sast:
