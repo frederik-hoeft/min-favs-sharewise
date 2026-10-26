@@ -57,3 +57,52 @@ around a developer's environment.
 Offline SDK/cache provisioning is an **external developer-environment workflow**, not a product repository
 contract. Keep downloaded JDKs, Maven repositories, npm caches, container images, credentials and other
 machine-specific setup artifacts outside the source tree.
+
+## Portable offline development handoff
+
+A connected **Linux x86-64** preparation machine can package a clean, committed checkout and the complete
+backend/frontend toolchains and dependency caches with
+[`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh). The resulting large archive lives
+**outside the repository** and must not be committed. This is an optional environment-preparation utility,
+not an application runtime dependency or part of the agent engineering-quality skill.
+
+On a Linux x64 machine with network access, from a clean, committed checkout:
+
+```sh
+scripts/create-offline-handoff.sh pack \
+    --output ../sharewise-offline-linux-x64.tar.gz
+```
+
+The script downloads the latest stable **Eclipse Temurin JDK 25** (Linux x64), the latest **Node.js 24** patch
+release (Linux x64), and **Maven 3.10.0** (matching the Maven wrapper) using `wget`.
+It validates downloaded archives against vendor-published SHA-256/SHA-512 checksums and **reuses a verified
+archive** from the Git-ignored `.offline-handoff-cache/toolchains/` directory when available. Toolchain
+versions are resolved at handoff time, then recorded by their archive checksums in the handoff manifest.
+The source snapshot and generated handoff do not contain this preparation cache.
+
+Use `--cache-dir /path/to/cache` to share that download cache between workspaces, or supply any of
+`--jdk /path/to/archive`, `--node /path/to/archive`, and `--maven /path/to/archive` to override a download.
+Manually supplied archives are not checked against external metadata; verify their origin and checksums
+independently before use. `pack` still requires network access for downloading Maven/npm dependencies.
+
+The script resolves **Maven transitive dependencies and build plugins** into an isolated local repository,
+fetches all npm packages (including Linux x64 native optional packages) using `npm ci`, and performs online
+and **strict offline** Maven and frontend verification in clean source copies. It aborts on missing packages,
+compilation, test, lint, or frontend-build failures. It doesn't rely on existing global package caches.
+
+Before extracting on the receiving machine, check the generated sidecar SHA-256 file alongside the archive.
+After unpacking the handoff on another Linux x64 host:
+
+```sh
+./verify-offline.sh verify .
+```
+
+The bundle includes a source snapshot, JDK, Maven, Node/npm, Maven repository, npm cache, verification
+script, commit identifier, and checksums of dependency descriptors. It intentionally excludes generated
+`node_modules`, build outputs, database services, secrets, and Docker/devcontainer images. Container-based
+offline development additionally requires preloaded matching container images and OS packages. A later
+change to `pom.xml`, `package-lock.json`, platform, or build lifecycle can require regenerating the cache.
+
+The original Next.js starter imported Google Fonts dynamically at build time. Its layout now uses local system
+font stacks so that building the frontend does not independently require Google's font service. If remote font
+loading is reintroduced, the fonts should be vendored or handled by a deliberately verified offline strategy.

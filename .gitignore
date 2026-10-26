@@ -76,3 +76,6 @@ next-env.d.ts
 # vim
 *.swp
 *.un~
+
+# Downloaded toolchain archives for the offline handoff generator.
+/.offline-handoff-cache/
