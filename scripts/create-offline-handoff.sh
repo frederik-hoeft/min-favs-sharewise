@@ -86,7 +86,8 @@ cache_download() {
 resolve_jdk() {
     local cache="$1" temp="$2" details name checksum url
     wget_metadata 'https://api.adoptium.net/v3/assets/latest/25/hotspot?architecture=x64&image_type=jdk&os=linux&vendor=eclipse' "$temp/jdk.json"
-    IFS=$'\t' read -r name checksum url < <(python3 - "$temp/jdk.json" <<'PY_JDK'
+    # Capture the parser exit status rather than hiding failures in process substitution.
+    details=$(python3 - "$temp/jdk.json" <<'PY_JDK'
 import json, re, sys
 from urllib.parse import urlsplit
 with open(sys.argv[1], encoding='utf-8') as stream:
@@ -99,7 +100,7 @@ release = next((x for x in releases if
     x['binary'].get('image_type') == 'jdk' and
     x['binary'].get('jvm_impl') == 'hotspot' and
     x['binary'].get('heap_size') == 'normal'), None)
-if not release or release.get('version_data', {}).get('major') != 25:
+if not release or release.get('version', {}).get('major') != 25:
     raise SystemExit('No matching stable Temurin JDK 25 release')
 package = release['binary']['package']
 name, checksum, url = (package[k] for k in ('name', 'checksum', 'link'))
@@ -112,7 +113,8 @@ if parsed.scheme != 'https' or parsed.hostname != 'github.com' or not parsed.pat
     raise SystemExit('Unexpected Temurin download URL')
 print(name, checksum, url, sep='\t')
 PY_JDK
-    )
+    ) || die 'Failed to parse Temurin JDK 25 release metadata.'
+    IFS=$'\t' read -r name checksum url <<< "$details"
     [[ -n "$name" && -n "$checksum" && -n "$url" ]] || die 'Could not resolve Temurin release.'
     cache_download "$url" "$checksum" sha256 "$cache/$name"
     printf '%s\n' "$cache/$name"
