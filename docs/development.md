@@ -58,51 +58,44 @@ Offline SDK/cache provisioning is an **external developer-environment workflow**
 contract. Keep downloaded JDKs, Maven repositories, npm caches, container images, credentials and other
 machine-specific setup artifacts outside the source tree.
 
-## Portable offline development handoff
+## Portable offline dependency handoff
 
-A connected **Linux x86-64** preparation machine can package a clean, committed checkout and the complete
-backend/frontend toolchains and dependency caches with
-[`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh). The resulting large archive lives
-**outside the repository** and must not be committed. This is an optional environment-preparation utility,
-not an application runtime dependency or part of the agent engineering-quality skill.
+The optional [`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh) prepares a reusable
+**Linux x86-64 offline toolchain and dependency bundle**. It includes Java 25, Maven 3.10.0, Node 24/npm, a
+complete Maven local repository and npm cache. **It does not include source files or Git history.** Supply the
+project source separately through Git, a source ZIP, or another handoff. Update the dependency bundle only
+when the dependency manifests, build tooling, or required platform change—not for routine source edits.
 
-On a Linux x64 machine with network access, from a clean, committed checkout:
-
-```sh
-scripts/create-offline-handoff.sh pack \
-    --output ../sharewise-offline-linux-x64.tar.gz
-```
-
-The script downloads the latest stable **Eclipse Temurin JDK 25** (Linux x64), the latest **Node.js 24** patch
-release (Linux x64), and **Maven 3.10.0** (matching the Maven wrapper) using `wget`.
-It validates downloaded archives against vendor-published SHA-256/SHA-512 checksums and **reuses a verified
-archive** from the Git-ignored `.offline-handoff-cache/toolchains/` directory when available. Toolchain
-versions are resolved at handoff time, then recorded by their archive checksums in the handoff manifest.
-The source snapshot and generated handoff do not contain this preparation cache.
-
-Use `--cache-dir /path/to/cache` to share that download cache between workspaces, or supply any of
-`--jdk /path/to/archive`, `--node /path/to/archive`, and `--maven /path/to/archive` to override a download.
-Manually supplied archives are not checked against external metadata; verify their origin and checksums
-independently before use. `pack` still requires network access for downloading Maven/npm dependencies.
-
-The script resolves **Maven transitive dependencies and build plugins** into an isolated local repository,
-fetches all npm packages (including Linux x64 native optional packages) using `npm ci`, and performs online
-and **strict offline** Maven and frontend verification in clean source copies. It aborts on missing packages,
-compilation, test, lint, or frontend-build failures. It doesn't rely on existing global package caches.
-
-Before extracting on the receiving machine, check the generated sidecar SHA-256 file alongside the archive.
-After unpacking the handoff on another Linux x64 host:
+Run on a network-connected Linux x64 machine with the source checkout available:
 
 ```sh
-./verify-offline.sh verify .
+scripts/create-offline-handoff.sh pack
 ```
 
-The bundle includes a source snapshot, JDK, Maven, Node/npm, Maven repository, npm cache, verification
-script, commit identifier, and checksums of dependency descriptors. It intentionally excludes generated
-`node_modules`, build outputs, database services, secrets, and Docker/devcontainer images. Container-based
-offline development additionally requires preloaded matching container images and OS packages. A later
-change to `pom.xml`, `package-lock.json`, platform, or build lifecycle can require regenerating the cache.
+The script automatically downloads and checksum-verifies toolchains using `wget`, caching archives under the
+Git-ignored `.offline-handoff-cache/toolchains/`. By default, the generated archive and `.sha256` sidecar are
+written to `.offline-handoff-cache/sharewise-offline-deps-linux-x64.tar.gz[.sha256]`. Use `--output` to change
+the destination; use `--jdk`, `--node`, `--maven`, or `--cache-dir` to override toolchain inputs or download
+cache location. Explicitly supplied toolchain archives must be verified independently.
 
-The original Next.js starter imported Google Fonts dynamically at build time. Its layout now uses local system
-font stacks so that building the frontend does not independently require Google's font service. If remote font
-loading is reintroduced, the fonts should be vendored or handled by a deliberately verified offline strategy.
+`pack` uses **temporary copies** of the current backend and frontend sources, excluding existing build output,
+`node_modules`, and local `.env` files. It runs connected builds to acquire transitive dependencies and Maven
+plugins, followed by strict offline Maven and npm builds before packaging. Source code is discarded afterward.
+The archive contains only the toolchains, dependency caches, the verifier, and checksums of `pom.xml`, Maven
+wrapper properties, `package.json`, and `package-lock.json`.
+
+On the receiving Linux x64 machine, verify the archive's sidecar SHA-256, extract it, obtain the source
+separately, and run from the extracted bundle directory:
+
+```sh
+./verify-offline.sh verify . --source /path/to/sharewise
+```
+
+Verification requires an exact match of the **dependency descriptors**, not an identical source commit. It
+runs offline backend tests and frontend lint/build in a fresh temporary source copy, leaving the supplied source
+checkout unchanged. If those descriptors change, regenerate the bundle with `pack`; otherwise reuse it for
+subsequent source revisions. See `README-OFFLINE.md` inside the generated archive for environment setup.
+
+Neither a container image nor PostgreSQL is included in this archive; offline integration tests requiring
+external infrastructure need corresponding separate provisioning. The starter's generated remote Google Fonts
+were replaced with local system font stacks to avoid an unrelated network request during Next.js builds.

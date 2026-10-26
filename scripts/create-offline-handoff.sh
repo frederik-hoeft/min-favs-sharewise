@@ -1,33 +1,38 @@
 #!/usr/bin/env bash
-# Prepare and verify a self-contained Linux x86-64 ShareWise development handoff.
-# Requires: bash, git, tar, python3, wget, and checksum utilities on the preparation host.
+# Prepare and verify reusable offline Linux x86-64 build dependencies.
+# Preparation requires bash, tar, Python 3, wget, and checksum utilities.
+# Verification needs only basic POSIX userland tools (not Python or wget).
 set -Eeuo pipefail
 
 usage() {
     cat <<'USAGE'
 Usage:
   scripts/create-offline-handoff.sh pack \
-    [--output /path/to/sharewise-offline-linux-x64.tar.gz] \
+    [--output /path/to/sharewise-offline-deps-linux-x64.tar.gz] \
     [--cache-dir /path/to/toolchain-download-cache] \
     [--jdk /path/to/jdk-25-linux-x64.tar.gz] \
     [--node /path/to/node-v24-linux-x64.tar.xz] \
     [--maven /path/to/apache-maven-3.10.0-bin.zip]
 
-  scripts/create-offline-handoff.sh verify /path/to/extracted-bundle
+  ./verify-offline.sh verify /path/to/extracted-bundle --source /path/to/sharewise
 
-Run 'pack' on a network-connected Linux x86-64 machine. By default, wget
-fetches the latest Eclipse Temurin JDK 25 and Node.js 24 patch releases,
-and Maven 3.10.0. Their downloaded archives are kept in the Git-ignored
-.offline-handoff-cache/toolchains/ directory. The official release metadata
-provides checksums that are checked on every cache reuse and download.
-Supply --jdk, --node or --maven to override any individual download with a
-locally provided archive; verify such archives independently before use.
+'pack' uses the checkout containing this script to resolve Maven/npm dependencies,
+then validates clean offline builds. It packages ONLY the JDK, Maven, Node/npm,
+complete dependency caches, dependency-manifest hashes, and a verifier. No Git
+repository, source snapshot, node_modules, or build output is included.
 
-The command also resolves Maven/npm dependencies and verifies Maven/npm
-builds without network access before packaging the source, toolchains,
-and caches. The resulting handoff can be verified without network access.
-The source worktree must have no tracked modifications. Untracked files
-(including the toolchain cache) are not included in the source snapshot.
+Source is supplied independently (Git checkout, ZIP, etc.) when verifying or
+working offline. Its Maven/npm dependency manifests must match the packaged
+hashes. Ordinary source changes do NOT require a new dependency archive.
+
+By default wget fetches the latest Temurin JDK 25 and Node 24 patch releases,
+and Maven 3.10.0. Toolchain archives are cached in the Git-ignored
+.offline-handoff-cache/toolchains/ directory and checksum-verified. Use --jdk,
+--node or --maven to supply a local archive instead (verify those yourself).
+
+Output defaults to .offline-handoff-cache/sharewise-offline-deps-linux-x64.tar.gz
+inside the checkout. Relative --output paths resolve against the caller's cwd.
+Requires a network connection only for pack; verify uses strict offline builds.
 USAGE
 }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -36,9 +41,32 @@ note() { printf '\n>>> %s\n' "$*" >&2; }
 require_host() {
     [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] ||
         die 'Run on Linux x86_64; caches must be prepared for the handoff target platform.'
-    for tool in bash tar python3 sha256sum sha512sum grep sed cp mktemp; do
+    for tool in bash tar sha256sum grep sed cp mktemp; do
         command -v "$tool" >/dev/null || die "Missing host tool: $tool"
     done
+}
+
+require_pack_tools() {
+    for tool in python3 wget sha512sum; do
+        command -v "$tool" >/dev/null || die "Missing preparation tool: $tool"
+    done
+}
+
+# Resolve a writable output location before downloading dependencies or compiling.
+# Normalize the root directory without introducing a double leading slash.
+resolve_output_path() {
+    local requested="$1" directory filename probe
+    [[ -n "$requested" && "$requested" != */ ]] ||
+        die 'Output must be a nonempty file path (not a directory).'
+    directory=$(dirname -- "$requested")
+    filename=$(basename -- "$requested")
+    mkdir -p -- "$directory" || die "Cannot create output directory: $directory"
+    directory=$(cd -- "$directory" && pwd -P) || die "Cannot resolve output directory: $directory"
+    probe=$(mktemp "$directory/.sharewise-write-check.XXXXXXXX") ||
+        die "Output directory is not writable: $directory"
+    rm -f -- "$probe"
+    [[ ! -d "$directory/$filename" ]] || die "Output path is a directory: $directory/$filename"
+    printf '%s/%s\n' "${directory%/}" "$filename"
 }
 
 # Only the preparation path invokes wget; verify never accesses the network.
@@ -258,7 +286,40 @@ run_npm() {
     )
 }
 
-# Dependency collection from a clean checkout, never from local node_modules/target.
+# Copy just the backend/frontend projects into temporary build space. Always use
+# the CURRENT working tree (including local source edits), never a git archive
+# that silently omits changes since the last commit. No source enters the bundle.
+copy_project_sources() {
+    local source="$1" destination="$2"
+    [[ -f "$source/src/backend/favsdemobe/pom.xml" ]] || die "Missing backend project in: $source"
+    [[ -f "$source/src/frontend/package-lock.json" ]] || die "Missing frontend project in: $source"
+    mkdir -p "$destination"
+    tar -C "$source" \
+        --exclude='.git' --exclude='node_modules' --exclude='.next' \
+        --exclude='target' --exclude='out' --exclude='build' \
+        --exclude='coverage' --exclude='.env' --exclude='.env.*' \
+        --exclude='*.tsbuildinfo' --exclude='next-env.d.ts' \
+        -cf - src/backend/favsdemobe src/frontend | tar -xf - -C "$destination"
+}
+
+# Store a small dependency fingerprint instead of embedding the repository.
+# A changed POM, Maven wrapper, package.json or lockfile invalidates the bundle.
+write_dependency_manifest() {
+    local source="$1" root="$2"
+    (cd "$source" && sha256sum \
+        src/backend/favsdemobe/pom.xml \
+        src/backend/favsdemobe/.mvn/wrapper/maven-wrapper.properties \
+        src/frontend/package.json \
+        src/frontend/package-lock.json) > "$root/manifest/dependencies.sha256"
+}
+
+check_dependency_manifest() {
+    local source="$1" root="$2"
+    [[ -f "$root/manifest/dependencies.sha256" ]] || die 'Dependency manifest not found in bundle.'
+    (cd "$source" && sha256sum -c "$root/manifest/dependencies.sha256") ||
+        die 'Source dependency descriptors differ from this bundle. Regenerate the bundle from the updated repository.'
+}
+
 prepare_dependencies() {
     local root="$1" source="$2"
     setup_env "$root"
@@ -266,27 +327,25 @@ prepare_dependencies() {
     (
         cd "$source/src/backend/favsdemobe"
         "$root/toolchains/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$root/cache/maven" dependency:go-offline
-        # Resolve actual lifecycle plugin dependencies, not just declared libraries.
         "$root/toolchains/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$root/cache/maven" clean verify
     )
     note 'Downloading frontend dependencies (Linux x64 optional native packages included)'
     run_npm "$root" --prefer-online "$source"
 }
 
+# The verification command accepts a separately supplied source tree. It does
+# not need git history and does not modify the caller's checkout.
 verify_bundle() (
-    local root="$1" verify_temp
-    root=$(cd "$root" && pwd -P)
-    [[ -f "$root/source/src/backend/favsdemobe/pom.xml" ]] || die 'Missing source tree.'
-    [[ -f "$root/source/src/frontend/package-lock.json" ]] || die 'Missing frontend lockfile.'
+    local root="$1" source="$2" verify_temp
+    root=$(cd "$root" && pwd -P) || die "Cannot locate bundle directory: $root"
+    source=$(cd "$source" && pwd -P) || die "Cannot locate source directory: $source"
     check_toolchains "$root"
-    (cd "$root/source" && sha256sum -c "$root/manifest/lockfiles-sha256.txt") ||
-        die 'Dependency manifests differ from the captured handoff source.'
+    check_dependency_manifest "$source" "$root"
     setup_env "$root"
     verify_temp=$(mktemp -d)
-    trap "rm -rf -- '$verify_temp'" EXIT
-    note 'Verifying toolchain/source/caches against offline build in a fresh source copy'
-    cp -a "$root/source" "$verify_temp/source"
-    # No online fallback: Maven -o and npm --offline must both succeed.
+    trap 'rm -rf -- "$verify_temp"' EXIT
+    note 'Verifying bundled caches against a clean offline build of the supplied source'
+    copy_project_sources "$source" "$verify_temp/source"
     run_maven "$root" -o "$verify_temp/source"
     run_npm "$root" --offline "$verify_temp/source"
     note 'Offline Maven and npm builds passed.'
@@ -295,13 +354,15 @@ verify_bundle() (
 pack_bundle() {
     local jdk='' node='' maven='' output='' cache_dir='' repo temp root archive sha
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+    [[ -f "$repo/src/backend/favsdemobe/pom.xml" ]] || die 'Run pack from the project checkout containing this script.'
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --jdk|--node|--maven|--output|--cache-dir)
                 [[ $# -ge 2 ]] || die "Missing argument for $1"
                 case "$1" in
                     --jdk) jdk="$2" ;; --node) node="$2" ;;
-                    --maven) maven="$2" ;; --output) output="$2" ;;
+                    --maven) maven="$2" ;;
+                    --output) [[ -n "$2" ]] || die '--output requires a nonempty path'; output="$2" ;;
                     --cache-dir) cache_dir="$2" ;;
                 esac
                 shift 2 ;;
@@ -311,22 +372,16 @@ pack_bundle() {
     for archive in "$jdk" "$node" "$maven"; do
         [[ -z "$archive" || -f "$archive" ]] || die "Archive not found: $archive"
     done
-    command -v git >/dev/null || die 'git is required to capture an exact tracked source snapshot.'
-    git -C "$repo" rev-parse --show-toplevel >/dev/null || die 'Source must be committed in Git.'
-    [[ "$(git -C "$repo" rev-parse --show-toplevel)" == "$repo" ]] || die 'Run this script from its repository checkout.'
-    git -C "$repo" diff --quiet && git -C "$repo" diff --cached --quiet ||
-        die 'Commit or discard tracked changes before creating a handoff.'
-    [[ -n "$output" ]] || output="$(dirname "$repo")/sharewise-offline-linux-x64.tar.gz"
-    mkdir -p "$(dirname "$output")"
-    output="$(cd "$(dirname "$output")" && pwd -P)/$(basename "$output")"
+    [[ -n "$output" ]] || output="$repo/.offline-handoff-cache/sharewise-offline-deps-linux-x64.tar.gz"
+    output=$(resolve_output_path "$output")
     temp=$(mktemp -d)
+    # Store the resolved temporary path in the trap: locals are gone when EXIT runs.
     trap "rm -rf -- '$temp'" EXIT
     root="$temp/bundle"
-    mkdir -p "$root/source" "$root/toolchains" "$root/cache" "$root/manifest"
+    mkdir -p "$root/toolchains" "$root/cache" "$root/manifest"
     [[ -n "$cache_dir" ]] || cache_dir="$repo/.offline-handoff-cache/toolchains"
     mkdir -p "$cache_dir"
     cache_dir=$(cd "$cache_dir" && pwd -P)
-    # No download takes place if an explicit local archive was provided.
     if [[ -z "$jdk" ]]; then
         note 'Resolving latest GA Eclipse Temurin JDK 25 (Linux x64)'
         jdk=$(resolve_jdk "$cache_dir" "$temp")
@@ -339,9 +394,6 @@ pack_bundle() {
         note 'Resolving Maven 3.10.0'
         maven=$(resolve_maven "$cache_dir" "$temp")
     fi
-    note 'Archiving committed source (excluding .git and local build artifacts)'
-    git -C "$repo" archive --format=tar HEAD | tar -xf - -C "$root/source"
-    git -C "$repo" rev-parse HEAD > "$root/manifest/source-commit.txt"
     note 'Extracting verified/downloaded SDKs and build tools'
     extract_toolchain "$jdk" "$root/toolchains/jdk" "$temp/extract-jdk"
     extract_toolchain "$node" "$root/toolchains/node" "$temp/extract-node"
@@ -353,48 +405,74 @@ pack_bundle() {
     { sha256sum "$jdk" | sed "s|  .*|  $(basename "$jdk")|";
       sha256sum "$node" | sed "s|  .*|  $(basename "$node")|";
       sha256sum "$maven" | sed "s|  .*|  $(basename "$maven")|"; } > "$root/manifest/toolchain-archive-sha256.txt"
-    ( cd "$repo"; sha256sum src/backend/favsdemobe/pom.xml src/backend/favsdemobe/.mvn/wrapper/maven-wrapper.properties src/frontend/package.json src/frontend/package-lock.json ) > "$root/manifest/lockfiles-sha256.txt"
-    cp -a "$root/source" "$temp/online-source"
+    write_dependency_manifest "$repo" "$root"
+    note 'Preparing dependencies from a temporary source copy (sources are not packaged)'
+    copy_project_sources "$repo" "$temp/online-source"
     prepare_dependencies "$root" "$temp/online-source"
     rm -rf "$temp/online-source"
-    verify_bundle "$root"
+    verify_bundle "$root" "$repo"
     cat > "$root/README-OFFLINE.md" <<'README'
-# ShareWise Linux x86-64 offline development handoff
+# ShareWise Linux x86-64 offline dependency bundle
 
-Unpack the bundle on Linux x86-64. All commands below use local toolchains
-and caches. You do not need a globally installed JDK, Maven, or Node.js.
+This archive intentionally contains NO application source or Git history.
+Obtain the matching ShareWise source separately (checkout or source ZIP).
+Source edits do not invalidate this bundle unless dependency descriptors change.
 
-Verify the bundle with:
+To verify after unpacking on Linux x86-64:
 
-    ./verify-offline.sh verify .
+    ./verify-offline.sh verify . --source /path/to/sharewise
 
-The script runs Maven offline (`-o clean verify`) and npm offline (`ci --offline`,
-`lint`, and `build`) in a temporary source copy. The actual editable repository
-snapshot is in `source/`. The original sources and cached toolchains are not
-modified by verification, although the npm and Maven caches may acquire local
-metadata.
+The verifier compares the source's Maven/npm dependency descriptors against
+manifest/dependencies.sha256, then runs Maven (-o clean verify) and npm
+(ci --offline, lint, build) from a fresh temporary copy of the supplied source.
+It does not modify the supplied checkout and never downloads dependencies.
 
-When working on the source tree, configure:
+To develop against a separate source checkout, from the extracted bundle:
 
     export JAVA_HOME="$PWD/toolchains/jdk"
     export PATH="$JAVA_HOME/bin:$PWD/toolchains/maven/bin:$PWD/toolchains/node/bin:$PATH"
     export NPM_CONFIG_CACHE="$PWD/cache/npm"
 
-Use Maven with `-o -Dmaven.repo.local="$PWD/cache/maven"`; use `npm ci --offline`.
-No `node_modules` directory or compiled artifacts are part of the handoff.
-The bundle contains a Git-tracked source snapshot, **not .git history**.
-If Git commit history is required, provide a separate Git bundle.
+From the backend directory, run Maven with:
 
-This archive is for Linux x86-64/glibc hosts. It does not include a container
-runtime/image, database server, secrets, or OS-level native dependencies.
-Native frontend packages are specific to the platform on which they were cached.
-No dependency installation should require the network after verification.
+    mvn -o -Dmaven.repo.local="/path/to/bundle/cache/maven" clean verify
+
+From the frontend directory, run:
+
+    npm ci --offline --include=optional --no-audit --no-fund
+    npm run lint && npm run build
+
+Use the absolute bundle path for the Maven cache argument. Never rely on the
+receiving machine's global package caches for reproducible verification.
+
+Contents: toolchains/jdk, toolchains/maven, toolchains/node, cache/maven,
+cache/npm, manifest/dependencies.sha256, manifest/toolchain-archive-sha256.txt,
+and verify-offline.sh. No source/, .git/, node_modules/ or build output.
+
+The archives are for Linux x86-64/glibc. Containers or database integration tests
+may additionally require OS-level tools, images, PostgreSQL and credentials.
 README
-    note "Packaging: $output"
+    note "Packaging dependency-only bundle: $output"
     (cd "$root" && tar -czf "$output" .)
     (cd "$(dirname "$output")" && sha256sum "$(basename "$output")") > "$output.sha256"
     sha=$(cat "$output.sha256")
     note "Complete: $sha"
+}
+
+verify_args() {
+    [[ $# -ge 1 ]] || die 'verify requires the extracted bundle path and --source /path/to/repo.'
+    local root="$1" source=''
+    shift
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --source)
+                [[ $# -ge 2 && -n "$2" ]] || die '--source requires a directory.'
+                source="$2"; shift 2 ;;
+            *) die "Unknown verify argument: $1" ;;
+        esac
+    done
+    [[ -n "$source" ]] || die 'verify requires --source /path/to/repo (sources are not bundled).'
+    verify_bundle "$root" "$source"
 }
 
 main() {
@@ -402,8 +480,8 @@ main() {
     require_host
     [[ $# -gt 0 ]] || { usage; exit 2; }
     case "$1" in
-        pack) shift; pack_bundle "$@" ;;
-        verify) shift; [[ $# -eq 1 ]] || die 'verify needs one extracted bundle directory'; verify_bundle "$1" ;;
+        pack) shift; require_pack_tools; pack_bundle "$@" ;;
+        verify) shift; verify_args "$@" ;;
         -h|--help|help) usage ;;
         *) usage; die "Unsupported action: $1" ;;
     esac
