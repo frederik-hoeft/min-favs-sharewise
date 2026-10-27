@@ -6,14 +6,38 @@
 # Note that environment variables can be set in several places
 # See https://docs.gitlab.com/ci/variables/#cicd-variable-precedence
 stages:
+- build
 - test
 - secret-detection
+
+build-backend:
+  stage: build
+  image: eclipse-temurin:25-jdk
+  script:
+    - cd src/backend/favsdemobe
+    - chmod +x mvnw
+    - ./mvnw clean verify
+  artifacts:
+    paths:
+      - src/backend/favsdemobe/target/*.jar
+    expire_in: 1 hour
+
+build-frontend:
+  stage: build
+  image: node:24-alpine
+  script:
+    - cd src/frontend
+    - npm ci --no-audit --no-fund
+    - npm run lint
+    - npm run build
+
 sast:
   stage: test
 include:
-- template: Security/SAST.gitlab-ci.yml
-- template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
 variables:
   SECRET_DETECTION_ENABLED: 'true'
+
 secret_detection:
   stage: secret-detection
