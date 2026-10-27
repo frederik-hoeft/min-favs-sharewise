@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepare and verify reusable offline Linux x86-64 build dependencies.
 # Preparation requires bash, tar, Python 3, wget, and checksum utilities.
-# Verification needs only basic POSIX userland tools (not Python or wget).
+# Offline verification uses tar, Python 3 (for the Maven ZIP), and checksum tools; no wget.
 set -Eeuo pipefail
 
 usage() {
@@ -14,12 +14,14 @@ Usage:
     [--node /path/to/node-v24-linux-x64.tar.xz] \
     [--maven /path/to/apache-maven-3.10.0-bin.zip]
 
-  ./verify-offline.sh verify /path/to/extracted-bundle --source /path/to/sharewise
+  ./verify-offline.sh verify /path/to/extracted-dependencies \
+    --source /path/to/sharewise [--toolchains /path/to/original-archives]
 
 'pack' uses the checkout containing this script to resolve Maven/npm dependencies,
-then validates clean offline builds. It packages ONLY the JDK, Maven, Node/npm,
-complete dependency caches, dependency-manifest hashes, and a verifier. No Git
-repository, source snapshot, node_modules, or build output is included.
+then validates clean offline builds. It packages ONLY the Maven and npm caches,
+dependency-manifest hashes, and a verifier. The three vendor toolchains are
+provided separately AS THEIR ORIGINAL ARCHIVES in a sibling toolchains/ folder.
+No Git repository, source snapshot, node_modules, or build output is included.
 
 Source is supplied independently (Git checkout, ZIP, etc.) when verifying or
 working offline. Its Maven/npm dependency manifests must match the packaged
@@ -31,8 +33,10 @@ and Maven 3.10.0. Toolchain archives are cached in the Git-ignored
 --node or --maven to supply a local archive instead (verify those yourself).
 
 Output defaults to .offline-handoff-cache/sharewise-offline-deps-linux-x64.tar.gz
-inside the checkout. Relative --output paths resolve against the caller's cwd.
+inside the checkout, with original toolchain archives placed alongside it in
+toolchains/. Relative --output paths resolve against the caller's cwd.
 Requires a network connection only for pack; verify uses strict offline builds.
+The receiving machine needs the dependency tarball AND all three toolchain files.
 USAGE
 }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -238,51 +242,95 @@ PY
 }
 
 check_toolchains() {
-    local root="$1" jdk_version node_version maven_version
-    [[ -x "$root/toolchains/jdk/bin/java" && -x "$root/toolchains/jdk/bin/javac" ]] || die 'Invalid JDK archive.'
-    [[ -x "$root/toolchains/node/bin/node" && -x "$root/toolchains/node/bin/npm" ]] || die 'Invalid Node archive.'
-    [[ -x "$root/toolchains/maven/bin/mvn" ]] || die 'Invalid Maven archive.'
-    jdk_version=$("$root/toolchains/jdk/bin/java" -version 2>&1 | sed -n '1p')
+    local tools="$1" jdk_version node_version maven_version
+    [[ -x "$tools/jdk/bin/java" && -x "$tools/jdk/bin/javac" ]] || die 'Invalid JDK archive.'
+    [[ -x "$tools/node/bin/node" && -x "$tools/node/bin/npm" ]] || die 'Invalid Node archive.'
+    [[ -x "$tools/maven/bin/mvn" ]] || die 'Invalid Maven archive.'
+    jdk_version=$("$tools/jdk/bin/java" -version 2>&1 | sed -n '1p')
     case "$jdk_version" in
         *'version "25.'*|*'version "25"'*|*'version "25+'*) ;;
         *) die "Expected Java 25, got: $jdk_version" ;;
     esac
-    node_version=$("$root/toolchains/node/bin/node" --version)
+    node_version=$("$tools/node/bin/node" --version)
     [[ "$node_version" == v24.* ]] || die "Expected Node 24, got: $node_version"
-    maven_version=$(JAVA_HOME="$root/toolchains/jdk" "$root/toolchains/maven/bin/mvn" -version | sed -n '1p')
+    maven_version=$(JAVA_HOME="$tools/jdk" "$tools/maven/bin/mvn" -version | sed -n '1p')
     [[ "$maven_version" == *'3.10.0'* ]] || die "Expected Maven 3.10.0, got: $maven_version"
     note "Toolchains: $jdk_version, $node_version, $maven_version"
 }
 
-# Uses no user-level Maven/npm caches or machine-installed language toolchain.
+# The original toolchain archives are not packed into the dependency tarball.
+# A small manifest fixes their exact names and checksums for independent transfer.
+write_toolchain_manifest() {
+    local root="$1" jdk="$2" node="$3" maven="$4" archive
+    mkdir -p "$root/manifest"
+    : > "$root/manifest/toolchain-files.txt"
+    : > "$root/manifest/toolchain-archive-sha256.txt"
+    for archive in "$jdk" "$node" "$maven"; do
+        basename -- "$archive" >> "$root/manifest/toolchain-files.txt"
+        (cd "$(dirname "$archive")" && sha256sum "$(basename "$archive")") >> "$root/manifest/toolchain-archive-sha256.txt"
+    done
+}
+
+check_archive_name() {
+    local name="$1"
+    [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ && "$name" != *..* ]] ||
+        die "Unsafe original toolchain filename in manifest: $name"
+}
+
+# Verify the three original vendor archives before extracting them. This runs
+# on both preparation and receiving machines; no network access is involved.
+extract_verified_toolchains() {
+    local bundle="$1" archives="$2" tools="$3" staging="$4" names archive
+    [[ -f "$bundle/manifest/toolchain-files.txt" && -f "$bundle/manifest/toolchain-archive-sha256.txt" ]] ||
+        die 'Original toolchain metadata is missing from the dependency bundle.'
+    mapfile -t names < "$bundle/manifest/toolchain-files.txt"
+    [[ ${#names[@]} -eq 3 ]] || die 'Expected JDK, Node and Maven archive filenames.'
+    for archive in "${names[@]}"; do
+        check_archive_name "$archive"
+        [[ -f "$archives/$archive" ]] || die "Missing original toolchain archive: $archives/$archive"
+    done
+    case "${names[0]}" in *.tar.gz|*.tgz) ;; *) die 'Expected a gzipped JDK archive.' ;; esac
+    case "${names[1]}" in *.tar.xz|*.txz) ;; *) die 'Expected an xz-compressed Node.js archive.' ;; esac
+    case "${names[2]}" in *.zip) ;; *) die 'Expected a Maven ZIP archive.' ;; esac
+    note 'Checking SHA-256 for original JDK, Node and Maven archives'
+    (cd "$archives" && sha256sum -c "$bundle/manifest/toolchain-archive-sha256.txt") ||
+        die 'A toolchain archive is corrupted or does not match the dependency bundle.'
+    extract_toolchain "$archives/${names[0]}" "$tools/jdk" "$staging/jdk"
+    extract_toolchain "$archives/${names[1]}" "$tools/node" "$staging/node"
+    extract_toolchain "$archives/${names[2]}" "$tools/maven" "$staging/maven"
+    chmod +x "$tools/maven/bin/mvn"
+    check_toolchains "$tools"
+}
+
+# Only these caches are included in the bundle. The language SDKs are external.
 setup_env() {
-    local root="$1"
-    export JAVA_HOME="$root/toolchains/jdk"
-    export PATH="$root/toolchains/jdk/bin:$root/toolchains/maven/bin:$root/toolchains/node/bin:$PATH"
-    export MAVEN_USER_HOME="$root/cache/maven-home"
-    export NPM_CONFIG_CACHE="$root/cache/npm"
+    local bundle="$1" tools="$2"
+    export JAVA_HOME="$tools/jdk"
+    export PATH="$tools/jdk/bin:$tools/maven/bin:$tools/node/bin:$PATH"
+    export MAVEN_USER_HOME="$bundle/cache/maven-home"
+    export NPM_CONFIG_CACHE="$bundle/cache/npm"
     export NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false
     export NEXT_TELEMETRY_DISABLED=1
     export CI=1
-    mkdir -p "$root/cache/maven" "$root/cache/npm" "$root/cache/maven-home"
+    mkdir -p "$bundle/cache/maven" "$bundle/cache/npm" "$bundle/cache/maven-home"
 }
 
 run_maven() {
-    local root="$1" mode="$2" source="$3"
+    local bundle="$1" tools="$2" mode="$3" source="$4"
     (
         cd "$source/src/backend/favsdemobe"
-        "$root/toolchains/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$root/cache/maven" "$mode" clean verify
+        "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" "$mode" clean verify
     )
 }
 
 run_npm() {
-    local root="$1" mode="$2" source="$3"
+    local tools="$1" mode="$2" source="$3"
     (
         cd "$source/src/frontend"
         # --offline is strict; --prefer-offline would still allow network access.
-        "$root/toolchains/node/bin/npm" ci "$mode" --include=optional --no-audit --no-fund
-        "$root/toolchains/node/bin/npm" run lint
-        "$root/toolchains/node/bin/npm" run build
+        "$tools/node/bin/npm" ci "$mode" --include=optional --no-audit --no-fund
+        "$tools/node/bin/npm" run lint
+        "$tools/node/bin/npm" run build
     )
 }
 
@@ -321,38 +369,57 @@ check_dependency_manifest() {
 }
 
 prepare_dependencies() {
-    local root="$1" source="$2"
-    setup_env "$root"
+    local bundle="$1" tools="$2" source="$3"
+    setup_env "$bundle" "$tools"
     note 'Downloading backend dependencies, transitive plugins, and build/test artifacts'
     (
         cd "$source/src/backend/favsdemobe"
-        "$root/toolchains/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$root/cache/maven" dependency:go-offline
-        "$root/toolchains/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$root/cache/maven" clean verify
+        "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" dependency:go-offline
+        "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" clean verify
     )
     note 'Downloading frontend dependencies (Linux x64 optional native packages included)'
-    run_npm "$root" --prefer-online "$source"
+    run_npm "$tools" --prefer-online "$source"
 }
 
-# The verification command accepts a separately supplied source tree. It does
-# not need git history and does not modify the caller's checkout.
+# The receiver supplies a source tree and three ORIGINAL vendor archives.
+# Unpack SDKs into temporary storage, never into the dependency bundle.
 verify_bundle() (
-    local root="$1" source="$2" verify_temp
-    root=$(cd "$root" && pwd -P) || die "Cannot locate bundle directory: $root"
+    local bundle="$1" source="$2" archives="$3" verify_temp tools
+    bundle=$(cd "$bundle" && pwd -P) || die "Cannot locate dependency bundle directory: $bundle"
     source=$(cd "$source" && pwd -P) || die "Cannot locate source directory: $source"
-    check_toolchains "$root"
-    check_dependency_manifest "$source" "$root"
-    setup_env "$root"
+    archives=$(cd "$archives" && pwd -P) || die "Cannot locate toolchain archive directory: $archives"
+    check_dependency_manifest "$source" "$bundle"
     verify_temp=$(mktemp -d)
     trap 'rm -rf -- "$verify_temp"' EXIT
+    tools="$verify_temp/tools"
+    extract_verified_toolchains "$bundle" "$archives" "$tools" "$verify_temp/extract"
+    setup_env "$bundle" "$tools"
     note 'Verifying bundled caches against a clean offline build of the supplied source'
     copy_project_sources "$source" "$verify_temp/source"
-    run_maven "$root" -o "$verify_temp/source"
-    run_npm "$root" --offline "$verify_temp/source"
+    run_maven "$bundle" "$tools" -o "$verify_temp/source"
+    run_npm "$tools" --offline "$verify_temp/source"
     note 'Offline Maven and npm builds passed.'
 )
 
+# Copy vendor archives without recompression to the output sidecar folder.
+# A normal default run already caches them there, so no duplicate copy occurs.
+publish_toolchain_archive() {
+    local archive="$1" destination="$2" source_digest target_digest partial
+    source_digest=$(sha256sum "$archive" | cut -d' ' -f1)
+    if [[ -e "$destination" ]]; then
+        [[ "$archive" -ef "$destination" ]] && return
+        target_digest=$(sha256sum "$destination" | cut -d' ' -f1)
+        [[ "$source_digest" == "$target_digest" ]] && return
+    fi
+    partial="$destination.tmp.$$"
+    cp -- "$archive" "$partial" || die "Cannot copy original toolchain archive: $archive"
+    target_digest=$(sha256sum "$partial" | cut -d' ' -f1)
+    [[ "$source_digest" == "$target_digest" ]] || die "Copied toolchain archive failed SHA-256: $archive"
+    mv -f -- "$partial" "$destination"
+}
+
 pack_bundle() {
-    local jdk='' node='' maven='' output='' cache_dir='' repo temp root archive sha
+    local jdk='' node='' maven='' output='' cache_dir='' repo temp root archive sha tools sidecars
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
     [[ -f "$repo/src/backend/favsdemobe/pom.xml" ]] || die 'Run pack from the project checkout containing this script.'
     while [[ $# -gt 0 ]]; do
@@ -378,7 +445,7 @@ pack_bundle() {
     # Store the resolved temporary path in the trap: locals are gone when EXIT runs.
     trap "rm -rf -- '$temp'" EXIT
     root="$temp/bundle"
-    mkdir -p "$root/toolchains" "$root/cache" "$root/manifest"
+    mkdir -p "$root/cache" "$root/manifest"
     [[ -n "$cache_dir" ]] || cache_dir="$repo/.offline-handoff-cache/toolchains"
     mkdir -p "$cache_dir"
     cache_dir=$(cd "$cache_dir" && pwd -P)
@@ -394,65 +461,71 @@ pack_bundle() {
         note 'Resolving Maven 3.10.0'
         maven=$(resolve_maven "$cache_dir" "$temp")
     fi
-    note 'Extracting verified/downloaded SDKs and build tools'
-    extract_toolchain "$jdk" "$root/toolchains/jdk" "$temp/extract-jdk"
-    extract_toolchain "$node" "$root/toolchains/node" "$temp/extract-node"
-    extract_toolchain "$maven" "$root/toolchains/maven" "$temp/extract-maven"
-    chmod +x "$root/toolchains/maven/bin/mvn"
-    check_toolchains "$root"
+    # The archive is a cache-only artifact. Do not copy extracted SDKs into it.
+    write_toolchain_manifest "$root" "$jdk" "$node" "$maven"
+    write_dependency_manifest "$repo" "$root"
+    tools="$temp/tools"
+    note 'Extracting original SDKs for dependency preparation (not for packaging)'
+    extract_toolchain "$jdk" "$tools/jdk" "$temp/extract-jdk"
+    extract_toolchain "$node" "$tools/node" "$temp/extract-node"
+    extract_toolchain "$maven" "$tools/maven" "$temp/extract-maven"
+    chmod +x "$tools/maven/bin/mvn"
+    check_toolchains "$tools"
     cp "$repo/scripts/create-offline-handoff.sh" "$root/verify-offline.sh"
     chmod +x "$root/verify-offline.sh"
-    { sha256sum "$jdk" | sed "s|  .*|  $(basename "$jdk")|";
-      sha256sum "$node" | sed "s|  .*|  $(basename "$node")|";
-      sha256sum "$maven" | sed "s|  .*|  $(basename "$maven")|"; } > "$root/manifest/toolchain-archive-sha256.txt"
-    write_dependency_manifest "$repo" "$root"
     note 'Preparing dependencies from a temporary source copy (sources are not packaged)'
     copy_project_sources "$repo" "$temp/online-source"
-    prepare_dependencies "$root" "$temp/online-source"
-    rm -rf "$temp/online-source"
-    verify_bundle "$root" "$repo"
+    prepare_dependencies "$root" "$tools" "$temp/online-source"
+    rm -rf "$temp/online-source" "$tools" "$temp/extract-jdk" "$temp/extract-node" "$temp/extract-maven"
+    # Publish each toolchain independently in exactly its vendor-supplied format.
+    sidecars="$(dirname "$output")/toolchains"
+    mkdir -p "$sidecars"
+    publish_toolchain_archive "$jdk" "$sidecars/$(basename "$jdk")"
+    publish_toolchain_archive "$node" "$sidecars/$(basename "$node")"
+    publish_toolchain_archive "$maven" "$sidecars/$(basename "$maven")"
+    # Verify the same published sidecars that the receiving machine will use.
+    verify_bundle "$root" "$repo" "$sidecars"
     cat > "$root/README-OFFLINE.md" <<'README'
-# ShareWise Linux x86-64 offline dependency bundle
+# ShareWise Linux x86-64 offline dependencies
 
-This archive intentionally contains NO application source or Git history.
-Obtain the matching ShareWise source separately (checkout or source ZIP).
-Source edits do not invalidate this bundle unless dependency descriptors change.
+This tarball contains only the Maven/npm caches and verification metadata.
+There is NO source code, extracted JDK, extracted Node.js, or extracted Maven.
+Transfer the three original vendor archives from the sibling toolchains/
+directory separately, without repacking them. Their exact filenames and SHA-256
+hashes are in manifest/toolchain-files.txt and toolchain-archive-sha256.txt.
 
-To verify after unpacking on Linux x86-64:
+Bring the separately supplied ShareWise source checkout or source ZIP. Ordinary
+code changes are fine; changes to the dependency descriptors require a new cache.
 
-    ./verify-offline.sh verify . --source /path/to/sharewise
+Example layout after receiving and extracting the dependency archive:
 
-The verifier compares the source's Maven/npm dependency descriptors against
-manifest/dependencies.sha256, then runs Maven (-o clean verify) and npm
-(ci --offline, lint, build) from a fresh temporary copy of the supplied source.
-It does not modify the supplied checkout and never downloads dependencies.
+    /handoff/toolchains/OpenJDK25U-jdk_x64_linux_hotspot_*.tar.gz
+    /handoff/toolchains/node-v24.*-linux-x64.tar.xz
+    /handoff/toolchains/apache-maven-3.10.0-bin.zip
+    /handoff/deps/verify-offline.sh
+    /handoff/deps/cache/maven/...
+    /handoff/deps/cache/npm/...
 
-To develop against a separate source checkout, from the extracted bundle:
+To verify on Linux x86-64, from /handoff:
 
-    export JAVA_HOME="$PWD/toolchains/jdk"
-    export PATH="$JAVA_HOME/bin:$PWD/toolchains/maven/bin:$PWD/toolchains/node/bin:$PATH"
-    export NPM_CONFIG_CACHE="$PWD/cache/npm"
+    mkdir -p deps
+    tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
+    deps/verify-offline.sh verify deps --source /path/to/sharewise
 
-From the backend directory, run Maven with:
+The verifier locates original archives in ./toolchains (sibling of deps),
+verifies SHA-256 hashes, extracts SDKs to temporary storage, checks the source's
+manifest checksums, and runs Maven (-o clean verify) and npm (ci --offline,
+lint, build) in a clean temporary source copy. No dependency downloads occur.
+For a different directory layout, pass --toolchains /path/to/original-archives.
 
-    mvn -o -Dmaven.repo.local="/path/to/bundle/cache/maven" clean verify
+The verifier requires bash, tar (with xz support), Python 3 (to unpack Maven's
+original ZIP archive), sha256sum, and a few standard Unix commands. No JDK,
+Maven, Node.js, or npm need be preinstalled. No source files are modified.
 
-From the frontend directory, run:
-
-    npm ci --offline --include=optional --no-audit --no-fund
-    npm run lint && npm run build
-
-Use the absolute bundle path for the Maven cache argument. Never rely on the
-receiving machine's global package caches for reproducible verification.
-
-Contents: toolchains/jdk, toolchains/maven, toolchains/node, cache/maven,
-cache/npm, manifest/dependencies.sha256, manifest/toolchain-archive-sha256.txt,
-and verify-offline.sh. No source/, .git/, node_modules/ or build output.
-
-The archives are for Linux x86-64/glibc. Containers or database integration tests
-may additionally require OS-level tools, images, PostgreSQL and credentials.
+The original vendor archives are Linux x64/glibc. PostgreSQL, container images
+and system packages for future integration tests are separate dependencies.
 README
-    note "Packaging dependency-only bundle: $output"
+    note "Packaging Maven/npm caches only: $output"
     (cd "$root" && tar -czf "$output" .)
     (cd "$(dirname "$output")" && sha256sum "$(basename "$output")") > "$output.sha256"
     sha=$(cat "$output.sha256")
@@ -461,18 +534,29 @@ README
 
 verify_args() {
     [[ $# -ge 1 ]] || die 'verify requires the extracted bundle path and --source /path/to/repo.'
-    local root="$1" source=''
+    local root="$1" source='' archives=''
     shift
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --source)
                 [[ $# -ge 2 && -n "$2" ]] || die '--source requires a directory.'
                 source="$2"; shift 2 ;;
+            --toolchains)
+                [[ $# -ge 2 && -n "$2" ]] || die '--toolchains requires a directory.'
+                archives="$2"; shift 2 ;;
             *) die "Unknown verify argument: $1" ;;
         esac
     done
     [[ -n "$source" ]] || die 'verify requires --source /path/to/repo (sources are not bundled).'
-    verify_bundle "$root" "$source"
+    if [[ -z "$archives" ]]; then
+        if [[ -d "$root/toolchains" ]]; then
+            archives="$root/toolchains"
+        else
+            archives="$(dirname "$root")/toolchains"
+        fi
+    fi
+    command -v python3 >/dev/null || die 'Python 3 is needed to unpack the original Maven ZIP.'
+    verify_bundle "$root" "$source" "$archives"
 }
 
 main() {

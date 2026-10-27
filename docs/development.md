@@ -61,41 +61,55 @@ machine-specific setup artifacts outside the source tree.
 ## Portable offline dependency handoff
 
 The optional [`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh) prepares a reusable
-**Linux x86-64 offline toolchain and dependency bundle**. It includes Java 25, Maven 3.10.0, Node 24/npm, a
-complete Maven local repository and npm cache. **It does not include source files or Git history.** Supply the
-project source separately through Git, a source ZIP, or another handoff. Update the dependency bundle only
-when the dependency manifests, build tooling, or required platform change—not for routine source edits.
+**Linux x86-64 offline build environment**. It does **not** bundle Git history or project sources. It keeps the
+three official vendor archives for **Temurin JDK 25**, **Node.js 24**, and **Maven 3.10.0** intact, and separately
+compresses **only Maven and npm dependency caches**, manifest checksums and a verification script. This prevents
+the large language SDKs from being recompressed into a single monolithic archive.
 
-Run on a network-connected Linux x64 machine with the source checkout available:
+On a network-connected Linux x64 checkout:
 
 ```sh
 scripts/create-offline-handoff.sh pack
 ```
 
-The script automatically downloads and checksum-verifies toolchains using `wget`, caching archives under the
-Git-ignored `.offline-handoff-cache/toolchains/`. By default, the generated archive and `.sha256` sidecar are
-written to `.offline-handoff-cache/sharewise-offline-deps-linux-x64.tar.gz[.sha256]`. Use `--output` to change
-the destination; use `--jdk`, `--node`, `--maven`, or `--cache-dir` to override toolchain inputs or download
-cache location. Explicitly supplied toolchain archives must be verified independently.
+The script uses `wget` to download and checksum-verify the toolchains and caches their original archives under
+Git-ignored `.offline-handoff-cache/toolchains/`. Its default output layout is:
 
-`pack` uses **temporary copies** of the current backend and frontend sources, excluding existing build output,
-`node_modules`, and local `.env` files. It runs connected builds to acquire transitive dependencies and Maven
-plugins, followed by strict offline Maven and npm builds before packaging. Source code is discarded afterward.
-The archive contains only the toolchains, dependency caches, the verifier, and checksums of `pom.xml`, Maven
-wrapper properties, `package.json`, and `package-lock.json`.
-
-On the receiving Linux x64 machine, verify the archive's sidecar SHA-256, extract it, obtain the source
-separately, and run from the extracted bundle directory:
-
-```sh
-./verify-offline.sh verify . --source /path/to/sharewise
+```text
+.offline-handoff-cache/
+├── sharewise-offline-deps-linux-x64.tar.gz
+├── sharewise-offline-deps-linux-x64.tar.gz.sha256
+└── toolchains/
+    ├── OpenJDK25U-jdk_x64_linux_hotspot_*.tar.gz
+    ├── node-v24.*-linux-x64.tar.xz
+    └── apache-maven-3.10.0-bin.zip
 ```
 
-Verification requires an exact match of the **dependency descriptors**, not an identical source commit. It
-runs offline backend tests and frontend lint/build in a fresh temporary source copy, leaving the supplied source
-checkout unchanged. If those descriptors change, regenerate the bundle with `pack`; otherwise reuse it for
-subsequent source revisions. See `README-OFFLINE.md` inside the generated archive for environment setup.
+**Supply the four files separately**, plus the small dependency-archive checksum file, when transferring the
+environment. Toolchain archives remain in their original formats and have individually recorded SHA-256 hashes.
+Use `--output` to choose another destination (its `toolchains/` sibling folder will be populated), `--cache-dir`
+to choose a shared download cache, or `--jdk`, `--node` and `--maven` to supply your own vendor archives.
 
-Neither a container image nor PostgreSQL is included in this archive; offline integration tests requiring
-external infrastructure need corresponding separate provisioning. The starter's generated remote Google Fonts
-were replaced with local system font stacks to avoid an unrelated network request during Next.js builds.
+`pack` runs connected dependency acquisition and real backend/frontend builds in temporary source copies, then
+re-verifies using strict offline Maven and npm invocations. Neither the source nor extracted SDKs enter the
+compressed dependency archive; neither `node_modules` nor compiled output is retained.
+
+On a Linux x64 receiving machine, place the dependency archive and `toolchains/` folder together and unpack
+**only the dependency archive** into a separate `deps/` directory:
+
+```sh
+mkdir -p deps
+tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
+./deps/verify-offline.sh verify deps --source /path/to/sharewise
+```
+
+The verifier hashes all three original SDK archives, extracts them to temporary storage, checks the separately
+supplied source's dependency descriptors and runs backend tests and frontend lint/build without network access.
+If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64,
+`tar`, Python 3 (to unpack the original Maven ZIP), and basic Unix checksum utilities, but not an installed
+JDK, Node, Maven or npm. See `README-OFFLINE.md` within the dependency archive for more information.
+
+Ordinary source changes do **not** invalidate the handoff. Changes to `pom.xml`, Maven wrapper properties,
+`package.json` or `package-lock.json` invalidate it conservatively. Container images, PostgreSQL and external
+services are not included and require separate provisioning. The frontend starter avoids build-time Google Fonts
+network requests.
