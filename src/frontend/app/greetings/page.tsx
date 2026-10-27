@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
+import styles from "./greetings.module.css";
 
 export default function GreetingsPage() {
     const [message, setMessage] = useState(null);
@@ -33,7 +34,7 @@ export default function GreetingsPage() {
 
     return (
         <main>
-            <h1>{message} from backend ...</h1>
+            <h1 className={styles.message}>{message} from backend ...</h1>
         </main>
     );
 }

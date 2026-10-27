@@ -16,11 +16,20 @@ build-backend:
   script:
     - cd src/backend/favsdemobe
     - chmod +x mvnw
-    - ./mvnw clean package -DskipTests
+    - ./mvnw clean verify
   artifacts:
     paths:
       - src/backend/favsdemobe/target/*.jar
     expire_in: 1 hour
+
+build-frontend:
+  stage: build
+  image: node:24-alpine
+  script:
+    - cd src/frontend
+    - npm ci --no-audit --no-fund
+    - npm run lint
+    - npm run build
 
 sast:
   stage: test
