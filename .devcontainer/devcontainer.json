@@ -28,7 +28,7 @@
         "vmware.vscode-spring-boot",
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
-        "github.copilot"
+        "shd101wyy.markdown-preview-enhanced"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",

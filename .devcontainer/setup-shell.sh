@@ -55,3 +55,6 @@ wget \
 
 # default .zshrc is configured for system-wide install, so fix it to point to the local install in the devcontainer
 sed -i "s|/opt/shared/oh-my-zsh/oh-my-zsh|${ZSH_DIR}|g" "$HOME/.zshrc"
+
+# WSL volume mounts cause git to report dubious ownership
+git config --global --add safe.directory '*'

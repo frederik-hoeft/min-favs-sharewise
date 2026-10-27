@@ -3,6 +3,28 @@
 **Status:** Setup guidance for the supplied starter. The repository contains a backend and frontend skeleton;
 architecture documents describe the intended system rather than features already implemented.
 
+## VS Code Dev Containers
+
+A [Dev Container](https://code.visualstudio.com/docs/devcontainers/containers) is a repository-defined Docker
+development environment to which VS Code attaches. ShareWise's
+[`.devcontainer/`](../.devcontainer/devcontainer.json) configuration uses Docker Compose to provide a shared
+Linux environment with Java 25, Maven, Node.js 24 and project-relevant VS Code extensions. The repository is
+mounted at `/workspace`, and Maven/npm caches are kept in Docker volumes. This avoids requiring each developer
+to install and align language toolchains on the host.
+
+To get started:
+
+1. Install **Docker** and **VS Code** with Microsoft's **Dev Containers** extension, and start Docker.
+2. Open the repository root in VS Code. From the Command Palette (`Ctrl+Shift+P`), select
+   **Dev Containers: Reopen in Container**. VS Code builds and starts the configured container and runs its
+   initialization steps; the initial setup requires network access to obtain images and dependencies.
+3. Use VS Code's terminal inside the container to run the commands below. The backend and frontend ports
+   (`8080` and `3000`) are forwarded to the host. After changing `.devcontainer/` configuration, run
+   **Dev Containers: Rebuild Container**.
+
+The source checkout remains on the host and survives container rebuilds. Tools or files installed only inside
+an individual container should not be treated as persistent project state.
+
 ## Current toolchain
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/favsdemobe/`. The Maven
@@ -12,8 +34,7 @@ PostgreSQL persistence, Spring Modulith and event publication remain architectur
 installed backend features.
 
 The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in
-`package-lock.json`. The devcontainer provisions Java 25, Maven and Node.js 24; initial container/image
-setup requires network access unless these dependencies have been prepared independently.
+`package-lock.json`.
 
 ## Build, test and run
 
@@ -89,3 +110,62 @@ database and does not provide durable production storage.
 Offline SDK/cache provisioning is an **external developer-environment workflow**, not a product repository
 contract. Keep downloaded JDKs, Maven repositories, npm caches, container images, credentials and other
 machine-specific setup artifacts outside the source tree.
+
+For our planning-first, patch-based work with coding agents and the GitHub review mirror, see the
+[AI-assisted development workflow](development/ai-development-workflow.md).
+
+## Portable offline dependency handoff
+
+The optional [`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh) prepares a reusable
+**Linux x86-64 offline build environment**. It does **not** bundle Git history or project sources. It keeps the
+three official vendor archives for **Temurin JDK 25**, **Node.js 24**, and **Maven 3.10.0** intact, and separately
+compresses **only Maven and npm dependency caches**, manifest checksums and a verification script. This prevents
+the large language SDKs from being recompressed into a single monolithic archive.
+
+On a network-connected Linux x64 checkout:
+
+```sh
+scripts/create-offline-handoff.sh pack
+```
+
+The script uses `wget` to download and checksum-verify the toolchains and caches their original archives under
+Git-ignored `.offline-handoff-cache/toolchains/`. Its default output layout is:
+
+```text
+.offline-handoff-cache/
+├── sharewise-offline-deps-linux-x64.tar.gz
+├── sharewise-offline-deps-linux-x64.tar.gz.sha256
+└── toolchains/
+    ├── OpenJDK25U-jdk_x64_linux_hotspot_*.tar.gz
+    ├── node-v24.*-linux-x64.tar.xz
+    └── apache-maven-3.10.0-bin.zip
+```
+
+**Supply the four files separately**, plus the small dependency-archive checksum file, when transferring the
+environment. Toolchain archives remain in their original formats and have individually recorded SHA-256 hashes.
+Use `--output` to choose another destination (its `toolchains/` sibling folder will be populated), `--cache-dir`
+to choose a shared download cache, or `--jdk`, `--node` and `--maven` to supply your own vendor archives.
+
+`pack` runs connected dependency acquisition and real backend/frontend builds in temporary source copies, then
+re-verifies using strict offline Maven and npm invocations. Neither the source nor extracted SDKs enter the
+compressed dependency archive; neither `node_modules` nor compiled output is retained.
+
+On a Linux x64 receiving machine, place the dependency archive and `toolchains/` folder together and unpack
+**only the dependency archive** into a separate `deps/` directory:
+
+```sh
+mkdir -p deps
+tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
+./deps/verify-offline.sh verify deps --source /path/to/sharewise
+```
+
+The verifier hashes all three original SDK archives, extracts them to temporary storage, checks the separately
+supplied source's dependency descriptors and runs backend tests and frontend lint/build without network access.
+If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64,
+`tar`, Python 3 (to unpack the original Maven ZIP), and basic Unix checksum utilities, but not an installed
+JDK, Node, Maven or npm. See `README-OFFLINE.md` within the dependency archive for more information.
+
+Ordinary source changes do **not** invalidate the handoff. Changes to `pom.xml`, Maven wrapper properties,
+`package.json` or `package-lock.json` invalidate it conservatively. Container images, PostgreSQL and external
+services are not included and require separate provisioning. The frontend starter avoids build-time Google Fonts
+network requests.
