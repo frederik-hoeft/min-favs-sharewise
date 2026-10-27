@@ -27,8 +27,7 @@
         "vscjava.vscode-java-pack",
         "vmware.vscode-spring-boot",
         "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "github.copilot"
+        "esbenp.prettier-vscode"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",
