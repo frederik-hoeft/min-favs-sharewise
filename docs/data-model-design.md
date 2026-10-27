@@ -129,10 +129,19 @@ its transaction; group metadata and membership remain owned by Group Management.
 
 **Revision**, **Change History**, and **Historical Balance** are explicit business capabilities. A successful
 expense/settlement creation has at least one ChangeRecord; each later correction or tombstone adds another. A
-ChangeRecord references **zero or one Expense** and **zero or one Settlement**, because lifecycle changes
-reference neither. Each logical Expense/Settlement is referenced by `1..*` change records. Each change has
-exactly one relevant operation kind and actor/timestamp metadata. The ledger is ordered **within one
-FinancialGroup**, not globally across all bounded contexts.
+ChangeRecord references exactly one logical financial subject **when its operation kind changes an
+Expense or Settlement**, and neither when its operation kind changes the FinancialGroup lifecycle:
+
+- **Expense creation, correction or removal:** exactly one Expense reference; no Settlement reference.
+- **Settlement creation, correction or removal:** exactly one Settlement reference; no Expense reference.
+- **FinancialGroup lifecycle transition:** neither reference.
+
+These are conditional, mutually exclusive invariants: a change must never reference both entities or omit the
+required entity for its operation kind. The eventual persistence adapter must enforce the constraint atomically
+(for example through a database `CHECK` constraint alongside typed operation-kind values), rather than
+relying solely on callers to construct valid records. Each logical Expense/Settlement is referenced by `1..*`
+change records. Each change has exactly one relevant operation kind and actor/timestamp metadata. The ledger is
+ordered **within one FinancialGroup**, not globally across all bounded contexts.
 
 An individual Expense or Settlement revision identifies a historical state of **that logical record**. A
 separate `FinancialGroup.currentRevision` identifies a position in the group's **total financial change
