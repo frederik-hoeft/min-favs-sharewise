@@ -3,6 +3,28 @@
 **Status:** Setup guidance for the supplied starter. The repository contains a backend and frontend skeleton;
 architecture documents describe the intended system rather than features already implemented.
 
+## VS Code Dev Containers
+
+A [Dev Container](https://code.visualstudio.com/docs/devcontainers/containers) is a repository-defined Docker
+development environment to which VS Code attaches. ShareWise's
+[`.devcontainer/`](../.devcontainer/devcontainer.json) configuration uses Docker Compose to provide a shared
+Linux environment with Java 25, Maven, Node.js 24 and project-relevant VS Code extensions. The repository is
+mounted at `/workspace`, and Maven/npm caches are kept in Docker volumes. This avoids requiring each developer
+to install and align language toolchains on the host.
+
+To get started:
+
+1. Install **Docker** and **VS Code** with Microsoft's **Dev Containers** extension, and start Docker.
+2. Open the repository root in VS Code. From the Command Palette (`Ctrl+Shift+P`), select
+   **Dev Containers: Reopen in Container**. VS Code builds and starts the configured container and runs its
+   initialization steps; the initial setup requires network access to obtain images and dependencies.
+3. Use VS Code's terminal inside the container to run the commands below. The backend and frontend ports
+   (`8080` and `3000`) are forwarded to the host. After changing `.devcontainer/` configuration, run
+   **Dev Containers: Rebuild Container**.
+
+The source checkout remains on the host and survives container rebuilds. Tools or files installed only inside
+an individual container should not be treated as persistent project state.
+
 ## Current toolchain
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/favsdemobe/`. The Maven
@@ -12,8 +34,7 @@ PostgreSQL persistence, Spring Modulith and event publication remain architectur
 installed backend features.
 
 The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in
-`package-lock.json`. The devcontainer provisions Java 25, Maven and Node.js 24; initial container/image
-setup requires network access unless these dependencies have been prepared independently.
+`package-lock.json`.
 
 ## Build, test and run
 
