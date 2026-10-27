@@ -90,6 +90,9 @@ Offline SDK/cache provisioning is an **external developer-environment workflow**
 contract. Keep downloaded JDKs, Maven repositories, npm caches, container images, credentials and other
 machine-specific setup artifacts outside the source tree.
 
+For our planning-first, patch-based work with coding agents and the GitHub review mirror, see the
+[AI-assisted development workflow](development/ai-development-workflow.md).
+
 ## Portable offline dependency handoff
 
 The optional [`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh) prepares a reusable
