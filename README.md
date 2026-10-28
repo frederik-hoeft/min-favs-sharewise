@@ -12,6 +12,7 @@ The repository is an **early implementation baseline**, not a finished product. 
 | `src/frontend/` | Next.js 16.4 / React 19 / TypeScript frontend |
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
 | `docs/architecture.md` | Component-level hexagonal/modulith architecture and service conventions |
+| `docs/stack/persistence.md` | Preliminary database-first persistence and transaction design |
 | `docs/development.md` | Local development, build and validation guidance |
 | `docs/scoped-authorization-attestations-proposal.md` | Optional **unaccepted** distributed authorization design for later evaluation |
 | `.agents/skills/` | Repository-local agent skills |

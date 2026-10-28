@@ -73,7 +73,7 @@ Finance applies an additional business protocol **inside** this generic transact
 3. Allocate the next **group-local financial revision**, persist the immutable Expense/Settlement state and its children, and append the corresponding ChangeRecord.
 4. Persist an integration-event publication record in the same transaction when required; only then authorize commit.
 
-All financial mutations in one group must follow the same ordering and locking protocol. A database sequence or independent auto-increment IDs alone cannot guarantee the required logical commit order. Historical reads at one group revision must be consistent. The exact COW tables, indexes and Hibernate-vs-JDBC implementation are infrastructure choices. See [domain history](data-model-design.md#financial-revisions-and-history).
+All financial mutations in one group must follow the same ordering and locking protocol. A database sequence or independent auto-increment IDs alone cannot guarantee the required logical commit order. Historical reads at one group revision must be consistent. The exact COW tables and indexes are infrastructure choices; the [persistence architecture](stack/persistence.md) describes the preliminary database and adapter technology decisions. See [domain history](data-model-design.md#financial-revisions-and-history).
 
 ## Integration events and extraction
 
@@ -87,7 +87,7 @@ For File Management, use published authorization capabilities within the modulit
 
 - **Backend:** Java 25, Spring Boot 4.1, Spring MVC, Maven (wrapper included); standard constructor injection into stateless singleton services. Select adapters through an explicit composition root (`@Bean` or programmatic registration) where implementation/lifetime choice matters. Do not bake framework registration rules into core classes unnecessarily.
 - **Transactions:** Implement the `Transactions` port using Spring `TransactionTemplate` or equivalent; adapter operations participate in the same physical database transaction. Do not reimplement Spring's connection manager.
-- **Persistence:** PostgreSQL is the target transactional database. Use Spring `JdbcClient`/purpose-built SQL for fine-grained projections and COW history, JPA/Hibernate selectively for simple persistence when helpful. Hibernate change tracking and managed entities remain inside infrastructure.
+- **Persistence:** The [preliminary persistence design](stack/persistence.md) uses PostgreSQL with Flyway SQL migrations and per-adapter jOOQ or Spring Data JPA/Hibernate. Keep generated schema types and managed entities inside infrastructure; the schema and transaction contracts remain independent of adapter choice.
 - **Web client:** Next.js 16/React 19/TypeScript, with explicit API contracts and server/client boundaries. Do not depend on hidden ORM state or server implementation details in frontend components.
 - **Concurrency:** Prefer straightforward imperative service code, optionally run on Java virtual threads; connection pools and database locking remain real capacity constraints.
 - **Module verification:** Spring Modulith/architecture tests should enforce module-boundary dependencies once modules are implemented. Database adapter tests against actual PostgreSQL are required for lock/isolation/query semantics; mocks alone do not prove transaction correctness.
