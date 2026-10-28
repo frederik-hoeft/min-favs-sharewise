@@ -59,8 +59,6 @@ docker run --rm --name sharewise-frontend --network sharewise \
   -p 3000:3000 sharewise-frontend
 ```
 
-The frontend image build uses the starter's `next/font/google` fonts and therefore needs access to Google Fonts at build time. The Maven/npm dependencies can be supplied offline, but that alone does not make an unmodified frontend production build network-independent.
-
 The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The example backend uses the starter's H2 database and does not provide durable production storage.
 
 ## Development conventions
