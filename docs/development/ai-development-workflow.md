@@ -113,8 +113,7 @@ The blitz is complete when all of the following invariants are satisfied:
 -[ ] parser cleanup preserves conservative handling of unknown UFW output.
 ```
 
-If the design changes, revise the requirements and plan deliberately. Do not let an agent implement later
-phases early simply because it anticipates them.
+If the design changes, revise the requirements and plan deliberately. Do not let an agent implement later phases early simply because it anticipates them.
 
 ## 6. Apply, stage and inspect every agent patch
 

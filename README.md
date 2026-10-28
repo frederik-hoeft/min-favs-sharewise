@@ -1,12 +1,8 @@
 # ShareWise
 
-ShareWise is a group expense-sharing and bookkeeping application. Members record expenses and settlements of
-payments made outside the application, calculate their current balances, and inspect the group's financial
-position at earlier revisions. It does **not** move money, verify external payments, or enforce debts.
+ShareWise is a group expense-sharing and bookkeeping application. Members record expenses and settlements of payments made outside the application, calculate their current balances, and inspect the group's financial position at earlier revisions. It does **not** move money, verify external payments, or enforce debts.
 
-The repository is an **early implementation baseline**, not a finished product. The backend and frontend
-currently provide starter/example functionality. The architecture and business contracts in `docs/` describe the
-intended implementation; they are not a claim that all those features already exist.
+The repository is an **early implementation baseline**, not a finished product. The backend and frontend currently provide starter/example functionality. The architecture and business contracts in `docs/` describe the intended implementation; they are not a claim that all those features already exist.
 
 ## Repository layout
 
@@ -20,14 +16,11 @@ intended implementation; they are not a claim that all those features already ex
 | `docs/scoped-authorization-attestations-proposal.md` | Optional **unaccepted** distributed authorization design for later evaluation |
 | `.agents/skills/` | Repository-local agent skills |
 
-The diagrams under `docs/assets/` are design material; the ER-style persistence diagram may show physical
-revision IDs and storage conventions that are intentionally absent from the conceptual domain model.
+The diagrams under `docs/assets/` are design material; the ER-style persistence diagram may show physical revision IDs and storage conventions that are intentionally absent from the conceptual domain model.
 
 ## Development
 
-The devcontainer (`.devcontainer/`) provisions a Java 25 toolchain, Maven, Node.js 24 and npm. It requires
-container/build-image and network access for initial setup. Without the devcontainer, install the corresponding
-toolchains locally.
+The devcontainer (`.devcontainer/`) provisions a Java 25 toolchain, Maven, Node.js 24 and npm. It requires container/build-image and network access for initial setup. Without the devcontainer, install the corresponding toolchains locally.
 
 Backend:
 
@@ -45,20 +38,12 @@ npm ci
 npm run dev
 ```
 
-The frontend runs on port 3000 and the backend on port 8080 in the provided starter setup. The backend contains
-a greeting example; the full financial APIs are not yet implemented.
+The frontend runs on port 3000 and the backend on port 8080 in the provided starter setup. The backend contains a greeting example; the full financial APIs are not yet implemented.
 
-For setup, builds and tests, consult the [development guide](docs/development.md). The starter
-currently includes H2/JPA dependencies; PostgreSQL and database-specific adapter contracts are
-architectural targets, not yet implemented dependencies.
+For setup, builds and tests, consult the [development guide](docs/development.md). The starter currently includes H2/JPA dependencies; PostgreSQL and database-specific adapter contracts are architectural targets, not yet implemented dependencies.
 
 ## Architecture and contribution guidance
 
-ShareWise starts as a modular monolith with five bounded contexts: **User & Identity**, **Group**,
-**Financial**, **File**, and **Notification Management**. The design anticipates independently deployed
-services, with published module APIs, durable integration events, and independent data ownership. Finance uses
-its own strongly consistent group-scoped transaction boundary and immutable revision history.
+ShareWise starts as a modular monolith with five bounded contexts: **User & Identity**, **Group**, **Financial**, **File**, and **Notification Management**. The design anticipates independently deployed services, with published module APIs, durable integration events, and independent data ownership. Finance uses its own strongly consistent group-scoped transaction boundary and immutable revision history.
 
-Read [architecture](docs/architecture.md) and [domain model](docs/data-model-design.md) before implementing
-business features. Coding agents should also read [AGENTS.md](AGENTS.md); its associated [engineering-quality
-skill](.agents/skills/engineering-quality/SKILL.md) provides reusable architectural and engineering-quality guidance.
+Read [architecture](docs/architecture.md) and [domain model](docs/data-model-design.md) before implementing business features. Coding agents should also read [AGENTS.md](AGENTS.md); its associated [engineering-quality skill](.agents/skills/engineering-quality/SKILL.md) provides reusable architectural and engineering-quality guidance.

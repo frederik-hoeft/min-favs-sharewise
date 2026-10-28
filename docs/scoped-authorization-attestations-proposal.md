@@ -1,7 +1,9 @@
 # ShareWise: Scoped Authorization Attestations and Generic File ACLs
 
 **Status:** Optional design alternative; **not adopted as the implementation contract** · **Originally explored:** 2026-10-17
-**Scope:** Cross-context authorization, with File Management as the primary use case  
+
+**Scope:** Cross-context authorization, with File Management as the primary use case
+
 **Not a decision to implement a custom authentication system.**
 
 ## 1. Problem and motivation

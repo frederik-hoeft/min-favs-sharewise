@@ -1,36 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ShareWise frontend
 
-## Getting Started
+This directory contains the Next.js / React / TypeScript frontend for ShareWise. The UI is currently a starter page, not the implemented expense-sharing application. The server-side `/api/greetings` route forwards requests to the Spring Boot `/greeting` example endpoint.
 
-First, run the development server:
+## Develop and validate
 
-```bash
+From `src/frontend/`, install the locked dependencies and start the development server:
+
+```sh
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The frontend is available at [http://localhost:3000](http://localhost:3000). For the greeting endpoint to work, the backend must be running and accessible to the Next.js server at `BACKEND_URL` (default: `http://localhost:8080`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Run the frontend checks before submitting changes:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```sh
+npm run lint
+npm run build
+```
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The application uses system fonts defined in `app/globals.css`, not `next/font/google`, so a production build does not fetch fonts from Google. For the supported toolchain, container networking, offline development and backend commands, see the [development guide](../../docs/development.md).

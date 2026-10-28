@@ -1,13 +1,21 @@
 ---
-name: technical-documentation
-description: Create, review, and update technical documentation with an architecture-first, steady-state focus. Preserve good existing documentation, explain systems coherently at the right abstraction level, and keep related docs synchronized after code changes.
+name: documentation
+description: Write, review, and maintain all software project documentation, including READMEs, user and developer guides, architecture and reference docs, design decisions, and task plans. Apply audience-oriented, focused, steady-state writing and consistent Markdown formatting.
 ---
 
-# Technical Documentation
+# Documentation
 
-Use this skill when creating, reviewing, or updating technical documentation for a software project, especially architecture documentation, subsystem overviews, design documentation, README material, and documentation changes accompanying implementation work.
+Use this skill for **all documentation work** in a software project: README files, user guides, developer/setup instructions, architecture and design documents, reference material, decision records, task/backlog documents, and documentation that accompanies implementation changes. Apply the same principles to substantial documentation comments when appropriate.
 
-The primary goal is to give readers a coherent mental model of the system as it exists, not to inventory implementation details or narrate how the code evolved.
+The goal is to help the intended reader understand or accomplish something concrete, using accurate, focused information. For system documentation, explain the current architecture and behavior rather than inventorying implementation details or narrating how the code evolved. For proposals and plans, identify their status and separate intended contracts from implemented behavior.
+
+## Audience, purpose, and ownership
+
+Begin with the reader and the question the document should answer. A user guide should help someone complete a task; a contributor guide should enable a reproducible workflow; an architecture document should explain the system model; a reference should support precise lookup; a design proposal should make a decision reviewable; a backlog should identify actionable work and acceptance criteria. Match the depth, vocabulary, prerequisites, examples, and structure to that purpose.
+
+Give each important concept one **authoritative home**. Use a short overview and a link when another document needs context, rather than repeating its contracts, examples, or rationale. Prefer extending or correcting the existing relevant section over adding a parallel document or a detached appendix. Do not split documentation into tiny files simply to mirror source-code types, and do not grow one catch-all file beyond what its readers can navigate. Organize by meaningful topic, use case, or subsystem boundary.
+
+Favor substantive explanations over boilerplate, generic claims, exhaustive inventories, and redundant recaps. State responsibilities and guarantees precisely, explain non-obvious relationships and tradeoffs, and omit details that do not help the intended reader. Distinguish implemented behavior, agreed design, open proposals, and planned work; do not present any of them as the others.
 
 ## Core principles
 
@@ -153,6 +161,10 @@ It should still explain non-obvious semantics and relationships, but completenes
 
 Avoid duplicating architectural explanations when a cross-link is sufficient.
 
+### User and developer guides
+
+Organize instructions around tasks and outcomes, with prerequisites, exact commands or inputs, expected results, and relevant failure or recovery guidance. Describe what readers need to do, without mixing in unrelated architectural explanations. Keep commands and examples verified against the supported project state.
+
 ### README files
 
 A project README should primarily orient users and contributors.
@@ -167,6 +179,10 @@ Typical concerns include:
 - links to deeper documentation
 
 Keep deep architectural explanation in focused documentation unless a short architectural summary is necessary to orient the reader.
+
+### Plans and task backlogs
+
+Describe work in terms of coherent deliverables, dependencies, decisions that must be resolved, and observable acceptance criteria. Keep plans concise and distinguish pending work from the documented current system. Do not duplicate the underlying architecture or domain contract in every task.
 
 ### Design or decision documents
 
@@ -276,6 +292,15 @@ Check:
 - whether examples still match the documented model
 
 When practical, perform a final diff review specifically for unrelated rewrites or accidental verbosity growth.
+
+## Markdown formatting
+
+- Use **UTF-8 and LF** line endings, with a final newline. Do not use trailing-space hard line breaks; prefer paragraph breaks or explicit structure when separation matters.
+- Keep **one logical paragraph per source line**. Do not manually wrap prose to a fixed column width; long Markdown lines are intentional. Separate paragraphs with blank lines, and keep headings, list items, tables, and code blocks structurally distinct.
+- Use `-` for unordered lists and **four spaces per nesting level** for nested list items and their continuation blocks. Top-level list markers start at column zero; do not use a two-space nesting convention. Use numbered lists when order matters, and avoid lists when coherent prose is clearer.
+- Use **fenced code blocks** with backticks and a meaningful language identifier (`java`, `typescript`, `bash`, `json`, `mermaid`, `text`, etc.). Do not use indentation-only code blocks or leave fences untyped. Choose `text` for plain-text output, directory trees, and pseudocode without an applicable language.
+- Use **tables and Mermaid diagrams only as supporting material** when they clarify genuine comparisons, relationships, structure, or data flow. The surrounding prose must explain the model and its important implications independently; do not make a reader infer the primary information from a figure or table alone. Avoid duplicating every cell or arrow in prose, and avoid decorative or gratuitous visuals.
+- Preserve correct Markdown semantics when reformatting: do not reflow fenced blocks, diagrams, tables, explicit line breaks, generated regions, or other syntax whose whitespace is meaningful. Validate links, fence languages, and rendered structure after edits.
 
 ## Writing guidance
 
