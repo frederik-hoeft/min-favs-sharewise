@@ -12,7 +12,7 @@ intended implementation; they are not a claim that all those features already ex
 
 | Path | Purpose |
 | --- | --- |
-| `src/backend/favsdemobe/` | Java 25 / Spring Boot 4.1 Maven starter |
+| `src/backend/sharewise/` | Java 25 / Spring Boot 4.1 Maven starter |
 | `src/frontend/` | Next.js 16.4 / React 19 / TypeScript frontend |
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
 | `docs/architecture.md` | Component-level hexagonal/modulith architecture and service conventions |
@@ -32,7 +32,7 @@ toolchains locally.
 Backend:
 
 ```sh
-cd src/backend/favsdemobe
+cd src/backend/sharewise
 ./mvnw test
 ./mvnw spring-boot:run
 ```

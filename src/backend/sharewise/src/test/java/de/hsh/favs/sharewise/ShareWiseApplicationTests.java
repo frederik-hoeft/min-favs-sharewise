@@ -1,10 +1,10 @@
-package de.hsh.i.favs.favsdemobe;
+package de.hsh.favs.sharewise;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class FavsdemobeApplicationTests {
+class ShareWiseApplicationTests {
 
     @Test
     void contextLoads() {
