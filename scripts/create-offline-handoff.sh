@@ -318,7 +318,7 @@ setup_env() {
 run_maven() {
     local bundle="$1" tools="$2" mode="$3" source="$4"
     (
-        cd "$source/src/backend/favsdemobe"
+        cd "$source/src/backend/sharewise"
         "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" "$mode" clean verify
     )
 }
@@ -339,7 +339,7 @@ run_npm() {
 # that silently omits changes since the last commit. No source enters the bundle.
 copy_project_sources() {
     local source="$1" destination="$2"
-    [[ -f "$source/src/backend/favsdemobe/pom.xml" ]] || die "Missing backend project in: $source"
+    [[ -f "$source/src/backend/sharewise/pom.xml" ]] || die "Missing backend project in: $source"
     [[ -f "$source/src/frontend/package-lock.json" ]] || die "Missing frontend project in: $source"
     mkdir -p "$destination"
     tar -C "$source" \
@@ -347,7 +347,7 @@ copy_project_sources() {
         --exclude='target' --exclude='out' --exclude='build' \
         --exclude='coverage' --exclude='.env' --exclude='.env.*' \
         --exclude='*.tsbuildinfo' --exclude='next-env.d.ts' \
-        -cf - src/backend/favsdemobe src/frontend | tar -xf - -C "$destination"
+        -cf - src/backend/sharewise src/frontend | tar -xf - -C "$destination"
 }
 
 # Store a small dependency fingerprint instead of embedding the repository.
@@ -355,8 +355,8 @@ copy_project_sources() {
 write_dependency_manifest() {
     local source="$1" root="$2"
     (cd "$source" && sha256sum \
-        src/backend/favsdemobe/pom.xml \
-        src/backend/favsdemobe/.mvn/wrapper/maven-wrapper.properties \
+        src/backend/sharewise/pom.xml \
+        src/backend/sharewise/.mvn/wrapper/maven-wrapper.properties \
         src/frontend/package.json \
         src/frontend/package-lock.json) > "$root/manifest/dependencies.sha256"
 }
@@ -373,7 +373,7 @@ prepare_dependencies() {
     setup_env "$bundle" "$tools"
     note 'Downloading backend dependencies, transitive plugins, and build/test artifacts'
     (
-        cd "$source/src/backend/favsdemobe"
+        cd "$source/src/backend/sharewise"
         "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" dependency:go-offline
         "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" clean verify
     )
@@ -421,7 +421,7 @@ publish_toolchain_archive() {
 pack_bundle() {
     local jdk='' node='' maven='' output='' cache_dir='' repo temp root archive sha tools sidecars
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-    [[ -f "$repo/src/backend/favsdemobe/pom.xml" ]] || die 'Run pack from the project checkout containing this script.'
+    [[ -f "$repo/src/backend/sharewise/pom.xml" ]] || die 'Run pack from the project checkout containing this script.'
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --jdk|--node|--maven|--output|--cache-dir)

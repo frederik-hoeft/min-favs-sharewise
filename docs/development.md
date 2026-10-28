@@ -27,7 +27,7 @@ an individual container should not be treated as persistent project state.
 
 ## Current toolchain
 
-The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/favsdemobe/`. The Maven
+The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven
 wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven).
 The current backend dependencies include Spring MVC, JPA, H2/H2 console, Lombok and test starters.
 PostgreSQL persistence, Spring Modulith and event publication remain architectural targets rather than
@@ -41,7 +41,7 @@ The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, Ty
 Backend, from the repository root:
 
 ```sh
-cd src/backend/favsdemobe
+cd src/backend/sharewise
 ./mvnw test
 ./mvnw spring-boot:run
 ```
@@ -70,10 +70,10 @@ When the backend and frontend run in separate containers, their loopback interfa
 an address reachable over their shared Docker network. For example, after building the backend JAR:
 
 ```sh
-cd src/backend/favsdemobe
+cd src/backend/sharewise
 ./mvnw clean verify
 cd ../../..
-docker build -t sharewise-backend src/backend/favsdemobe
+docker build -t sharewise-backend src/backend/sharewise
 docker build -t sharewise-frontend src/frontend
 docker network create sharewise
 docker run -d --name sharewise-backend --network sharewise sharewise-backend

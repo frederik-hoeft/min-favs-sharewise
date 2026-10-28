@@ -14,12 +14,12 @@ build-backend:
   stage: build
   image: eclipse-temurin:25-jdk
   script:
-    - cd src/backend/favsdemobe
+    - cd src/backend/sharewise
     - chmod +x mvnw
     - ./mvnw clean verify
   artifacts:
     paths:
-      - src/backend/favsdemobe/target/*.jar
+      - src/backend/sharewise/target/*.jar
     expire_in: 1 hour
 
 build-frontend:
