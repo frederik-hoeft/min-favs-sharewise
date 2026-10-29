@@ -22,7 +22,7 @@ The existing [architecture](../../architecture.md) and [domain model](../../data
 | Service composition | Spring constructor injection and explicit `@Bean` composition where useful | Do not expose implementation adapters as public module APIs |
 | Authorization | Spring Security with carefully chosen authentication/session strategy | Decide JWT access/refresh lifecycle, browser cookie vs header/BFF boundaries, CSRF and revocation before implementation |
 | Transactions | Spring `TransactionTemplate` behind the documented `Transactions` port | Explicit operation-local session/outcome; database decides atomic commit, not an HTTP request scope |
-| Persistence | PostgreSQL; Spring `JdbcClient`/SQL for projections, locks, COW history; selective JPA/Hibernate for simple CRUD | Pick migration tool (Flyway or Liquibase) and exact schemas; no cross-context FK/joins |
+| Persistence | [Preliminary design](../../stack/persistence.md): PostgreSQL + Flyway; jOOQ or Spring Data JPA/Hibernate per use-case-oriented adapter | Validate schema generation, migrations, transaction interoperability and context-owned tables; no cross-context FK/joins |
 | Event delivery | Spring application events, optionally Modulith publication registry | Durable publication on commit; ChangeRecord is **not** an outbox; broker/externalization later |
 | Tests | JUnit + Spring testing, database integration tests (e.g. Testcontainers) | Integration runtime needs PostgreSQL/container provisioning beyond the supplied offline cache |
 | Frontend | Existing Next.js 16 App Router, React 19, TypeScript, npm | Deliberately choose server/client components and whether Next routes act as a BFF; inspect installed Next docs before editing |
@@ -36,7 +36,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 - [ ] **P0.1 - Package/module layout:** agree on `de.hsh.favs.sharewise` as the application root, with direct business subpackages (`identity`, `groups`, `finance`, `files`, `notifications`) and narrow published APIs. Determine package-internal visibility, optional Modulith verification, and where cross-cutting infrastructure lives.
 - [ ] **P0.2 - Transport/auth design:** define browser → Next.js → Spring request flow, login/refresh/logout, user identity propagation, role and resource authorization, CSRF handling, error contracts and versioning.
-- [ ] **P0.3 - Database contract:** choose PostgreSQL schema ownership, migration framework, UUID/key policy, transaction adapter strategy, integration-test setup and database history representation.
+- [ ] **P0.3 - Database contract:** review and validate the [preliminary persistence decision](../../stack/persistence.md), including schema ownership, UUID/key policy, migration/code-generation workflow, transaction interoperability, integration-test setup and database history representation.
 - [ ] **P0.4 - Domain language and user journeys:** check group invitation, participation, expense splitting, settlement, closing, reopening and archiving with the domain model; prioritize unresolved business decisions only where they block the next slice (see the [open decisions](../../data-model-design.md#open-decisions)).
 - [ ] **P0.5 - Delivery scope:** define the initial end-to-end demonstrator and explicit omissions. Establish test and API conventions, frontend component/styling conventions, and documentation/review gates.
 
