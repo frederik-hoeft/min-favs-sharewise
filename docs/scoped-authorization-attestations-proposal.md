@@ -1,10 +1,10 @@
 # ShareWise: Scoped Authorization Attestations and Generic File ACLs
 
-**Status:** Optional design alternative; **not adopted as the implementation contract** · **Originally explored:** 2026-10-17
+**Status:** Optional **generic file ACL** proposal; not adopted as the File Management implementation contract. The underlying two-level IAM/domain-attestation trust model is described in the [preliminary security architecture](stack/security.md). **Originally explored:** 2026-10-17
 
 **Scope:** Cross-context authorization, with File Management as the primary use case
 
-**Not a decision to implement a custom authentication system.**
+**This document does not define IAM authentication or the common attestation protocol.** Those contracts belong to the [security architecture](stack/security.md). The ACL and file-specific issuance examples below remain illustrative and unaccepted.
 
 ## 1. Problem and motivation
 
@@ -70,6 +70,7 @@ Rather than inventing a JSON+signature encoding, reuse a **standard signed JWT/J
   "iss": "https://groups.sharewise.example",
   "sub": "user-123",
   "principal_iss": "https://iam.sharewise.example",
+  "principal_sid": "session-abc",
   "aud": "sharewise-files",
   "group_id": "group-456",
   "permissions": ["group:files:read"],
@@ -82,7 +83,7 @@ Rather than inventing a JSON+signature encoding, reuse a **standard signed JWT/J
 
 Its **protected JWS header**, not the payload, would declare an explicit token type (for example `typ: sharewise-sat+jwt`) and an approved algorithm/key identifier. These values are examples, not finalized claim names or a registered token profile.
 
-The SAT can be bound to the IAM identity by matching both `(principal_iss, sub)` to the validated primary token. Optionally, stronger session-level or exact-access-token binding could be added later; this improves protection against mixing tokens from different sessions but makes renewal more complicated.
+The common [session-binding contract](stack/security.md#credentials-sessions-and-refresh) also requires matching the IAM session across both JWTs through `principal_sid`. Binding to an individual access JWT is intentionally avoided because access JWTs rotate independently.
 
 ## 4. Generic claim-based File Management ACLs
 
@@ -132,7 +133,7 @@ The following are essential to making the idea safe; none should be delegated to
 
 1. **Authenticate first.** Validate the primary IAM access token using standard security middleware. Invalid IAM authentication rejects the request regardless of SAT contents.
 2. **Validate each SAT independently.** Enforce signature, allowed algorithm, trusted issuer/key, explicit token type, expected audience, `nbf`/`exp`, and acceptable clock skew. Issuers/keys must come from *configured trust relationships*, never arbitrary URLs named by an unverified token.
-3. **Bind identities.** The SAT's identity issuer and subject must match the validated IAM principal. The SAT cannot authenticate a different user.
+3. **Bind identities.** The SAT's identity issuer, subject and session binding must match the validated IAM JWT. The SAT cannot authenticate a different user or session.
 4. **Constrain issuer authority.** Trust Group Management only for agreed group-related claims, Finance only for approved finance/file grants, etc. A signed assertion from one issuer must not automatically confer unrelated rights.
 5. **Match the requested resource.** Determine the actual `fileId` and its stored ACL server-side. Where a SAT authorizes a group, compare against the ACL's stored group identifier, not an independently trusted user-provided group ID.
 6. **Protect ACL administration.** Only authorized business flows may create or change resource ACLs. Uploading a file or knowing its identifier must not permit granting oneself broader access.
@@ -143,7 +144,7 @@ This design **does not** remove the need for ordinary authorization and invarian
 
 ## 6. Integration with the modular monolith and Spring Security
 
-For the **initial modular monolith**, a synchronous, published authorization interface from Group Management is simpler than SAT issuance and verification. The SAT proposal is a candidate for **later service extraction**, not a requirement for the first implementation.
+In the **initial modular monolith**, synchronous published authorization interfaces remain suitable for immediate authoritative decisions. The shared two-level attestation trust model is the preliminary security direction; whether File Management uses the **generic ACL design in this document** is still undecided. Its choice need not control the timing of domain-attestation issuance elsewhere, such as Group Management to Finance.
 
 Spring Security's OAuth2 Resource Server can validate the primary IAM JWT. A custom authorization component (for example a request- or method-level `AuthorizationManager`) can then validate additional SATs with separately configured JWT decoders and evaluate typed, verified claims against File Management's ACLs. **We should use existing JOSE/JWT libraries and Spring integration points, not implement cryptography ourselves.**
 
@@ -175,10 +176,10 @@ The boundary should be designed around the decision (`may this authenticated pri
 2. **ACL control plane:** Which owning context may add or revoke each kind of File Management ACL? How does an upload become linked to an expense or group without creating an authorization gap?
 3. **Attestation protocol:** One SAT per request initially? Which exact header/profile? Should we prefer standard token exchange if the selected IAM provider supports it?
 4. **Identity binding:** Match identity issuer + user ID, or bind SATs more tightly to sessions/access tokens?
-5. **Revocation target:** Is a short (e.g. 1-minute) stale-authorization window acceptable for former group members, including file downloads?
+5. **Revocation target:** Does File Management need synchronous authoritative introspection for any downloads, or is the common short-lived attestation window sufficient?
 6. **Issuer trust:** Which contexts are allowed to issue SATs, for which audiences and claims, and who manages their verification keys?
 7. **File lifecycle:** What happens to ACLs and storage when attachments are detached, membership changes, or groups are archived?
-8. **Scope:** Is this mechanism worth building for the course's distributed phase, or should File Management start with a narrow synchronous authorization adapter?
+8. **Scope:** Is generic verified-claim ACL matching worth introducing for File Management, or should it initially use a narrow published authorization capability?
 
 ## 9. Proposed decision for review
 
@@ -190,7 +191,7 @@ The boundary should be designed around the decision (`may this authenticated pri
 - Keep Finance's participant eligibility and financial invariants separate from SAT-based caller authorization.
 - Build the modular monolith with clear in-process module APIs first; revisit SAT-based distribution when extracting services.
 
-This alternative preserves bounded-context ownership but remains subject to explicit review. The [accepted architecture](architecture.md) starts with a published in-process authorization capability; implementing SAT issuance/verification is not a prerequisite for the modular monolith.
+This **file ACL extension** preserves bounded-context ownership but remains subject to explicit review. The [application architecture](architecture.md) supports published in-process authorization capabilities; the [security architecture](stack/security.md) establishes the preliminary common two-level attestation model independent of File Management's ACL choice.
 
 ---
 

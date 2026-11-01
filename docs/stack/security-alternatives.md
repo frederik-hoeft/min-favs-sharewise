@@ -1,0 +1,17 @@
+# Identity and authorization alternatives
+
+**Status:** Supporting rationale for the [preliminary security architecture](security.md). The selected direction combines application-owned IAM sessions and rotating refresh tokens, Spring Security primitives, short-lived signed identity JWTs, and issuer-qualified domain attestations. The deployment target is a statically served frontend behind a reverse proxy.
+
+| Alternative | Why it was not selected as the default |
+| --- | --- |
+| ASP.NET Core Identity-style framework-managed account system | Spring Security provides password, authentication and authorization infrastructure plus simple JDBC user management, but not the complete opinionated account/refresh-session workflow ShareWise requires. Use the framework primitives while owning the domain model and orchestration. |
+| Keycloak or a full external identity provider | Valid option for a larger system, but adds another deployable and configuration lifecycle while IAM itself is a project bounded context. Revisit if standards-based federation or account-management requirements warrant it. |
+| Full OAuth/OIDC authorization server from the outset | Offers standardized issuance/grants but adds protocol/client machinery beyond the initial first-party login/refresh flow. Use Spring's supported components rather than building custom cryptography; consider authorization-server capabilities or RFC 8693 token exchange if interoperable clients become necessary. |
+| Server-side browser sessions for every API request | Make immediate session revocation straightforward but introduce an online shared session dependency into every extracted service. Short-lived bearer identity tokens plus explicit exceptional introspection better match the intended deployment boundary. |
+| Group roles and memberships inside IAM access JWTs | IAM does not own those facts; copied claims become stale and introduce cross-context coupling. Domain authorities issue scoped attestations from authoritative state. |
+| Event-replicated authorization state as the default | Replication lag cannot bound revocation latency reliably. Membership projections remain useful for non-authorization domain decisions, but permission issuance relies on the owning authority's current state. |
+| Synchronous authorization check for every domain request | Gives fresher information but couples availability and latency to another context, particularly after service extraction. Use bounded-life attestations by default and selective online verification where necessary. |
+| Custom token format or unconstrained multi-level delegation | Unnecessary parsing, signing and trust complexity. Use signed JWT/JWS profiles and a strict two-level IAM-to-domain hierarchy. A token exchange standard can be evaluated separately. |
+| Permanent Next.js BFF/proxy | The starter's server route is demonstration code, not needed in the chosen browser request path. Static Next.js export plus Nginx same-origin TLS termination and `/api/*` proxy avoids an extra application server; frontend features that require a Next runtime must be replaced. |
+
+The [scoped authorization attestation proposal](../scoped-authorization-attestations-proposal.md) explores one possible **generic File Management ACL** consumer on top of the selected trust model. That ACL design remains a separate choice. Token transport headers, access-token and attestation lifetimes, signing algorithms, cookie CSRF mechanism, and operational key management require implementation validation.

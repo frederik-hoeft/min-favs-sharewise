@@ -20,13 +20,13 @@ The existing [architecture](../../architecture.md) and [domain model](../../data
 | Application host and HTTP API | Existing Java 25, Spring Boot 4.1, Spring MVC, Jackson, Jakarta validation | Typed REST contracts; controllers are adapters, not domain services |
 | Module boundaries | Spring Modulith 2.1.x and package/API verification tests | **Candidate**, not installed; evaluate published interfaces and allowed dependencies before adopting |
 | Service composition | Spring constructor injection and explicit `@Bean` composition where useful | Do not expose implementation adapters as public module APIs |
-| Authorization | Spring Security with carefully chosen authentication/session strategy | Decide JWT access/refresh lifecycle, browser cookie vs header/BFF boundaries, CSRF and revocation before implementation |
+| Identity and authorization | [Preliminary security design](../../stack/security.md): Spring Security, IAM access JWT + rotating refresh cookie, issuer-qualified domain attestations | Validate transaction/revocation semantics, token profiles, shared verification infrastructure, CSRF, permissions and optional authoritative introspection |
 | Transactions | Spring `TransactionTemplate` behind the documented `Transactions` port | Explicit operation-local session/outcome; database decides atomic commit, not an HTTP request scope |
 | Persistence | [Preliminary design](../../stack/persistence.md): PostgreSQL + Flyway; jOOQ or Spring Data JPA/Hibernate per use-case-oriented adapter | Validate schema generation, migrations, transaction interoperability and context-owned tables; no cross-context FK/joins |
 | Event delivery | [Preliminary messaging design](../../stack/messaging.md): Spring Modulith JDBC publication registry, asynchronous listeners and consumer-owned idempotency | Producer publication committed atomically; retry/recovery and retention verified; broker externalization on extraction |
 | Tests | JUnit + Spring testing, database integration tests (e.g. Testcontainers) | Integration runtime needs PostgreSQL/container provisioning beyond the supplied offline cache |
-| Frontend | Existing Next.js 16 App Router, React 19, TypeScript, npm | Deliberately choose server/client components and whether Next routes act as a BFF; inspect installed Next docs before editing |
-| Deploy/operate | Existing Dockerfiles and GitLab CI, later Compose/CD and metrics/tracing | Prefer reproducible deployables; extraction must be justified by measurable change drivers |
+| Frontend | Existing Next.js 16 App Router, React 19, TypeScript, npm; intended static export behind Nginx | Remove starter-only Next proxy routes and server-only features before static deployment; inspect installed Next docs before editing |
+| Deploy/operate | Existing Dockerfiles and GitLab CI; planned Nginx TLS termination/static assets and `/api/*` routing, later Compose/CD and metrics/tracing | Prefer reproducible deployables; extraction must be justified by measurable change drivers |
 
 Framework introductions that modify the Maven POM or npm lockfile require **refreshing and revalidating** the separately supplied offline dependency handoff. Do not substitute uncached dependencies or change versions to mask an incomplete handoff. The initial rename also changes manifest paths and the POM hash; an old verifier cannot validate the renamed tree unchanged, even if offline compilation succeeds with its dependency cache.
 
@@ -35,7 +35,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 **Goal:** Resolve prerequisites for a coherent first vertical slice without attempting to decide every future policy. Keep proposals explicitly marked as such until reviewed.
 
 - [ ] **P0.1 - Package/module layout:** agree on `de.hsh.favs.sharewise` as the application root, with direct business subpackages (`identity`, `groups`, `finance`, `files`, `notifications`) and narrow published APIs. Determine package-internal visibility, optional Modulith verification, and where cross-cutting infrastructure lives.
-- [ ] **P0.2 - Transport/auth design:** define browser → Next.js → Spring request flow, login/refresh/logout, user identity propagation, role and resource authorization, CSRF handling, error contracts and versioning.
+- [ ] **P0.2 - Transport/auth design:** review the [preliminary security decision](../../stack/security.md); settle browser → Nginx → Spring routing, static-export feasibility, IAM and attestation token profiles, login/refresh/logout, cookie and CSRF rules, key management, authorization error/retry contracts and versioning.
 - [ ] **P0.3 - Database contract:** review and validate the [preliminary persistence decision](../../stack/persistence.md), including schema ownership, UUID/key policy, migration/code-generation workflow, transaction interoperability, integration-test setup and database history representation.
 - [ ] **P0.4 - Domain language and user journeys:** check group invitation, participation, expense splitting, settlement, closing, reopening and archiving with the domain model; prioritize unresolved business decisions only where they block the next slice (see the [open decisions](../../data-model-design.md#open-decisions)).
 - [ ] **P0.5 - Delivery scope:** define the initial end-to-end demonstrator and explicit omissions. Establish test and API conventions, frontend component/styling conventions, and documentation/review gates.
@@ -50,7 +50,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
 - [ ] **P1.2:** Introduce PostgreSQL, migrations, per-context schema/table ownership and targeted integration fixtures; remove or isolate starter H2 dependencies where inappropriate.
 - [ ] **P1.3:** Implement a technology-agnostic transaction/session boundary on Spring transactions, including explicit commit/rollback/abstain, rollback-only poisoning, exceptional abort, lifetime and concurrency rules.
-- [ ] **P1.4:** Establish typed API errors, request validation, configuration, health checks, unit and integration test conventions, and the minimally needed Next.js API client/BFF structure.
+- [ ] **P1.4:** Establish typed API errors, request validation, configuration, health checks, unit and integration test conventions, and the frontend API client without relying on Next.js server-side proxy routes as the long-term architecture.
 
 **Gate:** Modularity test catches a forbidden cross-context access; real PostgreSQL integration tests prove commit, rollback, rollback-only and concurrency rules; both applications build and run with documented commands.
 
@@ -58,12 +58,13 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Depends on:** Phase 1 foundation and approved P0.2 security flow.
 
-- [ ] **P2.1:** Identity registration/login/profile and access + refresh lifecycle; protect APIs, verify logout and revocation behavior and reject unauthenticated/unauthorized requests.
+- [ ] **P2.1:** Implement IAM registration/login/profile with Spring Security authentication, password hashing and lockout; issue short-lived identity JWTs and rotating refresh cookies with transactional family reuse detection; implement CSRF, logout, password-change invalidation, and protected APIs. Test concurrent refresh, stale sessions and password-change behavior.
 - [ ] **P2.2:** Group creation, membership roles, invitation/acceptance, leave and administrator transfer; enforce the final-member and final-administrator invariants atomically.
-- [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows with actionable failures, stable IDs and no unauthorized data exposure.
+- [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows with access-token and attestation renewal, bounded `401` retry, `403` denial handling, and no unauthorized data exposure; prevent parallel refresh rotation races.
 - [ ] **P2.4:** Establish versioned membership event contracts and durable Modulith publication when the first cross-context consumer is registered. Verify atomic producer commit/rollback and stable event identities; validate consumer operation transactions, idempotent recovery and registry completion against real PostgreSQL and the selected framework version.
+- [ ] **P2.5:** Introduce shared JWT profile/trust verification and typed issuer-qualified claims; issue short-lived, IAM-session-bound Group Management attestations from authoritative role state. Test wrong issuer/audience/token type, cross-group privilege confusion, role downgrade, session mismatch and key rotation. Keep domain authority policy out of the security library.
 
-**Gate:** An authenticated user can create a group, invite another user and manage membership end to end; unauthorized actions, races and final-administrator/member edge cases are covered by tests.
+**Gate:** An authenticated user can create a group, invite another user and manage membership end to end; token renewal, authority-scoped authorization, unauthorized actions, races and final-administrator/member edge cases are covered by tests.
 
 ## Phase 3 - Finance actor synchronization and accounting foundations
 
@@ -93,7 +94,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 - [ ] **P5.1:** Record, correct and remove external settlement reports, with revision history and authorization distinct from payment processing; enforce valid actor pairs and positive amounts.
 - [ ] **P5.2:** Include settlements in historical and current balance queries without matching them to individual expenses or forbidding overpayment.
-- [ ] **P5.3:** Implement `OPEN → CLOSED`, `CLOSED → OPEN`, and terminal `ARCHIVED` as ordered financial operations with journal entries; enforce state-specific write permissions.
+- [ ] **P5.3:** Implement `OPEN → CLOSED`, `CLOSED → OPEN`, and terminal `ARCHIVED` as ordered financial operations with journal entries; enforce state-specific write permissions using verified Group Management attestations, with Finance lifecycle checks still authoritative.
 - [ ] **P5.4:** Add settlement, close/reopen/archive and historical-revision frontend views.
 
 **Gate:** A full Mallorca-style journey works end to end. Closed groups reject expense edits while allowing settlements; archived groups are read-only; any past group revision yields reproducible balances.
@@ -106,7 +107,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P6.2:** Authorize uploads/downloads using published Group/Finance capabilities, not an arbitrary file ID or cross-context table join; define retention and lifecycle behavior.
 - [ ] **P6.3:** Associate attachments with expenses and implement their chosen history semantics and UI.
 
-**Gate:** Unprivileged access is denied; file ownership and historical attachment behavior are explicit and covered by tests. Distributed scoped attestations remain optional, not a default dependency.
+**Gate:** Unprivileged access is denied; file ownership and historical attachment behavior are explicit and covered by tests. Domain attestations follow the common trust model; generic file ACLs and externalized authorization adapters remain optional.
 
 ## Phase 7 - Notifications and durable integration events
 
@@ -122,7 +123,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Depends on:** A working modulith MVP, though CI/build improvements may land earlier.
 
-- [ ] **P8.1:** Finish repeatable backend/frontend container builds and local Compose integration with PostgreSQL; document configuration, credentials and health probes.
+- [ ] **P8.1:** Replace the starter frontend proxy with a verified Next.js static export; deploy assets through Nginx with TLS termination and same-origin `/api/*` proxying. Finish repeatable backend/frontend container builds and local Compose integration with PostgreSQL; document credentials, cookie/proxy headers and health probes.
 - [ ] **P8.2:** Harden GitLab CI build/test/lint, database integration execution, image creation and automated deployment to the course target environment, with secrets kept out of the repository.
 - [ ] **P8.3:** Add structured logs, actionable errors, basic metrics/traces, backup/recovery considerations and smoke tests for primary user journeys.
 
@@ -133,7 +134,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 **Depends on:** Observable modulith behavior and a concrete change driver; not automatic because a lecture reaches the microservices topic.
 
 - [ ] **P9.1:** Record load, ownership and operational reasons **for or against** extracting specific contexts. Identify contracts, data ownership and consistency transitions before selecting a service.
-- [ ] **P9.2:** Prepare one justified context for extraction: isolate its data, establish service-specific migrations, preserve published contracts, and define a migration/cutover and rollback protocol. Keep the local consumer active until a verified replacement delivery path is ready.
+- [ ] **P9.2:** Prepare one justified bounded context for extraction: isolate its data and migrations, preserve its published API/event contracts, and replace in-process adapters with remote integration. Configure independent token validation, issuer trust and audiences; introduce authenticated authority introspection only where authorization-freshness requirements justify it. Define a cutover and rollback protocol, keeping the local consumer active until the replacement delivery path is verified.
 - [ ] **P9.3:** Establish broker publication/subscription through the existing Modulith integration contracts, selecting registry-backed externalization or a supported outbox integration where appropriate. Validate durable producer intent, broker confirmation, retry, ordering and duplicate-safe cutover before retiring local delivery; retain custom outbox infrastructure only as a justified alternative.
 - [ ] **P9.4:** Demonstrate resilience under network faults and delayed/duplicate events; refine tracing, dashboards and deployment runbooks for the distributed system.
 
