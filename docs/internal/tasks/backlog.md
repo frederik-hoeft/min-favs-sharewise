@@ -39,6 +39,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P0.3 - Database contract:** review and validate the [preliminary persistence decision](../../stack/persistence.md), including schema ownership, UUID/key policy, migration/code-generation workflow, transaction interoperability, integration-test setup and database history representation.
 - [ ] **P0.4 - Domain language and user journeys:** check group invitation, participation, expense splitting, settlement, closing, reopening and archiving with the domain model; prioritize unresolved business decisions only where they block the next slice (see the [open decisions](../../data-model-design.md#open-decisions)).
 - [ ] **P0.5 - Delivery scope:** define the initial end-to-end demonstrator and explicit omissions. Establish test and API conventions, frontend component/styling conventions, and documentation/review gates.
+- [ ] **P0.6 - Messaging contract review:** review the [preliminary messaging decision](../../stack/messaging.md) and [alternatives](../../stack/messaging-alternatives.md); settle default-inbox exceptions, per-consumer replay/retention requirements and the broker-handoff guarantees to validate at extraction. Keep implementation-specific broker and outbox selection deferred until required.
 
 **Gate:** Approved architecture deltas and task-level requirements for Phase 1, with decisions and deferrals recorded in the appropriate authoritative documents. No new framework is added solely for scaffolding.
 
@@ -60,7 +61,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P2.1:** Identity registration/login/profile and access + refresh lifecycle; protect APIs, verify logout and revocation behavior and reject unauthenticated/unauthorized requests.
 - [ ] **P2.2:** Group creation, membership roles, invitation/acceptance, leave and administrator transfer; enforce the final-member and final-administrator invariants atomically.
 - [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows with actionable failures, stable IDs and no unauthorized data exposure.
-- [ ] **P2.4:** Publish versioned membership facts using the [preliminary messaging design](../../stack/messaging.md); introduce durable registry infrastructure with the first cross-context subscriber, and verify ordering metadata, replay and failed-publication recovery.
+- [ ] **P2.4:** Publish versioned membership facts using the [preliminary messaging design](../../stack/messaging.md); introduce durable registry infrastructure with the first cross-context subscriber, and verify event version/ordering metadata, atomic business-state/publication commit, producer rollback, duplicate delivery and failed-publication recovery.
 
 **Gate:** An authenticated user can create a group, invite another user and manage membership end to end; unauthorized actions, races and final-administrator/member edge cases are covered by tests.
 
@@ -133,10 +134,10 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 - [ ] **P9.1:** Record load, ownership and operational reasons **for or against** extracting specific contexts. Identify contracts, data ownership and consistency transitions before selecting a service.
 - [ ] **P9.2:** Extract one justified bounded context behind its existing public API/event contracts; replace in-process adapters with remote integration, not database sharing or synchronous call chains.
-- [ ] **P9.3:** Externalize selected events to a broker as required; evaluate a dedicated outbox where needed, and verify publisher confirmation, pending deliveries, retries, idempotency, ordering, reconciliation and compensating failure paths.
+- [ ] **P9.3:** Externalize selected events to a broker; verify that publication intent commits with producer business state, then select registry-backed externalization or a dedicated transactional outbox based on broker-confirmation, retry, ordering and recovery requirements. Test broker downtime at producer commit, crash/restart before dispatch, lost publisher confirmation, duplicate acceptance, reconciliation and consumer idempotency.
 - [ ] **P9.4:** Demonstrate resilience under network faults and delayed/duplicate events; refine tracing, dashboards and deployment runbooks for the distributed system.
 
-**Gate:** Original business invariants remain testable across service boundaries. Failure injection and reconciliation are demonstrated; the extracted context owns its storage and can deploy independently.
+**Gate:** Original business invariants remain testable across service boundaries. Broker outages and process crashes cannot strand a committed business change without recoverable publication intent; retries and reconciliation are demonstrated without duplicate business effects. The extracted context owns its storage and can deploy independently.
 
 ## Cross-cutting review checks
 

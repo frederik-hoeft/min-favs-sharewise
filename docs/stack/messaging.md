@@ -73,12 +73,35 @@ Monitor outstanding/failed publication age, repeated attempts, listener lag, inb
 
 The producer's event contract and consumer's application operation remain stable when a bounded context is extracted. Spring Modulith can externalize selected events to a broker such as RabbitMQ/AMQP or Kafka. An externalization adapter supplies routing, serialization and transport-specific acknowledgments; a consumer transport adapter invokes the same idempotent application operation in the extracted service. This preserves business semantics, **not** the illusion that an in-process callback and distributed delivery have identical ordering, latency or failure behavior.
 
-Broker acknowledgments and consumer offsets track transport progress, but neither generally commits atomically with the consumer's PostgreSQL writes. The consumer's inbox or business idempotency therefore survives extraction. Before cutover, verify event schema/version compatibility, pending-publication recovery, durable broker publisher confirmation, ordering per logical aggregate, consumer registration, replay/backfill, and absence of duplicate effects when old and new delivery paths overlap. The first extraction must also establish isolated data ownership and service-specific migration lifecycles; no cross-service database transactions are introduced.
+**Broker handoff requires durable local publication intent, committed atomically with the producer's business change.** Committing the business change first and only then sending to the broker or recording a publication creates an unrecoverable gap if the process crashes or the broker is unavailable. The pending publication acts as a transactional **outbox** (an application-level write-ahead delivery record); PostgreSQL's internal WAL alone is not a broker-delivery ledger. The sender retries after commit and completes the local publication only after the broker confirms durable acceptance. A broker outage must delay delivery, not invalidate the already-committed business change or lose its event.
 
-The initial modulith does not require a broker container, Kafka infrastructure, a custom actor bus or application-wide distributed transactions. Use externalization when a real deployment boundary justifies it; evaluate a dedicated outbox if broker handoff requires guarantees not supplied by Modulith's normal listener-based externalization. This architecture is **at-least-once delivery with idempotent effects**, not a promise of exactly-once delivery or processing.
+```mermaid
+sequenceDiagram
+    participant P as Producer
+    participant DB as PostgreSQL
+    participant D as Event externalizer
+    participant B as Broker
+    P->>DB: Persist business change + pending publication in one transaction
+    DB-->>P: Commit both or neither
+    Note over DB,D: Pending publication survives process crashes
+    D->>B: Publish event with stable ID after commit
+    alt Broker confirms durable acceptance
+        B-->>D: Publisher confirmation
+        D->>DB: Complete or delete publication
+    else No reliable broker confirmation
+        Note over D,B: Broker unavailable or confirmation lost
+        Note over DB,D: Keep publication for recovery and retry
+    end
+```
+
+**A second, hand-written outbox is not automatically necessary.** Spring Modulith's registry already tracks transactional event externalization, including failures communicating with the broker. Its suitability as the durable handoff depends on verifying the actual broker adapter's publisher-confirmation semantics, recovery, ordering and concurrency behavior. Adopt a dedicated outbox implementation only if those requirements exceed registry-backed externalization. Broker acceptance and subsequent local completion remain separate operations: a lost confirmation or crash between them can trigger duplicate publication, so consumers must remain idempotent.
+
+Broker acknowledgments and consumer offsets track transport progress, but neither generally commits atomically with the consumer's PostgreSQL writes. The consumer's inbox or business idempotency therefore survives extraction. Before cutover, verify event schema/version compatibility, transactional recording of publication intent, broker-outage recovery, durable publisher confirmation, ordering per logical aggregate, consumer registration, replay/backfill, and absence of duplicate effects when old and new delivery paths overlap. The first extraction must also establish isolated data ownership and service-specific migration lifecycles; no cross-service database transactions are introduced.
+
+The initial modulith does not require a broker container, Kafka infrastructure, a custom actor bus or application-wide distributed transactions. Use externalization when a real deployment boundary justifies it. This architecture is **at-least-once delivery with idempotent effects**, not a promise of exactly-once delivery or processing.
 
 ## Verification and design refinement
 
-Unit tests for publishers and consumers use mocked or in-memory event ports, no live database, broker or Spring context. Integration tests against PostgreSQL verify producer rollback leaves no publication, committed writes have a durable publication, consumer commit and deduplication commit together, concurrent duplicate delivery is safe, stale/out-of-order events converge correctly, and failures are recoverable. Failure-injection tests cover crashes between producer commit, consumer commit and completion/acknowledgment. Broker-facing tests are added when externalization is installed; simulated transports are not evidence of broker durability.
+Unit tests for publishers and consumers use mocked or in-memory event ports, no live database, broker or Spring context. Integration tests against PostgreSQL verify producer rollback leaves no publication, committed writes have a durable publication, consumer commit and deduplication commit together, concurrent duplicate delivery is safe, stale/out-of-order events converge correctly, and failures are recoverable. Failure-injection tests cover crashes between producer commit, consumer commit and completion/acknowledgment. Once broker externalization is installed, test an unreachable broker, process crashes after the local commit, lost or uncertain publisher confirmations, recovery after restart and duplicate broker acceptance. A test must prove that a committed business change retains recoverable publication intent throughout an outage; simulated transports alone are not evidence of broker durability.
 
 The event registry, inbox table conventions, recovery scheduling, retention horizons and transport configuration require implementation validation before they become operational guarantees. The starter does not yet include Spring Modulith, Flyway-managed publication storage, consumer inboxes or a message broker. The [alternative technologies and tradeoffs](messaging-alternatives.md) are documented separately; detailed setup and runtime commands belong in developer documentation once implemented. See [Spring Modulith's event reference](https://docs.spring.io/spring-modulith/reference/events.html) for the framework's publication, recovery and externalization facilities.
