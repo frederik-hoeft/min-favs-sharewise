@@ -83,17 +83,13 @@ The [preliminary messaging architecture](stack/messaging.md) uses versioned inte
 
 For File Management, use published authorization capabilities within the modulith initially. The [scoped authorization attestation design](scoped-authorization-attestations-proposal.md) remains an optional, unaccepted distributed alternative rather than an implementation requirement.
 
-## Java/TypeScript ecosystem mapping
+## Infrastructure integration
 
-- **Backend:** Java 25, Spring Boot 4.1, Spring MVC, Maven (wrapper included); standard constructor injection into stateless singleton services. Select adapters through an explicit composition root (`@Bean` or programmatic registration) where implementation/lifetime choice matters. Do not bake framework registration rules into core classes unnecessarily.
-- **Transactions:** Implement the `Transactions` port using Spring `TransactionTemplate` or equivalent; adapter operations participate in the same physical database transaction. Do not reimplement Spring's connection manager.
-- **Persistence:** The [preliminary persistence design](stack/persistence.md) uses PostgreSQL with Flyway SQL migrations and per-adapter jOOQ or Spring Data JPA/Hibernate. Keep generated schema types and managed entities inside infrastructure; the schema and transaction contracts remain independent of adapter choice.
-- **Messaging:** The [preliminary messaging design](stack/messaging.md) selects Spring Modulith durable application events and consumer-owned idempotency; local listeners use separate transactions and broker externalization is reserved for service extraction.
-- **Web client:** Next.js 16/React 19/TypeScript, with explicit API contracts and server/client boundaries. Do not depend on hidden ORM state or server implementation details in frontend components.
-- **Concurrency:** Prefer straightforward imperative service code, optionally run on Java virtual threads; connection pools and database locking remain real capacity constraints.
-- **Module verification:** Spring Modulith/architecture tests should enforce module-boundary dependencies once modules are implemented. Database adapter tests against actual PostgreSQL are required for lock/isolation/query semantics; mocks alone do not prove transaction correctness.
+The [technical stack overview](stack/overview.md) maps the selected frameworks and tools to the runtime layers and distinguishes the starter from the intended system. The [persistence design](stack/persistence.md) and [messaging design](stack/messaging.md) own the corresponding technology-specific contracts; this document owns the module boundaries and application interaction model.
 
-These are target architectural conventions, not a claim that Spring Modulith, PostgreSQL, event publication, or the transaction ports have already been installed. Consult [development setup](development.md) for the starter's actual dependencies.
+Backend services use Spring constructor injection and are normally stateless singletons. Use explicit `@Bean` composition where implementation selection or lifetime matters rather than putting framework registration rules in the core. Spring-managed transactions implement the application's transaction port; database and event adapters participate without managing independent commits. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
+
+Prefer straightforward imperative Java operations; virtual threads are an option, not a replacement for database connection limits or locking. Once modules are implemented, architectural tests should verify allowed module dependencies and PostgreSQL integration tests should verify the real persistence and concurrency semantics. These are target conventions, not a claim that the starter already implements them.
 
 ## Architecture checks
 

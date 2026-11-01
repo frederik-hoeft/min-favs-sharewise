@@ -10,6 +10,7 @@ The repository is an **early implementation baseline**, not a finished product. 
 | --- | --- |
 | `src/backend/sharewise/` | Java 25 / Spring Boot 4.1 Maven starter |
 | `src/frontend/` | Next.js 16.4 / React 19 / TypeScript frontend |
+| `docs/stack/overview.md` | **Start here:** technical architecture, technology map and links to detailed stack decisions |
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
 | `docs/architecture.md` | Component-level hexagonal/modulith architecture and service conventions |
 | `docs/stack/persistence.md` | Preliminary database-first persistence and transaction design |
@@ -48,4 +49,4 @@ For setup, builds and tests, consult the [development guide](docs/development.md
 
 ShareWise starts as a modular monolith with five bounded contexts: **User & Identity**, **Group**, **Financial**, **File**, and **Notification Management**. The design anticipates independently deployed services, with published module APIs, durable integration events, and independent data ownership. Finance uses its own strongly consistent group-scoped transaction boundary and immutable revision history.
 
-Read [architecture](docs/architecture.md) and [domain model](docs/data-model-design.md) before implementing business features. Coding agents should also read [AGENTS.md](AGENTS.md); its associated [engineering-quality skill](.agents/skills/engineering-quality/SKILL.md) provides reusable architectural and engineering-quality guidance.
+Start with the [technical stack overview](docs/stack/overview.md) to see where the technologies fit. Read [architecture](docs/architecture.md) and [domain model](docs/data-model-design.md) before implementing business features. Coding agents should also read [AGENTS.md](AGENTS.md); its associated [engineering-quality skill](.agents/skills/engineering-quality/SKILL.md) provides reusable architectural and engineering-quality guidance.
