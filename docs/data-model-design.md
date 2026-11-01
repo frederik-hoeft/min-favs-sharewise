@@ -83,7 +83,7 @@ A positive balance indicates a member is owed money; a negative balance indicate
 - **Settlement creation, correction or removal:** exactly one Settlement reference; no Expense reference.
 - **FinancialGroup lifecycle transition:** neither reference.
 
-These are conditional, mutually exclusive invariants: a change must never reference both entities or omit the required entity for its operation kind. The eventual persistence adapter must enforce the constraint atomically (for example through a database `CHECK` constraint alongside typed operation-kind values), rather than relying solely on callers to construct valid records. Each logical Expense/Settlement is referenced by `1..*` change records. Each change has exactly one relevant operation kind and actor/timestamp metadata. The ledger is ordered **within one FinancialGroup**, not globally across all bounded contexts.
+These are conditional, mutually exclusive invariants: a change must never reference both entities or omit the required entity for its operation kind. The persistence adapter enforces this constraint atomically, for example with a database `CHECK` constraint alongside typed operation-kind values. Each logical Expense/Settlement is referenced by `1..*` change records. Each change has exactly one relevant operation kind and actor/timestamp metadata. The ledger is ordered **within one FinancialGroup**, not globally across all bounded contexts.
 
 An individual Expense or Settlement revision identifies a historical state of **that logical record**. A separate `FinancialGroup.currentRevision` identifies a position in the group's **total financial change sequence**. A logical entity's ID remains stable across revisions. The ER sketch's physical row ID + `identityKey` pair is a possible SQL representation, not part of that logical identity model.
 
@@ -113,13 +113,13 @@ A point-in-time view at group revision 4 shows A v2, B v1, settlement S v1, and 
 
 ### Attachments and historical scope
 
-ExpenseAttachment associates an expense with an opaque File ID; File Management owns content and file access. Earlier ER sketches allowed attachment-only changes without their own financial journal entries, so not every historical attachment set would be reconstructable. **Whether attachment-only operations must create an Expense revision remains open**; do not claim point-in-time attachment reconstruction until that contract is decided. Historical file access may additionally depend on file retention and ACL lifecycle. A file can be referenced by multiple historical attachment revisions; do not constrain File-to-Attachment references to one physical association.
+ExpenseAttachment associates an expense with an opaque File ID; File Management owns content and file access. Earlier ER sketches allowed attachment-only changes without their own financial journal entries, so not every historical attachment set would be reconstructable. **Whether attachment-only operations create an Expense revision remains open**. Point-in-time attachment reconstruction therefore has no established guarantee. Historical file access may additionally depend on file retention and ACL lifecycle. A file may be referenced by multiple historical attachment revisions, so its references are not limited to one physical attachment association.
 
 ## Notification and File models
 
-Notification has separate `Recipient`, `Notification`, and `Template` aggregate roots. Recipient owns DeliveryChannels, Notification owns VariableBindings and DeliveryAttempts, and Template owns Variables. A VariableBinding references the template's variable ID; a delivery attempt references a channel owned by the notification recipient. Every event-driven notification needs an idempotency policy under the [messaging architecture](stack/messaging.md); changing templates/channels must not silently rewrite recorded delivery history. Published event names should be versionable integration contracts rather than a global enum shared between contexts.
+Notification has separate `Recipient`, `Notification`, and `Template` aggregate roots. Recipient owns DeliveryChannels, Notification owns VariableBindings and DeliveryAttempts, and Template owns Variables. A VariableBinding references the template's variable ID; a delivery attempt references a channel owned by the notification recipient. Event-driven notifications follow the [messaging architecture](stack/messaging.md) for idempotent processing. Changes to templates and channels preserve recorded delivery history. Published event names are versioned integration contracts owned by their producers.
 
-File Management owns File and FileAccessPolicy. In the modulith it can use published Group/Finance authorization capabilities for immediate resource-access decisions. The [security architecture](stack/security.md) defines short-lived domain attestations as a common authorization mechanism; a [generic claim-based file ACL](scoped-authorization-attestations-proposal.md) remains optional. Group/Finance association with files does not confer access merely because a caller supplies a file or group ID.
+File Management owns File and FileAccessPolicy. In the modulith it can use published Group/Finance authorization capabilities for immediate resource-access decisions. The [security architecture](stack/security.md) defines short-lived domain attestations as a common authorization mechanism; a [generic claim-based file ACL](file-management-acl-proposal.md) remains optional. Group/Finance association with files does not confer access merely because a caller supplies a file or group ID.
 
 ## Open decisions
 
@@ -134,6 +134,6 @@ These points remain intentionally unresolved and require business clarification 
 | **Attachment history** | Whether attachment-only edits must be revisioned/journaled for exact point-in-time reconstruction. |
 | **Deletion and retention** | Hard group deletion behavior versus read-only business archival and history retention. |
 | **Notification delivery** | Channel snapshots, template/version retention, idempotency scope and privacy rules. |
-| **Distributed authorization** | Revocation/staleness guarantees and whether extra scoped attestations are worth the cost. |
+| **Distributed authorization** | Whether any operations need stricter freshness than short-lived attestations provide, or additional file-specific grants beyond the common trust model. |
 
-Keep these open questions visible; don't turn a convenient physical schema assumption into a business rule. Detailed infrastructure structure is in [architecture](architecture.md), and the actual installed toolchains are in [development](development.md).
+These questions remain open until their owning domain contracts are established; physical-schema convenience does not define business rules. Detailed infrastructure structure is in [architecture](architecture.md), and the actual installed toolchains are in [development](development.md).

@@ -4,7 +4,7 @@
 
 ## Problem and motivation
 
-File Management stores uploaded documents, such as expense receipts. Access to a file may depend on membership or permissions owned by Group Management, or on the visibility of an expense owned by Finance. File Management should enforce access without importing those domain models, replicating their authorization tables or trusting a client-supplied `groupId` as proof of membership.
+File Management stores uploaded documents, such as expense receipts. Access to a file may depend on membership or permissions owned by Group Management, or on the visibility of an expense owned by Finance. File Management's authorization boundary evaluates access using verified authority claims; it does not import domain entity graphs, replicate authorization tables or trust a client-supplied `groupId` as membership proof.
 
 The proposed solution is a **generic file ACL** evaluated against verified, issuer-qualified claims. A domain authority checks its own current rules and issues a short-lived attestation; File Management validates the attestation under the common [security trust model](stack/security.md) and matches its claims to a file's stored access rules. The domain authority decides *who qualifies*; File Management decides *which files a qualifying claim can access*.
 
@@ -87,7 +87,7 @@ In this proposal, **any matching rule grants the operation (OR)**. Otherwise acc
 | READ | IAM | `sub` | NULL | Any authenticated user can read the file (public access, e.g., for profile pictures). |
 | READ | Financial Management | `file_id` | `file-789` | Any user with a valid attestation by Financial Management for this specific file can read it (could easily be extended to share links) |
 
-A file has an explicit owner, but ACL administration must still require an authorized operation. Ownership does not allow a caller to assign arbitrary group or expense relationships.
+Each file has an explicit owner, and ACL administration requires an authorized operation. Ownership does not allow a caller to assign arbitrary group or expense relationships.
 
 The ACL stores the **trusted issuer and exact expected value**. A JWT carrying `group_id=some-other-group` must not match. Nor should the mere existence of *any* `group_id` claim authorize access to *every* group file.
 
@@ -97,7 +97,7 @@ Not every expense attachment must be readable by every group member. If visibili
 
 A group-scoped attestation fits group-wide sharing; file-scoped attestations can express more restrictive expense or attachment visibility.
 
-The authority that creates or updates ACL rules must validate the underlying resource association. Otherwise, an uploader could make a private file group-readable just by supplying a chosen `groupId`. Files may therefore start uploader-only, then gain a broader ACL through an authorized Group/Finance operation. Removing an attachment, deleting an expense, or archiving a group needs an explicit retention and access policy.
+The authority creating or updating an ACL validates the underlying resource association. Otherwise, an uploader could make a private file group-readable just by supplying a chosen `groupId`. Files may therefore start uploader-only, then gain a broader ACL through an authorized Group/Finance operation. Removing an attachment, deleting an expense, or archiving a group needs an explicit retention and access policy.
 
 ## Authorization and trust boundaries
 
@@ -107,7 +107,7 @@ Token validation, issuer-scoped claims, session binding and revocation follow th
 2. **Protect ACL changes:** Only authorized flows may create, broaden or revoke file access rules. A receipt upload must not grant the uploader permission to mark it as belonging to another group or expense.
 3. **Define file lifecycle:** Detaching a receipt, changing expense visibility or archiving a group must have an explicit effect on access rights, retention and cleanup.
 
-The File Management authorization port should express the decision (*may this authenticated principal perform operation X on file Y?*) independently of the JWT header or transport. A synchronous published Java authorization capability remains a valid alternative inside the modulith. The generic claim-based ACL is useful only if it reduces domain coupling enough to justify its own schema and administration rules.
+The File Management authorization port expresses the decision (*may this authenticated principal perform operation X on file Y?*) independently of the JWT header or transport. A synchronous published Java authorization capability remains a valid alternative inside the modulith. The generic claim-based ACL is useful only if it reduces domain coupling enough to justify its own schema and administration rules.
 
 ## Trade-offs
 

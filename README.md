@@ -17,7 +17,7 @@ The repository is an **early implementation baseline**, not a finished product. 
 | `docs/stack/messaging.md` | Preliminary cross-context event delivery, idempotency and recovery design |
 | `docs/stack/security.md` | Preliminary IAM, JWT/refresh, scoped attestation and authorization design |
 | `docs/development.md` | Local development, build and validation guidance |
-| `docs/scoped-authorization-attestations-proposal.md` | Optional **unaccepted generic file ACL** design building on the proposed domain-attestation trust model |
+| `docs/file-management-acl-proposal.md` | Optional **unaccepted generic file ACL** design building on the proposed domain-attestation trust model |
 | `.agents/skills/` | Repository-local agent skills |
 
 The diagrams under `docs/assets/` are design material; the ER-style persistence diagram may show physical revision IDs and storage conventions that are intentionally absent from the conceptual domain model.

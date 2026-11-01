@@ -37,7 +37,7 @@ For changes that may propagate asynchronously, a producer commits its business d
 | Edge / deployment | **Nginx** serves static assets, terminates TLS and proxies `/api/*` to the backend or an API gateway | **Planned** |
 | External integrations | Adapter-owned file storage, notification delivery and other external services; no provider or storage technology is selected by this overview | **To be selected** per integration |
 
-The stack is **not an application-wide shared data model**. Backend modules own their tables, public contracts, queries and business transactions even while using one PostgreSQL deployment. Cross-module state propagation uses versioned integration facts where eventual consistency is appropriate; immediate authoritative decisions may use deliberately narrow published interfaces. These module-boundary rules are described in the [application architecture](../architecture.md), and business consistency requirements are owned by the [domain model](../data-model-design.md).
+Backend modules retain ownership of their tables, public contracts, queries and business transactions within the shared PostgreSQL deployment. Cross-module state propagation uses versioned integration facts where eventual consistency is appropriate; immediate authoritative decisions may use deliberately narrow published interfaces. These module-boundary rules are described in the [application architecture](../architecture.md), and business consistency requirements are owned by the [domain model](../data-model-design.md).
 
 ## Development, verification and deployment
 
@@ -47,7 +47,7 @@ Development tooling includes **Dockerfiles**, a **VS Code Dev Container**, and *
 
 ## Detailed architecture and decisions
 
-This overview is the starting map, not a second specification. Follow the authoritative documents for the details behind each layer:
+The detailed architecture and technology decisions are documented in:
 
 - [Application architecture](../architecture.md): modular monolith, dependency direction, published APIs, application services and transaction boundaries.
 - [Persistence architecture](persistence.md) and [alternatives](persistence-alternatives.md): PostgreSQL, Flyway, jOOQ/JPA, schema generation, coordinated transactions and database tests.

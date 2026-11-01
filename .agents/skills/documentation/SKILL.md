@@ -136,7 +136,9 @@ Different documents serve different purposes. Keep their abstraction levels dist
 
 ### Architecture documentation
 
-Architecture documentation should explain the system model.
+Architecture documentation should explain the system model in **descriptive, responsibility-focused prose**. State what each component does, what its interfaces guarantee, and which conditions must hold. Express mandatory behavior as an invariant or explicit obligation of the owning component, rather than instructions to an implementer. For example, prefer "Refresh-token rotation is atomic; concurrent reuse invalidates the token family" over "Rotate refresh tokens atomically and reject reuse."
+
+Imperatives are appropriate for procedural guides, implementation checklists, ordered workflows and actionable backlog tasks, where the reader is expected to perform the steps. They are usually out of place in conceptual or architectural explanations. A security-critical prohibition can still be stated directly as a constraint, for example "Only IAM issues primary identity tokens."
 
 Focus on:
 
@@ -320,11 +322,33 @@ Use precise terminology consistently. If the implementation has a meaningful dom
 
 Explain why a constraint matters when the reason is architecturally significant, but avoid speculative rationale that is not supported by the system or its documented design.
 
-Keep prose direct. Prefer concrete statements about responsibilities and guarantees over promotional language or vague descriptions.
+Keep prose direct. Prefer concrete statements about responsibilities and guarantees over promotional language or vague descriptions. Avoid rhetorical contrasts ("X does Y, not Z", "not merely", "rather than", etc.) when the negative half adds no meaningful constraint. Describe the positive contract directly. Retain explicit exclusions when they prevent a real misinterpretation, such as distinguishing an event-delivery registry from a business journal, or distinguishing authentication from authorization. Do not repeat the same contrast across adjacent sections.
 
 ## Common failure modes
 
 Avoid these patterns:
+
+### Instructional architecture prose
+
+Bad:
+
+> Use framework-provided password encoders. Avoid custom hashing.
+
+Better:
+
+> Credential verification uses Spring Security's `PasswordEncoder`; the IAM adapter selects and upgrades password-hash parameters.
+
+### Empty contrast prose
+
+Bad:
+
+> The publication registry tracks delivery, not business history. The registry is not an event store.
+
+Better:
+
+> The registry records pending deliveries. Finance's ChangeRecord journal owns business-visible financial history.
+
+The original contrast is worth keeping if it appears once where readers could genuinely confuse the responsibilities.
 
 ### Changelog documentation
 
