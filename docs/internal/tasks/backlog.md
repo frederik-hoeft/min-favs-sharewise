@@ -63,6 +63,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows with access-token and attestation renewal, bounded `401` retry, `403` denial handling, and no unauthorized data exposure; prevent parallel refresh rotation races.
 - [ ] **P2.4:** Establish versioned membership event contracts and durable Modulith publication when the first cross-context consumer is registered. Verify atomic producer commit/rollback and stable event identities; validate consumer operation transactions, idempotent recovery and registry completion against real PostgreSQL and the selected framework version.
 - [ ] **P2.5:** Introduce shared JWT profile/trust verification and typed issuer-qualified claims; issue short-lived, IAM-session-bound Group Management attestations from authoritative role state. Test wrong issuer/audience/token type, cross-group privilege confusion, role downgrade, session mismatch and key rotation. Keep domain authority policy out of the security library.
+- [ ] **P2.6:** Define optional versioned IAM-session and domain-permission revocation events for earlier service-local rejection. When a consumer needs this fast path, implement an idempotent cache with expiry/reconciliation, test lost, duplicated and out-of-order events plus permission restoration, and verify authorization remains correct without the cache.
 
 **Gate:** An authenticated user can create a group, invite another user and manage membership end to end; token renewal, authority-scoped authorization, unauthorized actions, races and final-administrator/member edge cases are covered by tests.
 
@@ -123,7 +124,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Depends on:** A working modulith MVP, though CI/build improvements may land earlier.
 
-- [ ] **P8.1:** Replace the starter frontend proxy with a verified Next.js static export; deploy assets through Nginx with TLS termination and same-origin `/api/*` proxying. Finish repeatable backend/frontend container builds and local Compose integration with PostgreSQL; document credentials, cookie/proxy headers and health probes.
+- [ ] **P8.1:** Replace the starter frontend proxy with a verified Next.js static export; deploy assets through Nginx with TLS termination and same-origin `/api/*` proxying. If introspection is deployed, deny its public route and prevent direct public backend bypass. Finish repeatable backend/frontend container builds and local Compose integration with PostgreSQL; document credentials, cookie/proxy headers and health probes.
 - [ ] **P8.2:** Harden GitLab CI build/test/lint, database integration execution, image creation and automated deployment to the course target environment, with secrets kept out of the repository.
 - [ ] **P8.3:** Add structured logs, actionable errors, basic metrics/traces, backup/recovery considerations and smoke tests for primary user journeys.
 
@@ -134,7 +135,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 **Depends on:** Observable modulith behavior and a concrete change driver; not automatic because a lecture reaches the microservices topic.
 
 - [ ] **P9.1:** Record load, ownership and operational reasons **for or against** extracting specific contexts. Identify contracts, data ownership and consistency transitions before selecting a service.
-- [ ] **P9.2:** Prepare one justified bounded context for extraction: isolate its data and migrations, preserve its published API/event contracts, and replace in-process adapters with remote integration. Configure independent token validation, issuer trust and audiences; introduce authenticated authority introspection only where authorization-freshness requirements justify it. Define a cutover and rollback protocol, keeping the local consumer active until the replacement delivery path is verified.
+- [ ] **P9.2:** Prepare one justified bounded context for extraction: isolate its data and migrations, preserve its published API/event contracts, and replace in-process adapters with remote integration. Configure independent token validation, issuer trust and audiences. If authority introspection is justified, restrict its network exposure and authenticate/authorize calling services. Define cutover and rollback, keeping the local consumer active until the replacement delivery path is verified.
 - [ ] **P9.3:** Establish broker publication/subscription through the existing Modulith integration contracts, selecting registry-backed externalization or a supported outbox integration where appropriate. Validate durable producer intent, broker confirmation, retry, ordering and duplicate-safe cutover before retiring local delivery; retain custom outbox infrastructure only as a justified alternative.
 - [ ] **P9.4:** Demonstrate resilience under network faults and delayed/duplicate events; refine tracing, dashboards and deployment runbooks for the distributed system.
 
