@@ -119,7 +119,7 @@ ExpenseAttachment associates an expense with an opaque File ID; File Management 
 
 Notification has separate `Recipient`, `Notification`, and `Template` aggregate roots. Recipient owns DeliveryChannels, Notification owns VariableBindings and DeliveryAttempts, and Template owns Variables. A VariableBinding references the template's variable ID; a delivery attempt references a channel owned by the notification recipient. Every event-driven notification needs an idempotency policy under the [messaging architecture](stack/messaging.md); changing templates/channels must not silently rewrite recorded delivery history. Published event names should be versionable integration contracts rather than a global enum shared between contexts.
 
-File Management owns File and FileAccessPolicy. Generic ACLs are a possible way to avoid embedding group semantics in the file service. For the initial modulith, use an authorized published Group/Finance capability where needed. Additional short-lived scoped attestations are an **unadopted design alternative**, documented in [Scoped Authorization Attestations](scoped-authorization-attestations-proposal.md). Group/Finance association with files does not confer access by merely supplying a file or group ID.
+File Management owns File and FileAccessPolicy. In the modulith it can use published Group/Finance authorization capabilities for immediate resource-access decisions. The [security architecture](stack/security.md) defines short-lived domain attestations as a common authorization mechanism; a [generic claim-based file ACL](scoped-authorization-attestations-proposal.md) remains optional. Group/Finance association with files does not confer access merely because a caller supplies a file or group ID.
 
 ## Open decisions
 
