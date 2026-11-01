@@ -36,7 +36,7 @@ Typical names and responsibilities:
 | Read projection | `ExpenseSummary`, `GroupBalances` | Consumer-specific, minimal, immutable data |
 | Application service | `ExpenseModificationService`, `BalanceQueryService` | Workflow, authorization, result mapping and commit decision |
 | Outbound port | `ExpenseCorrectionPort`, `BalanceReadPort` | Data capabilities required by that workflow |
-| Adapter | `JdbcExpenseAdapter` | Efficient implementation of port semantics |
+| Adapter | `ExpensePersistenceAdapter` | Efficient implementation of port semantics |
 
 Avoid generic repositories that expose `findAll()/save()` without describing the actual operation. A read port may perform an `EXISTS`, joined validation, filtered pagination, aggregation, window-function history reconstruction, or a conditional SQL mutation **inside the database**. Domain invariants and the meaning of the port remain application-owned. Keep physical queries and ORM entities internal to the adapter. Do not materialize whole aggregates just to evaluate SQL-resident facts; do not duplicate domain decisions independently inside adapters. Verify database-side invariant implementations with integration tests.
 
@@ -77,9 +77,9 @@ All financial mutations in one group must follow the same ordering and locking p
 
 ## Integration events and extraction
 
-Publish stable, **versioned integration facts** rather than private ORM/domain objects (`MemberLeftV1`, `ExpenseCorrectedV1`, etc.). Include event identity, context/entity identity, appropriate group-local version/sequence and occurrence metadata. Consumers are idempotent and tolerate duplicated, delayed or out-of-order deliveries. Producer state and durable event-publication intent are committed atomically, then delivered after commit. Failed notification delivery does not roll back Finance.
+The [preliminary messaging architecture](stack/messaging.md) uses versioned integration facts and Spring Modulith's persistent, JDBC-backed Event Publication Registry for durable asynchronous cross-context propagation. A producer records publication intent atomically with its state change; consumers process independently and idempotently, using a transactional inbox or a proven business-data invariant. Delivery may be duplicated, delayed or out of order; unsuccessful listeners remain recoverable. Failed notifications do not roll back Finance.
 
-Spring Modulith's event-publication registry is a candidate for the initial in-process architecture; an outbox and message broker can replace delivery infrastructure upon service extraction. **Finance's ChangeRecord journal is business-visible financial history, not the delivery outbox.** Group Management remains membership authority; Finance maintains an eventually synchronized local FinancialActor representation. Rejoining reactivates the same financial identity. Avoid remote transactions between contexts and avoid coupling one context to another's database, even while both are deployed together.
+**Finance's ChangeRecord journal is business-visible financial history, not the delivery registry or an event store.** Group Management remains membership authority; Finance maintains an eventually synchronized local FinancialActor representation. Rejoining reactivates the same financial identity. An external broker is introduced on justified service extraction without changing context-owned business operations. Avoid remote transactions or cross-context database coupling, even while deployed together.
 
 For File Management, use published authorization capabilities within the modulith initially. The [scoped authorization attestation design](scoped-authorization-attestations-proposal.md) remains an optional, unaccepted distributed alternative rather than an implementation requirement.
 
@@ -88,6 +88,7 @@ For File Management, use published authorization capabilities within the modulit
 - **Backend:** Java 25, Spring Boot 4.1, Spring MVC, Maven (wrapper included); standard constructor injection into stateless singleton services. Select adapters through an explicit composition root (`@Bean` or programmatic registration) where implementation/lifetime choice matters. Do not bake framework registration rules into core classes unnecessarily.
 - **Transactions:** Implement the `Transactions` port using Spring `TransactionTemplate` or equivalent; adapter operations participate in the same physical database transaction. Do not reimplement Spring's connection manager.
 - **Persistence:** The [preliminary persistence design](stack/persistence.md) uses PostgreSQL with Flyway SQL migrations and per-adapter jOOQ or Spring Data JPA/Hibernate. Keep generated schema types and managed entities inside infrastructure; the schema and transaction contracts remain independent of adapter choice.
+- **Messaging:** The [preliminary messaging design](stack/messaging.md) selects Spring Modulith durable application events and consumer-owned idempotency; local listeners use separate transactions and broker externalization is reserved for service extraction.
 - **Web client:** Next.js 16/React 19/TypeScript, with explicit API contracts and server/client boundaries. Do not depend on hidden ORM state or server implementation details in frontend components.
 - **Concurrency:** Prefer straightforward imperative service code, optionally run on Java virtual threads; connection pools and database locking remain real capacity constraints.
 - **Module verification:** Spring Modulith/architecture tests should enforce module-boundary dependencies once modules are implemented. Database adapter tests against actual PostgreSQL are required for lock/isolation/query semantics; mocks alone do not prove transaction correctness.
