@@ -17,6 +17,7 @@ The repository is an **early implementation baseline**, not a finished product. 
 | `docs/stack/messaging.md` | Preliminary cross-context event delivery, idempotency and recovery design |
 | `docs/stack/security.md` | Preliminary IAM, JWT/refresh, scoped attestation and authorization design |
 | `docs/development.md` | Local development, build and validation guidance |
+| `docs/development/ai-development-workflow.md` | AI-assisted task planning, requirements, test design, iterative QA and human review |
 | `docs/file-management-acl-proposal.md` | Optional **unaccepted generic file ACL** design building on the proposed domain-attestation trust model |
 | `.agents/skills/` | Repository-local agent skills |
 
