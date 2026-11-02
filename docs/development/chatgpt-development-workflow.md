@@ -60,7 +60,7 @@ and https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-of
 to prepare an offline local workspace for the attached source archive.
 Read the repository's AGENTS.md, documentation and development guidelines,
 then validate the unchanged baseline before making changes.
-Follow docs/development/ai-development-workflow.md for requirement specification,
+Follow docs/development/ai-development-workflow.md for architectural specification,
 test design, phased implementation and human review gates.
 
 [Describe this task, constraints and requested deliverables.]
@@ -68,11 +68,11 @@ test design, phased implementation and human review gates.
 
 The [local-development skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/local-development.skill) covers baseline reconstruction, task branches and incremental patches. The offline skill handles toolchain extraction, cached dependency resolution and build verification. The agent reports the baseline build/test results before changing the source.
 
-The [general development workflow](ai-development-workflow.md) governs task discussion, `requirements.md`, `plan.md`, implementation and acceptance. ChatGPT conversations are the discussion and delivery medium; the Git branch and approved documentation remain the durable task record.
+The [general development workflow](ai-development-workflow.md) governs task discussion, `specification.md`, `plan.md`, implementation and acceptance. ChatGPT conversations are the discussion and delivery medium; the Git branch and approved documentation remain the durable task record.
 
 ## 5. Apply and review ChatGPT patches
 
-The task agent exports a downloadable `.patch` file against the agreed baseline or the last accepted state. Download the patch and review its contents before committing. [Fork](https://git-fork.com/) supports **Repository → Apply Patch…**, diff review and selective staging.
+The task agent exports a downloadable `.patch` file against the agreed baseline or the last accepted state. Download the patch and review its contents while staging the changes, before committing. [Fork](https://git-fork.com/) supports **Repository → Apply Patch…**, diff review and selective staging.
 
 ![Fork's Repository menu contains Apply Patch.](assets/fork-apply-patch.png)
 
