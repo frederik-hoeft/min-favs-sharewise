@@ -36,7 +36,7 @@ Typical names and responsibilities:
 | Read projection | `ExpenseSummary`, `GroupBalances` | Consumer-specific, minimal, immutable data |
 | Application service | `ExpenseModificationService`, `BalanceQueryService` | Workflow, authorization, result mapping and commit decision |
 | Outbound port | `ExpenseCorrectionPort`, `BalanceReadPort` | Data capabilities required by that workflow |
-| Adapter | `JdbcExpenseAdapter` | Efficient implementation of port semantics |
+| Adapter | `ExpensePersistenceAdapter` | Efficient implementation of port semantics |
 
 Avoid generic repositories that expose `findAll()/save()` without describing the actual operation. A read port may perform an `EXISTS`, joined validation, filtered pagination, aggregation, window-function history reconstruction, or a conditional SQL mutation **inside the database**. Domain invariants and the meaning of the port remain application-owned. Keep physical queries and ORM entities internal to the adapter. Do not materialize whole aggregates just to evaluate SQL-resident facts; do not duplicate domain decisions independently inside adapters. Verify database-side invariant implementations with integration tests.
 
@@ -44,7 +44,7 @@ Command and query paths need not be symmetrical. Queries generally return direct
 
 ## Transaction-aware ports
 
-The application core depends on a **technology-agnostic opaque `TransactionSession`**. It is created for one business operation and explicitly passed to participating outbound data operations. The session is not a JDBC connection, JPA `EntityManager`, DI request scope, or globally shareable ambient state. Its infrastructure implementation validates lifetime and resolves a common underlying transaction for all participating adapters.
+The application core depends on a **technology-agnostic opaque `TransactionSession`**. An application operation establishes its transaction through the `Transactions` port and passes the resulting session explicitly to participating outbound data operations. The session is not a JDBC connection, JPA `EntityManager`, DI request scope, or globally shareable ambient state. Its infrastructure implementation validates lifetime and resolves a common underlying transaction for all participating adapters. The transaction is bound to the operation invocation, independently of DI bean lifetime or HTTP request scope; REST, event and scheduled-job adapters invoke the same application operations.
 
 Illustrative interface shapes (not existing source APIs):
 
@@ -62,9 +62,9 @@ interface ExpenseCorrectionPort {
 }
 ```
 
-A `TransactionOutcome<T>` carries the operation result and a deferred decision such as **commit**, **rollback**, or **abstain**. The enclosing business operation alone authorizes final commit; subordinate writes do not. A read-only or no-op participant may abstain. Any participant can mark a session **rollback-only**, and later success cannot undo that requirement. Abandoned or exceptional operations roll back; a reported successful commit must mean the database has actually committed. Transaction lifetime is independent of HTTP request lifetime; do not share a JDBC/JPA session across concurrent threads.
+A `TransactionOutcome<T>` carries the operation result and a separate, deferred decision such as **commit**, **rollback**, or **abstain**. The enclosing business operation alone authorizes final commit; subordinate data-access results do not imply a transaction decision. A read-only or no-op participant may abstain. Any participant can mark a session **rollback-only**, and later success cannot undo that requirement. Abandoned or exceptional operations roll back; `Transactions.execute(...)` reports a successful commit only after the physical database commit succeeds. An unrelated ambient Spring transaction cannot silently defer that commit. The transaction session is confined to its operation and is not shared across concurrent threads.
 
-Expected outcomes (not found, stale revision, invalid participant) are **typed results**, not exceptions for control flow. An adapter may map *known* database constraints to typed failures, but errors that leave a transaction or ORM context unusable poison the transaction even if represented as results. Unknown infrastructure failures propagate and roll back. Avoid parsing exception messages as the primary means of classifying database failures.
+Expected outcomes (not found, stale revision, invalid participant) are **typed results**, independent of the enclosing commit decision. An operation may commit after an expected unsuccessful result if its transaction state remains valid, or roll back despite a nominally successful data-access result. An adapter may map *known* database constraints to typed failures, but errors that leave a transaction or ORM context unusable poison the transaction even if represented as results. Unknown infrastructure failures propagate and roll back. Database error classification does not rely on parsing exception messages.
 
 Finance applies an additional business protocol **inside** this generic transaction:
 
@@ -77,22 +77,19 @@ All financial mutations in one group must follow the same ordering and locking p
 
 ## Integration events and extraction
 
-Publish stable, **versioned integration facts** rather than private ORM/domain objects (`MemberLeftV1`, `ExpenseCorrectedV1`, etc.). Include event identity, context/entity identity, appropriate group-local version/sequence and occurrence metadata. Consumers are idempotent and tolerate duplicated, delayed or out-of-order deliveries. Producer state and durable event-publication intent are committed atomically, then delivered after commit. Failed notification delivery does not roll back Finance.
+The [preliminary messaging architecture](stack/messaging.md) uses versioned integration facts and Spring Modulith's persistent, JDBC-backed Event Publication Registry for durable asynchronous cross-context propagation. A producer records publication intent atomically with its state change; consumers process independently and idempotently, using a transactional inbox or a proven business-data invariant. Delivery may be duplicated, delayed or out of order; unsuccessful listeners remain recoverable. Failed notifications do not roll back Finance.
 
-Spring Modulith's event-publication registry is a candidate for the initial in-process architecture; an outbox and message broker can replace delivery infrastructure upon service extraction. **Finance's ChangeRecord journal is business-visible financial history, not the delivery outbox.** Group Management remains membership authority; Finance maintains an eventually synchronized local FinancialActor representation. Rejoining reactivates the same financial identity. Avoid remote transactions between contexts and avoid coupling one context to another's database, even while both are deployed together.
+**Finance's ChangeRecord journal is business-visible financial history, not the delivery registry or an event store.** Group Management remains membership authority; Finance maintains an eventually synchronized local FinancialActor representation. Rejoining reactivates the same financial identity. An external broker is introduced on justified service extraction without changing context-owned business operations. Avoid remote transactions or cross-context database coupling, even while deployed together.
 
 For File Management, use published authorization capabilities within the modulith initially. The [scoped authorization attestation design](scoped-authorization-attestations-proposal.md) remains an optional, unaccepted distributed alternative rather than an implementation requirement.
 
-## Java/TypeScript ecosystem mapping
+## Infrastructure integration
 
-- **Backend:** Java 25, Spring Boot 4.1, Spring MVC, Maven (wrapper included); standard constructor injection into stateless singleton services. Select adapters through an explicit composition root (`@Bean` or programmatic registration) where implementation/lifetime choice matters. Do not bake framework registration rules into core classes unnecessarily.
-- **Transactions:** Implement the `Transactions` port using Spring `TransactionTemplate` or equivalent; adapter operations participate in the same physical database transaction. Do not reimplement Spring's connection manager.
-- **Persistence:** The [preliminary persistence design](stack/persistence.md) uses PostgreSQL with Flyway SQL migrations and per-adapter jOOQ or Spring Data JPA/Hibernate. Keep generated schema types and managed entities inside infrastructure; the schema and transaction contracts remain independent of adapter choice.
-- **Web client:** Next.js 16/React 19/TypeScript, with explicit API contracts and server/client boundaries. Do not depend on hidden ORM state or server implementation details in frontend components.
-- **Concurrency:** Prefer straightforward imperative service code, optionally run on Java virtual threads; connection pools and database locking remain real capacity constraints.
-- **Module verification:** Spring Modulith/architecture tests should enforce module-boundary dependencies once modules are implemented. Database adapter tests against actual PostgreSQL are required for lock/isolation/query semantics; mocks alone do not prove transaction correctness.
+The [technical stack overview](stack/overview.md) maps the selected frameworks and tools to the runtime layers and distinguishes the starter from the intended system. The [persistence design](stack/persistence.md) and [messaging design](stack/messaging.md) own the corresponding technology-specific contracts; this document owns the module boundaries and application interaction model.
 
-These are target architectural conventions, not a claim that Spring Modulith, PostgreSQL, event publication, or the transaction ports have already been installed. Consult [development setup](development.md) for the starter's actual dependencies.
+Backend services use Spring constructor injection and are normally stateless singletons. Explicit `@Bean` composition selects implementations and lifetimes where needed. The infrastructure implementation of `Transactions` uses Spring transaction management (typically `TransactionTemplate`) to create and finalize each application-operation transaction. REST controllers, event listeners, scheduled-job adapters and application core services do not require `@Transactional` annotations. Transaction-aware data adapters participate through the explicit session, and publication records participate in the same Spring-managed transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
+
+Prefer straightforward imperative Java operations; virtual threads are an option, not a replacement for database connection limits or locking. Once modules are implemented, architectural tests should verify allowed module dependencies and PostgreSQL integration tests should verify the real persistence and concurrency semantics. These are target conventions, not a claim that the starter already implements them.
 
 ## Architecture checks
 

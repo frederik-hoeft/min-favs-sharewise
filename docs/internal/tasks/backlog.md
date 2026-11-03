@@ -23,7 +23,7 @@ The existing [architecture](../../architecture.md) and [domain model](../../data
 | Authorization | Spring Security with carefully chosen authentication/session strategy | Decide JWT access/refresh lifecycle, browser cookie vs header/BFF boundaries, CSRF and revocation before implementation |
 | Transactions | Spring `TransactionTemplate` behind the documented `Transactions` port | Explicit operation-local session/outcome; database decides atomic commit, not an HTTP request scope |
 | Persistence | [Preliminary design](../../stack/persistence.md): PostgreSQL + Flyway; jOOQ or Spring Data JPA/Hibernate per use-case-oriented adapter | Validate schema generation, migrations, transaction interoperability and context-owned tables; no cross-context FK/joins |
-| Event delivery | Spring application events, optionally Modulith publication registry | Durable publication on commit; ChangeRecord is **not** an outbox; broker/externalization later |
+| Event delivery | [Preliminary messaging design](../../stack/messaging.md): Spring Modulith JDBC publication registry, asynchronous listeners and consumer-owned idempotency | Producer publication committed atomically; retry/recovery and retention verified; broker externalization on extraction |
 | Tests | JUnit + Spring testing, database integration tests (e.g. Testcontainers) | Integration runtime needs PostgreSQL/container provisioning beyond the supplied offline cache |
 | Frontend | Existing Next.js 16 App Router, React 19, TypeScript, npm | Deliberately choose server/client components and whether Next routes act as a BFF; inspect installed Next docs before editing |
 | Deploy/operate | Existing Dockerfiles and GitLab CI, later Compose/CD and metrics/tracing | Prefer reproducible deployables; extraction must be justified by measurable change drivers |
@@ -39,6 +39,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P0.3 - Database contract:** review and validate the [preliminary persistence decision](../../stack/persistence.md), including schema ownership, UUID/key policy, migration/code-generation workflow, transaction interoperability, integration-test setup and database history representation.
 - [ ] **P0.4 - Domain language and user journeys:** check group invitation, participation, expense splitting, settlement, closing, reopening and archiving with the domain model; prioritize unresolved business decisions only where they block the next slice (see the [open decisions](../../data-model-design.md#open-decisions)).
 - [ ] **P0.5 - Delivery scope:** define the initial end-to-end demonstrator and explicit omissions. Establish test and API conventions, frontend component/styling conventions, and documentation/review gates.
+- [ ] **P0.6 - Messaging contract review:** review the [preliminary messaging decision](../../stack/messaging.md) and [alternatives](../../stack/messaging-alternatives.md); settle default-inbox exceptions, per-consumer replay/retention requirements and the broker-handoff guarantees to validate at extraction. Keep implementation-specific broker and outbox selection deferred until required.
 
 **Gate:** Approved architecture deltas and task-level requirements for Phase 1, with decisions and deferrals recorded in the appropriate authoritative documents. No new framework is added solely for scaffolding.
 
@@ -60,7 +61,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P2.1:** Identity registration/login/profile and access + refresh lifecycle; protect APIs, verify logout and revocation behavior and reject unauthenticated/unauthorized requests.
 - [ ] **P2.2:** Group creation, membership roles, invitation/acceptance, leave and administrator transfer; enforce the final-member and final-administrator invariants atomically.
 - [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows with actionable failures, stable IDs and no unauthorized data exposure.
-- [ ] **P2.4:** Publish versioned membership facts for downstream contexts with clear ordering and replay policy; choose durable delivery infrastructure only when the first consumer needs it.
+- [ ] **P2.4:** Establish versioned membership event contracts and durable Modulith publication when the first cross-context consumer is registered. Verify atomic producer commit/rollback and stable event identities; validate consumer operation transactions, idempotent recovery and registry completion against real PostgreSQL and the selected framework version.
 
 **Gate:** An authenticated user can create a group, invite another user and manage membership end to end; unauthorized actions, races and final-administrator/member edge cases are covered by tests.
 
@@ -69,11 +70,11 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 **Depends on:** Group contract and transaction foundation.
 
 - [ ] **P3.1:** Define and persist FinancialGroup lifecycle/accounting currency and the minimal FinancialActor view. Group membership remains authoritative; leave and rejoin preserve the same actor identity.
-- [ ] **P3.2:** Implement idempotent membership event consumption with duplicate, delayed and out-of-order handling. Explicitly specify what occurs before replication catches up.
+- [ ] **P3.2:** Initialize the `FinancialActor` projection from existing memberships through a coordinated Flyway data migration when needed. Consume versioned membership events with atomic idempotency, out-of-order handling and reconciliation appropriate to the initial modulith; test leave/rejoin and concurrent duplicate delivery.
 - [ ] **P3.3:** Implement Money, Percentage, split strategies and deterministic allocation rounding as pure, self-contained domain behavior with exhaustive invalid-input tests.
 - [ ] **P3.4:** Establish the group-scoped write serialization and revision allocation primitive, including persistence-level uniqueness and concurrency tests.
 
-**Gate:** Accounting calculations never use floating-point money; split totals conserve value; actor replication is replay-safe; concurrent group-local writes cannot allocate the same logical revision.
+**Gate:** Accounting calculations never use floating-point money; split totals conserve value; Finance initializes existing membership state and remains synchronized through replay-safe events; concurrent group-local writes cannot allocate the same logical revision.
 
 ## Phase 4 - Expenses, history and balances vertical slice
 
@@ -111,7 +112,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Depends on:** Identity/Group events and initial delivery semantics.
 
-- [ ] **P7.1:** Define versioned integration facts and a transactional publication mechanism, with dispatch retries, idempotency and replay-safe consumers.
+- [ ] **P7.1:** Implement notification event consumption and durable delivery/recovery policies on the existing registry, including deduplication, cleanup/retention, dead-letter or operator resolution, and replay-safe consumers. Event contracts and producer publication infrastructure are established with the first subscriber in P2.4.
 - [ ] **P7.2:** Implement notification recipients, templates, channel policy, delivery attempts and auditability; choose a minimal delivery channel for the first end-to-end demonstration.
 - [ ] **P7.3:** Surface notification preferences/status in the frontend where useful; ensure notification failures never invalidate committed Finance operations.
 
@@ -132,11 +133,11 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 **Depends on:** Observable modulith behavior and a concrete change driver; not automatic because a lecture reaches the microservices topic.
 
 - [ ] **P9.1:** Record load, ownership and operational reasons **for or against** extracting specific contexts. Identify contracts, data ownership and consistency transitions before selecting a service.
-- [ ] **P9.2:** Extract one justified bounded context behind its existing public API/event contracts; replace in-process adapters with remote integration, not database sharing or synchronous call chains.
-- [ ] **P9.3:** Introduce broker/outbox externalization and deliberate eventual-consistency workflows as required, with retries, idempotency, ordering, reconciliation and compensating failure paths.
+- [ ] **P9.2:** Prepare one justified context for extraction: isolate its data, establish service-specific migrations, preserve published contracts, and define a migration/cutover and rollback protocol. Keep the local consumer active until a verified replacement delivery path is ready.
+- [ ] **P9.3:** Establish broker publication/subscription through the existing Modulith integration contracts, selecting registry-backed externalization or a supported outbox integration where appropriate. Validate durable producer intent, broker confirmation, retry, ordering and duplicate-safe cutover before retiring local delivery; retain custom outbox infrastructure only as a justified alternative.
 - [ ] **P9.4:** Demonstrate resilience under network faults and delayed/duplicate events; refine tracing, dashboards and deployment runbooks for the distributed system.
 
-**Gate:** Original business invariants remain testable across service boundaries. Failure injection and reconciliation are demonstrated; the extracted context owns its storage and can deploy independently.
+**Gate:** Original business invariants remain testable across service boundaries. A verified broker-backed publication and subscription path exists before the local listener is disabled; outstanding publications are drained or safely transferred, the overlapping paths are duplicate-safe, reconciliation completes and rollback is viable. Broker outages and crashes leave committed changes with recoverable publication intent. The extracted context owns its storage and can deploy independently.
 
 ## Cross-cutting review checks
 
