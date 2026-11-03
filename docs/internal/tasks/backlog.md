@@ -61,7 +61,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P2.1:** Identity registration/login/profile and access + refresh lifecycle; protect APIs, verify logout and revocation behavior and reject unauthenticated/unauthorized requests.
 - [ ] **P2.2:** Group creation, membership roles, invitation/acceptance, leave and administrator transfer; enforce the final-member and final-administrator invariants atomically.
 - [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows with actionable failures, stable IDs and no unauthorized data exposure.
-- [ ] **P2.4:** Establish versioned membership event contracts and durable publication when the first cross-context listener is registered. Verify atomic producer state/publication commit and rollback, stable serialized event identity, and recovery across application upgrades. Validate the listener transaction boundary and registry-completion behavior against the selected Spring Modulith version with real PostgreSQL tests covering rollback-only, deferred constraints, commit failure, completion failure, duplicate delivery and recovery in `DELETE` mode. Specify the authoritative membership snapshot/version contract needed to initialize later consumers.
+- [ ] **P2.4:** Establish versioned membership event contracts and durable Modulith publication when the first cross-context consumer is registered. Verify atomic producer commit/rollback and stable event identities; validate consumer operation transactions, idempotent recovery and registry completion against real PostgreSQL and the selected framework version.
 
 **Gate:** An authenticated user can create a group, invite another user and manage membership end to end; unauthorized actions, races and final-administrator/member edge cases are covered by tests.
 
@@ -70,11 +70,11 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 **Depends on:** Group contract and transaction foundation.
 
 - [ ] **P3.1:** Define and persist FinancialGroup lifecycle/accounting currency and the minimal FinancialActor view. Group membership remains authoritative; leave and rejoin preserve the same actor identity.
-- [ ] **P3.2:** Bootstrap `FinancialActor` from a consistent authoritative Group Management membership snapshot and version/watermark while capturing concurrent events durably; reconcile gaps without assuming that older registry publications are replayable. Implement duplicate, delayed and out-of-order handling with an atomic inbox claim or a proven versioned-state invariant. Test existing groups, leave/rejoin history, stale reactivation events, gaps and membership changes concurrent with bootstrap; specify behavior before synchronization catches up.
+- [ ] **P3.2:** Initialize the `FinancialActor` projection from existing memberships through a coordinated Flyway data migration when needed. Consume versioned membership events with atomic idempotency, out-of-order handling and reconciliation appropriate to the initial modulith; test leave/rejoin and concurrent duplicate delivery.
 - [ ] **P3.3:** Implement Money, Percentage, split strategies and deterministic allocation rounding as pure, self-contained domain behavior with exhaustive invalid-input tests.
 - [ ] **P3.4:** Establish the group-scoped write serialization and revision allocation primitive, including persistence-level uniqueness and concurrency tests.
 
-**Gate:** Accounting calculations never use floating-point money; split totals conserve value; an initially empty Finance projection converges from pre-existing and concurrent Group membership changes without missing events; actor replication is replay-safe; concurrent group-local writes cannot allocate the same logical revision.
+**Gate:** Accounting calculations never use floating-point money; split totals conserve value; Finance initializes existing membership state and remains synchronized through replay-safe events; concurrent group-local writes cannot allocate the same logical revision.
 
 ## Phase 4 - Expenses, history and balances vertical slice
 
@@ -134,7 +134,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 - [ ] **P9.1:** Record load, ownership and operational reasons **for or against** extracting specific contexts. Identify contracts, data ownership and consistency transitions before selecting a service.
 - [ ] **P9.2:** Prepare one justified context for extraction: isolate its data, establish service-specific migrations, preserve published contracts, and define a migration/cutover and rollback protocol. Keep the local consumer active until a verified replacement delivery path is ready.
-- [ ] **P9.3:** Establish and test broker publication and subscription before switching delivery. Compare registry-backed externalization, supported outbox integrations (Namastack/JobRunr) and a custom outbox only where necessary; verify producer-transaction registration, publisher confirmations, concurrent claiming, ordering, retry and recovery. Reconcile outstanding publications addressed to the old listener, allow duplicate-safe overlap during cutover, synchronize projection state and test rollback. Inject broker downtime, producer crashes, lost confirmations and duplicate delivery.
+- [ ] **P9.3:** Establish broker publication/subscription through the existing Modulith integration contracts, selecting registry-backed externalization or a supported outbox integration where appropriate. Validate durable producer intent, broker confirmation, retry, ordering and duplicate-safe cutover before retiring local delivery; retain custom outbox infrastructure only as a justified alternative.
 - [ ] **P9.4:** Demonstrate resilience under network faults and delayed/duplicate events; refine tracing, dashboards and deployment runbooks for the distributed system.
 
 **Gate:** Original business invariants remain testable across service boundaries. A verified broker-backed publication and subscription path exists before the local listener is disabled; outstanding publications are drained or safely transferred, the overlapping paths are duplicate-safe, reconciliation completes and rollback is viable. Broker outages and crashes leave committed changes with recoverable publication intent. The extracted context owns its storage and can deploy independently.
