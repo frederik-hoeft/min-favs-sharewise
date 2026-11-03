@@ -18,7 +18,9 @@ The human contributor owns task scope, priorities, approval of the architectural
 | Manual acceptance | Human-run local end-to-end test of the affected workflow, when applicable, and recorded results | Human confirms the user-visible behavior |
 | Merge authorization | Complete diff, automated and manual test evidence, reconciled docs and outstanding risks | Human authorizes the merge |
 
-Specifications and plans are task-specific review artifacts, normally kept under `docs/tasks/<task-name>/`. Durable system behavior belongs in the relevant [architecture](../architecture.md), [domain model](../data-model-design.md) or developer documentation. Task files do not replace the authoritative system descriptions.
+**Proportionality.** The full sequence, including separate `specification.md` and `plan.md`, is the default for substantial features and medium-to-high-risk changes. Localized, low-risk changes may omit formal task documents and simplify planning or review stages when their intended behavior is clear. They still require appropriate verification, human review of the actual changes, relevant acceptance, and reconciliation of authoritative steady-state documentation. The necessary rigor depends on risk and impact, not simply on diff size.
+
+Specifications and plans are task-specific review artifacts, normally kept under `docs/internal/tasks/<task>/`. Durable system behavior belongs in the relevant [architecture](../architecture.md), [domain model](../data-model-design.md) or developer documentation. Task files do not replace the authoritative system descriptions.
 
 ## 1. Discuss the task and its boundaries
 
@@ -55,6 +57,8 @@ The first phases establish only the infrastructure needed by the specification. 
 
 The plan is approved by the human after the specification gate. Requirement or architectural changes are reviewed in `specification.md` before affected phases are replanned. An agent does not advance to future phases solely because it anticipates their implementation.
 
+For tasks using formal artifacts, approved `specification.md` and `plan.md` are **committed and pushed to the authoritative task branch before dependent implementation begins**. Material revisions are reviewed and committed before affected work continues; approval recorded only in a conversation or temporary workspace is not a reproducible Git baseline. Lightweight tasks document their intent and verification in the reviewed change or related issue.
+
 ## 4. Implement, validate and review incrementally
 
 For each phase, the implementation agent works from an **identified, reproducible Git baseline** and returns one focused change set. Its report identifies what changed, which requirements and tests it covers, the exact validation commands and outcomes, and any limitations or outstanding work.
@@ -67,7 +71,7 @@ Review covers the specification, architecture boundaries, maintainability, unint
 
 ## 5. Review the finished merge request independently
 
-After implementation phases pass local review, a separate reviewer (agent and optionally also human) examines the complete merge request in the context of the relevant requirements and architecture. The review follows affected call paths, including interactions beyond modified lines, and checks security, invariants, error handling, concurrency, data consistency, maintainability and missing tests. The repository's [review checklist](../../.agents/skills/engineering-quality/references/review-checklist.md) supports this pass.
+For substantial or medium-to-high-risk changes, a separate reviewer (agent and optionally also human) examines the complete merge request after local review, using the relevant requirements and architecture as context. For localized, low-risk changes, the required human diff review may suffice without another independent agent review. Review follows affected call paths, including interactions beyond modified lines, and checks security, invariants, error handling, concurrency, data consistency, maintainability and missing tests. The repository's [review checklist](../../.agents/skills/engineering-quality/references/review-checklist.md) supports this pass.
 
 Findings identify a concrete condition, its consequence and a suggested correction when possible. Confirmed defects are distinguished from design preferences or speculative enhancements. The human and implementation agent evaluate each finding, apply accepted fixes as reviewable increments, and request another review of the updated revision where necessary. The independent reviewer may also suggest end-to-end workflows or edge cases for the human acceptance test. Reviewer and implementer refer to the **same current commit**, so resolved or outdated comments are not mistaken for live defects.
 
@@ -77,10 +81,10 @@ An independent agent review supplements human review. The human remains responsi
 
 The human task owner performs a **manual end-to-end acceptance test** before the final merge decision. Depending on the task, this means running or deploying the application locally and exercising the affected behavior from a user's perspective, including relevant error paths and permissions. For infrastructure-only tasks without a meaningful UI journey, the human instead executes an appropriate end-to-end operational or integration workflow. This supplements automated tests and agent review.
 
-The manual test may take place **before or after the merge request has been undergone static code review**. An independent review agent may suggest scenarios, but the human performs the test and records its outcome. Fixes that affect the tested behavior require the relevant scenarios to be checked again. A task with no meaningful manual execution path records that limitation and the alternative acceptance evidence.
+The manual test may take place **before or after the merge request has been undergone static code review**. An independent review agent may suggest scenarios, but the human performs the test and records its outcome. Fixes that affect the tested behavior require the relevant scenarios to be checked again. A task with no meaningful manual execution path records that limitation and the alternative acceptance evidence. Acceptance results are retained with the task artifacts when present, or with the change review for lightweight tasks.
 
-Final acceptance examines the complete diff, approved `specification.md`, automated verification, manual test results, unresolved risks, deployment or compatibility implications and reconciled steady-state documentation. The task specification and `plan.md` remain available for traceability. The human authorizes the merge into the authoritative repository only after these conditions are satisfied.
+Final acceptance examines the complete diff, approved task specification and plan where required, automated verification, manual test results, unresolved risks, deployment or compatibility implications and reconciled steady-state documentation. Approved task artifacts remain available for traceability. The human authorizes the merge into the authoritative repository only after these conditions are satisfied.
 
 ## 7. Pre-merge and Merge
 
-Once the task has passed manual end-to-end acceptance and all required reviews are complete, the task can be marked complete in the task backlog as a final commit before merge. The human authorizes the merge into the authoritative repository, ensuring that all review comments have been addressed, all tests have passed, and the task meets the defined acceptance criteria. After the merge, the stale feature branches and related review artifacts are cleaned up to maintain repository hygiene.
+Once the task has passed manual end-to-end acceptance and all required reviews are complete, the task can be marked complete in the task backlog as a final commit before merge. The human authorizes the merge into the authoritative repository, ensuring that all review comments have been addressed, all tests have passed, and the task meets the defined acceptance criteria. After merge, approved specifications, plans and acceptance evidence remain in the authoritative repository, and merge-request review history remains available through the code host. Clean up only disposable patch files, temporary workspaces and obsolete feature branches.
