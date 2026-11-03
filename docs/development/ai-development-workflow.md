@@ -1,169 +1,90 @@
-# AI-assisted development workflow
+# AI-assisted development and quality assurance
 
-This is our **suggested, planning-first workflow** for developing ShareWise with a coding agent. We discuss architecture together, ask the agent to implement one reviewable change at a time, and **inspect every Git patch ourselves before committing**. A different agent then reviews the completed branch. Human efforts are not replaced by the agent; they are redirected toward higher-level responsibilities: project management, planning, architecture, and quality assurance instead of coding and implementation.
+ShareWise uses a **planning-first, human-reviewed development workflow** for work performed with coding agents. The developer and agent discuss a task, agree on a target-state architecture and testable specification, plan implementation and migration, and develop through reviewable increments. Independent agent review and manual human acceptance complete the quality-assurance process.
 
-**Prerequisite:** You already have the [ShareWise devcontainer](../development.md) running, can build the project locally, and can commit and push to the university's internal GitLab repository. This workflow uses ChatGPT on the web interface rather than a local agent within the IDE.
+This workflow applies regardless of the agent, IDE or code-hosting platform. The [ChatGPT development guide](chatgpt-development-workflow.md) describes the project-specific setup for ChatGPT's hosted workspace, offline toolchain handoff, Git patches and GitHub review mirror. Repository [engineering-quality](../../.agents/skills/engineering-quality/SKILL.md) and [documentation](../../.agents/skills/documentation/SKILL.md) guidelines govern the work itself.
 
-We currently use **ordinary ChatGPT conversations**, even though supplying a reproducible workspace takes some effort. They are included with a ChatGPT Plus subscription rather than charged per API token, which makes them more cost-effective for our use case. Codex, Claude, and other local agents are viable alternatives.
+## Roles and review gates
 
-## 1. Create a ChatGPT Project
+The human contributor owns task scope, priorities, approval of the architectural solution and specification, acceptance criteria, and the final merge decision. The implementation agent proposes designs and produces code, tests and documentation for review. An **independent reviewing agent** examines the completed change without relying on the implementation agent's conclusions. The human separately reviews its findings and the full change.
 
-In ChatGPT, create a **Project** (for example, `MIN-FAVS`) from the sidebar. Open the project and use its **Sources** tab to upload files shared across its task conversations. Project files give future conversations access to the same reference material through essentially a shared read-only filesystem; they do **not** represent a writable development environment for the agent.
+| Stage | Reviewable evidence | Gate |
+| --- | --- | --- |
+| Task discussion | Scope, constraints, architectural options and trade-offs | Human agrees on the direction to specify |
+| Specification | Agent-written `specification.md` with the agreed architecture, requirements, invariants, test cases and acceptance criteria | Human approves the target-state architecture and specification |
+| Implementation planning | Agent-written `plan.md` with implementation/migration phases, verification gates and final documentation reconciliation | Human approves the implementation sequence |
+| Iterative implementation | Focused changes, tests and updated plan state | Human reviews changes as staged in Git or accepted/applied in the IDE, then approves each increment |
+| Independent MR review | Findings against the specification and complete diff; suggested manual E2E scenarios where useful | Substantive findings are resolved or explicitly justified |
+| Manual acceptance | Human-run local end-to-end test of the affected workflow, when applicable, and recorded results | Human confirms the user-visible behavior |
+| Merge authorization | Complete diff, automated and manual test evidence, reconciled docs and outstanding risks | Human authorizes the merge |
 
-We will add a reusable **offline toolchain handoff** in the next step. Keep one-off **repository ZIPs** in their respective task conversations instead: a new task or changed branch may need a different source baseline.
+**Proportionality.** The full sequence, including separate `specification.md` and `plan.md`, is the default for substantial features and medium-to-high-risk changes. Localized, low-risk changes may omit formal task documents and simplify planning or review stages when their intended behavior is clear. They still require appropriate verification, human review of the actual changes, relevant acceptance, and reconciliation of authoritative steady-state documentation. The necessary rigor depends on risk and impact, not simply on diff size.
 
-![The ChatGPT Project's Sources tab holds reusable development inputs.](assets/chatgpt-project-sources.png)
+Specifications and plans are task-specific review artifacts, normally kept under `docs/internal/tasks/<task>/`. Durable system behavior belongs in the relevant [architecture](../architecture.md), [domain model](../data-model-design.md) or developer documentation. Task files do not replace the authoritative system descriptions.
 
-## 2. Prepare the offline toolchain once, then upload it
+## 1. Discuss the task and its boundaries
 
-When an agent runs shell commands in ChatGPT, it uses a **Container-as-a-Service (CaaS) environment hosted by OpenAI**. That sandbox is an **ephemeral** workspace: its files, installed tools and Git branches may disappear between sessions or after a reset. Do not treat it as durable storage. Important files and deliverables must be exposed as download links by the agent to become persistent across container resets.
+The initial discussion establishes the problem, expected user-visible or system-level outcome, and target architectural direction before implementation begins. The agent may propose alternatives and surface hidden constraints; the human evaluates the trade-offs and agrees on the architectural solution to be specified.
 
-The available CaaS environment is also **network-isolated**. Its shell cannot be used to fetch JDKs, Maven plugins, npm dependencies or source archives from the internet. A GitHub plugin can inspect GitHub through a separate integration, but that does **not** make the agent's shell network-connected. To avoid manually resolving thousands of individual files through a connector, we provide **a clean source ZIP and prepackaged build dependencies**. The agent can then work from a complete local tree, run offline builds and produce patches much faster and with less ambiguity.
+The discussion covers the affected bounded contexts, ownership and published interfaces, data and control flow, authorization, transaction boundaries, failure behavior, concurrency and compatibility where relevant. Existing code and documentation establish the starting point. Unresolved decisions are recorded explicitly; architectural questions that affect correctness or the target design are resolved before the specification is approved.
 
-The repository provides [`scripts/create-offline-handoff.sh`](../../scripts/create-offline-handoff.sh). On your network-connected Linux x86-64 devcontainer, from the checkout whose dependencies you want to package, run:
+The result is a scoped task rather than an unrestricted instruction to refactor surrounding systems. Necessary adjacent changes become explicit dependencies or follow-up tasks.
 
-```sh
-scripts/create-offline-handoff.sh pack
-```
+## 2. Agree on the architecture and specification
 
-The script prepares the supplied Java/Maven/Node toolchains and Maven/npm dependencies, then tests whether an offline build works. It writes the following **five files** into the Git-ignored `.offline-handoff-cache/` directory:
+The task's agent-written `specification.md` records the **human-approved target state** before implementation planning. It captures the architectural solution reached during discussion alongside functional and implementation requirements, business invariants and acceptance criteria. Requirements and decisions are identifiable so implementation phases and verification evidence can refer back to them. The specification includes:
 
-```text
-.offline-handoff-cache/
-├── sharewise-offline-deps-linux-x64.tar.gz
-├── sharewise-offline-deps-linux-x64.tar.gz.sha256
-└── toolchains/
-    ├── OpenJDK25U-jdk_x64_linux_hotspot_*.tar.gz
-    ├── apache-maven-3.10.0-bin.zip
-    └── node-v24.*-linux-x64.tar.xz
-```
+- **Architectural solution:** agreed component responsibilities and boundaries, data/control flow, published contracts, transaction and consistency boundaries, relevant technology choices, and consequences for existing interfaces or data. Record the material trade-offs and decision rationale; diagrams are useful where they clarify the design.
+- **Scope and requirements:** intended behavior, affected operations and callers, inputs, outputs, permissions, compatibility, implementation constraints and explicitly excluded behavior.
+- **Business invariants:** preconditions, postconditions, ownership, ordering, concurrency and transactional guarantees; invalid operations have defined effects on persistent state.
+- **Failure behavior:** rejection, rollback, retry, idempotency and recovery semantics, including partial failures where applicable.
+- **Acceptance criteria and test cases:** observable completion conditions and representative successful, invalid, boundary, concurrent and failure scenarios, each with setup, action, expected outcome and verification method. Include manual end-to-end workflows where applicable.
+- **Open questions and deferrals:** non-blocking assumptions and explicitly excluded future decisions. Questions that would change the chosen architecture are resolved before approval.
 
-![The five handoff files in the devcontainer's Git-ignored offline cache.](assets/devcontainer-offline-cache.png)
+Central test cases are **specified alongside the architecture and requirements**, not retrofitted after implementation. They should distinguish domain/application tests from infrastructure integration tests and manual user-flow acceptance. Database constraints, locking and transactional guarantees require tests against the actual database; mocks cannot validate those behaviors.
 
-**Upload all five files to your ChatGPT Project's Sources.** The dependency archive contains Maven and npm caches, the checksum verifies that archive, and the three separate archives provide the actual JDK, Maven, and Node.js tools. They are **not** source archives. The agent's offline setup skill handles extraction, integrity checks, isolated caches and build verification.
+The test cases documented here focus on the *core* correctness properties of the system as defined by the task goals. Additional tests covering technical integration and unit-level behavior are designed and implemented independently by the agent as part of the implementation and verification process. This avoids the overhead of Test-Driven Development for every low-level detail while ensuring that the critical business logic is thoroughly validated.
 
-### When to regenerate the handoff
+For example, a documented test for expense submission might verify that expense creation is rejected when the corresponding financial group is not in the active state. On the other hand, independent unit tests for the expense entity might focus on non-business-critical behavior, such as ensuring null values are handled correctly, input validation is enforced, and default values are applied as expected.
 
-**Reuse** these five files for source-only work, even when you download a newer repository ZIP, provided Java/Maven/Node versions, platform and dependency descriptors have not changed.
+The human reviews and **approves the architectural solution**, requirements, invariants, acceptance criteria and test cases. The accepted specification is the contract against which the implementation and final acceptance are evaluated. A material architecture change returns to this gate before the implementation plan changes.
 
-**Regenerate and replace** the handoff after a toolchain migration, added/updated Maven or npm dependencies, changes to `pom.xml`, `package.json`, `package-lock.json` or relevant wrapper configuration, or when offline verification reports missing artifacts:
+## 3. Plan reviewable implementation phases
 
-1. Update the checkout and any version selections required by the handoff script; run `scripts/create-offline-handoff.sh pack` again and confirm its offline validation succeeds.
-2. In **ChatGPT Project → Sources**, **delete the old five files** and upload the five newly generated files. Do not mix archives or caches from different generations.
-3. Give the next agent the corresponding **fresh repository ZIP**. Instruct it to discard its old extracted toolchain and working caches and verify the replacement, rather than overlaying old and new files.
+An agent-written `plan.md` translates the **approved architecture and specification** into a sequence of cohesive implementation and migration steps. The plan follows the repository's [engineering-quality guidelines](../../.agents/skills/engineering-quality/SKILL.md), accounting for existing code, ownership, dependencies, data migration, compatibility, failure behavior and validation. Each phase identifies its scope, prerequisites, affected contracts, expected component-level tests and a **completion gate**. Markdown checkboxes track progress, but a checked box represents verified and **approved** work, not merely code written.
 
-The details of checksum manifests, vendor archive acquisition, and verifier command-line options belong in [Development environment: portable offline handoff](../development.md#portable-offline-dependency-handoff) and the [offline setup skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill). There is no need to upload `node_modules`, extracted SDKs, or other Git-ignored binaries with the source ZIP.
+The first phases establish only the infrastructure needed by the specification. Later phases add behavior, migration and integration, while preserving coherent, buildable states between phases. **The final planned implementation step reconciles the authoritative steady-state documentation** with the completed system, following the repository's [documentation skill](../../.agents/skills/documentation/SKILL.md). It updates affected architecture, domain and developer documentation, rather than copying the task plan into them. Any later review fixes that change documented behavior require the same reconciliation.
 
-## 3. Download the exact repository baseline
+The plan is approved by the human after the specification gate. Requirement or architectural changes are reviewed in `specification.md` before affected phases are replanned. An agent does not advance to future phases solely because it anticipates their implementation.
 
-Our **internal university GitLab** is the authoritative repository for commits and merges. The public [ShareWise GitHub repository](https://github.com/frederik-hoeft/min-favs-sharewise) is a **read-only push mirror**: it makes source downloads and ChatGPT GitHub-plugin PR reviews convenient, but is not where we merge accepted work.
+For tasks using formal artifacts, approved `specification.md` and `plan.md` are **committed and pushed to the authoritative task branch before dependent implementation begins**. Material revisions are reviewed and committed before affected work continues; approval recorded only in a conversation or temporary workspace is not a reproducible Git baseline. Lightweight tasks document their intent and verification in the reviewed change or related issue.
 
-On GitHub, select the intended branch, open **Code → Local → Download ZIP**, and attach the downloaded ZIP to the task conversation. Wait for mirror replication after a GitLab push before downloading or opening a review PR. A GitLab source archive works as well.
+## 4. Implement, validate and review incrementally
 
-![Select the intended branch, then Code and Download ZIP on the public mirror.](assets/github-download-branch-zip.png)
+For each phase, the implementation agent works from an **identified, reproducible Git baseline** and returns one focused change set. Its report identifies what changed, which requirements and tests it covers, the exact validation commands and outcomes, and any limitations or outstanding work.
 
-A source ZIP contains tracked repository files, **not** `.git` history or your local Git-ignored caches, build outputs and secrets. Tell the agent which branch/commit the ZIP represents. It should initialize a fresh local Git baseline from that **exact archive** and develop on a separate task branch, never mixing in files from an older unrelated task.
+Automated validation is proportionate to the change: formatting and static analysis, focused unit tests, integration tests for real persistence or transport behavior, and failure or concurrency tests for critical invariants. The agent distinguishes actual test failures from unavailable infrastructure and does not claim simulated integrations establish production-system guarantees. At the end of each implementation iteration, all newly written code must have appropriate unit and integration tests.
 
-**Refresh the ZIP** if you switch branches, change the intended base, or new commits affect the task. The agent may reuse its local tree for **strictly incremental work on the same accepted baseline**. Do not assume that a GitHub link alone updates its source tree.
+The human reviews changes **as they are staged in Git, or as IDE-agent edits are accepted or applied**, rather than waiting for a completed phase or merge request and pretending that any human actually reads through a 20k line diff. Reviewing changes early and incrementally ensures that diffs remain manageable for human line-by-line review, that context is clear, and issues are caught early.
 
-## 4. Start one conversation per task and load the skills
+Review covers the specification, architecture boundaries, maintainability, unintended changes and test quality. Changes may be partially accepted, revised or rejected, and implementation only continues with the next iteration stage once the current stage is fully reviewed and any required corrections are applied. For the [ChatGPT-based implementation workflow](./chatgpt-development-workflow.md) and other *git-patch-based workflows* where development environments must be kept in sync, it is appropriate to accept and commit entire patches even if they contain issues; these issues must be handed back to the agent for incremental follow-up patches, before the next implementation phase can commence.
 
-Use a **fresh conversation for each distinct task**. Let the agent learn the relevant architecture, domain invariants and code paths in that conversation. Keep using that same agent for design follow-ups and patches on the *same* task; start a separate conversation later for independent code review.
+## 5. Review the finished merge request independently
 
-Use this **copy-pastable preamble** (the second paragraph onward is task-dependent):
+For substantial or medium-to-high-risk changes, a separate reviewer (agent and optionally also human) examines the complete merge request after local review, using the relevant requirements and architecture as context. For localized, low-risk changes, the required human diff review may suffice without another independent agent review. Review follows affected call paths, including interactions beyond modified lines, and checks security, invariants, error handling, concurrency, data consistency, maintainability and missing tests. The repository's [review checklist](../../.agents/skills/engineering-quality/references/review-checklist.md) supports this pass.
 
-```text
-Use https://github.com/frederik-hoeft/custom-skills/blob/main/dev/local-development.skill and https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill to set up your local development workspace for the provided repo archive, ensure the project builds, and onboard yourself with the repository using the documentation in /docs. It is crucial that you understand the overall project architecture, goals, dependencies, and data flow.
+Findings identify a concrete condition, its consequence and a suggested correction when possible. Confirmed defects are distinguished from design preferences or speculative enhancements. The human and implementation agent evaluate each finding, apply accepted fixes as reviewable increments, and request another review of the updated revision where necessary. The independent reviewer may also suggest end-to-end workflows or edge cases for the human acceptance test. Reviewer and implementer refer to the **same current commit**, so resolved or outdated comments are not mistaken for live defects.
 
-[Describe the task, constraints, and desired deliverables here.]
-```
+An independent agent review supplements human review. The human remains responsible for acceptance and merge authorization.
 
-Attach the fresh source ZIP and ensure the conversation is part of the ChatGPT project, so it has access to the preconfigured toolchains and dependencies. The public [`local-development.skill`](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/local-development.skill) defines the **baseline → task branch → git patch → approval** workflow to ensure the agent follows a sane development process and git practices. The [`java-nextjs-offline.skill`](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill) covers the offline build setup. Repository-local `AGENTS.md`, `.agents/skills/` and the relevant `docs/` remain authoritative for the project's own conventions.
+## 6. Perform manual end-to-end acceptance and authorize merge
 
-Before changing code, have the agent read the documentation and **build/test the unchanged baseline** using the supplied toolchain. It should report exact commands and outcomes, distinguishing source failures from incomplete caches, tool problems, or unavailable external services.
+The human task owner performs a **manual end-to-end acceptance test** before the final merge decision. Depending on the task, this means running or deploying the application locally and exercising the affected behavior from a user's perspective, including relevant error paths and permissions. For infrastructure-only tasks without a meaningful UI journey, the human instead executes an appropriate end-to-end operational or integration workflow. This supplements automated tests and agent review.
 
-## 5. Design first, then implement in reviewable phases
+The manual test may take place **before or after the merge request has been undergone static code review**. An independent review agent may suggest scenarios, but the human performs the test and records its outcome. Fixes that affect the tested behavior require the relevant scenarios to be checked again. A task with no meaningful manual execution path records that limitation and the alternative acceptance evidence. Acceptance results are retained with the task artifacts when present, or with the change review for lightweight tasks.
 
-This is a **technical peer discussion**, not a prompt asking the agent to make all architecture decisions on its own. Challenge its suggestions, supply constraints, compare tradeoffs, and resolve open questions **before** requesting code. You are the software architect and product owner for every task, the agent is just your development team generating code and patches under your guidance. A productive task proceeds in these stages:
+Final acceptance examines the complete diff, approved task specification and plan where required, automated verification, manual test results, unresolved risks, deployment or compatibility implications and reconciled steady-state documentation. Approved task artifacts remain available for traceability. The human authorizes the merge into the authoritative repository only after these conditions are satisfied.
 
-1. **Discuss architecture over several turns.** Establish scope, boundaries, data and control flow, APIs, invariants, failure semantics, alternatives and tests. Hold off on implementation until the design is clear.
-2. **Record requirements.** Ask the task agent to summarize the results of your design discussion in `docs/tasks/<task-name>/requirements.md`. Review its Git patch, discuss corrections, then accept, commit and push it.
-3. **Create a phased plan.** Translate the agreed requirements into a concrete implementation plan in the same task directory (for example `plan.md`), with reviewable phases, quality/review gates (X, Y, and Z must work before moving to the next phase), validation criteria and Markdown checkboxes. Review, commit and push that patch as well.
-4. **Implement one phase at a time.** The task agent edits and tests its local branch, updates plan checkboxes and returns a downloadable Git patch after each development phase/turn (usually 5 to 30-ish minutes). **You review it before committing** (next section), push accepted changes to GitLab, and discuss/request any incremental follow-ups before giving your LGTM to move on.
-5. **Finish the task implementation.** Repeat until all phases and tests are complete, no local follow-ups remain, and the permanent **steady-state documentation** reflects the actual implementation. Task-specific requirements and plans supplement, rather than replace, the architecture and developer documentation.
-6. **Update documentation.** Once the implementation is complete, ensure that all relevant documentation, including architecture, usage, and developer guides, is updated to reflect the changes accurately.
-7. **Perform a local acceptance check.** You are the product owner: build the project locally, and ensure all functional requirements are met (test the UI and user workflow manually), ensure all tests are green, and verify that the steady-state documentation accurately reflects the implemented solution.
+## 7. Pre-merge and Merge
 
-A phase checklist might look like (from a refactoring task of an unrelated project)
-
-```md
-### Definition of done for the Kaizen blitz
-
-The blitz is complete when all of the following invariants are satisfied:
-
--[ ] one authoritative snapshot/result abstraction;
--[ ] one shared UFW process-execution/diagnostic abstraction;
--[ ] one insertion-placement implementation;
--[ ] one signed-mutation safety/nonce/gate choreography;
--[ ] operation-specific state machines that are shorter and visibly encode only their unique semantics;
--[ ] explicit startup-only vs runtime-reload configuration semantics;
--[ ] durable stores with consistent failure semantics and testable persistence boundaries;
--[ ] no dormant hardcoded TCP transport or dead configuration switches;
--[ ] no resource leaks on named-pipe accept/setup or request-logging failure paths;
--[ ] parser cleanup preserves conservative handling of unknown UFW output.
-```
-
-If the design changes, revise the requirements and plan deliberately. Do not let an agent implement later phases early simply because it anticipates them.
-
-## 6. Apply, stage and inspect every agent patch
-
-The agent returns a **downloadable git `.patch` file** relative to the agreed baseline or previous accepted task state. Applying a patch is not approval. The **human-in-the-loop review happens while examining and staging those changes**, before the commit and push.
-
-Note: [**Fork**](https://git-fork.com/) is a convenient graphical Git client that makes this process much easier than using the git CLI or the VS Code Git integration. Its free evaluation period is essentially infinite and patch application, diff inspection and selective staging is straightforward. In Fork, switch to the intended branch and choose **Repository → Apply Patch…**.
-
-![Fork's Repository menu contains Apply Patch.](assets/fork-apply-patch.png)
-
-Review the **unstaged** diff statically, selectively stage section by section as you approve/review them, run relevant tests, and only then commit and push to GitLab. The following screenshot shows unstaged changes above staged changes and the line-by-line review pane.
-
-![Reviewing unstaged and staged changes before committing.](assets/patch-staging-review.png)
-
-The equivalent command-line workflow is:
-
-```sh
-git status --short
-git apply --check /path/to/agent-change.patch
-git apply /path/to/agent-change.patch
-git diff --check
-git diff                 # Review all modified files
-git add -p               # Select approved changes (add new files explicitly)
-git diff --cached --check
-git diff --cached        # Final review of what the commit will contain
-# Run relevant tests, then commit and push only when satisfied.
-```
-
-If the patch does not apply cleanly, **do not force it**. Check the actual branch/baseline and ask for a revised patch. Tell the agent about any hunks you changed or rejected while staging, so its next iteration matches what you really committed. Worst case, ensure that your working state is clean and up to date with the remote, and give the agent the fresh baseline again (and ask it to rebase its changes onto it for a clean patch).
-
-### Recovering after CaaS resets
-
-The task agent's CaaS container can disappear, but its source baseline and downloadable patches make the work **reconstructable**. Keep those patch files, or at least the accepted changes/commits in your GitLab branch. To resume, provide the original baseline ZIP plus the approved patches **in order**, or a fresh ZIP of the current approved branch state; tell the agent to recreate the baseline and task branch. For the latter, subsequent patches must target the **new** baseline. It can usually repeat the offline toolchain setup with the existing Project handoff, without regenerating dependencies or restarting architectural discovery.
-
-## 7. Have a fresh agent review the finished branch
-
-When implementation and local review are complete, wait for GitLab pushes to replicate to the public GitHub mirror. Open a **review-only pull request** there, targeting the appropriate mirrored base, and connect the [GitHub plugin in ChatGPT](https://chatgpt.com/) through **Settings → Plugins** if necessary.
-
-![The GitHub plugin enables connector-backed PR analysis and inline comments.](assets/chatgpt-github-plugin.png)
-
-Start a **new conversation** with a **fresh reviewer agent**. Use the latest available model and highest available thinking effort for a demanding review. Explicitly ask it to use the GitHub connector to inspect the whole diff, follow affected code paths, and leave **precise inline PR comments**:
-
-```text
-Carefully review https://github.com/frederik-hoeft/min-favs-sharewise/pull/<number>
-using the GitHub connector. Read the relevant architecture and task documentation,
-inspect the complete diff and affected call paths, and look for correctness,
-security, concurrency, integration, maintainability and test-coverage defects.
-Leave precise, actionable inline review comments on the PR for warranted findings.
-Distinguish proven defects from speculative enhancements. Do not implement or merge.
-```
-
-Return the PR link to the **original task agent**. Together, assess each comment instead of accepting it uncritically. Have the task agent address valid findings with **incremental patches**, review/stage/commit them locally, push to GitLab, and request another review once the mirror updates. Repeat until substantive findings are fixed or explained. The reviewer and task agent should always refer to the latest mirrored commit, not a stale PR revision.
-
-Finally, give the full diff, test results, checklist and documentation a human once-over. Merge through the **authoritative GitLab repository**. The GitHub PR is a review vehicle, not a second merge target.
+Once the task has passed manual end-to-end acceptance and all required reviews are complete, the task can be marked complete in the task backlog as a final commit before merge. The human authorizes the merge into the authoritative repository, ensuring that all review comments have been addressed, all tests have passed, and the task meets the defined acceptance criteria. After merge, approved specifications, plans and acceptance evidence remain in the authoritative repository, and merge-request review history remains available through the code host. Clean up only disposable patch files, temporary workspaces and obsolete feature branches.

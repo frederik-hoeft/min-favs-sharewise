@@ -71,7 +71,7 @@ The frontend resolves `sharewise-backend` through Docker's network DNS and expos
 
 Offline SDK/cache provisioning is an **external developer-environment workflow**, not a product repository contract. Keep downloaded JDKs, Maven repositories, npm caches, container images, credentials and other machine-specific setup artifacts outside the source tree.
 
-For our planning-first, patch-based work with coding agents and the GitHub review mirror, see the [AI-assisted development workflow](development/ai-development-workflow.md).
+For task specification, phased agent implementation, independent review and human acceptance, see the [AI-assisted development and QA workflow](development/ai-development-workflow.md). The [ChatGPT workspace guide](development/chatgpt-development-workflow.md) describes the hosted offline-toolchain and GitHub mirror workflow.
 
 ## Portable offline dependency handoff
 
