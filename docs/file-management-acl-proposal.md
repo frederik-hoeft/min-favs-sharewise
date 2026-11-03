@@ -93,7 +93,7 @@ The ACL stores the **trusted issuer and exact expected value**. A JWT carrying `
 
 ### Alternative: file-specific attestations
 
-Not every expense attachment must be readable by every group member. If visibility depends on the specific expense, **Financial Management** could issue a short-lived attestation containing `file_id=file-789` and a `file:read` permission after checking expense access. File Management would still perform the same generic claim-matching algorithm. The issuer and matching claim change; **the ACL engine does not**.
+Not every expense attachment must be readable by every group member. If visibility depends on the specific expense, **Financial Management** could issue a short-lived attestation containing `file_id=file-789` and a `file:read` permission after verifying the primary IAM identity and authorizing access using Finance-owned facts. Where current Group authority is required, Finance obtains it through a direct authoritative Group capability; a Group-issued attestation cannot serve as a delegated credential for minting a Finance attestation. File Management would still perform the same generic claim-matching algorithm. The issuer and matching claim change; **the ACL engine does not**.
 
 A group-scoped attestation fits group-wide sharing; file-scoped attestations can express more restrictive expense or attachment visibility.
 

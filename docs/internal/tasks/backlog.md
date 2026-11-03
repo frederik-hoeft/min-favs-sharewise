@@ -50,7 +50,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 - [ ] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
 - [ ] **P1.2:** Introduce PostgreSQL, migrations, per-context schema/table ownership and targeted integration fixtures; remove or isolate starter H2 dependencies where inappropriate.
 - [ ] **P1.3:** Implement a technology-agnostic transaction/session boundary on Spring transactions, including explicit commit/rollback/abstain, rollback-only poisoning, exceptional abort, lifetime and concurrency rules.
-- [ ] **P1.4:** Establish typed API errors, request validation, configuration, health checks, unit and integration test conventions, and the frontend API client without relying on Next.js server-side proxy routes as the long-term architecture.
+- [ ] **P1.4:** Establish typed API errors, request validation, configuration, health checks, unit and integration test conventions, the frontend API client and a minimal same-origin `/api/*` development route for the first authenticated browser slice. The production static-export/Nginx deployment remains in P8.1.
 
 **Gate:** Modularity test catches a forbidden cross-context access; real PostgreSQL integration tests prove commit, rollback, rollback-only and concurrency rules; both applications build and run with documented commands.
 
@@ -58,9 +58,9 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Depends on:** Phase 1 foundation and approved P0.2 security flow.
 
-- [ ] **P2.1:** Implement IAM registration/login/profile with Spring Security authentication, password hashing and lockout; issue short-lived identity JWTs and rotating refresh cookies with transactional family reuse detection; implement CSRF, logout, password-change invalidation, and protected APIs. Test concurrent refresh, stale sessions and password-change behavior.
+- [ ] **P2.1:** Implement IAM registration/login/profile with Spring Security authentication, password hashing and lockout; issue short-lived identity JWTs and rotating refresh cookies with transactional family reuse detection, idle and absolute session deadlines, and expiry cleanup. Provide framework-backed CSRF token bootstrap for cookie-authenticated login, refresh and logout; implement password-change invalidation and protected APIs. Test expiration, concurrent rotation across backend instances, lost responses, token reuse, CSRF rejection and password-change behavior.
 - [ ] **P2.2:** Group creation, membership roles, invitation/acceptance, leave and administrator transfer; enforce the final-member and final-administrator invariants atomically.
-- [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows with access-token and attestation renewal, bounded `401` retry, `403` denial handling, and no unauthorized data exposure; prevent parallel refresh rotation races.
+- [ ] **P2.3:** Deliver frontend authentication and group/member/invitation flows through same-origin `/api/*`, with access-token and attestation renewal, bounded `401` retry, `403` denial handling, and no unauthorized data exposure. Coordinate shared-cookie mutations across tabs using browser Web Locks and in-tab single-flight; require reauthentication after ambiguous refresh outcomes. Test concurrent tabs, lost/reordered responses, CSRF first-load and post-login/logout renewal, and cross-origin rejection.
 - [ ] **P2.4:** Establish versioned membership event contracts and durable Modulith publication when the first cross-context consumer is registered. Verify atomic producer commit/rollback and stable event identities; validate consumer operation transactions, idempotent recovery and registry completion against real PostgreSQL and the selected framework version.
 - [ ] **P2.5:** Introduce shared JWT profile/trust verification and typed issuer-qualified claims; issue short-lived, IAM-session-bound Group Management attestations from authoritative role state. Test wrong issuer/audience/token type, cross-group privilege confusion, role downgrade, session mismatch and key rotation. Keep domain authority policy out of the security library.
 
@@ -94,7 +94,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 - [ ] **P5.1:** Record, correct and remove external settlement reports, with revision history and authorization distinct from payment processing; enforce valid actor pairs and positive amounts.
 - [ ] **P5.2:** Include settlements in historical and current balance queries without matching them to individual expenses or forbidding overpayment.
-- [ ] **P5.3:** Implement `OPEN → CLOSED`, `CLOSED → OPEN`, and terminal `ARCHIVED` as ordered financial operations with journal entries; enforce state-specific write permissions using verified Group Management attestations, with Finance lifecycle checks still authoritative.
+- [ ] **P5.3:** Implement `OPEN → CLOSED`, `CLOSED → OPEN`, and terminal `ARCHIVED` as ordered financial operations with journal entries and Finance-owned lifecycle checks. During task specification, decide whether short-lived Group Management attestations provide sufficient authorization freshness for each transition or whether high-impact operations such as terminal archival require an additional synchronous authoritative Group permission check (a possible consumer of the planned introspection capability after extraction).
 - [ ] **P5.4:** Add settlement, close/reopen/archive and historical-revision frontend views.
 
 **Gate:** A full Mallorca-style journey works end to end. Closed groups reject expense edits while allowing settlements; archived groups are read-only; any past group revision yields reproducible balances.
