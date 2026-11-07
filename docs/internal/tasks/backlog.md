@@ -49,7 +49,10 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 - [ ] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
 - [ ] **P1.2:** Introduce PostgreSQL, migrations, per-context schema/table ownership and targeted integration fixtures; remove or isolate starter H2 dependencies where inappropriate.
-- [ ] **P1.3:** Implement a technology-agnostic transaction/session boundary on Spring transactions, including explicit commit/rollback/abstain, rollback-only poisoning, exceptional abort, lifetime and concurrency rules.
+- [ ] **P1.3 - Operation scopes and transactions:** deliver the following related foundations with independent reviewable steps:
+    - [ ] **P1.3a - DI scope:** implement [inbound-agnostic operation dispatch and scoped Spring bean lifetimes](../../stack/dependency-injection.md), including deterministic disposal and misuse guards.
+    - [ ] **P1.3b - Transactions:** implement the [application-owned transaction contract](p1.3-transactions/specification.md) on Spring's programmatic transaction manager, with sequential physical segments, deferred outcomes, rollback-only poisoning and guarded persistence access.
+    - [ ] **P1.3c - Integration-test infrastructure:** refine and implement the [draft integration-test specification](p1.3c-integration-tests/specification.md), including rollback-isolated operation tests and real-commit fixtures; retain PostgreSQL transaction and concurrency evidence for the Phase 1 gate.
 - [ ] **P1.4:** Establish typed API errors, request validation, configuration, health checks, unit and integration test conventions, the frontend API client and a minimal same-origin `/api/*` development route for the first authenticated browser slice. The production static-export/Nginx deployment remains in P8.1.
 
 **Gate:** Modularity test catches a forbidden cross-context access; real PostgreSQL integration tests prove commit, rollback, rollback-only and concurrency rules; both applications build and run with documented commands.

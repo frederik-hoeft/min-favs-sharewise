@@ -6,7 +6,7 @@
 
 ShareWise starts as a **modular monolith** with a hexagonal (ports-and-adapters) architecture **inside each bounded context**. The primary modules are User & Identity Management, Group Management, Financial Management, File Management, and Notification Management. They are ownership and language boundaries, not automatically one deployment each. Consult [the domain model](data-model-design.md) for their responsibilities and invariants.
 
-Each module owns its data, domain model, commands, queries, published APIs and outbound ports. Other modules access it **only via its supported API or integration events**. The initial shared PostgreSQL deployment must not become a license for cross-context joins, foreign keys, repositories, or transactions. Extraction to separate services should replace integration adapters rather than rewrite domain operations. Cross-context synchronous calls are possible, but intentional; event-driven propagation is preferred for independent, asynchronously consistent state.
+Each module owns its data, domain model, commands, queries, published APIs and outbound ports. Other modules access it **only via its supported API or integration events**. The initial shared PostgreSQL deployment must not become a license for cross-context joins, foreign keys, repositories, or transactions. Extraction to separate services should replace integration adapters rather than rewrite domain operations. Cross-context synchronous calls are not categorically forbidden, but are not a default composition mechanism; a concrete use case must establish a reviewed integration boundary and independent operation-scope/transaction semantics before introducing them. Event-driven propagation is preferred for independent, asynchronously consistent state.
 
 ```mermaid
 flowchart TB
@@ -44,27 +44,28 @@ Command and query paths need not be symmetrical. Queries generally return direct
 
 ## Transaction-aware ports
 
-The application core depends on a **technology-agnostic opaque `TransactionSession`**. An application operation establishes its transaction through the `Transactions` port and passes the resulting session explicitly to participating outbound data operations. The session is not a JDBC connection, JPA `EntityManager`, DI request scope, or globally shareable ambient state. Its infrastructure implementation validates lifetime and resolves a common underlying transaction for all participating adapters. The transaction is bound to the operation invocation, independently of DI bean lifetime or HTTP request scope; REST, event and scheduled-job adapters invoke the same application operations.
+The application core owns commit decisions through an operation-scoped, technology-independent `Transactions` port. A [dispatched application operation](stack/dependency-injection.md) has one Spring-managed **operation DI scope**, whose application services and data adapters may share a scoped transaction manager and persistence-access capabilities. The DI scope does not itself begin a physical transaction; the application service explicitly starts each required transaction segment. The same application service can be dispatched from REST, an event consumer, a scheduled job or a test.
 
 Illustrative interface shapes (not existing source APIs):
 
 ```java
-interface TransactionSession {}
-
 interface Transactions {
-    <T> T execute(Function<TransactionSession, TransactionOutcome<T>> operation);
+    <T> T execute(Supplier<TransactionOutcome<T>> work);
+    void markRollbackOnly();
 }
 
 interface ExpenseCorrectionPort {
-    ExpenseCorrectionFacts inspect(TransactionSession tx, CorrectExpense command);
-    AppendRevisionResult appendRevision(TransactionSession tx, ExpenseRevision revision,
+    ExpenseCorrectionFacts inspect(CorrectExpense command);
+    AppendRevisionResult appendRevision(ExpenseRevision revision,
                                         long expectedEntityRevision);
 }
 ```
 
-A `TransactionOutcome<T>` carries the operation result and a separate, deferred decision such as **commit**, **rollback**, or **abstain**. The enclosing business operation alone authorizes final commit; subordinate data-access results do not imply a transaction decision. A read-only or no-op participant may abstain. Any participant can mark a session **rollback-only**, and later success cannot undo that requirement. Abandoned or exceptional operations roll back; `Transactions.execute(...)` reports a successful commit only after the physical database commit succeeds. An unrelated ambient Spring transaction cannot silently defer that commit. The transaction session is confined to its operation and is not shared across concurrent threads.
+`Transactions.execute(...)` begins one physical local transaction through the configured Spring transaction manager and returns only after its commit or rollback completes. Its callback produces one deferred **COMMIT**, **ROLLBACK**, or **ABSTAIN** decision and an independent operation result. The enclosing service alone authorizes commit; participating services can irreversibly mark the current segment rollback-only. An expected typed failure does not automatically mean rollback, and a nominal success cannot override a poisoned transaction. Exceptional, abandoned or failed finalizations do not produce apparent successful commit results.
 
-Expected outcomes (not found, stale revision, invalid participant) are **typed results**, independent of the enclosing commit decision. An operation may commit after an expected unsuccessful result if its transaction state remains valid, or roll back despite a nominally successful data-access result. An adapter may map *known* database constraints to typed failures, but errors that leave a transaction or ORM context unusable poison the transaction even if represented as results. Unknown infrastructure failures propagate and roll back. Database error classification does not rely on parsing exception messages.
+An operation scope can contain zero or more **sequential** physical transaction segments, but only one active segment at a time. A later failure cannot undo an earlier physical commit. Database adapters use operation-scoped, transaction-aware accessors; the accessor obtains jOOQ/JPA resources for the **currently active segment** and rejects access outside its lifetime. Database technology, transaction status and physical connections remain internal to infrastructure, without explicit session arguments on ordinary business port methods. Nested physical transactions and unrelated ambient Spring transactions cannot silently delay the claimed commit.
+
+Known database constraint errors may become typed results only where the transaction state remains safe or is irrevocably marked rollback-only. Unknown infrastructure failures propagate, and commit-time connection loss may leave the physical outcome uncertain. The detailed outcome and failure semantics belong to the [P1.3 specification](internal/tasks/p1.3-transactions/specification.md).
 
 Finance applies an additional business protocol **inside** this generic transaction:
 
@@ -87,7 +88,7 @@ The [preliminary security architecture](stack/security.md) separates IAM identit
 
 The [technical stack overview](stack/overview.md) maps the selected frameworks and tools to the runtime layers and distinguishes the starter from the intended system. The [persistence](stack/persistence.md), [messaging](stack/messaging.md) and [security](stack/security.md) designs own their corresponding technology-specific contracts; this document owns the module boundaries and application interaction model.
 
-Backend services use Spring constructor injection and are normally stateless singletons. Explicit `@Bean` composition selects implementations and lifetimes where needed. The infrastructure implementation of `Transactions` uses Spring transaction management (typically `TransactionTemplate`) to create and finalize each application-operation transaction. REST controllers, event listeners, scheduled-job adapters and application core services do not require `@Transactional` annotations. Transaction-aware data adapters participate through the explicit session, and publication records participate in the same Spring-managed transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
+Backend services use Spring constructor injection. Stateless shared infrastructure normally remains singleton-scoped, while the [application-operation DI scope](stack/dependency-injection.md) gives stateful entry services, participants and adapters one explicitly dispatched lifetime. Operation-scoped `Transactions` uses Spring's programmatic transaction manager (normally `TransactionTemplate`) to physically finalize each segment. The dispatcher, REST adapters, message listeners and application-core services need no `@Transactional` annotations; event publication records enlist in the business operation's physical Spring transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
 
 Application operations generally use straightforward imperative Java; virtual threads remain subject to connection-pool capacity and database locking. Architectural tests enforce allowed module dependencies, and PostgreSQL integration tests establish real persistence and concurrency semantics as these components are implemented.
 
