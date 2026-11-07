@@ -7,7 +7,7 @@
 The P1.3 work comprises three related concerns with different design readiness:
 
 1. **Operation-scope DI foundation:** Implement the separately documented Spring [operation-scope contract](../../../stack/dependency-injection.md), including inbound-agnostic dispatch, scoped constructor injection, lifetime isolation and deterministic cleanup. The [alternatives](../../../stack/dependency-injection-alternatives.md) explain the selected model. This is a reusable DI foundation, not a transaction subsystem.
-2. **Production transaction management:** Implement an operation-scoped, technology-independent `Transactions` port backed by Spring's programmatic physical transaction management. The application can execute zero or more sequential transaction segments within an operation scope, with explicit deferred outcomes and guarded resource participation. This document specifies the production contract.
+2. **Production transaction management:** Implement an operation-scoped, technology-independent `Transactions` port backed by Spring's programmatic physical transaction management. The application can execute zero or more sequential transaction segments within an operation scope, with result-driven finalization and guarded resource participation. This document specifies the production contract.
 3. **Integration-test transaction support:** **TODO, deliberately not specified here.** The test-isolation and fixture strategy will be reviewed after the DI and production transaction contracts are settled. In particular, transaction-dependent messaging requires genuine physical commit boundaries; a universal commit-to-rollback test adapter must not be assumed to verify those behaviors.
 
 The transaction capability serves application entry services invoked from REST, event consumers, scheduled jobs and other inbound adapters. It does not own their dispatch or DI lifetime. It does not implement Finance revision/locking protocols, IAM token rotation, a Modulith registry/inbox, an external broker, database schema migrations, generic retry policy or distributed transactions.
@@ -36,7 +36,7 @@ record TransactionOutcome<T>(T result, TransactionDecision decision) {
 }
 ```
 
-`Transactions` is a mutable **operation-scoped service**, whereas `TransactionOutcome<T>` is an immutable deferred statement of the enclosing callback's final intent. `execute(...)` begins a physical transaction when invoked, calls the supplied operation, finalizes that transaction according to the returned outcome, and returns its application result only after finalization succeeds. There is no separate `begin()`/`close()` API and no transaction automatically created on database-client injection. The manager is reusable for **sequential** segments after successful finalization while the enclosing DI scope remains active. An unconfirmed finalization outcome or failed cleanup makes the manager unusable for subsequent segments in that scope.
+`Transactions` is a mutable **operation-scoped service**, whereas `TransactionOutcome<T>` is an immutable return value carrying the orchestrator's requested final disposition for one segment. `execute(...)` begins a physical transaction when invoked, calls the supplied operation, finalizes that transaction according to the returned outcome, and returns its application result only after finalization succeeds. There is no separate `begin()`/`close()` API and no transaction automatically created on database-client injection. The manager is reusable for **sequential** segments after successful finalization while the enclosing DI scope remains active. An unconfirmed finalization outcome or failed cleanup makes the manager unusable for subsequent segments in that scope.
 
 Example consumer use (illustrative types and `Result` representation):
 
@@ -73,7 +73,9 @@ The generic `Result<T, E>` in this example represents an expected success or typ
 
 ### Composing services and transaction segments
 
-The entry service owns the transaction's final decision. Participating services and persistence ports return typed results and may mark the current segment irrevocably **rollback-only** when they know it is unsafe. They do not physically commit, roll back, start nested transactions or authorize the enclosing service's commit. Multiple participating services use the same physical transaction during one `execute(...)` callback, and cross-context data ownership restrictions still apply.
+**Default composition:** The entry service owns each segment's final decision. Participating services and persistence ports return ordinary typed business outcomes, such as `Result<T, E>` or `Optional<T>`. They may irrevocably mark a segment **rollback-only** if its transaction state is unsafe, but their results do not automatically vote on or change the final disposition. The orchestrator interprets participant results and returns one `TransactionOutcome<T>` from the callback supplied to `execute(...)`; its participants neither finalize the transaction nor start nested transactions. Multiple participants share the same physical transaction within the callback, subject to context ownership rules.
+
+**Optional delegation:** An orchestrator may explicitly delegate the *choice of outcome value* to another component, for example by returning a helper's `TransactionOutcome<T>` directly from its `execute(...)` callback. This shares decision-making without creating accumulated votes: an outcome constructed by a participant has no effect unless the orchestrator returns it. The ordinary participating-service contract remains typed business results; delegation never bypasses rollback-only state or physical finalization.
 
 The scoped manager may execute **multiple sequential physical transactions** in one application operation. Each invocation is atomic only within its own segment; once segment A commits, segment B's failure or rollback cannot undo A. A workflow that requires all-or-nothing persistence must keep its related database changes inside **one** segment. Following a commit with a separate broker send cannot replace the atomic persistent publication intent required by [messaging](../../../stack/messaging.md#event-publication-and-delivery).
 
@@ -91,9 +93,9 @@ Operation-scoped service instances may outlive several physical segments, but ph
 
 ## Finalization and failure contract
 
-### Ownership and deferred decision
+### Outcome selection and finalization
 
-The **returned callback outcome** is the single deferred final decision for one physical segment. Constructing `TransactionOutcome.commit(result)` never commits immediately and does not register an additional participant vote. An inner service's typed success cannot implicitly authorize commit, and creating an unused outcome has no effect. The enclosing `Transactions.execute(...)` evaluates the returned outcome once and delegates physical completion to Spring. A segment has at most one active owner and one finalization attempt.
+The **outcome returned by the enclosing `execute(...)` callback** is the sole finalization instruction for that physical segment. Constructing `TransactionOutcome.commit(result)` produces an ordinary immutable value; it does not commit, mutate manager state, or register a participant vote. In the default case, the orchestrator maps nested services' typed results to this one outcome. Explicit delegation can supply the outcome value, but only the value actually returned by the enclosing callback is evaluated. Physical finalization is deferred until that callback completes; ShareWise has no separate application-visible deferred-vote accumulator or precedence scheme. A segment has at most one active owner and one finalization attempt.
 
 | Final intent or condition | Segment's final behavior |
 | --- | --- |
@@ -104,6 +106,8 @@ The **returned callback outcome** is the single deferred final decision for one 
 | **ROLLBACK/ABSTAIN**, rollback-only | Roll back; returning the requested typed result is permitted if finalization succeeds. |
 | Callback throws, produces no outcome or violates the contract | Roll back, invalidate the segment and propagate a failure; never infer commit. |
 | Physical commit or rollback fails | Report an infrastructure/finalization failure; retain the initiating failure as primary where possible, with cleanup failure diagnostics preserved. Never return apparent successful finalization. |
+
+`ABSTAIN` is an optional **final outcome** for a read-only or no-write operation that does not request persistence. Like `ROLLBACK`, it physically rolls back the segment; it is not a subordinate participant's abstention that lets another vote authorize commit. The common write path selects `COMMIT` or `ROLLBACK` based on the orchestrator's evaluation of typed business results.
 
 Rollback-only is a **sticky participant veto** for the current physical segment, not an aggregated `COMMIT`/`ROLLBACK` vote across the operation scope. New segments begin healthy after a previous segment has been finalized. A normal unsuccessful business result (not-found, authorization refusal, optimistic-version conflict) does not automatically poison the transaction. An operation may commit a typed unsuccessful result when it intentionally persists a failure-side effect, such as a failed-login counter.
 
@@ -133,6 +137,7 @@ Tests use fake ports for business orchestration and Spring's transaction API for
 | **TX-10** | Persistence adapters reject SQL outside an active segment and after finalization, including retained jOOQ/JPA facades; the configured Spring manager and datasource determine actual database participation. |
 | **TX-11** | Where both technologies are supported, participating jOOQ and JPA adapters use compatible physical transaction resources and proven flush/visibility semantics under PostgreSQL. |
 | **TX-12** | A producer's business state and durable publication intent can enlist atomically in one physical segment, and the consumer can execute in an independent scope and transaction once messaging infrastructure exists. This is an integration prerequisite for P2.4, not an assertion that Modulith is already installed. |
+| **TX-13** | A participant's typed error does not select a transaction disposition; the orchestrator selects the returned outcome. Creating an unused or delegated-but-not-returned `TransactionOutcome` has no effect on finalization, while an explicitly returned delegated outcome is honored subject to rollback-only enforcement. |
 
 The [operation-scope design](../../../stack/dependency-injection.md#enforcement-and-validation) owns its own lifecycle and DI acceptance checks. P1.3's unit and Spring tests may run without PostgreSQL, but real-database evidence is required before claiming the Phase 1 transactional gate. Once the transaction model is reviewed, the separate **integration-testing design task** must define disposable/seeded database isolation, whether any rollback-only test mode has value, parallel execution constraints, and the tests that require real commit boundaries. Its resulting requirements can refine this specification before implementation planning.
 

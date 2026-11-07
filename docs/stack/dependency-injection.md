@@ -1,6 +1,20 @@
 # Dependency injection and application-operation scopes
 
-**Status:** Intended architecture for review; the custom scope and dispatcher are not implemented in the starter. The [application architecture](../architecture.md) defines module ownership and application services; [transactions](persistence.md#transactions-and-failure-behavior) define physical database consistency. The [alternatives](dependency-injection-alternatives.md) record the relevant tradeoffs.
+**Status:** Intended architecture for review; the custom scope and dispatcher are not implemented in the starter. The [application architecture](../architecture.md) defines module ownership and application services; [transactions](persistence.md#transactions-and-failure-behavior) define physical database consistency.
+
+ShareWise's hexagonal architecture has multiple inbound ports (REST, event consumers and scheduled jobs), so no single transport lifecycle can define the lifetime of application services consistently. An explicitly dispatched operation supplies that common lifetime; the [selection criteria and alternatives](dependency-injection-alternatives.md#selection-criteria) explain the rationale.
+
+```mermaid
+flowchart TB
+    rest[REST controller] --> dispatcher[OperationDispatcher]
+    event[Event consumer] --> dispatcher
+    job[Scheduled job] --> dispatcher
+    dispatcher -->|"manages lifetime"| scope[Application-operation DI scope]
+    scope --> service[Application entry service]
+    service --> participants[Operation-scoped participants and adapters]
+    service --> transactions[Operation-scoped transaction manager]
+    transactions -->|sequential transactions| spring[Spring transaction infrastructure]
+```
 
 ## Responsibility and ownership
 
