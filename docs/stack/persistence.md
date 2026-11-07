@@ -31,7 +31,7 @@ The persistence stack assigns distinct responsibilities:
 | Schema evolution | Flyway | Ordered, versioned, reviewed SQL migrations and migration history |
 | SQL-centric access | jOOQ | Schema-typed, composable queries and explicit mutations |
 | Entity-centric access | Spring Data JPA / Hibernate | Entity mapping, relationships and managed lifecycle where useful |
-| Connection and transaction lifecycle | Spring JDBC `DataSource` and transaction management | One coordinated local database transaction per operation |
+| Connection and transaction lifecycle | Spring JDBC `DataSource` and transaction management | One coordinated local transaction per explicit segment; an operation scope may host sequential segments |
 | Tests | JUnit 5, Mockito/fakes, PostgreSQL/Testcontainers | Independent unit tests and database-backed correctness checks |
 
 jOOQ and JPA/Hibernate are alternative implementation choices **inside a persistence adapter**, not competing definitions of the database model. An adapter normally selects one primary technology according to its use cases. A bounded context may contain adapters using either technology without exposing either library through its published API.
