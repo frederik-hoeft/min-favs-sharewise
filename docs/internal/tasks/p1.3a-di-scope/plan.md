@@ -26,11 +26,11 @@ The scope implementation uses Spring's existing `BeanFactory` and custom `Scope`
 
 **Covers:** DI-05 through DI-10 and DI-12; DI-T02, DI-T05 through DI-T10.
 
-- [ ] Implement singleton `OperationDispatcher` as the production entry point. Resolve one requested entry type inside its fresh scope, invoke the typed function, and always close the scope. Do not begin or intercept any physical transaction.
-- [ ] Reject recursive business dispatch while a scope for the same context is active. Permit ordinary calls among already-injected collaborators; do not prohibit the low-level factory's isolated nested DI scopes.
-- [ ] Enforce owner-thread rules on activation, resolution and closing, even if a `ScopedValue` binding was inherited by a structured child. Reject reentrant and repeated activation of the same scope instance.
-- [ ] Make teardown exception-safe: invoke all registered callbacks, clear references even after failure, preserve business exceptions as primary with cleanup failures diagnosable, and disallow resolution after closure. Account for Spring lifecycle callbacks that log rather than propagate exceptions.
-- [ ] Add tests for exceptional entry-service construction/invocation, failed destruction callbacks, independent concurrent operations, wrong-thread attempts, after-close attempts and original binding restoration.
+- [x] Implement singleton `OperationDispatcher` as the production entry point. Resolve one requested entry type inside its fresh scope, invoke the typed function, and always close the scope. Do not begin or intercept any physical transaction.
+- [x] Reject recursive business dispatch while a scope for the same context is active. Permit ordinary calls among already-injected collaborators; do not prohibit the low-level factory's isolated nested DI scopes.
+- [x] Enforce owner-thread rules on activation, resolution and closing, even if a `ScopedValue` binding was inherited by a structured child. Reject reentrant and repeated activation of the same scope instance.
+- [x] Make teardown exception-safe: invoke all registered callbacks, clear references even after failure, preserve business exceptions as primary with cleanup failures diagnosable, and disallow resolution after closure. Account for Spring lifecycle callbacks that log rather than propagate exceptions.
+- [x] Add tests for exceptional entry-service construction/invocation, failed destruction callbacks, independent concurrent operations, wrong-thread attempts, after-close attempts and original binding restoration.
 
 **Gate B:** Dispatcher and failure-path tests pass through the real Spring context, including cleanup on failure. `git diff --check` is clean, no tracked starter behavior is changed, and the phase patch has been reviewed and accepted.
 
