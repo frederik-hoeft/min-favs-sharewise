@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.shared.infra.di;
+package de.hsh.favs.sharewise.shared.infra.di.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -8,8 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import de.hsh.favs.sharewise.shared.ServiceProvider;
-import de.hsh.favs.sharewise.shared.ServiceScopeFactory;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,15 +31,15 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void springConstructsOneScopedGraphAndSharesContextSingletons() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            var singleton = context.getBean(SingletonToken.class);
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            SingletonToken singleton = context.getBean(SingletonToken.class);
 
             ScopedState firstScopeState;
-            try (var scope = factory.createScope()) {
+            try (ServiceScope scope = factory.createScope()) {
                 firstScopeState = scope.run(provider -> {
-                    var first = provider.getRequiredService(FirstService.class);
-                    var second = provider.getRequiredService(SecondService.class);
+                    FirstService first = provider.getRequiredService(FirstService.class);
+                    SecondService second = provider.getRequiredService(SecondService.class);
                     assertSame(first.state(), second.state());
                     assertSame(first.state(), provider.getRequiredService(ScopedState.class));
                     assertSame(first.state(), provider.getRequiredService(ConstructorConsumerA.class).state);
@@ -51,8 +52,8 @@ class ServiceScopeIntegrationTests {
                 });
             }
 
-            try (var scope = factory.createScope()) {
-                var nextState = scope.run(provider -> provider.getRequiredService(ScopedState.class));
+            try (ServiceScope scope = factory.createScope()) {
+                ScopedState nextState = scope.run(provider -> provider.getRequiredService(ScopedState.class));
                 assertNotSame(firstScopeState, nextState);
                 assertSame(singleton, context.getBean(SingletonToken.class));
             }
@@ -61,12 +62,12 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void noActiveScopeAndEscapedProvidersAreRejected() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
             assertThrows(BeanCreationException.class, () -> context.getBean(ScopedState.class));
 
-            var escaped = new AtomicReference<ServiceProvider>();
-            try (var scope = factory.createScope()) {
+            AtomicReference<ServiceProvider> escaped = new AtomicReference<>();
+            try (ServiceScope scope = factory.createScope()) {
                 scope.run(provider -> {
                     escaped.set(provider);
                     assertNotNull(provider.getRequiredService(ScopedState.class));
@@ -82,12 +83,12 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void nestedIndependentScopesRestoreParentBindingEvenOnException() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            try (var parent = factory.createScope()) {
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            try (ServiceScope parent = factory.createScope()) {
                 parent.run(parentProvider -> {
-                    var parentBean = parentProvider.getRequiredService(ScopedState.class);
-                    try (var child = factory.createScope()) {
+                    ScopedState parentBean = parentProvider.getRequiredService(ScopedState.class);
+                    try (ServiceScope child = factory.createScope()) {
                         assertThrows(IllegalArgumentException.class, () -> child.run(childProvider -> {
                             assertNotSame(parentBean,
                                 childProvider.getRequiredService(ScopedState.class));
@@ -106,16 +107,16 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void independentSpringContextsHaveIndependentScopeBindings() {
-        try (var first = newContext(); var second = newContext()) {
-            var firstFactory = first.getBean(ServiceScopeFactory.class);
-            var secondFactory = second.getBean(ServiceScopeFactory.class);
+        try (AnnotationConfigApplicationContext first = newContext(); AnnotationConfigApplicationContext second = newContext()) {
+            ServiceScopeFactory firstFactory = first.getBean(ServiceScopeFactory.class);
+            ServiceScopeFactory secondFactory = second.getBean(ServiceScopeFactory.class);
             assertNotSame(firstFactory, secondFactory);
 
-            try (var firstScope = firstFactory.createScope()) {
+            try (ServiceScope firstScope = firstFactory.createScope()) {
                 firstScope.run(firstProvider -> {
-                    var firstBean = firstProvider.getRequiredService(ScopedState.class);
+                    ScopedState firstBean = firstProvider.getRequiredService(ScopedState.class);
                     assertThrows(BeanCreationException.class, () -> second.getBean(ScopedState.class));
-                    try (var secondScope = secondFactory.createScope()) {
+                    try (ServiceScope secondScope = secondFactory.createScope()) {
                         secondScope.run(secondProvider -> {
                             assertNotSame(firstBean, secondProvider.getRequiredService(ScopedState.class));
                             return null;
@@ -130,9 +131,9 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void scopeCanOnlyBeActivatedOnceAndClosingIsTerminal() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            var scope = factory.createScope();
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            ServiceScope scope = factory.createScope();
             scope.run(provider -> {
                 assertThrows(IllegalStateException.class, () -> scope.run(ignored -> null));
                 assertThrows(IllegalStateException.class, scope::close);
@@ -143,7 +144,7 @@ class ServiceScopeIntegrationTests {
             scope.close();
             assertThrows(IllegalStateException.class, () -> scope.run(ignored -> null));
 
-            var unused = factory.createScope();
+            ServiceScope unused = factory.createScope();
             unused.close();
             assertThrows(IllegalStateException.class, () -> unused.run(ignored -> null));
         }
@@ -151,12 +152,12 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void removingABeanDiscardsItsDestructionCallbackAndAllowsRecreation() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            var count = context.getBean(DestructionCount.class);
-            try (var scope = factory.createScope()) {
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            DestructionCount count = context.getBean(DestructionCount.class);
+            try (ServiceScope scope = factory.createScope()) {
                 scope.run(provider -> {
-                    var original = provider.getRequiredService(TrackedResource.class);
+                    TrackedResource original = provider.getRequiredService(TrackedResource.class);
                     Scope spi = context.getBeanFactory().getRegisteredScope("operation");
                     assertSame(original, spi.remove("trackedResource"));
                     assertNotSame(original, provider.getRequiredService(TrackedResource.class));
@@ -170,10 +171,10 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void destructionCallbacksRunInReverseRegistrationOrder() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            var calls = new ArrayList<String>();
-            try (var scope = factory.createScope()) {
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            List<String> calls = new ArrayList<>();
+            try (ServiceScope scope = factory.createScope()) {
                 scope.run(provider -> {
                     Scope spi = context.getBeanFactory().getRegisteredScope("operation");
                     spi.registerDestructionCallback("first", () -> calls.add("first"));
@@ -187,10 +188,10 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void springInitializationAndDestructionAreAppliedToScopedBeans() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            var count = context.getBean(DestructionCount.class);
-            try (var scope = factory.createScope()) {
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            DestructionCount count = context.getBean(DestructionCount.class);
+            try (ServiceScope scope = factory.createScope()) {
                 scope.run(provider -> {
                     assertTrue(provider.getRequiredService(AnnotatedResource.class).initialized);
                     assertEquals(0, count.value.get());
@@ -203,10 +204,10 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void allCallbacksAreAttemptedEvenWhenOneFails() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            var callbacks = new ArrayList<String>();
-            var scope = factory.createScope();
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            List<String> callbacks = new ArrayList<>();
+            ServiceScope scope = factory.createScope();
             scope.run(provider -> {
                 Scope spi = context.getBeanFactory().getRegisteredScope("operation");
                 spi.registerDestructionCallback("first", () -> {
@@ -219,7 +220,7 @@ class ServiceScopeIntegrationTests {
                 });
                 return null;
             });
-            var failure = assertThrows(IllegalStateException.class, scope::close);
+            IllegalStateException failure = assertThrows(IllegalStateException.class, scope::close);
             assertEquals(List.of("second", "first"), callbacks);
             assertEquals("second failed", failure.getMessage());
             assertEquals("first failed", assertInstanceOf(IllegalArgumentException.class,
@@ -230,11 +231,11 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void scopeAndProviderCannotBeUsedByANonOwnerThread() throws InterruptedException {
-        try (var context = newContext()) {
-            var scope = context.getBean(ServiceScopeFactory.class).createScope();
-            var error = new AtomicReference<Throwable>();
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScope scope = context.getBean(ServiceScopeFactory.class).createScope();
+            AtomicReference<Throwable> error = new AtomicReference<>();
             scope.run(provider -> {
-                var other = Thread.ofVirtual().start(() -> {
+                Thread other = Thread.ofVirtual().start(() -> {
                     try {
                         provider.getRequiredService(ScopedState.class);
                     } catch (Throwable failure) {
@@ -251,7 +252,7 @@ class ServiceScopeIntegrationTests {
                 return null;
             });
             error.set(null);
-            var other = Thread.ofVirtual().start(() -> {
+            Thread other = Thread.ofVirtual().start(() -> {
                 try {
                     scope.close();
                 } catch (Throwable failure) {
@@ -266,10 +267,10 @@ class ServiceScopeIntegrationTests {
 
     @Test
     void failedBeanConstructionIsNotCachedAndNextAttemptCanSucceed() {
-        try (var context = newContext()) {
-            var factory = context.getBean(ServiceScopeFactory.class);
-            var attempts = context.getBean(ConstructionAttempts.class);
-            try (var scope = factory.createScope()) {
+        try (AnnotationConfigApplicationContext context = newContext()) {
+            ServiceScopeFactory factory = context.getBean(ServiceScopeFactory.class);
+            ConstructionAttempts attempts = context.getBean(ConstructionAttempts.class);
+            try (ServiceScope scope = factory.createScope()) {
                 scope.run(provider -> {
                     assertThrows(BeanCreationException.class,
                         () -> provider.getRequiredService(FlakyResource.class));
@@ -282,7 +283,7 @@ class ServiceScopeIntegrationTests {
     }
 
     private static AnnotationConfigApplicationContext newContext() {
-        var context = new AnnotationConfigApplicationContext();
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
         context.register(OperationScopeConfiguration.class, TestBeans.class,
             ConstructorConsumerA.class, ConstructorConsumerB.class);
         context.refresh();

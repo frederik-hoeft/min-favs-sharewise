@@ -50,7 +50,7 @@ interface OperationDispatcher {
 The production path is conceptually:
 
 ```java
-try (var scope = scopeFactory.createScope()) {
+try (ServiceScope scope = scopeFactory.createScope()) {
     return scope.run(provider ->
         operation.apply(provider.getRequiredService(entryType)));
 }

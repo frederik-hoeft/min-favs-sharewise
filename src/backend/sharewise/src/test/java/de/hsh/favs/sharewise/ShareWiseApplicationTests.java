@@ -2,7 +2,7 @@ package de.hsh.favs.sharewise;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import de.hsh.favs.sharewise.shared.ServiceScopeFactory;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;

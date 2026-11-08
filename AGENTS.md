@@ -6,4 +6,6 @@ Prefer maintainable, correct, well-factored solutions over minimal demonstration
 
 For new features, refactors and reviews, use [engineering-quality](.agents/skills/engineering-quality/SKILL.md), which emphasizes proactive reuse, questioning unjustified conventions, and improving surrounding architecture when appropriate to the task. For **all documentation work**, including README, developer guides, design, reference, and task planning, use [documentation](.agents/skills/documentation/SKILL.md). The authoritative product documentation lives in `docs/`, not in an agent skill; do not duplicate it across agent configurations.
 
+For Java code, always declare local variables and enhanced-for loop variables with **explicit types**, including in tests and try-with-resources. Do not use Java `var`; favor reviewable types over inferred declarations.
+
 The backend uses **Maven**, not Gradle; frontend uses **npm**, not pnpm. Follow the actual `pom.xml`, `package-lock.json`, and the frontend's generated [Next.js agent notes](src/frontend/AGENTS.md). Validate the strongest applicable checks supported by the environment and state any tooling gaps precisely.

@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.shared.infra.di;
+package de.hsh.favs.sharewise.shared.infra.di.internal;
 
 import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.beans.factory.config.Scope;

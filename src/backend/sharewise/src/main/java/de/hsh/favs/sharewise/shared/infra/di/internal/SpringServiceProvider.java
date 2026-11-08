@@ -1,6 +1,6 @@
-package de.hsh.favs.sharewise.shared.infra.di;
+package de.hsh.favs.sharewise.shared.infra.di.internal;
 
-import de.hsh.favs.sharewise.shared.ServiceProvider;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
 import java.util.Objects;
 import org.springframework.beans.factory.BeanFactory;
 

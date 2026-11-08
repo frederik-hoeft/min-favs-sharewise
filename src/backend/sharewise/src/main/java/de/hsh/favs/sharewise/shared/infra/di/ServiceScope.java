@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.shared;
+package de.hsh.favs.sharewise.shared.infra.di;
 
 import java.util.function.Function;
 

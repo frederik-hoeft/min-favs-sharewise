@@ -1,7 +1,7 @@
-package de.hsh.favs.sharewise.shared.infra.di;
+package de.hsh.favs.sharewise.shared.infra.di.internal;
 
-import de.hsh.favs.sharewise.shared.ServiceScope;
-import de.hsh.favs.sharewise.shared.ServiceScopeFactory;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import java.lang.ScopedValue;
 import java.util.Objects;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
@@ -37,7 +37,7 @@ final class SpringServiceScopeFactory implements ServiceScopeFactory, BeanFactor
         if (!current.isBound()) {
             throw new IllegalStateException("No operation scope is active in this Spring context");
         }
-        var scope = current.get();
+        SpringServiceScope scope = current.get();
         scope.ensureActiveOnOwnerThread();
         return scope;
     }

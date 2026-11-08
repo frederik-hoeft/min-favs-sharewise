@@ -52,6 +52,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 - [ ] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
     - packages are added with vertical slices
+    - P1.1 should publish the existing `shared.infra.di` public contracts through a Spring Modulith named interface (`shared::di`); `shared.infra.di.internal` is implementation-only, and additional shared infrastructure gets separately named APIs as needed
 - [ ] **P1.2:** Introduce PostgreSQL, migrations, per-context schema/table ownership and targeted integration fixtures; remove or isolate starter H2 dependencies where inappropriate.
 - [ ] **P1.3 - Operation scopes and transactions:** deliver the following related foundations with independent reviewable steps:
     - [ ] **P1.3a - DI scope:** implement the [reviewable DI-scope specification](p1.3a-di-scope/specification.md) using [inbound-agnostic operation dispatch and scoped Spring bean lifetimes](../../stack/dependency-injection.md), including deterministic disposal and scope/provider misuse guards.

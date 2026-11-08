@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.shared;
+package de.hsh.favs.sharewise.shared.infra.di;
 
 /** Resolves Spring-managed beans only while its owning scope is active. */
 public interface ServiceProvider {

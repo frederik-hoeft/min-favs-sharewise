@@ -1,10 +1,11 @@
-package de.hsh.favs.sharewise.shared.infra.di;
+package de.hsh.favs.sharewise.shared.infra.di.internal;
 
-import de.hsh.favs.sharewise.shared.ServiceProvider;
-import de.hsh.favs.sharewise.shared.ServiceScope;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
+import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -57,13 +58,13 @@ final class SpringServiceScope implements ServiceScope {
         }
 
         state = State.CLOSED;
-        var callbacks = new ArrayList<>(destructionCallbacks.values());
+        List<Runnable> callbacks = new ArrayList<>(destructionCallbacks.values());
         Collections.reverse(callbacks);
         destructionCallbacks.clear();
         beans.clear();
 
         Throwable failure = null;
-        for (var callback : callbacks) {
+        for (Runnable callback : callbacks) {
             try {
                 callback.run();
             } catch (Throwable thrown) {
@@ -106,7 +107,7 @@ final class SpringServiceScope implements ServiceScope {
             return beans.get(name);
         }
         try {
-            var bean = objectFactory.getObject();
+            Object bean = objectFactory.getObject();
             beans.put(name, bean);
             return bean;
         } catch (RuntimeException | Error failure) {
