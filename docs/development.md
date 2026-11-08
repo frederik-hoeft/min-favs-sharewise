@@ -65,7 +65,7 @@ The frontend resolves `sharewise-backend` through Docker's network DNS and expos
 
 - Use UTF-8 without BOM, LF line endings and final newlines, following repository formatting configuration. Prefer four-space indentation for Java unless an adopted formatter specifies otherwise.
 - Keep application/core contracts separated from transport DTOs and persistence implementation details; refer to [architecture](architecture.md) and [domain model](data-model-design.md).
-- Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of shared services.
+- Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of shared services. A singleton must not retain a concrete operation-scoped dependency; resolve application entry services through `OperationDispatcher`, not by grabbing a scoped bean during singleton construction. Do not retain scoped services or `ServiceProvider` references past their owning scope, or call a parent-scoped service/provider from an independently activated child scope. These lifetime constraints are enforced through review rather than assumed to be detected automatically by Spring.
 - Add and run focused tests for changed behavior. Validate database concurrency and query contracts against the intended database once those adapters are introduced.
 - When a build or test cannot run, identify whether the blocker is tooling, dependency resolution, project compilation, a test failure, or external infrastructure. Do not conflate missing local prerequisites with source-code defects.
 
