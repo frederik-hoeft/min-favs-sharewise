@@ -1,70 +1,81 @@
 # Operation-scoped dependency injection
 
-**Status:** Implemented in the Spring backend; P1.3a final acceptance is pending. This document describes the running DI infrastructure, not the planned transaction adapters or business modules. The [application architecture](../architecture.md) defines module ownership; the [DI decision record](../stack/dependency-injection-alternatives.md) explains the selection of this model.
+ShareWise uses one Spring `ApplicationContext` as its dependency-injection container and an explicit **operation scope** for the lifetime of each application operation. An application operation is one entry-service invocation initiated through `OperationDispatcher`, whether its caller is an HTTP adapter, event listener or scheduled job. All services resolved within that operation share the same operation-scoped dependencies without coupling their lifetime to an HTTP request, database transaction or worker-thread identity.
 
-## Operation lifetime and ownership
+A DI scope owns bean instances and their lifetime. It does not own business state transitions or physical transaction boundaries. Spring remains responsible for selecting, constructing and wiring beans; the operation scope determines which instances of beans declared with `@Scope("operation")` are reused during an invocation.
 
-An **application operation** is one entry-service invocation initiated through `OperationDispatcher`, independently of whether its caller is an HTTP adapter, event listener, scheduled job or test. The operation owns an explicit **DI lifetime**. Its Spring-managed collaborators can share operation-local state without relying on an HTTP request, an ambient database transaction or the identity of a worker thread.
+## Ownership and service lifetimes
 
-Spring remains the **sole dependency-injection container**. The application's `ApplicationContext` owns bean definitions, candidate selection, constructor and factory-method injection, singletons, initialization and destruction behavior. The custom Spring scope named `operation` supplies only the additional bean lifetime. The root container is not recreated for each operation, and no separate reflection-based resolver is involved.
+The `ApplicationContext` owns bean definitions, singleton instances, constructor and factory-method injection, bean post-processing and the Spring bean lifecycle. The operation-scoping layer adds a cache and destruction boundary for beans with the custom `operation` scope. It does not create a child `ApplicationContext` or implement a second dependency resolver.
 
-The public contracts live in `de.hsh.favs.sharewise.shared.infra.di`:
+The public contracts reside in `de.hsh.favs.sharewise.shared.infra.di`:
 
 | Contract | Responsibility |
 | --- | --- |
-| `ServiceScopeFactory` | Spring singleton per application context; creates independent, caller-owned scopes. |
-| `ServiceScope` | Owns one cache of operation-scoped beans and their registered destruction callbacks; activates one callback and closes deterministically. |
-| `ServiceProvider` | Scope-bound view of the owning context's Spring bean factory, available only during its scope's activation. |
-| `OperationDispatcher` | Singleton production entry point; opens a fresh scope, invokes a requested entry service and closes the scope. |
+| `ServiceScopeFactory` | Per-application-context singleton that creates independent, caller-owned scopes. |
+| `ServiceScope` | Owns one operation-scoped bean cache and its registered destruction callbacks; provides lexical activation and terminal closure. |
+| `ServiceProvider` | Scope-bound view over the owning context's Spring bean factory. |
+| `OperationDispatcher` | Production entry point that resolves and invokes one application entry service inside a fresh scope. |
 
-Spring-specific configuration, the custom `Scope` adapter, and the caching and dispatch implementations reside in `shared.infra.di.internal`. They are not part of the public DI contract. When P1.1 installs Spring Modulith, `shared.infra.di` is intended to become the named `shared::di` interface; module-boundary enforcement is not installed yet.
+Spring-specific configuration and the custom Spring `Scope` adapter live under `shared.infra.di.internal`. These are implementation details rather than application-facing DI contracts.
+
+The resulting lifetimes are independent of one another:
+
+- **Singleton beans** belong to the Spring application context and are shared between operations in that context.
+- **Operation-scoped beans** are cached by Spring bean name in one `ServiceScope` instance. Multiple consumers resolving the same bean within one operation receive the same instance; other scopes receive independent instances.
+- **Prototype beans** retain Spring's prototype semantics. Creating one during an operation does not make it an operation-owned bean or enroll it in the scope's destruction callbacks.
 
 ## Resolution and dispatch
 
 ```mermaid
 flowchart TB
     ingress["Inbound adapter"] --> dispatcher["OperationDispatcher"]
-    dispatcher -->|"createScope / run / close"| scope["ServiceScope instance"]
+    dispatcher -->|"create / activate / close"| scope["ServiceScope"]
     scope --> provider["Scope-bound ServiceProvider"]
-    provider --> factory["Spring BeanFactory"]
-    factory -->|singleton beans| singletons["ApplicationContext singleton cache"]
-    factory -->|operation beans| adapter["Custom Spring Scope adapter"]
-    adapter -->|"current ScopedValue binding"| scope
-    factory -->|"construct and inject"| service["Entry service and collaborators"]
+    provider --> beanFactory["Spring BeanFactory"]
+    beanFactory -->|singleton| singletonCache["ApplicationContext singleton cache"]
+    beanFactory -->|operation| scopeAdapter["Custom Spring Scope adapter"]
+    scopeAdapter -->|"current lexical binding"| scope
+    beanFactory -->|"construct and inject"| service["Entry service and collaborators"]
 ```
 
-`OperationDispatcher.dispatch(Class<S>, Function<S, R>)` creates a scope through the `ServiceScopeFactory`, activates it, resolves the requested entry service through the scope's provider, executes the supplied operation, and always closes the scope. **Dispatch never begins a physical database transaction.** Business services make their own transaction decisions when that infrastructure is introduced.
+`OperationDispatcher.dispatch(Class<S>, Function<S, R>)` creates a scope, activates it, resolves the requested entry service, executes the operation callback and closes the scope. The dispatcher does not create or finalize physical transactions. Ordinary calls between already-injected application services remain inside the same operation.
 
-For a manually owned scope, `ServiceScope.run(Function<ServiceProvider, T>)` supplies a temporary provider. `ServiceProvider.getRequiredService(Class<T>)` delegates directly to Spring's `BeanFactory.getBean(...)`. Spring recursively constructs the dependency graph, selecting the appropriate bean definitions and applying qualifiers, configuration methods and lifecycle processors as usual.
+A scope's `ServiceProvider.getRequiredService(Class<T>)` delegates to Spring's `BeanFactory.getBean(...)`. Spring resolves the bean definition and recursively constructs its dependency graph, including configured qualifiers, factory methods and post-processors. When Spring encounters an operation-scoped bean, its registered custom `Scope` adapter delegates cache lookup and creation to the **currently bound** `ServiceScope` instance.
 
-An operation-scoped bean is declared with Spring's `@Scope("operation")`. The registered Spring scope adapter stores it by **bean name** in the active `ServiceScope`'s cache. Multiple constructor-injected consumers of that bean receive the same instance inside one scope; another scope gets a different instance. Application-context singletons remain shared, and Spring prototypes retain their normal non-cached semantics. A prototype is **not** automatically disposed by the operation scope.
+Each `ServiceScopeFactory` owns a distinct Java 25 `ScopedValue` key. `ServiceScope.run(...)` lexically binds the scope instance to that key for the duration of its callback. All Spring resolutions in the call tree observe the same binding, without passing a scope identifier through constructors or creating another bean factory. Independent Spring application contexts have independent factories, keys, scope caches and singleton graphs.
 
-The `ServiceScopeFactory` owns an instance-specific Java 25 `ScopedValue` key. `ServiceScope.run(...)` binds the current scope instance to that key for the callback. Recursive Spring resolutions read the same lexical binding through the registered `Scope` adapter; no per-bean context restoration or separate bean factory is needed. Each Spring application context owns its own factory and binding key, so scopes and singleton graphs from independent contexts are isolated.
+## Scope lifecycle and nesting
 
-## Scope activation and lifetime
+A `ServiceScope` is created independently of its activation and remains owned by the caller until `close()`. Its lifetime follows these rules:
 
-A `ServiceScope` is independently created and owns its lifetime until the caller invokes `close()`. It can be activated **once**, on the thread that created it; it remains open after `run(...)` returns but cannot be activated again. The lexical binding unwinds automatically on both normal and exceptional callback completion. Closure is separate from binding restoration and is the responsibility of the scope owner.
+1. `createScope()` allocates a fresh scope with an empty bean cache.
+2. `run(...)` binds that scope to the current execution, makes its provider available to the callback, then restores the previous binding on return or failure.
+3. The scope remains open after the callback returns, but it cannot be activated a second time. Its owner calls `close()` to release scoped beans and registered callbacks.
+4. Closure is terminal. A closed scope cannot be reactivated or used for further bean resolution; repeated closure by the owner thread is harmless. A scope can be closed without having been activated.
 
-Scopes created through `ServiceScopeFactory` are independent, even when their activations are nested. A child activation temporarily shadows the outer binding, uses its own bean cache, and restores the parent binding on return. It does not inherit parent-scoped beans, establish a parent-child relationship between containers, or imply transaction propagation. The provider belonging to an outer scope cannot be used while the inner scope is current. Likewise, existing parent-created objects do not acquire new injected dependencies simply because an inner binding is active.
+Activation and closure belong to the scope's creating thread. The scope and provider reject resolution outside their active lexical binding, use from another thread, and reentrant activation of the same scope. Inheritance of a `ScopedValue` binding by a structured child thread does not transfer ownership of the scoped bean graph. Separate operations can execute concurrently on platform or virtual threads with isolated caches.
 
-Nested **DI scopes** are supported at the infrastructure level. Nested **business dispatch** is not: `OperationDispatcher` rejects a second dispatch while another operation scope is active in its context or while an earlier dispatch is still cleaning up. Participating application services instead call their already-injected collaborators within the original operation.
+The scope factory does not build a scope hierarchy. A new scope created and activated during another scope's callback has its own cache; its binding temporarily shadows the outer binding and restores it on exit. It does not inherit parent-scoped beans or imply any transaction nesting. An outer provider cannot be used while the inner scope is current, and existing outer bean references keep their originally injected collaborators.
 
-The scope and provider validate owner-thread access, activation state and current binding. An inherited `ScopedValue` binding does not permit a structured child thread to use another thread's scoped beans. Independent operations can run concurrently on different platform or virtual threads, each with an isolated scope.
+**Nested DI scope activation** is supported as an infrastructure operation. **Nested business dispatch** is not: `OperationDispatcher` rejects recursive dispatch both during the active operation and while its scope is being destroyed. Application services compose by invoking their already-injected collaborators, not by dispatching another application operation.
 
-## Cleanup and failure behavior
+## Destruction and failure semantics
 
-The scope owns Spring's **registered destruction callbacks**, not an independent `AutoCloseable` sweep over every cached object. Spring supplies callbacks for applicable bean lifecycle mechanisms, such as `@PreDestroy`, `DisposableBean` and configured `@Bean` destroy methods. At terminal closure, the scope clears its cache and registrations and attempts all callbacks in **reverse registration order**, even if one fails. A scope can also be closed without ever having been activated, and repeated closure on the owner thread is harmless.
+The scope owns **Spring-registered destruction callbacks**, not an independent `AutoCloseable` sweep over its cached objects. Spring supplies callbacks for applicable lifecycle mechanisms, including `@PreDestroy`, `DisposableBean` and configured `@Bean` destroy methods. The scope executes registered callbacks in reverse registration order and attempts all of them even if one fails. Its cache and callback registrations are cleared at terminal closure.
 
-No bean may be resolved through a provider after its scope is no longer current or after it has closed. An active scope cannot be closed from within its callback. When bean creation fails, the failed bean is not retained in the scope cache; successfully created dependencies remain subject to normal scope closure. Spring's `Scope.remove(...)` operation removes an individual cached bean and its destruction registration **without invoking that callback**; the caller is responsible for individual removal semantics.
+Destruction happens after the operation callback's lexical binding has unwound. No new bean resolution is permitted through the closing scope. `Spring Scope.remove(...)` removes an individual cached bean and its destruction registration without executing that callback; Spring's caller owns any destruction required for explicit removal.
 
-Failure during a business callback does not skip cleanup. Java try-with-resources preserves that exception as primary and suppresses any exception thrown by scope closure. If only cleanup fails, that failure is propagated; multiple callback failures are aggregated rather than stopping cleanup. Spring may internally log or handle some bean-destruction failures without propagating them to the scope, so not every failure in a Spring destroy method necessarily reaches the dispatcher.
+An exception from entry-service construction or operation execution does not skip cleanup. The original failure remains primary, with failures thrown by scope closure suppressed under Java try-with-resources semantics. When only closure fails, the closure failure propagates; multiple callback failures do not stop subsequent callbacks. Spring may handle and log some bean-destruction failures internally, so not every bean destroy-method exception propagates out of the scope.
 
-Lifetime correctness is guaranteed for the DI infrastructure's **own resolution, caching and cleanup paths**. Neither Spring nor this layer invalidates arbitrary Java references that a caller retains after closure. Application code must not capture operation-scoped beans in singletons or retain scoped providers after their lifetime; these are review-enforced ownership rules rather than automatic capture analysis.
+Failed bean construction leaves no partially constructed bean in the scope cache. Dependencies created successfully before the failure remain subject to ordinary scope cleanup. No subsequent scope can retrieve beans from a closed scope's cache.
 
-## Integration boundaries and verification
+## Architectural boundaries
 
-Production services use constructor injection and ordinarily enter through `OperationDispatcher`. Test code can use the **same** `ServiceScopeFactory` and `ServiceScope.run(...)` callback to resolve and inspect multiple collaborators before teardown; no test-specific DI container is required. This mechanism is exercised by Spring integration tests covering identity, qualifiers, initialization and destruction, nested bindings, context isolation, failure cleanup, concurrency and thread ownership.
+DI scope identity governs object lifetime, not database atomicity, transaction participation or permission to cross application-module boundaries. Opening a scope does not begin, commit or roll back a physical database transaction. Those responsibilities remain separate from dependency injection.
 
-The DI scope does not authorize cross-module access or own physical transaction resources. The operation-scoped `Transactions` port, sequential physical segments and transaction-specific data access remain **planned** under [P1.3b](../internal/tasks/p1.3-transactions/specification.md); rollback/real-commit test fixtures remain **planned** under [P1.3c](../internal/tasks/p1.3c-integration-tests/specification.md). The current backend has no financial application services or production transaction manager built on these abstractions.
+The infrastructure guarantees lifetime correctness along its own resolution, caching and destruction paths. It does not invalidate arbitrary Java references after a scope closes. Application components therefore do not retain operation-scoped beans in longer-lived services, retain scoped providers after activation, or let asynchronous work outlive the scope that owns its dependencies.
 
-For usage and test commands, see the [developer guide](../development.md#operation-scope-usage). The [P1.3a specification](../internal/tasks/p1.3a-di-scope/specification.md) and [implementation plan](../internal/tasks/p1.3a-di-scope/plan.md) retain the formal requirements and phased acceptance evidence.
+For integration tests, the same `ServiceScopeFactory` and `ServiceScope.run(...)` contract allows a callback to resolve and inspect multiple collaborators before teardown. Tests use the normal Spring bean factory and lifecycle rather than a second DI container. Production entry points use `OperationDispatcher` as their composition boundary.
+
+For concrete usage examples and build commands, see the [developer guide](../development.md#operation-scope-usage).
