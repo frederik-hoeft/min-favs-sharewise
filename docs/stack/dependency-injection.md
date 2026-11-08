@@ -1,6 +1,6 @@
 # Dependency injection and application-operation scopes
 
-**Status:** Intended architecture; the custom scope and dispatcher are not implemented in the starter. The [P1.3a specification](../internal/tasks/p1.3a-di-scope/specification.md) defines its acceptance contract. The [application architecture](../architecture.md) defines module ownership and application services; [transactions](persistence.md#transactions-and-failure-behavior) define physical database consistency.
+**Status:** Target architecture; the Spring operation-scope core is implemented in P1.3a Phase A, while production dispatch and remaining lifecycle verification are pending. The [P1.3a specification](../internal/tasks/p1.3a-di-scope/specification.md) defines its acceptance contract. The [application architecture](../architecture.md) defines module ownership and application services; [transactions](persistence.md#transactions-and-failure-behavior) define physical database consistency.
 
 ShareWise's hexagonal architecture has multiple inbound ports (REST, event consumers and scheduled jobs), so no single transport lifecycle can define the lifetime of application services consistently. An explicitly dispatched operation supplies that common lifetime; the [selection criteria and alternatives](dependency-injection-alternatives.md#selection-criteria) explain the rationale.
 

@@ -1,6 +1,6 @@
 # P1.3a - Implementation plan: operation-scoped DI
 
-**Status:** Draft for human review alongside the [P1.3a specification](specification.md). **Execution gate:** specification approval first, then plan approval, before implementation. This plan does not authorize any phase by itself. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental human review and final acceptance.
+**Status:** Approved plan alongside the [P1.3a specification](specification.md). **Execution gate:** Each implementation phase still requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental human review and final acceptance.
 
 ## Baseline and prerequisites
 

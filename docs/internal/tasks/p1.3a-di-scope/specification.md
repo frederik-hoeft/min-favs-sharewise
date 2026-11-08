@@ -1,6 +1,6 @@
 # P1.3a - Operation-scoped dependency injection
 
-**Status:** Draft specification for human review; no implementation or approval is implied. **Backlog item:** [P1.3a](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [DI architecture](../../../stack/dependency-injection.md) is the authoritative system model; its [alternatives](../../../stack/dependency-injection-alternatives.md) explain the selected Spring integration. [P1.3b](../p1.3-transactions/specification.md) and [P1.3c](../p1.3c-integration-tests/specification.md) own transaction and test-fixture behavior respectively. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
+**Status:** Approved target-state specification; implementation proceeds through separately reviewed phases. **Backlog item:** [P1.3a](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [DI architecture](../../../stack/dependency-injection.md) is the authoritative system model; its [alternatives](../../../stack/dependency-injection-alternatives.md) explain the selected Spring integration. [P1.3b](../p1.3-transactions/specification.md) and [P1.3c](../p1.3c-integration-tests/specification.md) own transaction and test-fixture behavior respectively. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
 
 ## Goal and scope
 
@@ -114,4 +114,4 @@ The developer runs the repository's offline Maven `clean verify`, checks `git di
 
 The [implementation plan](plan.md) assigns cohesive increments for Spring registration, owned-scope mechanics, dispatcher integration, edge-case testing and final documentation reconciliation. It may select the concrete packages, private adapter class names, exception taxonomy and callback storage details without weakening the contracts above. If Spring integration demonstrates that one of these requirements cannot be met without a material change to the architecture, the specification returns to human review before implementation proceeds.
 
-The specification and plan remain proposals until approved in the repository's review workflow. No P1.3b transaction behavior or P1.3c database-test infrastructure is implied to exist merely because the DI scope has been specified.
+The approved specification and plan govern the phased implementation and review workflow. No P1.3b transaction behavior or P1.3c database-test infrastructure is implied to exist merely because the DI scope has been specified.

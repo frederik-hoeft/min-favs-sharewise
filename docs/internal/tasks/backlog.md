@@ -2,7 +2,7 @@
 
 **Status:** Initial planning proposal; no implementation phase has been approved or started. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
 
-The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them. The [development guide](../../development.md) describes the actual starter dependencies, which should not be mistaken for future framework commitments. The current implementation is a Spring Boot greeting endpoint, a Next.js greeting flow, and a backend context-load test.
+The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them. The [development guide](../../development.md) describes the actual starter dependencies, which should not be mistaken for future framework commitments. The implemented backend includes the greeting endpoint and the P1.3a operation-scope core; the frontend still provides the greeting flow. The production dispatcher and remaining business modules are planned.
 
 ## Working agreement
 
