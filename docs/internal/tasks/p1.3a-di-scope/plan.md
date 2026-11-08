@@ -14,11 +14,11 @@ The scope implementation uses Spring's existing `BeanFactory` and custom `Scope`
 
 **Covers:** DI-01 through DI-05, DI-09, DI-11; DI-T01 through DI-T05 and DI-T11 (relevant portions).
 
-- [ ] Register the custom `operation` Spring scope in the application context early enough for scoped bean construction, without creating another bean factory. Keep the registration and implementation in a cohesive backend infrastructure package.
-- [ ] Implement the per-context `ServiceScopeFactory`, independently created `ServiceScope` instances, and the private `ScopedValue` key. Cache beans by Spring bean name; ensure no partially created bean is cached on factory failure.
-- [ ] Implement Spring `Scope` methods including destruction callback registration, conversation/context behavior and a deliberate `remove` contract. Preserve Spring ownership of construction and bean post-processing.
-- [ ] Add the scope-bound `ServiceProvider` facade that delegates directly to Spring's `BeanFactory` and validates owner/current/open state. Implement one-shot lexical `run(...)` activation and terminal `AutoCloseable` cleanup, with independent nested DI scopes supported.
-- [ ] Add focused Spring tests for constructor-injected shared identity, singleton reuse, different scopes, normal Spring `@Bean`/qualifier handling, no active scope, provider misuse, nested bindings and explicit removal/creation failure.
+- [x] Register the custom `operation` Spring scope in the application context early enough for scoped bean construction, without creating another bean factory. Keep the registration and implementation in a cohesive backend infrastructure package.
+- [x] Implement the per-context `ServiceScopeFactory`, independently created `ServiceScope` instances, and the private `ScopedValue` key. Cache beans by Spring bean name; ensure no partially created bean is cached on factory failure.
+- [x] Implement Spring `Scope` methods including destruction callback registration, conversation/context behavior and a deliberate `remove` contract. Preserve Spring ownership of construction and bean post-processing.
+- [x] Add the scope-bound `ServiceProvider` facade that delegates directly to Spring's `BeanFactory` and validates owner/current/open state. Implement one-shot lexical `run(...)` activation and terminal `AutoCloseable` cleanup, with independent nested DI scopes supported.
+- [x] Add focused Spring tests for constructor-injected shared identity, singleton reuse, different scopes, normal Spring `@Bean`/qualifier handling, no active scope, provider misuse, nested bindings and explicit removal/creation failure.
 
 **Gate A:** From `src/backend/sharewise`, `mvn -B -ntp -o "-Dmaven.repo.local=$MAVEN_REPO" test` and the focused Spring test suite pass using the supplied offline cache. Every scoped bean is created by Spring rather than a parallel reflection activator; opening, binding and closing a scope leave no cross-scope cache state. The code diff is reviewed before the next phase.
 

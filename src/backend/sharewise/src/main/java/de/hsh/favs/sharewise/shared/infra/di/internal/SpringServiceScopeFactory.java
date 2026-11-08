@@ -33,6 +33,10 @@ final class SpringServiceScopeFactory implements ServiceScopeFactory, BeanFactor
         return ScopedValue.where(current, scope).call(action::get);
     }
 
+    boolean hasActiveBinding() {
+        return current.isBound();
+    }
+
     SpringServiceScope currentScope() {
         if (!current.isBound()) {
             throw new IllegalStateException("No operation scope is active in this Spring context");

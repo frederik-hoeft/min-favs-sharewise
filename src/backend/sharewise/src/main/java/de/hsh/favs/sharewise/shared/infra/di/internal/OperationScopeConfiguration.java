@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.shared.infra.di.internal;
 
+import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -10,5 +11,10 @@ class OperationScopeConfiguration {
     @Bean
     static SpringServiceScopeFactory serviceScopeFactory() {
         return new SpringServiceScopeFactory();
+    }
+
+    @Bean
+    static OperationDispatcher operationDispatcher(SpringServiceScopeFactory serviceScopeFactory) {
+        return new SpringOperationDispatcher(serviceScopeFactory);
     }
 }
