@@ -55,13 +55,7 @@ Use a fresh ChatGPT conversation for each independent implementation task. Reuse
 An initial task instruction can be:
 
 ```text
-Use https://github.com/frederik-hoeft/custom-skills/blob/main/dev/local-development.skill
-and https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill
-to prepare an offline local workspace for the attached source archive.
-Read the repository's AGENTS.md, documentation and development guidelines,
-then validate the unchanged baseline before making changes.
-Follow docs/development/ai-development-workflow.md for architectural specification,
-test design, phased implementation and human review gates.
+Use https://github.com/frederik-hoeft/custom-skills/blob/main/dev/local-development.skill and https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill to prepare an offline local workspace for the attached source archive. Onboard yourself with the repository, read the AGENTS.md, /docs and development guidelines, then validate the unchanged baseline before making changes. It is crucial that you understand the overall project architecture, goals, dependencies, and data flow. Follow docs/development/ai-development-workflow.md for architectural specification, test design, phased implementation and human review gates. When working on tasks, pay close attention to repository-specific skills and guidelines.
 
 [Describe this task, constraints and requested deliverables.]
 ```
@@ -105,12 +99,7 @@ Once the branch has passed local review and mirrored to GitHub, open a **review-
 For example:
 
 ```text
-Review https://github.com/frederik-hoeft/min-favs-sharewise/pull/<number>
-using the GitHub connector. Read the task requirements, architecture and complete
-diff, follow the affected call paths, and review correctness, authorization,
-concurrency, failure handling, maintainability and test coverage.
-Leave specific, actionable inline comments for warranted findings, distinguishing
-confirmed defects from optional improvements. Do not implement or merge.
+Review https://github.com/frederik-hoeft/min-favs-sharewise/pull/<number> using the GitHub connector. Read the task requirements, architecture and complete diff, follow the affected call paths, and review correctness, authorization, concurrency, failure handling, maintainability and test coverage. Leave specific, actionable inline comments for warranted findings, distinguishing confirmed defects from optional improvements. Do not implement or merge.
 ```
 
 Bring findings back to the original task conversation, assess them with the task agent and apply accepted fixes as incremental patches. Push each accepted revision to GitLab, wait for the GitHub mirror, and have the reviewer recheck the current commit. The **human acceptance gate** in the [general workflow](ai-development-workflow.md) determines when the branch can be merged through GitLab.
