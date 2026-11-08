@@ -1,6 +1,6 @@
 # Dependency injection and operation-scope alternatives
 
-**Status:** Design rationale for the [application-operation scope](dependency-injection.md). The intended scope remains subject to implementation validation; this is not a record of deployed infrastructure.
+**Status:** Technology selection rationale for the [implemented application-operation scope](../architecture/dependency-injection.md). Future transaction-aware integrations are tracked separately in the [stack roadmap](dependency-injection.md).
 
 ## Selection criteria
 
@@ -10,7 +10,7 @@ The DI foundation must support the same application operation from HTTP, event, 
 
 An independent `ServiceScope` instance owns operation-local bean identity and destruction callbacks; the `ServiceScopeFactory` creates it, the dispatcher controls its lifetime, and a `ServiceProvider` facade delegates all resolution to Spring. Java 25 `ScopedValue` conveys the currently active scope instance lexically to the registered Spring `Scope` adapter. The physical transaction manager and persistence providers remain separate. This preserves constructor injection for stateful operation participants and allows the operation scope to outlive one database transaction without extending any transaction-specific resources.
 
-This adds a small but correctness-sensitive infrastructure layer. The implementation must explicitly verify teardown, scope/provider misuse, nested-dispatch rejection and thread confinement. Singleton-to-scoped capture is prohibited by development conventions and review; automatic detection is a deferred best-effort enhancement. Spring handles bean construction, constructor injection and dependency resolution; the project does not reimplement those features.
+This adds a small but correctness-sensitive infrastructure layer. The Spring integration is verified by focused tests for teardown, scope/provider misuse, nested-dispatch rejection and thread confinement. Singleton-to-scoped capture is prohibited by development conventions and review; automatic detection is a deferred best-effort enhancement. Spring handles bean construction, constructor injection and dependency resolution; the project does not reimplement those features.
 
 ## Alternatives considered
 

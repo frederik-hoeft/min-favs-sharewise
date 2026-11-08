@@ -1,6 +1,6 @@
 # P1.3c - Integration-test execution and isolation
 
-**Status:** Draft specification for review; no implementation or approval is implied. **Parent backlog item:** [P1.3](../backlog.md#phase-1---modular-application-and-persistence-foundation). This task depends on the [operation-scope architecture](../../../stack/dependency-injection.md), [P1.3 production transaction specification](../p1.3-transactions/specification.md), [persistence architecture](../../../stack/persistence.md), and [messaging architecture](../../../stack/messaging.md). The [development workflow](../../../development/ai-development-workflow.md) defines the specification, planning and review gates.
+**Status:** Draft specification for review; no implementation or approval is implied. **Parent backlog item:** [P1.3](../backlog.md#phase-1---modular-application-and-persistence-foundation). This task depends on the [operation-scope architecture](../../../architecture/dependency-injection.md), [P1.3 production transaction specification](../p1.3-transactions/specification.md), [persistence architecture](../../../stack/persistence.md), and [messaging architecture](../../../stack/messaging.md). The [development workflow](../../../development/ai-development-workflow.md) defines the specification, planning and review gates.
 
 ## Goal and architectural boundary
 
@@ -143,7 +143,7 @@ Each case specifies the setup/stimulus and observable result. Where a required S
 | **IT-16** | Exercise test/production configurations and an environment missing PostgreSQL. | Mock `Transactions` and inspector cannot appear in production wiring; required integration checks fail/are explicitly unavailable instead of silently using H2 or passing. |
 | **IT-17** | Run a rollback-isolated operation that emits an application event or invokes an external port. | No uncontrolled asynchronous or external effects escape the test transaction; no after-commit delivery or durable publication is claimed by the rollback test. |
 
-The [DI architecture](../../../stack/dependency-injection.md) and [P1.3b transaction specification](../p1.3-transactions/specification.md) remain the source of truth for production scope, transaction and resource guards. P1.3c tests verify those contracts rather than defining different ones.
+The [DI architecture](../../../architecture/dependency-injection.md) and [P1.3b transaction specification](../p1.3-transactions/specification.md) remain the source of truth for production scope, transaction and resource guards. P1.3c tests verify those contracts rather than defining different ones.
 
 ## Deferred decisions and implementation handoff
 

@@ -1,6 +1,6 @@
 # P1.3a - Operation-scoped dependency injection
 
-**Status:** Approved target-state specification; implementation proceeds through separately reviewed phases. **Backlog item:** [P1.3a](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [DI architecture](../../../stack/dependency-injection.md) is the authoritative system model; its [alternatives](../../../stack/dependency-injection-alternatives.md) explain the selected Spring integration. [P1.3b](../p1.3-transactions/specification.md) and [P1.3c](../p1.3c-integration-tests/specification.md) own transaction and test-fixture behavior respectively. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
+**Status:** Approved acceptance specification; implementation phases A-C are accepted and Phase D awaits final review. **Backlog item:** [P1.3a](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [DI architecture](../../../architecture/dependency-injection.md) is the authoritative system model; its [alternatives](../../../stack/dependency-injection-alternatives.md) explain the selected Spring integration. [P1.3b](../p1.3-transactions/specification.md) and [P1.3c](../p1.3c-integration-tests/specification.md) own transaction and test-fixture behavior respectively. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
 
 ## Goal and scope
 

@@ -1,6 +1,6 @@
 # Application architecture
 
-**Status:** Agreed architectural direction; implementation is at starter stage. This document describes the intended component contracts, not features already present in the repository.
+**Status:** Target modular architecture. The operation-scoped DI foundation is implemented; module boundaries, business workflows and transaction-aware persistence are still planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
 
 ## System organization
 
@@ -44,7 +44,7 @@ Command and query paths need not be symmetrical. Queries generally return direct
 
 ## Transaction-aware ports
 
-The application core owns commit decisions through an operation-scoped, technology-independent `Transactions` port. A [dispatched application operation](stack/dependency-injection.md) has one Spring-managed **operation DI scope**, whose application services and data adapters may share a scoped transaction manager and persistence-access capabilities. The DI scope does not itself begin a physical transaction; the application service explicitly starts each required transaction segment. The same application service can be dispatched from REST, an event consumer, a scheduled job or a test.
+The application core owns commit decisions through an operation-scoped, technology-independent `Transactions` port. A [dispatched application operation](architecture/dependency-injection.md) has one Spring-managed **operation DI scope**, whose application services and data adapters may share a scoped transaction manager and persistence-access capabilities. The DI scope does not itself begin a physical transaction; the application service explicitly starts each required transaction segment. The same application service can be dispatched from REST, an event consumer, a scheduled job or a test.
 
 Illustrative interface shapes (not existing source APIs):
 
@@ -88,7 +88,7 @@ The [preliminary security architecture](stack/security.md) separates IAM identit
 
 The [technical stack overview](stack/overview.md) maps the selected frameworks and tools to the runtime layers and distinguishes the starter from the intended system. The [persistence](stack/persistence.md), [messaging](stack/messaging.md) and [security](stack/security.md) designs own their corresponding technology-specific contracts; this document owns the module boundaries and application interaction model.
 
-Backend services use Spring constructor injection. Stateless shared infrastructure normally remains singleton-scoped, while the [application-operation DI scope](stack/dependency-injection.md) gives stateful entry services, participants and adapters one explicitly dispatched lifetime. Operation-scoped `Transactions` uses Spring's programmatic transaction manager (normally `TransactionTemplate`) to physically finalize each segment. The dispatcher, REST adapters, message listeners and application-core services need no `@Transactional` annotations; event publication records enlist in the business operation's physical Spring transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
+Backend services use Spring constructor injection. Stateless shared infrastructure normally remains singleton-scoped, while the [application-operation DI scope](architecture/dependency-injection.md) gives stateful entry services, participants and adapters one explicitly dispatched lifetime. Operation-scoped `Transactions` uses Spring's programmatic transaction manager (normally `TransactionTemplate`) to physically finalize each segment. The dispatcher, REST adapters, message listeners and application-core services need no `@Transactional` annotations; event publication records enlist in the business operation's physical Spring transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
 
 Application operations generally use straightforward imperative Java; virtual threads remain subject to connection-pool capacity and database locking. Architectural tests enforce allowed module dependencies, and PostgreSQL integration tests establish real persistence and concurrency semantics as these components are implemented.
 

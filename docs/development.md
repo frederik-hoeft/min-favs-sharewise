@@ -61,11 +61,61 @@ docker run --rm --name sharewise-frontend --network sharewise \
 
 The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The example backend uses the starter's H2 database and does not provide durable production storage.
 
+## Operation scope usage
+
+The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`; Spring-specific wiring under `shared.infra.di.internal` is infrastructure-private. The DI foundation is implemented and tested, but business modules and transaction-aware adapters have not yet been added.
+
+Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Production inbound adapters inject the singleton `OperationDispatcher` and dispatch an entry-service type rather than obtaining an operation-scoped bean from a singleton during construction:
+
+```java
+// Example service types; no financial business modules exist yet.
+@Component
+@Scope("operation")
+final class ExampleState {
+    private int calls;
+
+    int next() { return ++calls; }
+    int current() { return calls; }
+}
+
+@Service
+@Scope("operation")
+final class ExampleService {
+    private final ExampleState state;
+
+    ExampleService(ExampleState state) { this.state = state; }
+
+    int handle() { return state.next(); }
+}
+
+// Inside an inbound adapter:
+int result = dispatcher.dispatch(ExampleService.class, ExampleService::handle);
+```
+
+Infrastructure and tests that need to inspect multiple beans inside the *same* scope use the scope factory directly. The provider is usable only inside `run(...)`; closing remains the caller's responsibility:
+
+```java
+try (ServiceScope scope = scopeFactory.createScope()) {
+    scope.run(provider -> {
+        ExampleService service = provider.getRequiredService(ExampleService.class);
+        ExampleState state = provider.getRequiredService(ExampleState.class);
+        int result = service.handle();
+        assertEquals(1, result);
+        assertEquals(1, state.current()); // Both references share the same state.
+        return null;
+    });
+}
+```
+
+The factory may create independent nested DI scopes, but **nested `OperationDispatcher.dispatch(...)` calls are prohibited**. Do not use the outer scope's provider or already-created services from within a nested activation. Scopes and providers are confined to their creating thread; after closure, references must not be retained or used. Singleton-to-scoped dependency capture and escaped references are code-review concerns, not guarantees of automatic lifetime analysis.
+
+The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or the full `mvn clean verify`. In the supplied isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution. P1.3b/P1.3c require additional integration tests against real PostgreSQL once implemented.
+
 ## Development conventions
 
 - Use UTF-8 without BOM, LF line endings and final newlines, following repository formatting configuration. Prefer four-space indentation for Java unless an adopted formatter specifies otherwise.
 - Keep application/core contracts separated from transport DTOs and persistence implementation details; refer to [architecture](architecture.md) and [domain model](data-model-design.md).
-- Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of shared services. A singleton must not retain a concrete operation-scoped dependency; resolve application entry services through `OperationDispatcher`, not by grabbing a scoped bean during singleton construction. Do not retain scoped services or `ServiceProvider` references past their owning scope, or call a parent-scoped service/provider from an independently activated child scope. These lifetime constraints are enforced through review rather than assumed to be detected automatically by Spring.
+- Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of singleton services. Follow the [operation-scope usage rules](#operation-scope-usage) and the [DI architecture](architecture/dependency-injection.md) for lifecycle ownership; singleton capture and escaped-reference misuse are reviewed rather than automatically detected by Spring.
 - Add and run focused tests for changed behavior. Validate database concurrency and query contracts against the intended database once those adapters are introduced.
 - When a build or test cannot run, identify whether the blocker is tooling, dependency resolution, project compilation, a test failure, or external infrastructure. Do not conflate missing local prerequisites with source-code defects.
 

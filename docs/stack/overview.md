@@ -30,7 +30,7 @@ For changes that may propagate asynchronously, a producer commits its business d
 | --- | --- | --- |
 | Web UI | **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4**; build-time static site generation and browser UI | **Starter:** installed; static export pending |
 | Backend and HTTP | **Java 25**, **Spring Boot 4.1**, **Spring MVC**; REST endpoints and dependency-injected application services within a modular monolith | **Starter:** installed; module and application-service structure planned |
-| DI and operation lifetime | **Spring beans**, custom application-operation `Scope`, Java 25 `ScopedValue` and an inbound-agnostic dispatcher; scoped state independent of physical transactions | **In progress:** [dependency injection](dependency-injection.md); scope core implemented, dispatcher pending |
+| DI and operation lifetime | **Spring beans**, custom application-operation `Scope`, Java 25 `ScopedValue` and an inbound-agnostic dispatcher; scoped state independent of physical transactions | **Implemented foundation:** [DI architecture](../architecture/dependency-injection.md); transaction-aware participants and business adapters pending |
 | Authentication and authorization | **Spring Security** for password authentication, bearer JWT validation and method/request guards; IAM-managed refresh sessions and short-lived identity JWTs; issuer-qualified domain attestations | **Preliminary design:** [security](security.md); not installed |
 | Database and schema | **PostgreSQL** for authoritative, module-owned relational state; **Flyway** for reviewed SQL migrations | **Planned:** starter currently uses H2 |
 | Persistence adapters | **jOOQ** for typed, dialect-aware SQL operations; **Spring Data JPA / Hibernate** where managed entities are useful; **Spring transactions** coordinate local commits behind application-owned ports | **Mixed:** JPA starter present; jOOQ, PostgreSQL and transaction ports planned |
@@ -51,7 +51,7 @@ Development tooling includes **Dockerfiles**, a **VS Code Dev Container**, and *
 The detailed architecture and technology decisions are documented in:
 
 - [Application architecture](../architecture.md): modular monolith, dependency direction, published APIs, application services and transaction boundaries.
-- [Dependency injection and operation scopes](dependency-injection.md) and [alternatives](dependency-injection-alternatives.md): explicitly dispatched service lifetime, Spring integration and cleanup.
+- [Implemented operation-scope DI architecture](../architecture/dependency-injection.md), [pending integrations](dependency-injection.md) and [selection rationale](dependency-injection-alternatives.md): explicit service lifetime, Spring bean resolution and cleanup.
 - [Persistence architecture](persistence.md) and [alternatives](persistence-alternatives.md): PostgreSQL, Flyway, jOOQ/JPA, schema generation, coordinated transactions and database tests.
 - [Messaging architecture](messaging.md) and [alternatives](messaging-alternatives.md): Spring Modulith, durable publication, inboxes, idempotency, retention and later broker externalization.
 - [Identity and authorization architecture](security.md) and [alternatives](security-alternatives.md): Spring Security, IAM sessions and JWTs, scoped attestations, trust boundaries, refresh and revocation.
