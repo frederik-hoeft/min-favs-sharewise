@@ -1,6 +1,7 @@
 package de.hsh.favs.sharewise.shared.infra.persistence.jooq.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -9,6 +10,7 @@ import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.jooq.DSLContext;
@@ -106,6 +108,41 @@ class JooqAccessIntegrationTests {
         }
         assertTrue(cause instanceof IllegalStateException,
             "Expected segment lease rejection, got " + failure);
+    }
+
+    @Test
+    void jooqTransactionEntryPointsCannotBypassOwningSegment() {
+        dispatcher.dispatch(Probe.class, probe -> {
+            AtomicReference<DSLContext> escaped = new AtomicReference<>();
+            probe.transactions().execute(() -> {
+                DSLContext db = probe.jooq().dsl();
+                escaped.set(db);
+                assertJooqTransactionEntryRejected(db);
+                return TransactionOutcome.commit(null);
+            });
+            // A stale DSLContext must not be able to open an unrelated Spring/JDBC
+            // transaction even if its callback performs no guarded jOOQ SQL.
+            assertJooqTransactionEntryRejected(escaped.get());
+            probe.transactions().execute(() -> {
+                assertJooqTransactionEntryRejected(escaped.get());
+                return TransactionOutcome.commit(null);
+            });
+            return null;
+        });
+        assertEquals(Integer.valueOf(0), jdbc.queryForObject(
+            "select count(*) from tx_access_probe", Integer.class));
+    }
+
+    private static void assertJooqTransactionEntryRejected(DSLContext db) {
+        AtomicBoolean invoked = new AtomicBoolean();
+        assertThrows(IllegalStateException.class,
+            () -> db.transaction(configuration -> invoked.set(true)));
+        assertThrows(IllegalStateException.class,
+            () -> db.transactionResult(configuration -> {
+            invoked.set(true);
+            return "unexpected";
+        }));
+        assertFalse(invoked.get(), "A rejected transaction must not invoke its callback");
     }
 
     @Test

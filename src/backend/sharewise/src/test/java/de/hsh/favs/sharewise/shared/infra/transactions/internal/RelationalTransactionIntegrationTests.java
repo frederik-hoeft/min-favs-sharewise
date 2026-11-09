@@ -42,6 +42,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -257,6 +258,59 @@ class RelationalTransactionIntegrationTests {
             return null;
         });
         assertFalse(exists(80));
+    }
+
+    @Test
+    void requiresNewCannotUseResourcesBelongingToSuspendedSegment() {
+        assertSuspendedSegmentRejectsPersistence(TransactionDefinition.PROPAGATION_REQUIRES_NEW, 81);
+    }
+
+    @Test
+    void notSupportedCannotUseResourcesBelongingToSuspendedSegment() {
+        assertSuspendedSegmentRejectsPersistence(TransactionDefinition.PROPAGATION_NOT_SUPPORTED, 82);
+    }
+
+    private void assertSuspendedSegmentRejectsPersistence(int propagation, int rowId) {
+        dispatcher.dispatch(Probe.class, probe -> {
+            probe.transactions().execute(() -> {
+                DSLContext db = probe.jooq().dsl();
+                EntityManager entityManager = probe.jpa().entityManager();
+                db.execute("insert into tx_joint_probe (id, label) values (?, ?)", rowId, "outer");
+
+                TransactionTemplate nested = new TransactionTemplate(transactionManager);
+                nested.setPropagationBehavior(propagation);
+                nested.execute(status -> {
+                    assertThrows(IllegalStateException.class, probe.transactions()::isRollbackOnly);
+                    assertThrows(IllegalStateException.class, probe.transactions()::markRollbackOnly);
+                    assertThrows(IllegalStateException.class, () -> probe.jooq().dsl());
+                    assertThrows(IllegalStateException.class, () -> probe.jpa().entityManager());
+                    assertGuardedResourceRejected(() -> db.execute(
+                        "insert into tx_joint_probe (id, label) values (?, ?)", rowId + 1000, "escaped"));
+                    assertGuardedResourceRejected(() -> entityManager.find(Row.class, rowId));
+                    return null;
+                });
+
+                // The original transaction has resumed: previously acquired handles
+                // are valid again only while their own segment remains active.
+                assertEquals("outer", db.fetchValue(
+                    "select label from tx_joint_probe where id = ?", rowId));
+                assertEquals("outer", entityManager.find(Row.class, rowId).label);
+                return TransactionOutcome.rollback(null);
+            });
+            return null;
+        });
+        assertFalse(exists(rowId));
+        assertFalse(exists(rowId + 1000));
+    }
+
+    private static void assertGuardedResourceRejected(Runnable operation) {
+        RuntimeException failure = assertThrows(RuntimeException.class, operation::run);
+        Throwable cause = failure;
+        while (cause != null && !(cause instanceof IllegalStateException)) {
+            cause = cause.getCause();
+        }
+        assertTrue(cause instanceof IllegalStateException,
+            "Expected transaction-segment rejection, got " + failure);
     }
 
     @Test

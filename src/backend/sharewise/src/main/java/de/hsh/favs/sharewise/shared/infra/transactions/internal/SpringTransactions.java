@@ -26,7 +26,7 @@ final class SpringTransactions implements Transactions, TransactionSegmentAccess
     private final TransactionTemplate template;
     private State state = State.IDLE;
     private TransactionStatus activeStatus;
-    private Object activeSegmentIdentity;
+    private SegmentCompletion activeSegment;
 
     SpringTransactions(PlatformTransactionManager transactionManager, OperationScopeAccess scopes) {
         template = new TransactionTemplate(Objects.requireNonNull(transactionManager));
@@ -65,7 +65,7 @@ final class SpringTransactions implements Transactions, TransactionSegmentAccess
         }
         TransactionSynchronizationManager.registerSynchronization(completion);
         activeStatus = status;
-        activeSegmentIdentity = new Object();
+        activeSegment = completion;
         state = State.ACTIVE;
         try {
             TransactionOutcome<T> outcome = Objects.requireNonNull(operation.get(), "transaction outcome");
@@ -87,7 +87,7 @@ final class SpringTransactions implements Transactions, TransactionSegmentAccess
             throw failure;
         } finally {
             activeStatus = null;
-            activeSegmentIdentity = null;
+            activeSegment = null;
             state = State.FINALIZING;
         }
     }
@@ -118,10 +118,10 @@ final class SpringTransactions implements Transactions, TransactionSegmentAccess
     @Override
     public SegmentLease captureCurrentSegment() {
         requireActiveStatus();
-        Object identity = activeSegmentIdentity;
+        SegmentCompletion segment = activeSegment;
         return () -> {
             requireActiveStatus();
-            if (activeSegmentIdentity != identity) {
+            if (activeSegment != segment) {
                 throw new IllegalStateException("Transaction resource belongs to a completed segment");
             }
         };
@@ -139,8 +139,16 @@ final class SpringTransactions implements Transactions, TransactionSegmentAccess
 
     private TransactionStatus requireActiveStatus() {
         scopeLease.requireCurrent();
-        if (state != State.ACTIVE || activeStatus == null) {
+        if (state != State.ACTIVE || activeStatus == null || activeSegment == null) {
             throw new IllegalStateException("No active, writable transaction segment");
+        }
+        // Spring suspends and restores synchronizations for REQUIRES_NEW and
+        // NOT_SUPPORTED. Our lexical callback remains ACTIVE during suspension,
+        // but resources must not escape into a different physical transaction.
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()
+                || !TransactionSynchronizationManager.getSynchronizations().contains(activeSegment)) {
+            throw new IllegalStateException("The owning Spring transaction segment is suspended");
         }
         return activeStatus;
     }

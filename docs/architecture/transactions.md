@@ -53,11 +53,11 @@ A collaborator's typed result does not automatically decide the transaction's fa
 
 An expected business error, such as not-found or a stale revision, does not by itself make a database transaction unusable. An application can even deliberately commit a typed unsuccessful result when it also needs to persist an intended side effect. Conversely, a participant can mark the current segment **rollback-only** when its database state is unsafe. That veto is irreversible within the segment: a subsequent `COMMIT` fails and rolls back, while `ROLLBACK` or `ABSTAIN` can still return the application result after successful rollback.
 
-Segments are independent, not collectively atomic. Once segment A commits, a failure in segment B cannot undo A. Related changes that must succeed or fail together belong in **one segment**. Nested segment execution is rejected, as is execution inside an unrelated ambient Spring transaction that would defer or obscure physical completion.
+Segments are independent, not collectively atomic. Once segment A commits, a failure in segment B cannot undo A. Related changes that must succeed or fail together belong in **one segment**. Nested segment execution is rejected, as is execution inside an unrelated ambient Spring transaction that would defer or obscure physical completion. If a collaborating Spring service suspends the segment with another propagation mode, the application transaction manager and guarded persistence adapters reject database access until the original segment is resumed.
 
 ## Persistence participation and lifetimes
 
-Repositories inject stable, operation-scoped persistence accessors. `JooqAccess.dsl()` returns a jOOQ `DSLContext`, while `JpaAccess.entityManager()` returns a JPA `EntityManager`. Both refer to the currently active transaction segment, and neither starts a transaction. This keeps repository methods local and free of transaction parameters (illustrative domain and table types):
+Repositories inject stable, operation-scoped persistence accessors. `JooqAccess.dsl()` returns a jOOQ `DSLContext`, while `JpaAccess.entityManager()` returns a JPA `EntityManager`. Both refer to the currently active transaction segment, and neither starts a transaction. The jOOQ facade also rejects jOOQ-managed transaction entry; the application transaction manager is the only supported owner of transaction boundaries. This keeps repository methods local and free of transaction parameters (illustrative domain and table types):
 
 ```java
 Optional<Thing> getThingById(UUID id) {
@@ -99,4 +99,4 @@ Transactions guarantee **local database atomicity** subject to the backing datab
 
 Durable event-publication intent must participate in the same database transaction as the business change when atomic publication is required. An external action performed after commit is not part of that transaction.
 
-Participating JDBC, jOOQ and JPA adapters must use compatible Spring transaction infrastructure. Database-specific isolation, locking, constraint and commit-failure semantics depend on the configured database engine; the abstraction does not supply guarantees that the physical infrastructure does not provide.
+Participating JDBC, jOOQ and JPA adapters must use compatible Spring transaction infrastructure. The guards apply to ShareWise's persistence accessors, not arbitrary direct use of Spring transaction APIs or unguarded connections; application services must not bypass the supported access path. Database-specific isolation, locking, constraint and commit-failure semantics depend on the configured database engine; the abstraction does not supply guarantees that the physical infrastructure does not provide.

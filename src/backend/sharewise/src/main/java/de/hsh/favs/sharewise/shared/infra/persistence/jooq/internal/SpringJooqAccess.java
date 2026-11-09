@@ -8,6 +8,8 @@ import org.jooq.Configuration;
 import org.jooq.ConnectionProvider;
 import org.jooq.DSLContext;
 import org.jooq.ExecuteContext;
+import org.jooq.TransactionContext;
+import org.jooq.TransactionProvider;
 import org.jooq.impl.DefaultExecuteListener;
 import org.jooq.impl.DefaultExecuteListenerProvider;
 import org.springframework.context.annotation.Scope;
@@ -17,6 +19,24 @@ import org.springframework.stereotype.Component;
 @Component
 @Scope("operation")
 final class SpringJooqAccess implements JooqAccess {
+
+    /** Transaction boundaries belong exclusively to Transactions.execute(...). */
+    private static final TransactionProvider REJECT_JOOQ_TRANSACTIONS = new TransactionProvider() {
+        @Override
+        public void begin(TransactionContext context) {
+            throw new IllegalStateException("Use Transactions.execute(...) to begin a transaction segment");
+        }
+
+        @Override
+        public void commit(TransactionContext context) {
+            throw new IllegalStateException("jOOQ cannot finalize application transaction segments");
+        }
+
+        @Override
+        public void rollback(TransactionContext context) {
+            throw new IllegalStateException("jOOQ cannot finalize application transaction segments");
+        }
+    };
 
     private final TransactionSegmentAccess segments;
     private final DSLContext rootDsl;
@@ -47,8 +67,10 @@ final class SpringJooqAccess implements JooqAccess {
         };
         // The listener also guards executions that reuse an already prepared
         // statement. Append it instead of replacing Boot's existing listeners.
-        Configuration configuration = rootDsl.configuration().derive(checked).deriveAppending(
-            new DefaultExecuteListenerProvider(new DefaultExecuteListener() {
+        Configuration configuration = rootDsl.configuration()
+            .derive(checked)
+            .derive(REJECT_JOOQ_TRANSACTIONS)
+            .deriveAppending(new DefaultExecuteListenerProvider(new DefaultExecuteListener() {
                 @Override
                 public void start(ExecuteContext context) {
                     lease.requireCurrent();
