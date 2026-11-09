@@ -36,7 +36,7 @@ build-frontend:
 # mock Node.js archive used by the integration harness.
 test-offline-handoff:
   stage: test
-  image: python:3.12-bookworm
+  image: python:3.12-trixie
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends xz-utils
   script:
