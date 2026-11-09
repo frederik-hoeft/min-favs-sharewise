@@ -1,4 +1,4 @@
-# Application transaction management
+﻿# Application transaction management
 
 ShareWise separates an **application operation** from the database transactions it performs. An operation owns one [dependency-injection scope](dependency-injection.md) and may execute zero or more **sequential transaction segments** within its lifetime. The scope outlives any segment it contains, so its services remain available while each database transaction independently commits or rolls back.
 
@@ -35,12 +35,26 @@ The manager is exposed as `Transactions`. Its `execute(...)` operation opens one
 An entry service chooses the transaction boundary around work that must be atomic. For example, an illustrative application operation can turn a repository's business result into the final transaction decision:
 
 ```java
-return transactions.execute(() -> {
-    ChangeResult result = thingAdapter.renameIfVersion(id, version, name);
-    return result.applied()
-        ? TransactionOutcome.commit(result)
-        : TransactionOutcome.rollback(result);
-});
+@Service
+@Scope("operation")
+final class ThingService {
+    private final Transactions transactions;
+    private final ThingStore things;
+
+    ThingService(Transactions transactions, ThingStore things) {
+        this.transactions = transactions;
+        this.things = things;
+    }
+
+    ChangeResult rename(UUID id, long version, String name) {
+        return transactions.execute(() -> {
+            ChangeResult result = things.renameIfVersion(id, version, name);
+            return result.applied()
+                ? TransactionOutcome.commit(result)
+                : TransactionOutcome.rollback(result);
+        });
+    }
+}
 ```
 
 A collaborator's typed result does not automatically decide the transaction's fate. Only the outcome **returned from the enclosing callback** is authoritative, even if the entry service delegates its construction to a collaborator. The returned result is distinct from the decision to persist changes.
