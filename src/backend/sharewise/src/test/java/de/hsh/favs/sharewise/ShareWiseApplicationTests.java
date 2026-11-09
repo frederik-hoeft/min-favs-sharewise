@@ -44,7 +44,7 @@ class ShareWiseApplicationTests {
                 Transactions transactions = provider.getRequiredService(Transactions.class);
                 JooqAccess jooq = provider.getRequiredService(JooqAccess.class);
                 Integer result = transactions.execute(() -> TransactionOutcome.commit(
-                    jooq.withDsl(dsl -> dsl.fetchOne("select 1").get(0, Integer.class))));
+                    jooq.dsl().fetchOne("select 1").get(0, Integer.class)));
                 org.junit.jupiter.api.Assertions.assertEquals(Integer.valueOf(1), result);
                 return null;
             });

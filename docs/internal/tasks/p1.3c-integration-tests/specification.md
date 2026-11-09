@@ -145,6 +145,10 @@ Each case specifies the setup/stimulus and observable result. Where a required S
 
 The [DI architecture](../../../architecture/dependency-injection.md) and [P1.3b transaction specification](../p1.3-transactions/specification.md) remain the source of truth for production scope, transaction and resource guards. P1.3c tests verify those contracts rather than defining different ones.
 
+## TODO before implementation planning: shared transaction-segment binding
+
+**Design review required for P1.3c:** Phase C introduces operation-scoped `JooqAccess.dsl()` and `JpaAccess.entityManager()` with one `TransactionSegmentAccess` lease contract. The rollback-test `Transactions` substitute must activate and invalidate a logical segment through that same mechanism, while the harness retains its separate test-owned physical PostgreSQL transaction for post-operation inspection. Revisit how segment activation is shared or substituted in Spring test configuration so production persistence adapters remain unchanged; do not depend on the concrete production `SpringTransactions` implementation or introduce a second ambient transaction registry. Verify that JPA query guards and jOOQ query/connection guards remain effective after logical completion, and that test-only SQL inspection cannot resurrect a closed application segment. Decide this integration seam **before writing P1.3c's implementation plan**.
+
 ## Deferred decisions and implementation handoff
 
 Implementation planning selects the exact harness API, test bean overrides, observation representation, PostgreSQL fixture provisioning and Spring-context caching strategy. These choices must satisfy the test guarantees without changing production `Transactions` signatures, `TransactionOutcome<T>` semantics, permitted sequential physical segments, or operation-scope ownership.

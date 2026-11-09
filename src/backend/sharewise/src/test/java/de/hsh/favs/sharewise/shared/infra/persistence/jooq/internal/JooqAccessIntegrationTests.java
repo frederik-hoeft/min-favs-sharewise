@@ -52,17 +52,15 @@ class JooqAccessIntegrationTests {
     void acceptsSqlOnlyWithinItsOwningSegmentAndHonorsCommitAndRollback() {
         dispatcher.dispatch(Probe.class, probe -> {
             assertThrows(IllegalStateException.class,
-                () -> probe.jooq().withDsl(dsl -> dsl.fetchOne("select 1")));
+                () -> probe.jooq().dsl().fetchOne("select 1"));
 
             probe.transactions().execute(() -> {
-                int rows = probe.jooq().withDsl(dsl -> dsl.execute(
-                    "insert into tx_access_probe (id) values (1)"));
+                int rows = probe.jooq().dsl().execute("insert into tx_access_probe (id) values (1)");
                 assertEquals(1, rows);
                 return TransactionOutcome.commit(null);
             });
             probe.transactions().execute(() -> {
-                probe.jooq().withDsl(dsl -> dsl.execute(
-                    "insert into tx_access_probe (id) values (2)"));
+                probe.jooq().dsl().execute("insert into tx_access_probe (id) values (2)");
                 return TransactionOutcome.rollback(null);
             });
             return null;
@@ -73,23 +71,25 @@ class JooqAccessIntegrationTests {
     @Test
     void derivedQueriesFromAnEarlierSegmentCannotExecuteInLaterSegments() {
         dispatcher.dispatch(Probe.class, probe -> {
+            AtomicReference<DSLContext> escapedDsl = new AtomicReference<>();
             AtomicReference<ResultQuery<Record>> escapedRead = new AtomicReference<>();
             AtomicReference<Query> escapedWrite = new AtomicReference<>();
             probe.transactions().execute(() -> {
-                escapedRead.set(probe.jooq().withDsl(dsl -> dsl.resultQuery(
-                    "select id from tx_access_probe")));
-                escapedWrite.set(probe.jooq().withDsl(dsl -> dsl.query(
-                    "insert into tx_access_probe (id) values (99)")));
+                escapedDsl.set(probe.jooq().dsl());
+                escapedRead.set(probe.jooq().dsl().resultQuery("select id from tx_access_probe"));
+                escapedWrite.set(probe.jooq().dsl().query("insert into tx_access_probe (id) values (99)"));
                 assertEquals(0, escapedRead.get().fetch().size());
                 return TransactionOutcome.commit(null);
             });
+            assertRejectedBySegmentLease(() -> escapedDsl.get().fetchOne("select 1"));
             assertRejectedBySegmentLease(() -> escapedRead.get().fetch());
             assertRejectedBySegmentLease(() -> escapedWrite.get().execute());
 
             probe.transactions().execute(() -> {
+                assertRejectedBySegmentLease(() -> escapedDsl.get().fetchOne("select 1"));
                 assertRejectedBySegmentLease(() -> escapedRead.get().fetch());
                 assertRejectedBySegmentLease(() -> escapedWrite.get().execute());
-                Integer result = probe.jooq().withDsl(dsl -> dsl.fetchOne("select 1").get(0, Integer.class));
+                Integer result = probe.jooq().dsl().fetchOne("select 1").get(0, Integer.class);
                 assertEquals(Integer.valueOf(1), result);
                 return TransactionOutcome.commit(null);
             });
@@ -111,12 +111,12 @@ class JooqAccessIntegrationTests {
     @Test
     void jooqAccessCannotBeUsedThroughAnotherScopeOrThread() {
         JooqAccess escaped = dispatcher.dispatch(Probe.class, Probe::jooq);
-        assertThrows(IllegalStateException.class, () -> escaped.withDsl(dsl -> null));
+        assertThrows(IllegalStateException.class, () -> escaped.dsl());
         dispatcher.dispatch(Probe.class, probe -> {
             probe.transactions().execute(() -> {
-                assertThrows(IllegalStateException.class, () -> escaped.withDsl(dsl -> null));
+                assertThrows(IllegalStateException.class, () -> escaped.dsl());
                 FutureTask<Void> wrongThread = new FutureTask<>(() -> {
-                    assertThrows(IllegalStateException.class, () -> probe.jooq().withDsl(dsl -> null));
+                    assertThrows(IllegalStateException.class, () -> probe.jooq().dsl());
                     return null;
                 });
                 Thread.ofVirtual().start(wrongThread);

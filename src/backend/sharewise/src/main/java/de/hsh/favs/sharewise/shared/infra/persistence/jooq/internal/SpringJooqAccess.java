@@ -4,7 +4,6 @@ import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import java.sql.Connection;
 import java.util.Objects;
-import java.util.function.Function;
 import org.jooq.Configuration;
 import org.jooq.ConnectionProvider;
 import org.jooq.DSLContext;
@@ -28,8 +27,7 @@ final class SpringJooqAccess implements JooqAccess {
     }
 
     @Override
-    public <T> T withDsl(Function<DSLContext, T> work) {
-        Objects.requireNonNull(work, "work");
+    public DSLContext dsl() {
         TransactionSegmentAccess.SegmentLease lease = segments.captureCurrentSegment();
         // Preserve Spring Boot's transaction-aware physical provider, but guard
         // connection acquisition even when callers access the derived configuration.
@@ -56,6 +54,6 @@ final class SpringJooqAccess implements JooqAccess {
                     lease.requireCurrent();
                 }
             }));
-        return work.apply(configuration.dsl());
+        return configuration.dsl();
     }
 }
