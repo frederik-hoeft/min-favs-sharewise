@@ -36,6 +36,29 @@ The repository script prepares and verifies the Java/Maven/Node toolchains and d
 
 For tasks needing only one side of the application, `pack --deps maven` bundles the backend cache and publishes only the JDK and Maven archives; `pack --deps node` bundles the frontend cache and publishes only Node.js. These use distinct default dependency-archive names (`sharewise-offline-deps-maven-linux-x64.tar.gz` and `sharewise-offline-deps-node-linux-x64.tar.gz`). Each archive includes an embedded verifier that checks only the selected project. Upload the dependency archive, its `.sha256` file and the original vendor archives named by its `manifest/toolchain-files.txt`; the full bundle remains appropriate for cross-stack tasks.
 
+**Using selective handoffs with the shared offline skill.** The linked `java-nextjs-offline.skill` describes a combined handoff and includes examples that unconditionally extract all three toolchains and copy both caches. For ShareWise, the bundle manifest and embedded verifier define the required subset. After validating the dependency archive's `.sha256` file and extracting it safely, use the following commands with the separately supplied source tree and original toolchain archives:
+
+```bash
+DEPS=/absolute/path/to/extracted-deps
+SOURCE=/absolute/path/to/sharewise
+TOOLCHAINS=/absolute/path/to/original-toolchain-archives
+
+selection=all
+if [[ -f "$DEPS/manifest/dependency-selection.txt" ]]; then
+    selection=$(<"$DEPS/manifest/dependency-selection.txt")
+fi
+case "$selection" in
+    all|maven|node) ;;
+    *) printf 'Invalid handoff selection: %s\n' "$selection" >&2; exit 1 ;;
+esac
+
+# Validates only the selected source descriptors and vendor archives, then
+# extracts the required tools temporarily and runs strict offline builds.
+"$DEPS/verify-offline.sh" verify "$DEPS" --source "$SOURCE" --toolchains "$TOOLCHAINS"
+```
+
+For continued development after verification, follow the skill's isolated-workspace setup **only for the selected projects**: `all` requires JDK, Maven, Node.js and both `cache/maven` and `cache/npm`; `maven` requires JDK, Maven and `cache/maven`; `node` requires Node.js and `cache/npm`. Extract only the archives listed in `manifest/toolchain-files.txt`, copy only the selected cache directories into isolated writable caches, and configure only the matching toolchain and cache environment variables. An unselected cache or SDK is intentionally absent, so do not create empty substitutes or run the other project's build. For legacy bundles without the selection file, `all` applies. These ShareWise-specific instructions supersede the combined-only setup examples in the linked skill until it supports selective handoffs directly.
+
 For the default bundle, upload all five files to the Project's Sources. Reuse the set for code changes that leave the selected dependency descriptors and toolchain versions unchanged. If a bundled project's `pom.xml`, `package.json`, `package-lock.json`, wrapper configuration or toolchain selection changes, regenerate its handoff, replace the corresponding files together and verify against a fresh source baseline. Mixed handoff generations are not supported.
 
 See the [offline handoff instructions](../development.md#portable-offline-dependency-handoff) and [offline environment skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill) for archive validation and recovery details. The project source ZIP does not include these dependencies.

@@ -31,6 +31,17 @@ build-frontend:
     - npm run lint
     - npm run build
 
+# Runs without downloading language SDKs or project dependencies. The Debian
+# Python image provides Bash, tar and checksum utilities; xz supports the
+# mock Node.js archive used by the integration harness.
+test-offline-handoff:
+  stage: test
+  image: python:3.12-bookworm
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends xz-utils
+  script:
+    - scripts/test-offline-handoff.sh
+
 sast:
   stage: test
 include:
