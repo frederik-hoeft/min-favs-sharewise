@@ -23,7 +23,7 @@ flowchart LR
     Service["Application service"] -->|"execute work"| Manager["Application transaction manager"]
     Service -->|"calls"| Adapter["Persistence adapter"]
     Adapter -->|"gets database facade"| Accessor["Persistence accessor"]
-    Accessor -->|"participates in active segment"| Spring["Spring transaction infrastructure"]
+    Accessor -->|"active segment"| Spring["Spring transaction infrastructure"]
     Manager -->|"starts and finalizes"| Spring
     Outcome["Result + decision"] -->|"returned by callback"| Manager
 ```
@@ -36,7 +36,7 @@ An entry service chooses the transaction boundary around work that must be atomi
 
 ```java
 return transactions.execute(() -> {
-    ChangeResult result = things.renameIfVersion(id, version, name);
+    ChangeResult result = thingAdapter.renameIfVersion(id, version, name);
     return result.applied()
         ? TransactionOutcome.commit(result)
         : TransactionOutcome.rollback(result);
@@ -49,7 +49,7 @@ A collaborator's typed result does not automatically decide the transaction's fa
 | --- | --- |
 | `COMMIT` | Persist the segment's changes if the transaction is healthy; return the application result after successful completion. |
 | `ROLLBACK` | Discard the segment's changes and return the supplied result after successful rollback. |
-| `ABSTAIN` | Also roll back; express that no persistence is requested, rather than an explicit rejection. |
+| `ABSTAIN` | Also roll back; express that no changes have been made and no persistence is requested, rather than an explicit rejection. |
 
 An expected business error, such as not-found or a stale revision, does not by itself make a database transaction unusable. An application can even deliberately commit a typed unsuccessful result when it also needs to persist an intended side effect. Conversely, a participant can mark the current segment **rollback-only** when its database state is unsafe. That veto is irreversible within the segment: a subsequent `COMMIT` fails and rolls back, while `ROLLBACK` or `ABSTAIN` can still return the application result after successful rollback.
 
