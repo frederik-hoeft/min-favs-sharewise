@@ -15,6 +15,12 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +34,7 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.AbstractPlatformTransactionManager;
 import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** Exercises the real DI scope and Spring TransactionTemplate against an instrumented physical manager. */
@@ -44,6 +51,9 @@ class TransactionsIntegrationTests {
         physical.commits.set(0);
         physical.rollbacks.set(0);
         physical.events.clear();
+        physical.beginFailure = null;
+        physical.commitFailure = null;
+        physical.rollbackFailure = null;
     }
 
     @Test
@@ -165,6 +175,243 @@ class TransactionsIntegrationTests {
         assertEquals(List.of("begin", "rollback", "begin", "rollback", "begin", "rollback"), physical.events);
     }
 
+    @Test
+    void capturedManagerCannotBeUsedWithoutItsActiveScopeOrInsideAnotherScope() {
+        Transactions escaped = dispatcher.dispatch(EntryService.class, EntryService::transactions);
+        assertThrows(IllegalStateException.class, () -> escaped.execute(() -> TransactionOutcome.commit("x")));
+        assertThrows(IllegalStateException.class, escaped::markRollbackOnly);
+        assertThrows(IllegalStateException.class, escaped::isRollbackOnly);
+
+        dispatcher.dispatch(EntryService.class, other -> {
+            assertThrows(IllegalStateException.class,
+                () -> escaped.execute(() -> TransactionOutcome.commit("wrong scope")));
+            assertThrows(IllegalStateException.class, escaped::markRollbackOnly);
+            assertThrows(IllegalStateException.class, escaped::isRollbackOnly);
+            other.transactions().execute(() -> TransactionOutcome.commit("valid"));
+            return null;
+        });
+        assertEquals(List.of("begin", "commit"), physical.events);
+    }
+
+    @Test
+    void owningThreadIsRequiredForAllManagerOperations() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            FutureTask<Void> wrongThread = new FutureTask<>(() -> {
+                assertThrows(IllegalStateException.class,
+                    () -> transactions.execute(() -> TransactionOutcome.commit("x")));
+                assertThrows(IllegalStateException.class, transactions::markRollbackOnly);
+                assertThrows(IllegalStateException.class, transactions::isRollbackOnly);
+                return null;
+            });
+            Thread thread = Thread.ofVirtual().start(wrongThread);
+            try {
+                wrongThread.get();
+                thread.join();
+            } catch (Exception failure) {
+                throw new AssertionError("Wrong-thread assertions failed", failure);
+            }
+            transactions.execute(() -> TransactionOutcome.commit("valid"));
+            return null;
+        });
+        assertEquals(List.of("begin", "commit"), physical.events);
+    }
+
+    @Test
+    void unrelatedSpringTransactionsAndSynchronizationAreRejectedWithoutStartingSegment() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            TransactionSynchronizationManager.setActualTransactionActive(true);
+            try {
+                assertThrows(IllegalStateException.class,
+                    () -> transactions.execute(() -> TransactionOutcome.commit("should not run")));
+            } finally {
+                TransactionSynchronizationManager.setActualTransactionActive(false);
+            }
+
+            TransactionSynchronizationManager.initSynchronization();
+            try {
+                assertThrows(IllegalStateException.class,
+                    () -> transactions.execute(() -> TransactionOutcome.commit("should not run")));
+            } finally {
+                TransactionSynchronizationManager.clearSynchronization();
+            }
+            assertEquals(0, physical.begins.get());
+            transactions.execute(() -> TransactionOutcome.commit("allowed"));
+            return null;
+        });
+        assertEquals(List.of("begin", "commit"), physical.events);
+    }
+
+    @Test
+    void reentrantExecutionIsRejectedWithoutPoisoningOwningSegment() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            String value = transactions.execute(() -> {
+                assertThrows(IllegalStateException.class,
+                    () -> transactions.execute(() -> TransactionOutcome.commit("nested")));
+                return TransactionOutcome.commit("outer");
+            });
+            assertEquals("outer", value);
+            transactions.execute(() -> TransactionOutcome.rollback("following"));
+            return null;
+        });
+        assertEquals(List.of("begin", "commit", "begin", "rollback"), physical.events);
+    }
+
+    @Test
+    void rollbackOnlyCommitFailsButDoesNotPoisonNextSegmentAfterConfirmedRollback() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            assertThrows(IllegalStateException.class, () -> transactions.execute(() -> {
+                transactions.markRollbackOnly();
+                return TransactionOutcome.commit("unsafe");
+            }));
+            assertEquals("fine", transactions.execute(() -> {
+                assertFalse(transactions.isRollbackOnly());
+                return TransactionOutcome.commit("fine");
+            }));
+            return null;
+        });
+        assertEquals(List.of("begin", "rollback", "begin", "commit"), physical.events);
+    }
+
+    @Test
+    void callbackAndInvalidOutcomeFailuresMayBeFollowedByNewSegmentAfterConfirmedRollback() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            IllegalArgumentException expected = new IllegalArgumentException("business failed");
+            assertSame(expected, assertThrows(IllegalArgumentException.class,
+                () -> transactions.execute(() -> { throw expected; })));
+            assertThrows(NullPointerException.class, () -> transactions.execute(() -> null));
+            assertEquals("recovered", transactions.execute(() -> TransactionOutcome.commit("recovered")));
+            return null;
+        });
+        assertEquals(List.of("begin", "rollback", "begin", "rollback", "begin", "commit"), physical.events);
+    }
+
+    @Test
+    void failedPhysicalCommitPoisonsManagerAndNeverReturnsSuccess() {
+        physical.commitFailure = new IllegalStateException("physical commit failed");
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("not confirmed")));
+            assertSame(physical.commitFailure, thrown);
+            assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("must not retry")));
+            assertThrows(IllegalStateException.class, transactions::markRollbackOnly);
+            return null;
+        });
+        // Spring may attempt rollback after a failed commit; it cannot make that
+        // earlier physical commit failure unambiguous or authorize a new segment.
+        assertEquals(List.of("begin", "commit", "rollback"), physical.events);
+    }
+
+    @Test
+    void failedBeginPoisonsManagerWithoutInvokingUserCallback() {
+        physical.beginFailure = new IllegalStateException("physical begin failed");
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            assertSame(physical.beginFailure, assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> {
+                    throw new AssertionError("Callback must never run on failed begin");
+                })));
+            assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.rollback("cannot reuse")));
+            return null;
+        });
+        assertEquals(List.of("begin"), physical.events);
+    }
+
+    @Test
+    void failedPhysicalRollbackPoisonsManagerAndPreservesApplicationFailure() {
+        physical.rollbackFailure = new IllegalStateException("physical rollback failed");
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            IllegalArgumentException callbackFailure = new IllegalArgumentException("callback failed");
+            IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> { throw callbackFailure; }));
+            assertSame(physical.rollbackFailure, thrown);
+            assertTrue(List.of(thrown.getSuppressed()).contains(callbackFailure));
+            assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("must not retry")));
+            return null;
+        });
+        assertEquals(List.of("begin", "rollback"), physical.events);
+    }
+
+    @Test
+    void afterCommitFailureIsReportedDespiteConfirmedPhysicalCommit() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            IllegalStateException expected = new IllegalStateException("afterCommit listener failed");
+            assertSame(expected, assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            throw expected;
+                        }
+                    });
+                    return TransactionOutcome.commit("durable");
+                })));
+            assertEquals(1, physical.commits.get());
+            // A confirmed commit is not an uncertain completion, even if a notification fails.
+            transactions.execute(() -> TransactionOutcome.commit("next segment"));
+            return null;
+        });
+        assertEquals(List.of("begin", "commit", "begin", "commit"), physical.events);
+    }
+
+    @Test
+    void failedCommitSynchronizationPoisonsManagerDespiteRollbackNotification() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            IllegalStateException expected = new IllegalStateException("beforeCommit rejected");
+            assertSame(expected, assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void beforeCommit(boolean readOnly) {
+                            throw expected;
+                        }
+                    });
+                    return TransactionOutcome.commit("never committed");
+                })));
+            // Spring reports a rollback but cannot prove a commit was never attempted.
+            assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("next segment")));
+            return null;
+        });
+        assertEquals(List.of("begin", "rollback"), physical.events);
+    }
+
+    @Test
+    void independentConcurrentDispatchesHaveIndependentTransactionManagers() throws Exception {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Callable<Transactions>> operations = new ArrayList<>();
+            // Verify a full transaction per independent scope, not just object allocation.
+            for (int index = 0; index < 8; index++) {
+                operations.add(() -> dispatcher.dispatch(EntryService.class, entry -> {
+                    entry.transactions().execute(() -> TransactionOutcome.commit("ok"));
+                    return entry.transactions();
+                }));
+            }
+            List<Future<Transactions>> futures = executor.invokeAll(operations);
+            List<Transactions> instances = new ArrayList<>();
+            for (Future<Transactions> future : futures) {
+                Transactions instance = future.get();
+                for (Transactions other : instances) {
+                    assertNotSame(other, instance);
+                }
+                instances.add(instance);
+            }
+        }
+        assertEquals(8, physical.begins.get());
+        assertEquals(8, physical.commits.get());
+    }
+
     record BusinessError(String reason) { }
 
     record EntryService(Transactions transactions, ParticipantService participant) { }
@@ -179,7 +426,10 @@ class TransactionsIntegrationTests {
         final AtomicInteger begins = new AtomicInteger();
         final AtomicInteger commits = new AtomicInteger();
         final AtomicInteger rollbacks = new AtomicInteger();
-        final List<String> events = new ArrayList<>();
+        final List<String> events = Collections.synchronizedList(new ArrayList<>());
+        volatile RuntimeException beginFailure;
+        volatile RuntimeException commitFailure;
+        volatile RuntimeException rollbackFailure;
 
         @Override
         protected Object doGetTransaction() {
@@ -190,18 +440,27 @@ class TransactionsIntegrationTests {
         protected void doBegin(Object transaction, TransactionDefinition definition) {
             begins.incrementAndGet();
             events.add("begin");
+            if (beginFailure != null) {
+                throw beginFailure;
+            }
         }
 
         @Override
         protected void doCommit(DefaultTransactionStatus status) {
             commits.incrementAndGet();
             events.add("commit");
+            if (commitFailure != null) {
+                throw commitFailure;
+            }
         }
 
         @Override
         protected void doRollback(DefaultTransactionStatus status) {
             rollbacks.incrementAndGet();
             events.add("rollback");
+            if (rollbackFailure != null) {
+                throw rollbackFailure;
+            }
         }
     }
 

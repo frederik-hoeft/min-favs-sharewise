@@ -16,10 +16,10 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 
 **Focus:** `Transactions`, `TransactionDecision`, `TransactionOutcome<T>`, basic operation-scope registration and outcome-driven physical completion. **Acceptance:** TX-01, TX-02, TX-04, TX-05, TX-09 and TX-13 at the Spring/component-test level.
 
-- [ ] Add the small public contract with `execute(Supplier<TransactionOutcome<T>>)` and sticky rollback-only accessors. Implement `TransactionOutcome.commit(result)`, `.rollback(result)` and `.abstain(result)`; reject a null outcome/decision while permitting a null application result.
-- [ ] Register one operation-scoped Spring-backed manager. Resolve the single compatible `PlatformTransactionManager` using normal constructor injection; construct/use a `TransactionTemplate`, not a second connection or transaction manager. Do not instantiate physical resources until `execute(...)`.
-- [ ] Implement the explicit result-driven commit/rollback path and reset segment-local state for sequential calls. A nested service may be injected with the same `Transactions` instance; constructing an outcome alone has no side effects.
-- [ ] Add Spring-context tests using a deterministic instrumented `PlatformTransactionManager` and operation dispatch: shared scoped identity, zero begin on injection alone, one begin/finalization per `execute(...)`, commit/rollback/abstain, sequential segments and returned result identity. Cover outcome delegation and unused outcomes.
+- [x] Add the small public contract with `execute(Supplier<TransactionOutcome<T>>)` and sticky rollback-only accessors. Implement `TransactionOutcome.commit(result)`, `.rollback(result)` and `.abstain(result)`; reject a null outcome/decision while permitting a null application result.
+- [x] Register one operation-scoped Spring-backed manager. Resolve the single compatible `PlatformTransactionManager` using normal constructor injection; construct/use a `TransactionTemplate`, not a second connection or transaction manager. Do not instantiate physical resources until `execute(...)`.
+- [x] Implement the explicit result-driven commit/rollback path and reset segment-local state for sequential calls. A nested service may be injected with the same `Transactions` instance; constructing an outcome alone has no side effects.
+- [x] Add Spring-context tests using a deterministic instrumented `PlatformTransactionManager` and operation dispatch: shared scoped identity, zero begin on injection alone, one begin/finalization per `execute(...)`, commit/rollback/abstain, sequential segments and returned result identity. Cover outcome delegation and unused outcomes.
 
 **Gate A:** Focused tests and backend offline `mvn clean verify` pass. No `@Transactional` interception or direct physical transaction handling has been introduced in the dispatcher. The public API and component ownership are reviewed before Phase B.
 
@@ -33,7 +33,7 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 - [ ] Guarantee rollback for thrown callbacks, null/invalid outcomes, and failed validity checks inside a segment. Distinguish a definitively rolled-back callback exception from an uncertain or failed finalization: only the latter poisons the manager for subsequent segments. Preserve primary exceptions and cleanup/finalization diagnostics as far as the Spring API permits.
 - [ ] Cover physical commit/rollback failure, transaction synchronization failure (including `afterCommit()` after durable commit), nested calls, two consecutive segments, cross-thread invocation and independent concurrent scopes. Verify failure states do not return apparent commit success or automatically retry ambiguous writes.
 
-**Gate B:** The deterministic transaction-manager tests demonstrate exactly one finalization attempt per segment, state reset/poisoning, and fail-closed ambient/nesting behavior. Tests do **not** claim PostgreSQL durability or connection isolation. The patch is reviewed before Phase C.
+**Gate B:** The deterministic transaction-manager tests demonstrate one manager-owned segment and definitive or uncertain finalization, state reset/poisoning, and fail-closed ambient/nesting behavior. Spring may attempt rollback after a failed commit; that fallback is not proof that the commit never occurred. Tests do **not** claim PostgreSQL durability or connection isolation. The patch is reviewed before Phase C.
 
 ## Phase C - Segment-bound persistence participation
 
