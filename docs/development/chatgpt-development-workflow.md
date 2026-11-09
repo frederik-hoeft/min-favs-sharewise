@@ -34,7 +34,9 @@ The repository script prepares and verifies the Java/Maven/Node toolchains and d
 
 ![The five handoff files in the devcontainer's Git-ignored offline cache.](assets/devcontainer-offline-cache.png)
 
-Upload all five files to the Project's Sources. Reuse the set for code changes that leave the dependency descriptors and toolchain versions unchanged. If `pom.xml`, `package.json`, `package-lock.json`, wrapper configuration or toolchain selection changes, regenerate the entire set, replace the old files together and verify against a fresh source baseline. Mixed handoff generations are not supported.
+For tasks needing only one side of the application, `pack --deps maven` bundles the backend cache and publishes only the JDK and Maven archives; `pack --deps node` bundles the frontend cache and publishes only Node.js. These use distinct default dependency-archive names (`sharewise-offline-deps-maven-linux-x64.tar.gz` and `sharewise-offline-deps-node-linux-x64.tar.gz`). Each archive includes an embedded verifier that checks only the selected project. Upload the dependency archive, its `.sha256` file and the original vendor archives named by its `manifest/toolchain-files.txt`; the full bundle remains appropriate for cross-stack tasks.
+
+For the default bundle, upload all five files to the Project's Sources. Reuse the set for code changes that leave the selected dependency descriptors and toolchain versions unchanged. If a bundled project's `pom.xml`, `package.json`, `package-lock.json`, wrapper configuration or toolchain selection changes, regenerate its handoff, replace the corresponding files together and verify against a fresh source baseline. Mixed handoff generations are not supported.
 
 See the [offline handoff instructions](../development.md#portable-offline-dependency-handoff) and [offline environment skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill) for archive validation and recovery details. The project source ZIP does not include these dependencies.
 
