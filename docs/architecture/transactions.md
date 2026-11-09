@@ -57,14 +57,25 @@ Segments are independent, not collectively atomic. Once segment A commits, a fai
 
 ## Persistence participation and lifetimes
 
-Repositories inject stable, operation-scoped persistence accessors. `JooqAccess.dsl()` returns a jOOQ `DSLContext`, while `JpaAccess.entityManager()` returns a JPA `EntityManager`. Both refer to the currently active transaction segment, and neither starts a transaction. The jOOQ facade also rejects jOOQ-managed transaction entry; the application transaction manager is the only supported owner of transaction boundaries. This keeps repository methods local and free of transaction parameters (illustrative domain and table types):
+Repositories inject stable, operation-scoped persistence accessors. `JooqAccess.dsl()` returns a jOOQ `DSLContext`, while `JpaAccess.entityManager()` returns a JPA `EntityManager`. Both refer to the currently active transaction segment, and neither starts a transaction. The jOOQ facade also rejects jOOQ-managed transaction entry; the application transaction manager is the only supported owner of transaction boundaries. This keeps repository methods local and free of transaction parameters (illustrative domain and table types; mapping implementation omitted):
 
 ```java
-Optional<Thing> getThingById(UUID id) {
-    DSLContext db = database.dsl();
-    return db.selectFrom(THING)
-        .where(THING.ID.eq(id))
-        .fetchOptional(this::mapThing);
+@Service
+@Scope("operation")
+final class PostgresThingStore implements ThingStore {
+    private final JooqAccess database;
+
+    PostgresThingStore(JooqAccess database) {
+        this.database = database;
+    }
+
+    @Override
+    public Optional<Thing> getThingById(UUID id) {
+        DSLContext db = database.dsl();
+        return db.selectFrom(THING)
+            .where(THING.ID.eq(id))
+            .fetchOptional(this::mapThing);
+    }
 }
 ```
 
