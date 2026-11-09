@@ -1,6 +1,6 @@
 # P1.3b - Implementation plan: application-owned transactions
 
-**Status:** Draft for human review alongside the [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) requires approval of both artifacts before implementation, and approval of each incremental phase before progressing. P1.3a's [implemented DI scope](../../../architecture/dependency-injection.md) is the baseline; P1.2's PostgreSQL foundation and P1.3c's database test fixtures are independent prerequisites for final database acceptance.
+**Status:** Approved implementation plan; Phases A-C accepted and Phase D in review. [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) governs review gates. P1.3a provides the [DI foundation](../../../architecture/dependency-injection.md). P1.3b verifies Spring/H2 integration independently; [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation) owns the mandatory PostgreSQL integration gate after P1.2.
 
 ## Baseline, dependencies and ownership
 
@@ -10,7 +10,7 @@ Public application contracts belong in `de.hsh.favs.sharewise.shared.infra.trans
 
 The production component is a Spring **operation-scoped** `Transactions` bean. It delegates physical acquisition and finalization to the configured `PlatformTransactionManager`, preferably via `TransactionTemplate`. `ServiceScope` and `OperationDispatcher` never open physical database transactions implicitly. `Transactions.execute(...)` creates a new, synchronous transaction segment, obtains its single returned `TransactionOutcome<T>`, and completes the physical transaction before exposing the application result.
 
-Each phase yields one independently reviewable patch on the approved baseline. Checkboxes are completed **only after validation and human approval**. When a phase is blocked by P1.2, retain the block visibly rather than substituting H2/mock results for PostgreSQL acceptance.
+Each phase yields one independently reviewable patch on the approved baseline. Checkboxes are completed **only after validation and human approval**. H2 and fake-manager tests validate Spring/application behavior but cannot substitute for the real-PostgreSQL evidence explicitly scheduled under P1.5.
 
 ## Phase A - Public contract and Spring-backed segment execution
 
@@ -39,23 +39,23 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 
 **Focus:** Internal adapter support for acquiring resources safely inside the *current* physical segment, without leaking transaction internals into domain ports. **Acceptance:** TX-09 and TX-10 at the guard/component level.
 
-- [ ] Introduce the smallest adapter-facing transaction-segment access mechanism necessary to check active segment identity, owner thread and closure; capture an immutable segment identity/lease for each resource handle instead of relying on the mutable manager's current segment at execution time.
-- [ ] A persistence adapter may obtain a resource only inside `Transactions.execute(...)`; operations on retained handles after finalization, across segments or outside scope are rejected before SQL execution. Avoid a general resource registry, direct connection management or an application-visible `TransactionSession` argument.
-- [ ] Validate guard composition and lifetime failures with an instrumented fake adapter. Ensure accessors do not begin a transaction, cannot resurrect a closed segment and do not cache transaction-bound facades across calls.
-- [ ] Integrate Spring Boot's jOOQ starter and operation-scoped `JooqAccess.dsl()` and `JpaAccess.entityManager()` facades. Preserve Spring's transaction-aware connection provider and JPA persistence context. Both accessors must use the same segment-lease interface; guard jOOQ connection acquisition and SQL execution as well as JPA facade and deferred query invocations. Document local-only resource use; do not expose unguarded provider resources. Keep PostgreSQL-specific evidence and jOOQ/JPA interoperability in Phase D.
+- [x] Introduce the smallest adapter-facing transaction-segment access mechanism necessary to check active segment identity, owner thread and closure; capture an immutable segment identity/lease for each resource handle instead of relying on the mutable manager's current segment at execution time.
+- [x] A persistence adapter may obtain a resource only inside `Transactions.execute(...)`; operations on retained handles after finalization, across segments or outside scope are rejected before SQL execution. Avoid a general resource registry, direct connection management or an application-visible `TransactionSession` argument.
+- [x] Validate guard composition and lifetime failures with an instrumented fake adapter. Ensure accessors do not begin a transaction, cannot resurrect a closed segment and do not cache transaction-bound facades across calls.
+- [x] Integrate Spring Boot's jOOQ starter and operation-scoped `JooqAccess.dsl()` and `JpaAccess.entityManager()` facades. Preserve Spring's transaction-aware connection provider and JPA persistence context. Both accessors must use the same segment-lease interface; guard jOOQ connection acquisition and SQL execution as well as JPA facade and deferred query invocations. Document local-only resource use; do not expose unguarded provider resources. Keep PostgreSQL-specific evidence and jOOQ/JPA interoperability in Phase D.
 
-**Gate C:** No mock-only or H2 assertions are advertised as proof of PostgreSQL behavior. The additional Spring Boot jOOQ dependency requires a refreshed offline Maven cache before the full backend build and jOOQ integration tests can run; record that validation gap explicitly. Reviewer approval and completed verification are required before Phase D.
+**Gate C (accepted):** Operation-scoped segment leases and both jOOQ/JPA accessors pass the full offline backend build with the refreshed Maven handoff (54 tests before Phase D). The human approved the C.1 revision. These tests establish H2/framework behavior only, not PostgreSQL guarantees.
 
-## Phase D - Real PostgreSQL integration (requires P1.2)
+## Phase D - Spring/H2 persistence integration and failure paths
 
-**Focus:** Physical commit, rollback, connection lifetime, visibility and compatibility. **Acceptance:** TX-03 through TX-11 where real persistence is required. P1.3c may supply reusable test fixtures; P2.4 owns publication/consumer integration in TX-12.
+**Focus:** Exercise the production operation scope, transaction manager and both persistence accessors against real Spring-managed H2 transactions **without depending on P1.2**. **Acceptance:** Framework-level portions of TX-03 through TX-11; PostgreSQL-specific evidence moves to mandatory P1.5. P2.4 owns messaging publication/consumer integration in TX-12.
 
-- [ ] With P1.2's actual PostgreSQL datasource, migrations and transaction manager present, verify `Transactions` participates in the chosen Spring physical manager; verify uncommitted changes are invisible to independent transactions and completed changes are visible after return.
-- [ ] Verify multi-port atomicity, ROLLBACK/ABSTAIN, typed failures with intentional COMMIT, rollback-only persistence behavior, and segment A commit followed by segment B rollback in a *real* database. Use independent connections/transactions for visibility assertions; do not accidentally wrap production-dispatch tests in a Spring TestContext `@Transactional` transaction.
-- [ ] Exercise known and uncertain finalization failures without claiming an uncertain commit is rolled back. Verify a failing `afterCommit()` callback reports failure while the committed rows remain durable. Prove wrong-segment and retained-handle guards against actual SQL paths.
-- [ ] Verify jOOQ/JPA participation and flush/visibility against P1.2's real PostgreSQL configuration. Both accessors are introduced in Phase C, but their cross-technology transaction behavior is not established by H2. Keep producer-publication atomicity and consumer tests assigned to the messaging milestone where that infrastructure exists.
+- [ ] Use one Spring `JpaTransactionManager` and transaction-aware jOOQ configuration with the same H2 `DataSource`. Exercise jOOQ and JPA writes in one physical transaction; verify JPA flush-to-SQL visibility and explicit refresh after jOOQ mutations.
+- [ ] Verify mixed-adapter COMMIT, ROLLBACK, ABSTAIN and sequential segments, including rollback-only vetoes, typed failure with intentional COMMIT, and callback exception recovery. Verify pending writes are invisible through a genuinely independent connection before commit; avoid accidental participation through Spring's thread-bound connection.
+- [ ] Exercise an `afterCommit()` callback failure after a completed commit, commit-time ORM/constraint failure, known SQL error translated into a rollback-only result, and incompatible ambient transactions. Retain deterministic fake-manager tests for uncertain commit/rollback outcomes that H2 cannot simulate reliably.
+- [ ] Retain the Phase C regression coverage for stale/derived jOOQ and JPA handles, wrong-scope/thread access and missing physical context. Do not treat H2 isolation, transaction-manager compatibility, or constraints as PostgreSQL acceptance evidence.
 
-**Gate D:** Real PostgreSQL-backed tests pass through the same production scope/manager configuration. If P1.2 or the required runtime is unavailable, **Phase D remains blocked** and P1.3b is not represented as having passed its complete physical-database acceptance gate. H2 and manager fakes are interim coverage only.
+**Gate D:** The full backend offline build and focused H2 tests pass. Record H2/fake-manager versus PostgreSQL evidence separately. Human approval accepts P1.3b's Spring/adapter component integration only; **P1.5 remains a mandatory, separate Phase 1 gate against P1.2's actual PostgreSQL wiring**.
 
 ## Phase E - Steady-state documentation and acceptance
 
@@ -66,8 +66,8 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 - [ ] Run relevant focused tests, complete Maven offline verification, docs link/anchor validation and `git diff --check`. Record separately which tests use fake managers, H2 or real PostgreSQL, and which physical guarantees have been established.
 - [ ] Provide reviewable final patch, explicit acceptance evidence, known limitations and an infrastructure-focused manual acceptance procedure. Obtain human final approval before marking P1.3b complete or merging into the authoritative baseline.
 
-**Gate E:** The committed implementation, tests, specification and authoritative steady-state architecture agree. Human review and operational acceptance have been recorded; no unsupported claim of successful PostgreSQL, jOOQ/JPA or messaging integration remains.
+**Gate E:** The implementation, tests, specification and authoritative steady-state architecture agree. Human review and operational acceptance have been recorded. P1.3b can be accepted with its H2/manager-level evidence, but PostgreSQL-backed transaction and cross-adapter guarantees **remain open until P1.5 passes**; messaging integration remains assigned to P2.4.
 
 ## Out of scope and follow-up ownership
 
-P1.3a owns DI lifetime/dispatch. P1.2 owns PostgreSQL schema, datasource and persistence framework configuration. P1.3c owns special rollback-isolated test transaction behavior and reusable real-commit fixtures. P2.4 owns durable publication and consumer integration. P1.3b does not implement generic retries/idempotency, nested transaction propagation or savepoints, distributed transactions, domain-specific locking/history, cross-module business transactions or arbitrary resource reference tracking.
+P1.3a owns DI lifetime/dispatch. P1.2 owns PostgreSQL schema, datasource and persistence framework configuration. P1.5 owns PostgreSQL transaction interoperability and acceptance against that configuration. P1.3c owns special rollback-isolated test transaction behavior and reusable real-commit fixtures. P2.4 owns durable publication and consumer integration. P1.3b does not implement generic retries/idempotency, nested transaction propagation or savepoints, distributed transactions, domain-specific locking/history, cross-module business transactions or arbitrary resource reference tracking.
