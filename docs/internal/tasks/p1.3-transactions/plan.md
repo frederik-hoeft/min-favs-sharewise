@@ -1,6 +1,6 @@
 # P1.3b - Implementation plan: application-owned transactions
 
-**Status:** Approved implementation plan; Phases A-C accepted and Phase D in review. [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) governs review gates. P1.3a provides the [DI foundation](../../../architecture/dependency-injection.md). P1.3b verifies Spring/H2 integration independently; [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation) owns the mandatory PostgreSQL integration gate after P1.2.
+**Status:** Approved implementation plan; Phases A-D accepted, Phase E documentation and final acceptance pending. [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) governs review gates. P1.3a provides the [DI foundation](../../../architecture/dependency-injection.md). P1.3b verifies Spring/H2 integration independently; [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation) owns the mandatory PostgreSQL integration gate after P1.2.
 
 ## Baseline, dependencies and ownership
 
@@ -50,10 +50,10 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 
 **Focus:** Exercise the production operation scope, transaction manager and both persistence accessors against real Spring-managed H2 transactions **without depending on P1.2**. **Acceptance:** Framework-level portions of TX-03 through TX-11; PostgreSQL-specific evidence moves to mandatory P1.5. P2.4 owns messaging publication/consumer integration in TX-12.
 
-- [ ] Use one Spring `JpaTransactionManager` and transaction-aware jOOQ configuration with the same H2 `DataSource`. Exercise jOOQ and JPA writes in one physical transaction; verify JPA flush-to-SQL visibility and explicit refresh after jOOQ mutations.
-- [ ] Verify mixed-adapter COMMIT, ROLLBACK, ABSTAIN and sequential segments, including rollback-only vetoes, typed failure with intentional COMMIT, and callback exception recovery. Verify pending writes are invisible through a genuinely independent connection before commit; avoid accidental participation through Spring's thread-bound connection.
-- [ ] Exercise an `afterCommit()` callback failure after a completed commit, commit-time ORM/constraint failure, known SQL error translated into a rollback-only result, and incompatible ambient transactions. Retain deterministic fake-manager tests for uncertain commit/rollback outcomes that H2 cannot simulate reliably.
-- [ ] Retain the Phase C regression coverage for stale/derived jOOQ and JPA handles, wrong-scope/thread access and missing physical context. Do not treat H2 isolation, transaction-manager compatibility, or constraints as PostgreSQL acceptance evidence.
+- [x] Use one Spring `JpaTransactionManager` and transaction-aware jOOQ configuration with the same H2 `DataSource`. Exercise jOOQ and JPA writes in one physical transaction; verify JPA flush-to-SQL visibility and explicit refresh after jOOQ mutations.
+- [x] Verify mixed-adapter COMMIT, ROLLBACK, ABSTAIN and sequential segments, including rollback-only vetoes, typed failure with intentional COMMIT, and callback exception recovery. Verify pending writes are invisible through a genuinely independent connection before commit; avoid accidental participation through Spring's thread-bound connection.
+- [x] Exercise an `afterCommit()` callback failure after a completed commit, commit-time ORM/constraint failure, known SQL error translated into a rollback-only result, and incompatible ambient transactions. Retain deterministic fake-manager tests for uncertain commit/rollback outcomes that H2 cannot simulate reliably.
+- [x] Retain the Phase C regression coverage for stale/derived jOOQ and JPA handles, wrong-scope/thread access and missing physical context. Do not treat H2 isolation, transaction-manager compatibility, or constraints as PostgreSQL acceptance evidence.
 
 **Gate D:** The full backend offline build and focused H2 tests pass. Record H2/fake-manager versus PostgreSQL evidence separately. Human approval accepts P1.3b's Spring/adapter component integration only; **P1.5 remains a mandatory, separate Phase 1 gate against P1.2's actual PostgreSQL wiring**.
 

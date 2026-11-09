@@ -1,6 +1,6 @@
 # P1.3b - Application-owned transaction management
 
-**Status:** Approved production contract; Phases A-C accepted and H2 integration is being validated in Phase D. PostgreSQL-specific acceptance is tracked under P1.5. **Backlog item:** [P1.3b](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md#transaction-aware-ports), [DI operation-scope architecture](../../../architecture/dependency-injection.md), [persistence architecture](../../../stack/persistence.md#transactions-and-failure-behavior), and [messaging architecture](../../../stack/messaging.md) establish the surrounding system contracts.
+**Status:** Approved production contract; Phases A-D accepted with Spring/H2 integration evidence, Phase E documentation and final acceptance pending. PostgreSQL-specific acceptance is tracked under P1.5. **Backlog item:** [P1.3b](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md#transaction-aware-ports), [DI operation-scope architecture](../../../architecture/dependency-injection.md), [implemented transaction architecture](../../../architecture/transactions.md), [persistence architecture](../../../stack/persistence.md#transactions-and-failure-behavior), and [messaging architecture](../../../stack/messaging.md) establish the surrounding system contracts.
 
 ## Goal, dependencies and scope
 
