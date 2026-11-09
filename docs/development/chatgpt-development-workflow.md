@@ -20,7 +20,7 @@ On a connected Linux x86-64 development environment, run:
 scripts/create-offline-handoff.sh pack
 ```
 
-The repository script prepares and verifies the Java/Maven/Node toolchains and dependency caches. It produces five files:
+By default, the repository script prepares and verifies both Maven and npm dependencies, producing five handoff files:
 
 ```text
 .offline-handoff-cache/
@@ -34,9 +34,9 @@ The repository script prepares and verifies the Java/Maven/Node toolchains and d
 
 ![The five handoff files in the devcontainer's Git-ignored offline cache.](assets/devcontainer-offline-cache.png)
 
-Upload all five files to the Project's Sources. Reuse the set for code changes that leave the dependency descriptors and toolchain versions unchanged. If `pom.xml`, `package.json`, `package-lock.json`, wrapper configuration or toolchain selection changes, regenerate the entire set, replace the old files together and verify against a fresh source baseline. Mixed handoff generations are not supported.
+For backend-only or frontend-only tasks, use `pack --deps maven` or `pack --deps node`, respectively. These produce smaller handoffs requiring only the selected dependencies and vendor toolchains. Transfer the matching dependency archive, its `.sha256` file, and the original vendor archives listed in `manifest/toolchain-files.txt`. See the [offline handoff instructions](../development.md#portable-offline-dependency-handoff) for filenames and commands, and the [offline development skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill) for selection-aware workspace setup and verification.
 
-See the [offline handoff instructions](../development.md#portable-offline-dependency-handoff) and [offline environment skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill) for archive validation and recovery details. The project source ZIP does not include these dependencies.
+Reuse a handoff while its selected dependency descriptors and toolchain versions remain unchanged. Regenerate and replace the matching artifacts together when those inputs change; do not mix handoff generations. Supply the project source ZIP separately.
 
 ## 3. Supply an exact source baseline
 
