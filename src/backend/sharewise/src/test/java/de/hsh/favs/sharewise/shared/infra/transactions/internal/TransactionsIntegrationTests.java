@@ -13,6 +13,7 @@ import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
+import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -388,6 +389,94 @@ class TransactionsIntegrationTests {
     }
 
     @Test
+    void capturedSegmentLeasesCannotExecuteOutsideOrAcrossSegments() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            TransactionSegmentAccess segments = entry.segments();
+            assertSame(transactions, segments);
+            assertThrows(IllegalStateException.class, segments::captureCurrentSegment);
+
+            FakeSqlCommand first = transactions.execute(() -> {
+                FakeSqlCommand command = new FakeSqlCommand(segments.captureCurrentSegment());
+                command.execute();
+                return TransactionOutcome.commit(command);
+            });
+            assertEquals(1, first.executions);
+            assertThrows(IllegalStateException.class, first::execute);
+
+            transactions.execute(() -> {
+                assertThrows(IllegalStateException.class, first::execute);
+                FakeSqlCommand second = new FakeSqlCommand(segments.captureCurrentSegment());
+                second.execute();
+                assertEquals(1, second.executions);
+                assertEquals(1, first.executions);
+                return TransactionOutcome.rollback(null);
+            });
+            assertThrows(IllegalStateException.class, first::execute);
+            assertEquals(1, first.executions);
+            return null;
+        });
+        assertEquals(List.of("begin", "commit", "begin", "rollback"), physical.events);
+    }
+
+    @Test
+    void segmentAccessRejectsWrongScopeAndWrongThread() {
+        TransactionSegmentAccess escaped = dispatcher.dispatch(EntryService.class, EntryService::segments);
+        assertThrows(IllegalStateException.class, escaped::captureCurrentSegment);
+        dispatcher.dispatch(EntryService.class, entry -> {
+            assertThrows(IllegalStateException.class, escaped::captureCurrentSegment);
+            entry.transactions().execute(() -> {
+                TransactionSegmentAccess.SegmentLease lease = entry.segments().captureCurrentSegment();
+                FutureTask<Void> wrongThread = new FutureTask<>(() -> {
+                    assertThrows(IllegalStateException.class, lease::requireCurrent);
+                    assertThrows(IllegalStateException.class, entry.segments()::captureCurrentSegment);
+                    return null;
+                });
+                Thread.ofVirtual().start(wrongThread);
+                try {
+                    wrongThread.get();
+                } catch (Exception failure) {
+                    throw new AssertionError(failure);
+                }
+                lease.requireCurrent();
+                return TransactionOutcome.commit(null);
+            });
+            return null;
+        });
+    }
+
+    @Test
+    void segmentLeaseIsInvalidDuringCompletionCallbacks() {
+        dispatcher.dispatch(EntryService.class, entry -> {
+            entry.transactions().execute(() -> {
+                TransactionSegmentAccess.SegmentLease lease = entry.segments().captureCurrentSegment();
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        assertThrows(IllegalStateException.class, lease::requireCurrent);
+                    }
+                });
+                return TransactionOutcome.commit(null);
+            });
+            return null;
+        });
+    }
+
+    static final class FakeSqlCommand {
+        private final TransactionSegmentAccess.SegmentLease lease;
+        private int executions;
+
+        FakeSqlCommand(TransactionSegmentAccess.SegmentLease lease) {
+            this.lease = lease;
+        }
+
+        void execute() {
+            lease.requireCurrent();
+            executions++;
+        }
+    }
+
+    @Test
     void independentConcurrentDispatchesHaveIndependentTransactionManagers() throws Exception {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Callable<Transactions>> operations = new ArrayList<>();
@@ -414,7 +503,8 @@ class TransactionsIntegrationTests {
 
     record BusinessError(String reason) { }
 
-    record EntryService(Transactions transactions, ParticipantService participant) { }
+    record EntryService(Transactions transactions, ParticipantService participant,
+                        TransactionSegmentAccess segments) { }
 
     record ParticipantService(Transactions transactions) {
         TransactionOutcome<String> rollbackOutcome(String result) {
@@ -473,8 +563,9 @@ class TransactionsIntegrationTests {
         @Bean RecordingTransactionManager transactionManager() { return new RecordingTransactionManager(); }
 
         @Bean @Scope("operation")
-        EntryService entryService(Transactions transactions, ParticipantService participant) {
-            return new EntryService(transactions, participant);
+        EntryService entryService(Transactions transactions, ParticipantService participant,
+                TransactionSegmentAccess segments) {
+            return new EntryService(transactions, participant, segments);
         }
 
         @Bean @Scope("operation")

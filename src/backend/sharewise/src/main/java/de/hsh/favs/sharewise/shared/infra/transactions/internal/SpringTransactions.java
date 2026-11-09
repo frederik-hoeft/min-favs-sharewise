@@ -2,6 +2,7 @@ package de.hsh.favs.sharewise.shared.infra.transactions.internal;
 
 import de.hsh.favs.sharewise.shared.infra.di.internal.OperationScopeAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
+import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import java.util.Objects;
@@ -17,7 +18,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** One operation-scoped manager; Spring remains the sole physical transaction authority. */
 @Component
 @Scope("operation")
-final class SpringTransactions implements Transactions {
+final class SpringTransactions implements Transactions, TransactionSegmentAccess {
 
     private enum State { IDLE, STARTING, ACTIVE, FINALIZING, FAILED }
 
@@ -25,6 +26,7 @@ final class SpringTransactions implements Transactions {
     private final TransactionTemplate template;
     private State state = State.IDLE;
     private TransactionStatus activeStatus;
+    private Object activeSegmentIdentity;
 
     SpringTransactions(PlatformTransactionManager transactionManager, OperationScopeAccess scopes) {
         template = new TransactionTemplate(Objects.requireNonNull(transactionManager));
@@ -63,6 +65,7 @@ final class SpringTransactions implements Transactions {
         }
         TransactionSynchronizationManager.registerSynchronization(completion);
         activeStatus = status;
+        activeSegmentIdentity = new Object();
         state = State.ACTIVE;
         try {
             TransactionOutcome<T> outcome = Objects.requireNonNull(operation.get(), "transaction outcome");
@@ -84,6 +87,7 @@ final class SpringTransactions implements Transactions {
             throw failure;
         } finally {
             activeStatus = null;
+            activeSegmentIdentity = null;
             state = State.FINALIZING;
         }
     }
@@ -106,6 +110,18 @@ final class SpringTransactions implements Transactions {
         // attempted rollback and reported ROLLED_BACK. Do not mistake that for proof
         // that the commit never happened. A callback failure has no requested disposition.
         state = completion.isSafeAfterFailure() ? State.IDLE : State.FAILED;
+    }
+
+    @Override
+    public SegmentLease captureCurrentSegment() {
+        requireActiveStatus();
+        Object identity = activeSegmentIdentity;
+        return () -> {
+            requireActiveStatus();
+            if (activeSegmentIdentity != identity) {
+                throw new IllegalStateException("Transaction resource belongs to a completed segment");
+            }
+        };
     }
 
     @Override
