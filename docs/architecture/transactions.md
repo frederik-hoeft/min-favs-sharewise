@@ -1,76 +1,102 @@
 # Application transaction management
 
-ShareWise separates an **application operation** from the database transactions it performs. An operation has one explicitly owned [dependency-injection scope](dependency-injection.md) and can execute zero or more **sequential physical transaction segments**. Each segment has its own completion decision and database resources; its lifetime does not determine the lifetime of the operation's services.
+ShareWise separates an **application operation** from the database transactions it performs. An operation has one [dependency-injection scope](dependency-injection.md), but can perform zero or more **sequential transaction segments**. Its services remain available across those segments; each segment independently commits or rolls back its database changes.
 
-An application entry service decides when persistence must be atomic and whether to commit it. Collaborating application services and persistence adapters participate without receiving connection or transaction parameters in their business-facing methods. Spring remains the physical transaction authority: ShareWise does not maintain a second transaction coordinator or manage JDBC connections directly.
+Application services decide which work belongs in a transaction and whether its changes should persist. Persistence adapters participate without receiving transaction or connection parameters in their business-facing methods. Spring owns physical database transactions and resources; ShareWise coordinates their use without implementing a second transaction engine.
 
-## Ownership and execution flow
+## Model and responsibilities
+
+| Concept | Responsibility |
+| --- | --- |
+| **Application operation** | One entry-service invocation and its collaborators, sharing a DI scope independently of database transaction lifetime. |
+| **Transaction segment** | One explicitly requested physical database transaction, completed by commit or rollback before the next segment can begin. |
+| **Application transaction manager** | Operation-scoped coordinator that starts segments, accepts their final decisions and verifies completion. |
+| **Transaction outcome** | Immutable value pairing an application result with the requested decision for one segment; producing an outcome alone has no effect. |
+| **Persistence accessor** | Operation-scoped entry point through which a repository obtains access to whichever segment is currently active. |
+| **Database facade** | A jOOQ or JPA object obtained from an accessor, usable only within the segment in which it was acquired. |
+| **Spring transaction infrastructure** | Owns the physical transaction, connection association, persistence context and commit/rollback execution. |
+
+The components cooperate through a small set of boundaries:
 
 ```mermaid
-flowchart TB
-    inbound["Inbound adapter"] --> dispatcher["OperationDispatcher"]
-    dispatcher --> scope["Operation DI scope"]
-    scope --> service["Entry service and collaborators"]
-    service -->|"execute callback + outcome"| manager["Scoped Transactions"]
-    manager -->|"TransactionTemplate"| spring["Spring PlatformTransactionManager"]
-    spring --> physical["Physical database transaction"]
-    service --> ports["Business-facing persistence ports"]
-    ports --> accessors["Scoped JooqAccess / JpaAccess"]
-    accessors -->|"capture segment lease"| manager
-    accessors -->|"Spring-managed resources"| physical
+flowchart LR
+    Service["Application service"] -->|"execute work"| Manager["Application transaction manager"]
+    Service -->|"calls"| Adapter["Persistence adapter"]
+    Adapter -->|"gets database facade"| Accessor["Persistence accessor"]
+    Accessor -->|"participates in active segment"| Spring["Spring transaction infrastructure"]
+    Manager -->|"starts and finalizes"| Spring
+    Outcome["Result + decision"] -->|"returned by callback"| Manager
 ```
 
-`OperationDispatcher` creates and closes the DI scope, but never starts or commits a database transaction. Spring constructs one `Transactions` manager for that scope, shared by the entry service and its injected collaborators. Calling `Transactions.execute(...)` opens a segment through Spring's `TransactionTemplate`; resolving a scoped bean or a persistence accessor does not.
+The manager is exposed as `Transactions`. Its `execute(...)` operation opens one segment for an application callback and returns the application's result **after** Spring completes that segment. The callback returns a `TransactionOutcome<T>`, which carries both the result and the requested disposition. Resolving a service or obtaining a database accessor does not itself start a transaction.
 
-The public application contract lives in `shared.infra.transactions`. `Transactions` exposes `execute(...)`, `markRollbackOnly()` and `isRollbackOnly()`. An immutable `TransactionOutcome<T>` carries an application result and a `TransactionDecision`; it is neither a live transaction nor a command that takes effect when constructed. Only the outcome **returned from the enclosing execution callback** selects the segment's disposition. An orchestrator may return a collaborator's outcome explicitly, but collaborator results and unused outcomes do not cast independent votes.
+## Segment execution and decisions
 
-## Segment decisions and composition
+An entry service chooses the transaction boundary around work that must be atomic. For example, an illustrative application operation can turn a repository's business result into the final transaction decision:
 
-An entry service wraps the work requiring atomic persistence in `Transactions.execute(...)`. Each call owns exactly one physical segment and returns its application result only after Spring has completed the requested disposition. Ordinary collaborators return domain-oriented values or typed expected errors; the entry service chooses how those results affect commit or rollback.
+```java
+return transactions.execute(() -> {
+    ChangeResult result = things.renameIfVersion(id, version, name);
+    return result.applied()
+        ? TransactionOutcome.commit(result)
+        : TransactionOutcome.rollback(result);
+});
+```
 
-| Returned decision | Segment behavior |
+A collaborator's typed result does not automatically decide the transaction's fate. Only the outcome **returned from the enclosing callback** is authoritative, even if the entry service delegates its construction to a collaborator. The returned result is distinct from the decision to persist changes.
+
+| Decision | Physical disposition |
 | --- | --- |
-| `COMMIT` | Commits the segment if it is healthy; returns the result after successful physical completion. |
-| `ROLLBACK` | Rolls back the segment and returns the supplied result after successful rollback. |
-| `ABSTAIN` | Also rolls back; expresses that no persistence is requested, rather than an explicit rejected operation. |
+| `COMMIT` | Persist the segment's changes if the transaction is healthy; return the application result after successful completion. |
+| `ROLLBACK` | Discard the segment's changes and return the supplied result after successful rollback. |
+| `ABSTAIN` | Also roll back; express that no persistence is requested, rather than an explicit rejection. |
 
-The application result and transaction decision are independent. A not-found or validation result does not automatically poison the transaction. A service can deliberately commit a typed unsuccessful result when it has also persisted an intended side effect, such as a failed-attempt counter. Conversely, a successful domain result does not authorize committing a rollback-only transaction.
+An expected business error, such as not-found or a stale revision, does not by itself make a database transaction unusable. An application can even deliberately commit a typed unsuccessful result when it also needs to persist an intended side effect. Conversely, a participant can mark the current segment **rollback-only** when its database state is unsafe. That veto is irreversible within the segment: a subsequent `COMMIT` fails and rolls back, while `ROLLBACK` or `ABSTAIN` can still return the application result after successful rollback.
 
-Participating services do not begin nested physical transactions. They may call `markRollbackOnly()` to **irreversibly veto commit for the current segment**, including when they translate a database error into a typed result. A later `COMMIT` request against that segment fails and rolls back; an explicit `ROLLBACK` or `ABSTAIN` may still return its typed result after successful rollback. The rollback-only state is local to the segment, not a permanent vote across the enclosing operation.
+Segments are independent, not collectively atomic. Once segment A commits, a failure in segment B cannot undo A. Related changes that must succeed or fail together belong in **one segment**. Nested segment execution is rejected, as is execution inside an unrelated ambient Spring transaction that would defer or obscure physical completion.
 
-A completed segment can be followed by another segment in the same operation scope. These transactions are **not collectively atomic**: once A commits, B's failure cannot undo A. Work requiring one atomic change belongs inside one `execute(...)` callback. Nested `execute(...)` calls are rejected, as are unrelated ambient Spring transactions or synchronization contexts that would cause ShareWise's execution to join work it does not physically finalize.
+## Persistence participation and lifetimes
 
-## Persistence participation and resource lifetimes
+Repositories inject stable, operation-scoped persistence accessors. `JooqAccess.dsl()` returns a jOOQ `DSLContext`, while `JpaAccess.entityManager()` returns a JPA `EntityManager`. Both refer to the currently active transaction segment, and neither starts a transaction. This keeps repository methods local and free of transaction parameters (illustrative domain and table types):
 
-Persistence adapters receive stable, operation-scoped infrastructure accessors by constructor injection. `JooqAccess.dsl()` supplies a jOOQ `DSLContext`; `JpaAccess.entityManager()` supplies a JPA `EntityManager`. Both methods require an active application-owned segment and **do not start one**. Adapters use these facades locally within a method, execute queries synchronously, and expose materialized values or business-facing projections rather than persistence resources.
+```java
+Optional<Thing> getThingById(UUID id) {
+    DSLContext db = database.dsl();
+    return db.selectFrom(THING)
+        .where(THING.ID.eq(id))
+        .fetchOptional(this::mapThing);
+}
+```
 
-The accessors can survive multiple sequential segments and automatically follow the segment active at each call. **A facade obtained from an accessor does not follow later segments.** `TransactionSegmentAccess` captures an immutable identity-bound lease when the facade is acquired. The lease checks operation-scope identity, owner thread, active segment and segment identity. A stale facade from A must not become valid merely because B is now active.
+The **accessor** automatically follows sequential segments, but a **facade already returned** by that accessor never does. Each acquired facade is bound to the identity and lifetime of its originating segment:
 
-The technology-specific adapters enforce that invariant using Spring's normal resource infrastructure:
+```mermaid
+flowchart LR
+    A["Segment A: accessor returns facade A"] --> EndA["A callback ends: facade A expires"]
+    EndA --> B["Segment B: same accessor returns facade B"]
+```
 
-- **jOOQ:** A derived `DSLContext` preserves Spring Boot's transaction-aware connection provider and execution listeners, adding lease checks at connection acquisition and query execution. Executable queries retained from a completed segment cannot silently execute against the next segment.
-- **JPA:** A guarded `EntityManager` uses Spring's transaction-bound persistence context. A compatible Spring-managed JPA context must already be bound; an unrelated JDBC-only transaction is insufficient. Guards also cover derived JPA queries and fluent query methods. Provider-specific unwrapping, direct transaction control and streaming query results are not exposed through this facade.
+A facade or derived executable query from A cannot silently execute using B's connection. The adapter enforces segment identity and scope/thread validity at supported execution points, in addition to Spring's normal transaction-resource association. jOOQ and JPA share that lifetime rule, even though their resource-management APIs differ. JPA additionally requires a compatible transaction-bound persistence context; an ordinary JDBC transaction alone is not sufficient.
 
-These checks protect the supported facade/query entry points; they do not turn arbitrary escaped Java objects into revocable references. A repository must not cache a returned `DSLContext`, `EntityManager`, executable query, cursor, configuration, JDBC resource or managed JPA entity across method or segment boundaries. A detached immutable result or DTO can outlive its originating segment. Spring's JPA first-level cache also means mixed jOOQ/JPA operations require explicit flush and refresh when their views must agree: jOOQ SQL does not automatically flush pending entity changes or refresh managed entities.
+A repository uses a returned facade **within the current method call**, executes queries synchronously and returns materialized domain values or projections. It does not retain the facade, derived queries, cursors, JDBC resources or managed JPA entities across methods or segments. Guarded facades cannot make arbitrary escaped objects revocable, and unguarded provider-specific access is not part of their contract. Where jOOQ and JPA access the same data, Hibernate's pending writes and first-level cache require explicit flush/refresh coordination to keep their views consistent.
 
-## Lifecycle and failure semantics
+## Completion and failure behavior
 
-A transaction manager starts idle and permits one segment at a time. The execution boundary proceeds in this order:
+A manager permits only one active segment at a time. Before execution, it checks its owning operation scope, thread, idle state and absence of incompatible ambient transactions. Spring then establishes a new physical transaction. The manager makes segment-bound database access available during the application callback, invalidates it **when that callback exits**, and asks Spring to finalize the transaction according to its returned outcome. The application result becomes available only after the manager has verified physical completion.
 
-1. Validate the active owner DI scope, thread, idle manager state and absence of incompatible ambient Spring transactions.
-2. Ask Spring to start a new, synchronized physical transaction; activate a unique segment identity for the application callback.
-3. Run the callback, accept exactly one returned outcome and apply its decision or rollback-only veto.
-4. Invalidate segment-specific access **as the callback exits**, before physical finalization, and let Spring commit or roll back.
-5. Observe completion, verify that it matches the requested disposition and either return to idle or refuse further segments if completion is not trustworthy.
+Callback failures and physical finalization failures have different consequences:
 
-An exception or invalid outcome from the callback requests rollback rather than inferring commit. If Spring definitively completes that rollback, the original failure propagates and the manager can serve another segment. If starting or physically completing a transaction fails, or completion is unconfirmed or inconsistent with the requested disposition, the manager enters a failed state and cannot run another segment within the scope.
+- **Application callback failure:** The segment rolls back. If that rollback is confirmed, the original failure propagates and the manager can execute a later segment.
+- **Unconfirmed completion:** Failure to start, or an unconfirmed or inconsistent physical outcome, makes the manager unusable for subsequent segments; no successful result is returned.
+- **Failed commit attempt:** A later rollback attempt does not prove that the commit never reached the database. The outcome may be uncertain, so blindly retrying a non-idempotent write is unsafe.
+- **Failure after commit:** A Spring `afterCommit` callback can throw after a durable commit. The failure propagates, but the committed changes are not reversed.
 
-A failed commit attempt is especially important: Spring may attempt rollback afterward, but that fallback does **not** prove the commit never reached the database. An infrastructure failure can leave the physical outcome uncertain. The caller receives a failure, not apparent success, and must not blindly retry a non-idempotent write. A Spring `afterCommit` callback may also throw **after the database has durably committed**; such a failure propagates without reversing the commit. Physical completion and callback success are separate observations.
-
-All public transaction operations require the manager's owning DI scope to be **currently active on its owner thread**. They reject use after scope closure, under another operation scope, from another thread or outside an active segment where applicable. The manager does not propagate an active transaction into arbitrary asynchronous work. Independent operation scopes can execute concurrently, each with its own scoped manager and Spring-managed transaction resources.
+A manager and its active resources belong to the owning operation scope and thread. They cannot be used from a different operation, after the scope closes, or from unrelated asynchronous work. Separate operation scopes may run concurrently with independent managers and physical transactions.
 
 ## Architectural boundaries
 
-Transactions control **local database atomicity**, not DI lifetime, authorization, distributed state or arbitrary external effects. The abstraction does not provide savepoints, nested propagation, cross-service/distributed commits, automatic retries or compensation for already committed segments. Application modules retain their own data ownership boundaries even when they eventually share one database server. Durable event-publication intent must join the producer's database transaction when atomic publication is required; emitting an external effect after commit is not equivalent.
+Transactions guarantee **local database atomicity** subject to the backing database and Spring configuration. They do not establish DI lifetime, domain authorization, distributed commits, nested savepoint semantics, automatic retries or compensation for earlier committed segments. Application modules retain their data ownership boundaries even when they share a database deployment.
 
-Spring's transaction manager, datasource and persistence context must be configured compatibly for participating jOOQ/JPA/JDBC adapters. Framework-level behavior can be exercised with an embedded database, but database-specific isolation, locking, constraint and commit-failure guarantees require verification against the deployed database engine. The transaction abstraction makes those boundaries explicit; it does not confer guarantees the backing infrastructure has not established.
+Durable event-publication intent must participate in the same database transaction as the business change when atomic publication is required. An external action performed after commit is not part of that transaction.
+
+Participating JDBC, jOOQ and JPA adapters must use compatible Spring transaction infrastructure. Database-specific isolation, locking, constraint and commit-failure semantics depend on the configured database engine; the abstraction does not supply guarantees that the physical infrastructure does not provide.
