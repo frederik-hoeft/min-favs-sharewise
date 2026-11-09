@@ -1,6 +1,6 @@
 # Application transaction management
 
-ShareWise separates an **application operation** from the database transactions it performs. An operation has one [dependency-injection scope](dependency-injection.md), but can perform zero or more **sequential transaction segments**. Its services remain available across those segments; each segment independently commits or rolls back its database changes.
+ShareWise separates an **application operation** from the database transactions it performs. An operation owns one [dependency-injection scope](dependency-injection.md) and may execute zero or more **sequential transaction segments** within its lifetime. The scope outlives any segment it contains, so its services remain available while each database transaction independently commits or rolls back.
 
 Application services decide which work belongs in a transaction and whether its changes should persist. Persistence adapters participate without receiving transaction or connection parameters in their business-facing methods. Spring owns physical database transactions and resources; ShareWise coordinates their use without implementing a second transaction engine.
 
@@ -8,13 +8,13 @@ Application services decide which work belongs in a transaction and whether its 
 
 | Concept | Responsibility |
 | --- | --- |
-| **Application operation** | One entry-service invocation and its collaborators, sharing a DI scope independently of database transaction lifetime. |
-| **Transaction segment** | One explicitly requested physical database transaction, completed by commit or rollback before the next segment can begin. |
-| **Application transaction manager** | Operation-scoped coordinator that starts segments, accepts their final decisions and verifies completion. |
-| **Transaction outcome** | Immutable value pairing an application result with the requested decision for one segment; producing an outcome alone has no effect. |
-| **Persistence accessor** | Operation-scoped entry point through which a repository obtains access to whichever segment is currently active. |
-| **Database facade** | A jOOQ or JPA object obtained from an accessor, usable only within the segment in which it was acquired. |
-| **Spring transaction infrastructure** | Owns the physical transaction, connection association, persistence context and commit/rollback execution. |
+| **Application operation** | One entry-service invocation and its collaborators within a shared DI scope; may contain multiple sequential transaction segments. |
+| **Transaction segment** | One explicitly started physical database transaction within an operation; commits or rolls back before another segment begins. |
+| **Application transaction manager** | Operation-scoped coordinator that starts segments, applies requested outcomes and verifies their completion. |
+| **Transaction outcome** | Immutable declaration of a segment's *requested* disposition and associated application result; the manager implements the decision during finalization. |
+| **Persistence accessor** | Operation-scoped dependency through which a repository gets database access for the active segment; follows later segments without being recreated. |
+| **Database facade** | A jOOQ `DSLContext` or JPA `EntityManager` obtained for a particular segment; cannot be used after that segment ends. |
+| **Spring transaction infrastructure** | Manages physical transactions, transaction-bound database connections and persistence contexts, and commit/rollback execution. |
 
 The components cooperate through a small set of boundaries:
 
@@ -68,7 +68,7 @@ Optional<Thing> getThingById(UUID id) {
 }
 ```
 
-The **accessor** automatically follows sequential segments, but a **facade already returned** by that accessor never does. Each acquired facade is bound to the identity and lifetime of its originating segment:
+The **accessor** automatically follows sequential segments, but a **facade already returned** by that accessor (such as a jOOQ `DSLContext` or JPA `EntityManager`) never does. Each acquired facade is bound to the identity and lifetime of its originating segment:
 
 ```mermaid
 flowchart LR

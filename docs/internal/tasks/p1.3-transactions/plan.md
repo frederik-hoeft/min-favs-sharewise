@@ -1,6 +1,6 @@
 # P1.3b - Implementation plan: application-owned transactions
 
-**Status:** Approved implementation plan; Phases A-D accepted, Phase E documentation and final acceptance pending. [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) governs review gates. P1.3a provides the [DI foundation](../../../architecture/dependency-injection.md). P1.3b verifies Spring/H2 integration independently; [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation) owns the mandatory PostgreSQL integration gate after P1.2.
+**Status:** Phases A-E accepted; P1.3b implementation and architecture documentation complete. PostgreSQL acceptance remains assigned to P1.5. [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) governs review gates. P1.3a provides the [DI foundation](../../../architecture/dependency-injection.md). P1.3b verifies Spring/H2 integration independently; [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation) owns the mandatory PostgreSQL integration gate after P1.2.
 
 ## Baseline, dependencies and ownership
 
@@ -61,10 +61,10 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 
 **Focus:** Final reconciliation, independent review and handoff after the applicable integration work is present.
 
-- [ ] Write `docs/architecture/transactions.md` as the authoritative **implemented** transaction architecture: ownership, outcome semantics, segment lifecycle, resource participation, failure boundaries, concurrency and relationship to DI. It must not read as a task status report or repeat this plan.
-- [ ] Update affected existing architecture and developer usage guidance, leaving future integrations and TODOs in `docs/stack` and `docs/internal/tasks`. Correct obsolete spec/backlog references when implementation changes actual contracts.
-- [ ] Run relevant focused tests, complete Maven offline verification, docs link/anchor validation and `git diff --check`. Record separately which tests use fake managers, H2 or real PostgreSQL, and which physical guarantees have been established.
-- [ ] Provide reviewable final patch, explicit acceptance evidence, known limitations and an infrastructure-focused manual acceptance procedure. Obtain human final approval before marking P1.3b complete or merging into the authoritative baseline.
+- [x] Write `docs/architecture/transactions.md` as the authoritative **implemented** transaction architecture: ownership, outcome semantics, segment lifecycle, resource participation, failure boundaries, concurrency and relationship to DI. It must not read as a task status report or repeat this plan.
+- [x] Update affected existing architecture and developer usage guidance, leaving future integrations and TODOs in `docs/stack` and `docs/internal/tasks`. Correct obsolete spec/backlog references when implementation changes actual contracts.
+- [x] Run relevant focused tests, complete Maven offline verification, docs link/anchor validation and `git diff --check`. Record separately which tests use fake managers, H2 or real PostgreSQL, and which physical guarantees have been established.
+- [x] Provide reviewable final patch, explicit acceptance evidence, known limitations and an infrastructure-focused manual acceptance procedure. Obtain human final approval before marking P1.3b complete or merging into the authoritative baseline.
 
 **Gate E:** The implementation, tests, specification and authoritative steady-state architecture agree. Human review and operational acceptance have been recorded. P1.3b can be accepted with its H2/manager-level evidence, but PostgreSQL-backed transaction and cross-adapter guarantees **remain open until P1.5 passes**; messaging integration remains assigned to P2.4.
 
