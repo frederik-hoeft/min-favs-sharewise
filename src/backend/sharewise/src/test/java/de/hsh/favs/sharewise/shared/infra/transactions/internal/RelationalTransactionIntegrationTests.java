@@ -203,15 +203,13 @@ class RelationalTransactionIntegrationTests {
                     return TransactionOutcome.commit(null);
                 }));
             assertEquals("afterCommit listener failed", failure.getMessage());
-            // Completion is definitive: a subsequent independent segment is allowed.
-            probe.transactions().execute(() -> {
-                probe.jooq().dsl().execute("insert into tx_joint_probe (id, label) values (61, 'next segment')");
-                return TransactionOutcome.commit(null);
-            });
+            // Spring's cleanup runs after completion callbacks; reuse cannot be confirmed.
+            assertThrows(IllegalStateException.class, () -> probe.transactions().execute(
+                () -> TransactionOutcome.commit("must not reuse")));
             return null;
         });
         assertTrue(exists(60));
-        assertTrue(exists(61));
+        assertFalse(exists(61));
     }
 
     @Test

@@ -55,6 +55,7 @@ class TransactionsIntegrationTests {
         physical.beginFailure = null;
         physical.commitFailure = null;
         physical.rollbackFailure = null;
+        physical.cleanupFailure = null;
     }
 
     @Test
@@ -358,11 +359,45 @@ class TransactionsIntegrationTests {
                     return TransactionOutcome.commit("durable");
                 })));
             assertEquals(1, physical.commits.get());
-            // A confirmed commit is not an uncertain completion, even if a notification fails.
-            transactions.execute(() -> TransactionOutcome.commit("next segment"));
+            // Commit is confirmed, but Spring invokes cleanup after completion notifications.
+            // The failure path cannot establish that resources were fully released.
+            assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("must not reuse")));
             return null;
         });
-        assertEquals(List.of("begin", "commit", "begin", "commit"), physical.events);
+        assertEquals(List.of("begin", "commit"), physical.events);
+    }
+
+
+    @Test
+    void cleanupFailureAfterConfirmedCommitPoisonsManager() {
+        physical.cleanupFailure = new IllegalStateException("cleanup after commit failed");
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            assertSame(physical.cleanupFailure, assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("committed but not cleaned"))));
+            assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("must not reuse")));
+            return null;
+        });
+        assertEquals(List.of("begin", "commit", "cleanup"), physical.events);
+    }
+
+    @Test
+    void cleanupFailureAfterCallbackRollbackPoisonsManagerAndRetainsCause() {
+        physical.cleanupFailure = new IllegalStateException("cleanup after rollback failed");
+        dispatcher.dispatch(EntryService.class, entry -> {
+            Transactions transactions = entry.transactions();
+            IllegalArgumentException applicationFailure = new IllegalArgumentException("callback failed");
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> { throw applicationFailure; }));
+            assertSame(physical.cleanupFailure, failure);
+            assertTrue(List.of(failure.getSuppressed()).contains(applicationFailure));
+            assertThrows(IllegalStateException.class,
+                () -> transactions.execute(() -> TransactionOutcome.commit("must not reuse")));
+            return null;
+        });
+        assertEquals(List.of("begin", "rollback", "cleanup"), physical.events);
     }
 
     @Test
@@ -520,6 +555,7 @@ class TransactionsIntegrationTests {
         volatile RuntimeException beginFailure;
         volatile RuntimeException commitFailure;
         volatile RuntimeException rollbackFailure;
+        volatile RuntimeException cleanupFailure;
 
         @Override
         protected Object doGetTransaction() {
@@ -550,6 +586,14 @@ class TransactionsIntegrationTests {
             events.add("rollback");
             if (rollbackFailure != null) {
                 throw rollbackFailure;
+            }
+        }
+
+        @Override
+        protected void doCleanupAfterCompletion(Object transaction) {
+            if (cleanupFailure != null) {
+                events.add("cleanup");
+                throw cleanupFailure;
             }
         }
     }

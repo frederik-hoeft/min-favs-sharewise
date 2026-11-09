@@ -106,10 +106,13 @@ final class SpringTransactions implements Transactions, TransactionSegmentAccess
         if (completion.callbackFailure != null && completion.callbackFailure != failure) {
             failure.addSuppressed(completion.callbackFailure);
         }
-        // A failed COMMIT may have reached the database even when Spring subsequently
-        // attempted rollback and reported ROLLED_BACK. Do not mistake that for proof
-        // that the commit never happened. A callback failure has no requested disposition.
-        state = completion.isSafeAfterFailure() ? State.IDLE : State.FAILED;
+        // afterCompletion runs before Spring's resource cleanup. Even a confirmed COMMIT
+        // does not prove cleanup succeeded if TransactionTemplate subsequently throws.
+        // Reuse is safe only when Spring propagates the original callback exception after
+        // a completed rollback; all other failures can indicate failed finalization/cleanup.
+        state = completion.callbackFailure == failure
+            && completion.completionStatus == TransactionSynchronization.STATUS_ROLLED_BACK
+            ? State.IDLE : State.FAILED;
     }
 
     @Override
@@ -159,10 +162,5 @@ final class SpringTransactions implements Transactions, TransactionSegmentAccess
                 : requested != null && completionStatus == STATUS_ROLLED_BACK;
         }
 
-        boolean isSafeAfterFailure() {
-            return completionStatus == STATUS_COMMITTED
-                ? requested == TransactionDecision.COMMIT
-                : completionStatus == STATUS_ROLLED_BACK && requested != TransactionDecision.COMMIT;
-        }
     }
 }

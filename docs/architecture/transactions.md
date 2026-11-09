@@ -89,7 +89,7 @@ Callback failures and physical finalization failures have different consequences
 - **Application callback failure:** The segment rolls back. If that rollback is confirmed, the original failure propagates and the manager can execute a later segment.
 - **Unconfirmed completion:** Failure to start, or an unconfirmed or inconsistent physical outcome, makes the manager unusable for subsequent segments; no successful result is returned.
 - **Failed commit attempt:** A later rollback attempt does not prove that the commit never reached the database. The outcome may be uncertain, so blindly retrying a non-idempotent write is unsafe.
-- **Failure after commit:** A Spring `afterCommit` callback can throw after a durable commit. The failure propagates, but the committed changes are not reversed.
+- **Failure after commit:** A Spring `afterCommit` callback can throw after a durable commit. The failure propagates without reversing the committed changes. Because completion notifications precede resource cleanup, an exception during this stage also prevents the manager from starting another segment.
 
 A manager and its active resources belong to the owning operation scope and thread. They cannot be used from a different operation, after the scope closes, or from unrelated asynchronous work. Separate operation scopes may run concurrently with independent managers and physical transactions.
 
