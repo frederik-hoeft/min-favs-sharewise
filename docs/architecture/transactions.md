@@ -6,15 +6,15 @@ Application services decide which work belongs in a transaction and whether its 
 
 ## Model and responsibilities
 
-| Concept | Responsibility |
-| --- | --- |
-| **Application operation** | One entry-service invocation and its collaborators within a shared DI scope; may contain multiple sequential transaction segments. |
-| **Transaction segment** | One explicitly started physical database transaction within an operation; commits or rolls back before another segment begins. |
-| **Application transaction manager** | Operation-scoped coordinator that starts segments, applies requested outcomes and verifies their completion. |
-| **Transaction outcome** | Immutable declaration of a segment's *requested* disposition and associated application result; the manager implements the decision during finalization. |
-| **Persistence accessor** | Operation-scoped dependency through which a repository gets database access for the active segment; follows later segments without being recreated. |
-| **Database facade** | A jOOQ `DSLContext` or JPA `EntityManager` obtained for a particular segment; cannot be used after that segment ends. |
-| **Spring transaction infrastructure** | Manages physical transactions, transaction-bound database connections and persistence contexts, and commit/rollback execution. |
+| Concept | Responsibility | Java API / type |
+| --- | --- | --- |
+| **Application operation** | One entry-service invocation and its collaborators within a shared DI scope; may contain multiple sequential transaction segments. | `OperationDispatcher`, `ServiceScope` |
+| **Transaction segment** | One explicitly started physical database transaction within an operation; commits or rolls back before another segment begins. | `Transactions` (execution), `TransactionSegmentAccess.SegmentLease` (lifetime) |
+| **Application transaction manager** | Operation-scoped coordinator that starts segments, applies requested outcomes and verifies their completion. | `Transactions` |
+| **Transaction outcome** | Immutable declaration of a segment's *requested* disposition and associated application result; the manager implements the decision during finalization. | `TransactionOutcome<T>`, `TransactionDecision` |
+| **Persistence accessor** | Operation-scoped dependency through which a repository gets database access for the active segment; follows later segments without being recreated. | `JooqAccess`, `JpaAccess` |
+| **Database facade** | A jOOQ `DSLContext` or JPA `EntityManager` obtained for a particular segment; cannot be used after that segment ends. | `DSLContext`, `EntityManager` |
+| **Spring transaction infrastructure** | Manages physical transactions, transaction-bound database connections and persistence contexts, and commit/rollback execution. | `PlatformTransactionManager` |
 
 The components cooperate through a small set of boundaries:
 
