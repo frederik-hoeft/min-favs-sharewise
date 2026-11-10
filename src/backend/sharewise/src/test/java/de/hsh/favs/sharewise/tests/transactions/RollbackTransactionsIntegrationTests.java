@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.testsupport.transactions;
+package de.hsh.favs.sharewise.tests.transactions;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

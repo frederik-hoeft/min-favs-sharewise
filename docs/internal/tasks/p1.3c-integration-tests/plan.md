@@ -1,6 +1,6 @@
 # P1.3c - Implementation plan: integration-test execution and isolation
 
-**Status:** Approved implementation plan; Phase A accepted. Phase B implementation is pending human review/acceptance. Later phases are pending. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
+**Status:** Approved implementation plan; Phases A and B accepted. Later phases are pending. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
 
 ## Scope, baseline and dependency gates
 
@@ -28,10 +28,10 @@ Each phase is a small reviewable patch on the **approved previous phase**. Check
 
 **Focus:** Replace both transaction-facing interfaces in test-only wiring, share the production lease contract, and record requested decisions without claiming physical completion. **Acceptance:** framework-level IT-05, IT-06, IT-08, IT-16, IT-18 and IT-19.
 
-- [ ] Implement one **operation-scoped** test bean that supplies both `Transactions` and `TransactionSegmentAccess`. Its logical segment has a unique identity, owner-thread/scope validation, one permitted `execute(...)`, nested/sequential rejection, sticky logical rollback-only, and observation of outcome/result/exception. Both injected interfaces must resolve to the same instance; the production manager remains selected outside rollback-mode contexts.
-- [ ] Capture the owning Spring transaction synchronization witness and reject acquisition/execution while a surrounding physical transaction is suspended. Segment leases expire at logical callback exit, even while a test-owned physical transaction remains active. Reuse a narrow existing guard where practical; do not duplicate the production physical finalization state machine.
-- [ ] Define a typed immutable observation snapshot or similarly constrained test-facing view. An explicit `COMMIT` on a poisoned logical segment fails; typed business errors do not implicitly poison it; `ROLLBACK` and `ABSTAIN` retain their exact requested decisions. No callback-level physical commit, rollback, savepoint or implicit JPA flush occurs.
-- [ ] Test scoped registration, resolution of both interfaces, reused accessors, stale facade and deferred-query rejection, `REQUIRES_NEW`/`NOT_SUPPORTED` suspension, callback exceptions, and scope/thread escapes. Use an instrumented Spring transaction context or limited H2 tests as preliminary evidence, explicitly not PostgreSQL acceptance.
+- [x] Implement one **operation-scoped** test bean that supplies both `Transactions` and `TransactionSegmentAccess`. Its logical segment has a unique identity, owner-thread/scope validation, one permitted `execute(...)`, nested/sequential rejection, sticky logical rollback-only, and observation of outcome/result/exception. Both injected interfaces must resolve to the same instance; the production manager remains selected outside rollback-mode contexts.
+- [x] Capture the owning Spring transaction synchronization witness and reject acquisition/execution while a surrounding physical transaction is suspended. Segment leases expire at logical callback exit, even while a test-owned physical transaction remains active. Reuse a narrow existing guard where practical; do not duplicate the production physical finalization state machine.
+- [x] Define a typed immutable observation snapshot or similarly constrained test-facing view. An explicit `COMMIT` on a poisoned logical segment fails; typed business errors do not implicitly poison it; `ROLLBACK` and `ABSTAIN` retain their exact requested decisions. No callback-level physical commit, rollback, savepoint or implicit JPA flush occurs.
+- [x] Test scoped registration, resolution of both interfaces, reused accessors, stale facade and deferred-query rejection, `REQUIRES_NEW`/`NOT_SUPPORTED` suspension, callback exceptions, and scope/thread escapes. Use an instrumented Spring transaction context or limited H2 tests as preliminary evidence, explicitly not PostgreSQL acceptance.
 
 **Gate B:** Real operation-scope and accessor guards pass focused offline tests with no PostgreSQL dependency. The test adapter cannot appear in ordinary production or real-commit contexts. Review the logical/physical boundary before Phase C.
 
