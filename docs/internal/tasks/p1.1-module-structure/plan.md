@@ -1,6 +1,6 @@
 # P1.1 - Implementation plan: application module structure and verification
 
-**Status:** Draft plan awaiting human review alongside the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
+**Status:** Approved plan; Phase A is accepted and Phase B is next. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
 
 ## Baseline and prerequisites
 
@@ -22,13 +22,13 @@ Java code follows the repository rule of explicit local-variable types; `var` is
 
 **Covers:** MOD-01, MOD-04, MOD-06, MOD-07, MOD-08, the dependency decisions, and MOD-T01, MOD-T02.
 
-- [ ] In `src/backend/sharewise/pom.xml`, add a `spring-modulith.version` property set to `2.1.2` and import `org.springframework.modulith:spring-modulith-bom` in `dependencyManagement`. Add `spring-modulith-api` in compile scope and `spring-modulith-core` in test scope, both version-managed by the BOM. No Modulith starter, runtime or event artifact is added.
-- [ ] Create `de/hsh/favs/sharewise/shared/package-info.java` declaring the module with `@ApplicationModule(allowedDependencies = {})` and Javadoc stating the `shared` rules: business-independent infrastructure, no dependencies on other modules, capabilities published only through named interfaces. The default `CLOSED` type is not restated.
-- [ ] Annotate the existing `shared/infra/di/package-info.java` with `@NamedInterface("di")` and adjust its Javadoc to name the published reference `shared::di` and state that `internal` is not published.
-- [ ] Add `ApplicationModuleStructureTests` in the test package `de.hsh.favs.sharewise`:
+- [x] In `src/backend/sharewise/pom.xml`, add a `spring-modulith.version` property set to `2.1.2` and import `org.springframework.modulith:spring-modulith-bom` in `dependencyManagement`. Add `spring-modulith-api` in compile scope and `spring-modulith-core` in test scope, both version-managed by the BOM. No Modulith starter, runtime or event artifact is added.
+- [x] Create `de/hsh/favs/sharewise/shared/package-info.java` declaring the module with `@ApplicationModule(allowedDependencies = {})` and Javadoc stating the `shared` rules: business-independent infrastructure, no dependencies on other modules, capabilities published only through named interfaces. The default `CLOSED` type is not restated.
+- [x] Annotate the existing `shared/infra/di/package-info.java` with `@NamedInterface("di")` and adjust its Javadoc to name the published reference `shared::di` and state that `internal` is not published.
+- [x] Add `ApplicationModuleStructureTests` in the test package `de.hsh.favs.sharewise`:
     - **MOD-T01:** `ApplicationModules.of(ShareWiseApplication.class).verify()` passes.
     - **MOD-T02:** the model contains exactly one module, `shared`; it is not open; its declared dependencies are empty; its named interface `di` contains exactly `OperationDispatcher`, `ServiceScopeFactory`, `ServiceScope` and `ServiceProvider`, and no type from `shared.infra.di.internal`. The exact-content assertion compares type names from `NamedInterface.asJavaClasses()`, excluding the `package-info` type if Modulith includes it.
-- [ ] Confirm that the existing DI and application-context tests are unaffected.
+- [x] Confirm that the existing DI and application-context tests are unaffected.
 
 **Gate A:** From `src/backend/sharewise`, `./mvnw -B -ntp clean verify` passes, with Spring Modulith 2.1.2 resolved from the network or from a refreshed offline handoff, and `git diff --check` is clean. The report lists the new resolved artifacts so the offline handoff can be regenerated. The human reviews the POM and annotation changes before Phase B.
 
