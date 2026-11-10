@@ -1,6 +1,6 @@
 # Application architecture
 
-**Status:** Target modular architecture. The operation-scoped DI foundation is implemented; module boundaries, business workflows and transaction-aware persistence are still planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
+**Status:** Target modular architecture. The operation-scoped DI foundation and executable module-boundary verification are implemented; the business modules, their workflows and transaction-aware persistence are still planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
 
 ## System organization
 
@@ -21,6 +21,16 @@ flowchart TB
 ```
 
 Runtime calls typically travel from inbound adapters to the application core and through outbound ports. Source dependencies point toward the interfaces owned by the core; the infrastructure adapters implement those interfaces. Diagram layers are conceptual: do not create a facade, interface, mapper, or package for every trivial method merely to mirror this picture.
+
+### Module structure and published APIs
+
+Each bounded context is one direct sub-package of the application root `de.hsh.favs.sharewise`: `identity`, `groups`, `finance`, `files` and `notifications`. Business-independent infrastructure lives in the `shared` module. Spring Modulith derives the application modules from this layout. A module's package is created by the first vertical slice that needs it; `shared` is currently the only module.
+
+A module's **top-level package is its published API**: the operation-focused command and query contracts and immutable records that other modules may use. Implementation, domain internals and adapters live in sub-packages. These remain internal to the module even when Java requires a type to be `public` for wiring across the module's own packages. A sub-package becomes part of the API only through an explicit Spring Modulith **named interface**, referenced as `module::name`, and only where a module publishes a genuinely separate contract. Types that need no access from other packages stay package-private.
+
+Every module is a closed module and declares its permitted dependencies with `@ApplicationModule(allowedDependencies = {...})` in its base `package-info.java`, listing each module API or named interface it uses. A new cross-module dependency therefore changes that declaration and is visible in review. The declaration records a dependency but does not approve it: a synchronous cross-context call still requires the reviewed integration boundary described above. Dependencies on `shared` are listed explicitly, for example `"shared :: di"`, rather than implicitly allowed for all modules.
+
+`shared` declares `allowedDependencies = {}`, so infrastructure can never depend on a business context, and the module graph stays acyclic and extractable. Its top-level package publishes nothing; each infrastructure capability has its own named interface. The DI contracts in `shared.infra.di` are published as `shared::di`, while their Spring implementations in `shared.infra.di.internal` are not.
 
 ## Operation- and data-flow-oriented services
 
@@ -95,3 +105,5 @@ Application operations generally use straightforward imperative Java; virtual th
 ## Architecture checks
 
 Tests cover domain invariants, invalid input, concurrency races and commit, rollback and failure paths; integration tests exercise real adapters. Fixtures are deterministic, with property-based or invariant tests where they add meaningful coverage. Module dependencies remain acyclic, and architectural changes are reviewable and documented without introducing pass-through abstractions.
+
+Module boundaries are verified with every backend build. A test analyzes the compiled application with Spring Modulith and fails on access to another module's unpublished types, on dependencies missing from a module's `allowedDependencies` declaration, and on cycles between modules. A project-owned check additionally fails for any module that declares no whitelist, because Spring Modulith treats such a module as unrestricted. Small fixture applications in the test sources show that each of these violations is detected and that declared dependencies on published APIs pass. Verification is static bytecode analysis and needs neither a running application nor a database.

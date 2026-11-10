@@ -1,6 +1,6 @@
 # P1.1 - Implementation plan: application module structure and verification
 
-**Status:** Approved plan; Phases A and B are accepted and Phase C is next. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
+**Status:** Approved plan; Phases A and B are accepted; Phase C documentation is complete and the independent review and manual acceptance are pending. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
 
 ## Baseline and prerequisites
 
@@ -63,12 +63,12 @@ Java code follows the repository rule of explicit local-variable types; `var` is
 
 **Covers:** all MOD requirements; the specification's documentation reconciliation and manual acceptance.
 
-- [ ] Reconcile the steady-state documentation with the verified implementation, following the [documentation skill](../../../../.agents/skills/documentation/SKILL.md):
+- [x] Reconcile the steady-state documentation with the verified implementation, following the [documentation skill](../../../../.agents/skills/documentation/SKILL.md):
     - [architecture](../../../architecture.md): extend *System organization* with the module convention (direct sub-packages, top-level API, closed modules, named interfaces, mandatory whitelists, `shared` rules); update *Architecture checks* to describe the executable verification; update the status line.
     - [development guide](../../../development.md): replace the statement that Spring Modulith is not installed with the installed artifacts and their scopes; add a short "adding an application module" section with an example `package-info.java` declaration and the command that runs verification.
     - [stack overview](../../../stack/overview.md): state that Spring Modulith is installed for module verification while the event publication registry remains planned.
     - [backlog](../backlog.md) framework projection: mark Spring Modulith 2.1.2 as adopted for structure verification.
-- [ ] Run `./mvnw -B -ntp clean verify` and `git diff --check`; confirm that no unrelated files, frontend files or lockfiles changed, and that the relative links in changed documents resolve.
+- [x] Run `./mvnw -B -ntp clean verify` and `git diff --check`; confirm that no unrelated files, frontend files or lockfiles changed, and that the relative links in changed documents resolve.
 - [ ] Hand over to the human for the independent merge-request review and the [manual acceptance procedure](manual-acceptance.md), steps A1 to A4. If the observed Spring Modulith messages differ materially from the procedure's expected results, update the procedure before acceptance.
 
 **Gate C:** The independent review findings are resolved or justified, the human has executed and recorded the manual acceptance results, and the offline handoff has been regenerated for the changed POM where the team relies on it. As the final pre-merge commit, mark [P1.1](../backlog.md#phase-1---modular-application-and-persistence-foundation) complete in the backlog, then merge after human authorization.

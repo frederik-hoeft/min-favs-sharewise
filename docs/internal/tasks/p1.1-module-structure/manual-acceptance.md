@@ -1,6 +1,6 @@
 # P1.1 - Manual acceptance procedure
 
-**Status:** Draft procedure for the [P1.1 specification](specification.md); results are recorded below after implementation. The procedure is executed by the human task owner once all implementation phases pass their automated tests.
+**Status:** Procedure for the [P1.1 specification](specification.md), ready for execution; results are recorded below. The procedure is executed by the human task owner once all implementation phases pass their automated tests.
 
 P1.1 has no user-facing journey. Manual acceptance instead demonstrates, in the real application rather than in test fixtures, that module verification rejects an undeclared dependency, accepts the same dependency once it is declared, and rejects a module that declares no whitelist.
 
@@ -60,14 +60,16 @@ public final class AcceptanceDemoService {
 
 ## Steps
 
+Steps A1 to A3 run only the test that checks the rule under examination. A full `./mvnw test` would fail in all three steps for an additional reason: `ApplicationModuleStructureTests` also pins the current module list to `shared` alone (MOD-T02), so any new module, including the demo, fails that test until the list is updated.
+
 | Step | Action | Expected result |
 | --- | --- | --- |
-| **A1** | Create both files above and run `./mvnw test`. | The build fails. Module verification reports that `acceptancedemo` depends on `shared` (via `AcceptanceDemoService` → `OperationDispatcher`) although this dependency is not allowed. The message identifies both modules and the offending type. |
-| **A2** | Change the declaration to `@ApplicationModule(allowedDependencies = "shared :: di")` and run `./mvnw test`. | The build passes: the dependency is permitted because it is declared and targets a published named interface. |
-| **A3** | Delete `acceptancedemo/package-info.java` and run `./mvnw test`. | The build fails. The whitelist convention check names `acceptancedemo` as a module without an explicit `allowedDependencies` declaration. |
-| **A4** | Delete the whole `acceptancedemo` directory, confirm `git status --short` prints nothing, and run `./mvnw test`. | The working tree is clean and the build passes. |
+| **A1** | Create both files above and run `./mvnw test -Dtest='ApplicationModuleStructureTests#applicationModuleStructureIsValid'`. | The test fails with a Spring Modulith violation: `Module 'acceptancedemo' depends on named interface(s) 'shared :: di' via ...acceptancedemo.AcceptanceDemoService -> ...shared.infra.di.OperationDispatcher. Allowed targets: none.` |
+| **A2** | Change the declaration to `@ApplicationModule(allowedDependencies = "shared :: di")` and run the same command as in A1. | The test passes: the dependency is permitted because it is declared and targets a published named interface. |
+| **A3** | Delete `acceptancedemo/package-info.java` and run `./mvnw test -Dtest='ApplicationModuleStructureTests#everyModuleDeclaresAllowedDependencies'`. | The test fails: `every module must declare @ApplicationModule(allowedDependencies = {...}) ==> expected: <[]> but was: <[acceptancedemo]>`. |
+| **A4** | Delete the whole `acceptancedemo` directory, confirm that `git status --short` shows no `acceptancedemo` files, and run the full `./mvnw test`. | No demo files remain and the full build passes. |
 
-Spring Modulith's exact message wording is not part of the acceptance contract; the result must identify the modules and the offending dependency clearly enough for a developer to fix it without further investigation.
+The quoted messages were observed with Spring Modulith 2.1.2. Their exact wording is not part of the acceptance contract; the result must identify the modules and the offending dependency clearly enough for a developer to fix it without further investigation.
 
 ## Results
 

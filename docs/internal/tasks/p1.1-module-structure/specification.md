@@ -1,6 +1,6 @@
 # P1.1 - Application module structure and verification
 
-**Status:** Draft specification awaiting human review. **Backlog item:** [P1.1](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md) defines module ownership and the published-API rule; the [DI architecture](../../../architecture/dependency-injection.md) defines the contracts that `shared` publishes. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
+**Status:** Approved specification; implementation and documentation are complete, with independent review and manual acceptance pending. **Backlog item:** [P1.1](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md) defines module ownership and the published-API rule; the [DI architecture](../../../architecture/dependency-injection.md) defines the contracts that `shared` publishes. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
 
 ## Goal and scope
 
