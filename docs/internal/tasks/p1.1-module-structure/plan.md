@@ -1,6 +1,6 @@
 # P1.1 - Implementation plan: application module structure and verification
 
-**Status:** Approved plan; Phase A is accepted and Phase B is next. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
+**Status:** Approved plan; Phases A and B are accepted and Phase C is next. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
 
 ## Baseline and prerequisites
 
@@ -36,9 +36,9 @@ Java code follows the repository rule of explicit local-variable types; `var` is
 
 **Covers:** MOD-05, MOD-09, MOD-10, MOD-11, and MOD-T03 through MOD-T10.
 
-- [ ] Add the package-private test helper `ModuleDependencyDeclarations` in test package `de.hsh.favs.sharewise`. Its single static method returns the names of all modules in an `ApplicationModules` model whose declared dependencies equal `List.of(ApplicationModule.OPEN_TOKEN)`, sorted for deterministic messages. It is a pure, stateless function over Modulith's public model and needs no Spring bean.
-- [ ] Extend `ApplicationModuleStructureTests` with **MOD-T03**: the helper returns no modules for the real application.
-- [ ] Create fixture applications under the test-source root package `de.hsh.favs.modulithfixtures`, outside the application root (MOD-11). Each scenario is its own root package whose direct sub-packages are the fixture modules. Fixtures contain plain classes with minimal fields or constructor parameters that create the intended dependency, and no Spring annotations:
+- [x] Add the package-private test helper `ModuleDependencyDeclarations` in test package `de.hsh.favs.sharewise`. Its single static method returns the names of all modules in an `ApplicationModules` model whose declared dependencies equal `List.of(ApplicationModule.OPEN_TOKEN)`, sorted for deterministic messages. It is a pure, stateless function over Modulith's public model and needs no Spring bean.
+- [x] Extend `ApplicationModuleStructureTests` with **MOD-T03**: the helper returns no modules for the real application.
+- [x] Create fixture applications under the test-source root package `de.hsh.favs.modulithfixtures`, outside the application root (MOD-11). Each scenario is its own root package whose direct sub-packages are the fixture modules. Fixtures contain plain classes with minimal fields or constructor parameters that create the intended dependency, and no Spring annotations:
 
 | Scenario package | Modules and dependency | Test |
 | --- | --- | --- |
@@ -50,12 +50,12 @@ Java code follows the repository rule of explicit local-variable types; `var` is
 | `cycle` | `alpha` and `beta` use each other's top-level APIs and whitelist each other | **MOD-T09** |
 | `missingdeclaration` | `consumer` has no `@ApplicationModule` annotation and no outgoing dependency | **MOD-T10** |
 
-- [ ] Add `ModuleVerificationFixtureTests` in test package `de.hsh.favs.sharewise`. A private method loads a scenario with `ApplicationModules.of("de.hsh.favs.modulithfixtures.<scenario>", <import option including test classes>)`.
+- [x] Add `ModuleVerificationFixtureTests` in test package `de.hsh.favs.sharewise`. A private method loads a scenario with `ApplicationModules.of("de.hsh.favs.modulithfixtures.<scenario>", <import option including test classes>)`.
     - MOD-T04 asserts that `detectViolations()` has no violations and the whitelist helper returns no modules.
     - MOD-T05 to MOD-T09 assert that `detectViolations()` reports **exactly one** violation whose message names the offending source type and the target type or module (for the cycle, both modules).
     - MOD-T10 asserts that verification reports no violations and the whitelist helper returns exactly `consumer`. This proves the scenario fails only because of the missing declaration.
     - Assertions use stable identifiers (fully qualified type names and module names) rather than Spring Modulith's complete message wording. The observed messages are recorded in the phase report.
-- [ ] If a scenario produces additional or different violations than expected, adjust the fixture so it isolates a single rule. Do not weaken the assertion.
+- [x] If a scenario produces additional or different violations than expected, adjust the fixture so it isolates a single rule. Do not weaken the assertion.
 
 **Gate B:** `./mvnw -B -ntp clean verify` and `git diff --check` pass. Each negative test has been seen to fail for its intended reason: temporarily removing the violating reference from its fixture makes that test fail. The report records this check; the temporary change is not committed. The human reviews the helper, fixtures and tests before Phase C.
 

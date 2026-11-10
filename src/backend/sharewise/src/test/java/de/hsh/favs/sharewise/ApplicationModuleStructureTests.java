@@ -35,6 +35,12 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
+    void everyModuleDeclaresAllowedDependencies() {
+        assertEquals(List.of(), ModuleDependencyDeclarations.modulesWithoutDeclaredDependencies(modules),
+                "every module must declare @ApplicationModule(allowedDependencies = {...})");
+    }
+
+    @Test
     void sharedIsTheOnlyModuleAndIsClosedWithoutModuleDependencies() {
         List<String> moduleNames = modules.stream()
                 .map(module -> module.getIdentifier().toString())
