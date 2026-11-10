@@ -20,7 +20,7 @@ On a connected Linux x86-64 development environment, run:
 scripts/create-offline-handoff.sh pack
 ```
 
-The repository script prepares and verifies the Java/Maven/Node toolchains and dependency caches. It produces five files:
+By default, the repository script prepares and verifies both Maven and npm dependencies, producing five handoff files:
 
 ```text
 .offline-handoff-cache/
@@ -34,9 +34,9 @@ The repository script prepares and verifies the Java/Maven/Node toolchains and d
 
 ![The five handoff files in the devcontainer's Git-ignored offline cache.](assets/devcontainer-offline-cache.png)
 
-Upload all five files to the Project's Sources. Reuse the set for code changes that leave the dependency descriptors and toolchain versions unchanged. If `pom.xml`, `package.json`, `package-lock.json`, wrapper configuration or toolchain selection changes, regenerate the entire set, replace the old files together and verify against a fresh source baseline. Mixed handoff generations are not supported.
+For backend-only or frontend-only tasks, use `pack --deps maven` or `pack --deps node`, respectively. These produce smaller handoffs requiring only the selected dependencies and vendor toolchains. Transfer the matching dependency archive, its `.sha256` file, and the original vendor archives listed in `manifest/toolchain-files.txt`. See the [offline handoff instructions](../development.md#portable-offline-dependency-handoff) for filenames and commands, and the [offline development skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill) for selection-aware workspace setup and verification.
 
-See the [offline handoff instructions](../development.md#portable-offline-dependency-handoff) and [offline environment skill](https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill) for archive validation and recovery details. The project source ZIP does not include these dependencies.
+Reuse a handoff while its selected dependency descriptors and toolchain versions remain unchanged. Regenerate and replace the matching artifacts together when those inputs change; do not mix handoff generations. Supply the project source ZIP separately.
 
 ## 3. Supply an exact source baseline
 
@@ -55,13 +55,7 @@ Use a fresh ChatGPT conversation for each independent implementation task. Reuse
 An initial task instruction can be:
 
 ```text
-Use https://github.com/frederik-hoeft/custom-skills/blob/main/dev/local-development.skill
-and https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill
-to prepare an offline local workspace for the attached source archive.
-Read the repository's AGENTS.md, documentation and development guidelines,
-then validate the unchanged baseline before making changes.
-Follow docs/development/ai-development-workflow.md for architectural specification,
-test design, phased implementation and human review gates.
+Use https://github.com/frederik-hoeft/custom-skills/blob/main/dev/local-development.skill and https://github.com/frederik-hoeft/custom-skills/blob/main/dev/java-nextjs-offline.skill to prepare an offline local workspace for the attached source archive. Onboard yourself with the repository, read the AGENTS.md, /docs and development guidelines, then validate the unchanged baseline before making changes. It is crucial that you understand the overall project architecture, goals, dependencies, and data flow. Follow docs/development/ai-development-workflow.md for architectural specification, test design, phased implementation and human review gates. When working on tasks, pay close attention to repository-specific skills and guidelines.
 
 [Describe this task, constraints and requested deliverables.]
 ```
@@ -105,12 +99,7 @@ Once the branch has passed local review and mirrored to GitHub, open a **review-
 For example:
 
 ```text
-Review https://github.com/frederik-hoeft/min-favs-sharewise/pull/<number>
-using the GitHub connector. Read the task requirements, architecture and complete
-diff, follow the affected call paths, and review correctness, authorization,
-concurrency, failure handling, maintainability and test coverage.
-Leave specific, actionable inline comments for warranted findings, distinguishing
-confirmed defects from optional improvements. Do not implement or merge.
+Review https://github.com/frederik-hoeft/min-favs-sharewise/pull/<number> using the GitHub connector. Read the task requirements, architecture and complete diff, follow the affected call paths, and review correctness, authorization, concurrency, failure handling, maintainability and test coverage. Leave specific, actionable inline comments for warranted findings, distinguishing confirmed defects from optional improvements. Do not implement or merge.
 ```
 
 Bring findings back to the original task conversation, assess them with the task agent and apply accepted fixes as incremental patches. Push each accepted revision to GitLab, wait for the GitHub mirror, and have the reviewer recheck the current commit. The **human acceptance gate** in the [general workflow](ai-development-workflow.md) determines when the branch can be merged through GitLab.

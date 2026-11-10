@@ -61,11 +61,61 @@ docker run --rm --name sharewise-frontend --network sharewise \
 
 The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The example backend uses the starter's H2 database and does not provide durable production storage.
 
+## Operation scope usage
+
+The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`; Spring-specific wiring under `shared.infra.di.internal` is infrastructure-private. The DI foundation is implemented and tested, but business modules and transaction-aware adapters have not yet been added.
+
+Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Production inbound adapters inject the singleton `OperationDispatcher` and dispatch an entry-service type rather than obtaining an operation-scoped bean from a singleton during construction:
+
+```java
+// Example service types; no financial business modules exist yet.
+@Component
+@Scope("operation")
+final class ExampleState {
+    private int calls;
+
+    int next() { return ++calls; }
+    int current() { return calls; }
+}
+
+@Service
+@Scope("operation")
+final class ExampleService {
+    private final ExampleState state;
+
+    ExampleService(ExampleState state) { this.state = state; }
+
+    int handle() { return state.next(); }
+}
+
+// Inside an inbound adapter:
+int result = dispatcher.dispatch(ExampleService.class, ExampleService::handle);
+```
+
+Infrastructure and tests that need to inspect multiple beans inside the *same* scope use the scope factory directly. The provider is usable only inside `run(...)`; closing remains the caller's responsibility:
+
+```java
+try (ServiceScope scope = scopeFactory.createScope()) {
+    scope.run(provider -> {
+        ExampleService service = provider.getRequiredService(ExampleService.class);
+        ExampleState state = provider.getRequiredService(ExampleState.class);
+        int result = service.handle();
+        assertEquals(1, result);
+        assertEquals(1, state.current()); // Both references share the same state.
+        return null;
+    });
+}
+```
+
+The factory may create independent nested DI scopes, but **nested `OperationDispatcher.dispatch(...)` calls are prohibited**. Do not use the outer scope's provider or already-created services from within a nested activation. Scopes and providers are confined to their creating thread; after closure, references must not be retained or used. Singleton-to-scoped dependency capture and escaped references are code-review concerns, not guarantees of automatic lifetime analysis.
+
+The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or the full `mvn clean verify`. In the supplied isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution. P1.3b/P1.3c require additional integration tests against real PostgreSQL once implemented.
+
 ## Development conventions
 
 - Use UTF-8 without BOM, LF line endings and final newlines, following repository formatting configuration. Prefer four-space indentation for Java unless an adopted formatter specifies otherwise.
 - Keep application/core contracts separated from transport DTOs and persistence implementation details; refer to [architecture](architecture.md) and [domain model](data-model-design.md).
-- Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of shared services.
+- Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of singleton services. Follow the [operation-scope usage rules](#operation-scope-usage) and the [DI architecture](architecture/dependency-injection.md) for lifecycle ownership; singleton capture and escaped-reference misuse are reviewed rather than automatically detected by Spring.
 - Add and run focused tests for changed behavior. Validate database concurrency and query contracts against the intended database once those adapters are introduced.
 - When a build or test cannot run, identify whether the blocker is tooling, dependency resolution, project compilation, a test failure, or external infrastructure. Do not conflate missing local prerequisites with source-code defects.
 
@@ -75,13 +125,22 @@ For task specification, phased agent implementation, independent review and huma
 
 ## Portable offline dependency handoff
 
-The optional [`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh) prepares a reusable **Linux x86-64 offline build environment**. It does **not** bundle Git history or project sources. It keeps the three official vendor archives for **Temurin JDK 25**, **Node.js 24**, and **Maven 3.10.0** intact, and separately compresses **only Maven and npm dependency caches**, manifest checksums and a verification script. This prevents the large language SDKs from being recompressed into a single monolithic archive.
+The optional [`scripts/create-offline-handoff.sh`](../scripts/create-offline-handoff.sh) prepares a reusable **Linux x86-64 offline build environment**. It does **not** bundle Git history or project sources. It keeps the required official vendor archives for **Temurin JDK 25**, **Node.js 24**, and **Maven 3.10.0** intact, and separately compresses **Maven and/or npm dependency caches**, manifest checksums and a verification script. This prevents the large language SDKs from being recompressed into a single monolithic archive.
 
 On a network-connected Linux x64 checkout:
 
 ```sh
 scripts/create-offline-handoff.sh pack
 ```
+
+The default includes both projects. To prepare a smaller handoff for a single area, use `--deps maven` (backend, JDK + Maven) or `--deps node` (frontend, Node.js + npm):
+
+```bash
+scripts/create-offline-handoff.sh pack --deps maven
+scripts/create-offline-handoff.sh pack --deps node
+```
+
+These selections prepare, package and verify **only** the chosen cache, include checksums only for that project's dependency descriptors and publish only its required vendor archives. The verifier reads `manifest/dependency-selection.txt` automatically. A backend-only handoff does not require frontend source files or Node.js; a frontend-only handoff does not require backend source files, Java or Maven. Existing combined handoffs without the selection manifest remain supported. To exercise the pack/verify selection logic without downloads, run `scripts/test-offline-handoff.sh`; its stand-in toolchains test orchestration and compatibility, not actual Maven/npm dependency completeness.
 
 The script uses `wget` to download and checksum-verify the toolchains and caches their original archives under Git-ignored `.offline-handoff-cache/toolchains/`. Its default output layout is:
 
@@ -95,7 +154,7 @@ The script uses `wget` to download and checksum-verify the toolchains and caches
     └── apache-maven-3.10.0-bin.zip
 ```
 
-**Supply the four files separately**, plus the small dependency-archive checksum file, when transferring the environment. Toolchain archives remain in their original formats and have individually recorded SHA-256 hashes. Use `--output` to choose another destination (its `toolchains/` sibling folder will be populated), `--cache-dir` to choose a shared download cache, or `--jdk`, `--node` and `--maven` to supply your own vendor archives.
+For the default bundle, **supply the four files separately**, plus the small dependency-archive checksum file, when transferring the environment. Selective bundles use the default filenames `sharewise-offline-deps-maven-linux-x64.tar.gz` or `sharewise-offline-deps-node-linux-x64.tar.gz`, each with its own `.sha256` file, and need only the two backend toolchains or the single frontend toolchain listed in `manifest/toolchain-files.txt`. A shared output directory may contain additional archives from other bundles; do not transfer them unless the selected manifest requires them. Toolchain archives remain in their original formats and have individually recorded SHA-256 hashes. Use `--output` to choose another destination (its `toolchains/` sibling folder will be populated), `--cache-dir` to choose a shared download cache, or `--jdk`, `--node` and `--maven` to supply your own vendor archives.
 
 `pack` runs connected dependency acquisition and real backend/frontend builds in temporary source copies, then re-verifies using strict offline Maven and npm invocations. Neither the source nor extracted SDKs enter the compressed dependency archive; neither `node_modules` nor compiled output is retained.
 
@@ -107,6 +166,6 @@ tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
 ./deps/verify-offline.sh verify deps --source /path/to/sharewise
 ```
 
-The verifier hashes all three original SDK archives, extracts them to temporary storage, checks the separately supplied source's dependency descriptors and runs backend tests and frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar`, Python 3 (to unpack the original Maven ZIP), and basic Unix checksum utilities, but not an installed JDK, Node, Maven or npm. See `README-OFFLINE.md` within the dependency archive for more information.
+The verifier hashes the required original toolchain archives, extracts them to temporary storage, checks the selected source dependency descriptors and runs the corresponding backend tests and/or frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar` and basic Unix checksum utilities, plus Python 3 when verifying Maven builds (to unpack the original Maven ZIP), but not preinstalled language toolchains. See `README-OFFLINE.md` within the dependency archive for more information.
 
-Ordinary source changes do **not** invalidate the handoff. Changes to `pom.xml`, Maven wrapper properties, `package.json` or `package-lock.json` invalidate it conservatively. Container images, PostgreSQL and external services are not included and require separate provisioning. The frontend starter avoids build-time Google Fonts network requests.
+Ordinary source changes do **not** invalidate the handoff. Changes to the **selected** project's `pom.xml`, Maven wrapper properties, `package.json` or `package-lock.json` invalidate it conservatively. Container images, PostgreSQL and external services are not included and require separate provisioning. The frontend starter avoids build-time Google Fonts network requests.

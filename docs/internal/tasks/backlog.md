@@ -1,8 +1,8 @@
 # ShareWise implementation backlog
 
-**Status:** Initial planning proposal; no implementation phase has been approved or started. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
+**Status:** Active implementation roadmap; P1.3a DI implementation phases A-C are approved, with final acceptance pending. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
 
-The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them. The [development guide](../../development.md) describes the actual starter dependencies, which should not be mistaken for future framework commitments. The current implementation is a Spring Boot greeting endpoint, a Next.js greeting flow, and a backend context-load test.
+The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them. The [development guide](../../development.md) describes the actual starter dependencies, which should not be mistaken for future framework commitments. The backend contains the greeting endpoint, the operation-scope implementation and its production dispatcher; business modules and transaction infrastructure are still planned. The frontend retains the greeting flow.
 
 ## Working agreement
 
@@ -34,12 +34,15 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Goal:** Resolve prerequisites for a coherent first vertical slice without attempting to decide every future policy. Keep proposals explicitly marked as such until reviewed.
 
-- [ ] **P0.1 - Package/module layout:** agree on `de.hsh.favs.sharewise` as the application root, with direct business subpackages (`identity`, `groups`, `finance`, `files`, `notifications`) and narrow published APIs. Determine package-internal visibility, optional Modulith verification, and where cross-cutting infrastructure lives.
-- [ ] **P0.2 - Transport/auth design:** review the [preliminary security decision](../../stack/security.md); settle browser → Nginx → Spring routing, static-export feasibility, IAM and attestation token profiles, login/refresh/logout, cookie and CSRF rules, key management, authorization error/retry contracts and versioning.
-- [ ] **P0.3 - Database contract:** review and validate the [preliminary persistence decision](../../stack/persistence.md), including schema ownership, UUID/key policy, migration/code-generation workflow, transaction interoperability, integration-test setup and database history representation.
-- [ ] **P0.4 - Domain language and user journeys:** check group invitation, participation, expense splitting, settlement, closing, reopening and archiving with the domain model; prioritize unresolved business decisions only where they block the next slice (see the [open decisions](../../data-model-design.md#open-decisions)).
-- [ ] **P0.5 - Delivery scope:** define the initial end-to-end demonstrator and explicit omissions. Establish test and API conventions, frontend component/styling conventions, and documentation/review gates.
-- [ ] **P0.6 - Messaging contract review:** review the [preliminary messaging decision](../../stack/messaging.md) and [alternatives](../../stack/messaging-alternatives.md); settle default-inbox exceptions, per-consumer replay/retention requirements and the broker-handoff guarantees to validate at extraction. Keep implementation-specific broker and outbox selection deferred until required.
+- [x] **P0.1 - Package/module layout:** agree on `de.hsh.favs.sharewise` as the application root, with direct business subpackages (`identity`, `groups`, `finance`, `files`, `notifications`) and narrow published APIs. Determine package-internal visibility, optional Modulith verification, and where cross-cutting infrastructure lives.
+    - agreed as proposed: business subpackages, package-internal visibility for non-public APIs, a `shared` package for cross-cutting infra and utilities
+- [x] **P0.2 - Transport/auth design:** review the [preliminary security decision](../../stack/security.md); settle browser → Nginx → Spring routing, static-export feasibility, IAM and attestation token profiles, login/refresh/logout, cookie and CSRF rules, key management, authorization error/retry contracts and versioning.
+    - agreed as proposed. Versioned APIs via `/api/<domain context>/v<version>/<resource path>`
+- [x] **P0.3 - Database contract:** review and validate the [preliminary persistence decision](../../stack/persistence.md), including schema ownership, UUID/key policy, migration/code-generation workflow, transaction interoperability, integration-test setup and database history representation.
+- [x] **P0.4 - Domain language and user journeys:** check group invitation, participation, expense splitting, settlement, closing, reopening and archiving with the domain model; prioritize unresolved business decisions only where they block the next slice (see the [open decisions](../../data-model-design.md#open-decisions)).
+- [x] **P0.5 - Delivery scope:** define the initial end-to-end demonstrator and explicit omissions. Establish test and API conventions, frontend component/styling conventions, and documentation/review gates.
+    - Phases up to and including P5 are required for the MVP, later phases may extend functionality or optimize the architecture.
+- [x] **P0.6 - Messaging contract review:** review the [preliminary messaging decision](../../stack/messaging.md) and [alternatives](../../stack/messaging-alternatives.md); settle default-inbox exceptions, per-consumer replay/retention requirements and the broker-handoff guarantees to validate at extraction. Keep implementation-specific broker and outbox selection deferred until required.
 
 **Gate:** Approved architecture deltas and task-level requirements for Phase 1, with decisions and deferrals recorded in the appropriate authoritative documents. No new framework is added solely for scaffolding.
 
@@ -48,8 +51,13 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 **Depends on:** Phase 0 decisions needed for infrastructure.
 
 - [ ] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
+    - packages are added with vertical slices
+    - P1.1 should publish the existing `shared.infra.di` public contracts through a Spring Modulith named interface (`shared::di`); `shared.infra.di.internal` is implementation-only, and additional shared infrastructure gets separately named APIs as needed
 - [ ] **P1.2:** Introduce PostgreSQL, migrations, per-context schema/table ownership and targeted integration fixtures; remove or isolate starter H2 dependencies where inappropriate.
-- [ ] **P1.3:** Implement a technology-agnostic transaction/session boundary on Spring transactions, including explicit commit/rollback/abstain, rollback-only poisoning, exceptional abort, lifetime and concurrency rules.
+- [ ] **P1.3 - Operation scopes and transactions:** deliver the following related foundations with independent reviewable steps:
+    - [ ] **P1.3a - DI scope:** implement the [reviewable DI-scope specification](p1.3a-di-scope/specification.md) using [inbound-agnostic operation dispatch and scoped Spring bean lifetimes](../../architecture/dependency-injection.md), including deterministic disposal and scope/provider misuse guards. **Implementation complete through Phase C; Phase D documentation and final acceptance remain pending.**
+    - [ ] **P1.3b - Transactions:** implement the [application-owned transaction contract](p1.3-transactions/specification.md) on Spring's programmatic transaction manager, with sequential physical segments, deferred outcomes, rollback-only poisoning and guarded persistence access.
+    - [ ] **P1.3c - Integration-test infrastructure:** refine and implement the [draft integration-test specification](p1.3c-integration-tests/specification.md), including rollback-isolated operation tests and real-commit fixtures; retain PostgreSQL transaction and concurrency evidence for the Phase 1 gate.
 - [ ] **P1.4:** Establish typed API errors, request validation, configuration, health checks, unit and integration test conventions, the frontend API client and a minimal same-origin `/api/*` development route for the first authenticated browser slice. The production static-export/Nginx deployment remains in P8.1.
 
 **Gate:** Modularity test catches a forbidden cross-context access; real PostgreSQL integration tests prove commit, rollback, rollback-only and concurrency rules; both applications build and run with documented commands.
