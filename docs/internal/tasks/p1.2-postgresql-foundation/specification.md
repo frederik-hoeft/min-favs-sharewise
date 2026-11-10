@@ -1,6 +1,6 @@
 # P1.2 – PostgreSQL and migration foundation
 
-**Status:** Specification for P1.2, revised after the first team review (MR !10). Covers the P0.3 database-contract decisions required by P1.2 and the P1.2 implementation scope. Nothing in this document is implemented yet. Implementation planning starts once the team approves this revision.
+**Status:** Specification for P1.2, revised after the first team review (MR !10) and aligned with P1.3b (MR !16). Covers the P0.3 database-contract decisions required by P1.2 and the P1.2 implementation scope. Nothing in this document is implemented yet. Implementation planning starts once the team approves this revision.
 
 **Related documents:** [persistence architecture](../../../stack/persistence.md), [application architecture](../../../architecture.md), [development guide](../../../development.md), [backlog](../backlog.md) (P0.3, P1.2).
 
@@ -42,15 +42,15 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 ### Hibernate / JPA
 
 - **D11 – Schema validation only:** `spring.jpa.hibernate.ddl-auto=validate`. Hibernate never creates or alters tables. JPA mappings declare schema and table explicitly.
-- **D12 – Open session in view disabled:** `spring.jpa.open-in-view=false`, so no database access happens during view rendering and transaction boundaries stay with the application layer (prerequisite for P1.3).
+- **D12 – Open session in view disabled:** `spring.jpa.open-in-view=false`, so no database access happens during view rendering and transaction boundaries stay with the application layer. This setting is already introduced by P1.3b; P1.2 keeps it.
 
 ### jOOQ
 
-- **D13 – jOOQ deferred:** P1.2 does not add jOOQ. Following the Phase 0 gate rule (*"no new framework is added solely for scaffolding"*), jOOQ and its code-generation workflow are introduced with the first adapter that needs SQL-centric access (expected in Finance, P3/P4). The persistence architecture's code-generation requirements (pinned versions, offline compilation, CI freshness check) apply then.
+- **D13 – jOOQ code generation deferred:** The jOOQ runtime (`spring-boot-starter-jooq`) is introduced by P1.3b for its transaction-bound `JooqAccess`. P1.2 does not add jOOQ **code generation**. Following the Phase 0 gate rule (*"no new framework is added solely for scaffolding"*), the code-generation workflow is introduced with the first adapter that queries generated tables (expected in Finance, P3/P4). The persistence architecture's code-generation requirements (pinned versions, offline compilation, CI freshness check) apply then.
 
 ### Tests
 
-- **D14 – Test split:** `./mvnw test` runs only unit tests and requires neither Docker nor PostgreSQL. Integration tests are named `*IT`, run in `./mvnw verify` (Maven Failsafe) and require real PostgreSQL. The starter's `ShareWiseApplicationTests` context-load test becomes an integration test.
+- **D14 – Test split:** `./mvnw test` runs unit tests and database-free Spring tests (including the P1.3a/P1.3b H2-based tests) and requires neither Docker nor PostgreSQL. PostgreSQL integration tests are named `*IT`, run in `./mvnw verify` (Maven Failsafe) and require real PostgreSQL. `ShareWiseApplicationTests` (`@SpringBootTest`, extended by P1.3b) loads the production context and therefore becomes `ShareWiseApplicationIT`.
 - **D15 – PostgreSQL test provisioning:** P1.2 provides the minimal PostgreSQL provisioning that the [P1.3c integration-test infrastructure](../p1.3c-integration-tests/specification.md) builds on: a PostgreSQL 18 server (Testcontainers locally, an external JDBC URL in CI), the cluster-wide role bootstrap, and a reusable routine that migrates a given database with the migration role and connects the application with the application role. Because roles are cluster-level but schemas, grants and default privileges are per database, the routine works for any database on the server, including the disposable per-fixture databases P1.3c introduces. Rollback-isolated harnesses, per-fixture database lifecycle and parallel execution belong to P1.3c, not P1.2.
 - **D16 – No silent fallback:** If PostgreSQL is unavailable, integration tests fail with a clear message. They never pass via H2 or mocks.
 - **D17 – Docker-outside-of-Docker in the dev container:** The dev container receives access to the host's Docker engine through the `docker-outside-of-docker` Dev Container feature, so Testcontainers works there.
@@ -58,7 +58,7 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 ### Developer tooling and dependencies
 
 - **D18 – PostgreSQL extension:** The dev container installs the `ms-ossdata.vscode-pgsql` VS Code extension as a visual client for inspecting the database and running test queries.
-- Remove `h2` and `spring-boot-h2console`. Add the PostgreSQL JDBC driver, Flyway (core + PostgreSQL module) and Testcontainers PostgreSQL (test scope). Exact artifact names and versions follow the Spring Boot 4.1 dependency management and are confirmed in the plan.
+- Remove `spring-boot-h2console` and remove `h2` from the runtime classpath. P1.3b's H2-based transaction tests (`TransactionsIntegrationTests`, `RelationalTransactionIntegrationTests`, `JooqAccessIntegrationTests`, `JpaAccessIntegrationTests`) configure their own in-memory datasource, so `h2` remains a **test-scope** dependency until P1.3c moves that coverage to PostgreSQL. Add the PostgreSQL JDBC driver, Flyway (core + PostgreSQL module) and Testcontainers PostgreSQL (test scope). Exact artifact names and versions follow the Spring Boot 4.1 dependency management and are confirmed in the plan.
 - The offline dependency handoff is a local convenience for the ChatGPT workflow. After this MR is merged, a short FYI in the team Discord announces the dependency change so that members using that workflow regenerate their handoff archives.
 
 ## Scope
@@ -97,7 +97,7 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 | TC-4 | Integration | Migrated database | Application context starts with `ddl-auto=validate` | Context loads (replaces the starter context-load test) |
 | TC-5 | Integration | Migrated database | Query `pg_constraint` for foreign keys whose referencing and referenced tables are in different schemas | Result is empty |
 | TC-6 | Integration | No reachable PostgreSQL / Docker | `./mvnw verify` | Fails with a clear infrastructure message, not a pass |
-| TC-7 | Build | — | `./mvnw dependency:tree` | Contains no `h2` artifact |
+| TC-7 | Build | — | `./mvnw dependency:tree` | `h2` appears only in test scope; the packaged application contains no H2 |
 | TC-8 | CI | Merge request pipeline on the GWDG runner | Run backend job | Unit and integration tests run and pass against the `postgres:18` CI service |
 | TC-9 | Manual | Dev container with applied baseline | Edit the applied baseline migration locally, restart backend | Startup fails on checksum validation (then revert) |
 | TC-10 | Integration | Migrated database, application-role connection | Attempt `CREATE TABLE` in a context schema and a read of the Flyway history | Both are rejected with permission errors |
