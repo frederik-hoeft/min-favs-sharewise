@@ -2,7 +2,7 @@
 
 **Status:** Draft plan for review. Implements the [P1.2 specification](specification.md); requirement IDs (D1–D18) and test cases (TC-1–TC-12) refer to it. A checked box means the phase is implemented, verified **and approved** in review.
 
-**Starting point:** `main` after P1.3a. The backend still uses H2 and has no PostgreSQL, Flyway or Testcontainers dependencies. The P1.3a DI tests (`shared.infra.di.internal.*Tests`) build small Spring contexts without a `DataSource`; they stay unit-level and must keep passing in `./mvnw test`. Only `ShareWiseApplicationTests` (`@SpringBootTest`) needs a database after H2 is removed.
+**Starting point:** `main` **after P1.3b (MR !16) is merged**; the P1.2 branch is updated from `main` before Phase B. P1.3b adds `spring-boot-starter-jooq`, `spring.jpa.open-in-view=false`, the `Transactions`/`JooqAccess`/`JpaAccess` infrastructure and H2-based transaction tests with their own in-memory datasources. The P1.3a/P1.3b tests stay database-free and must keep passing in `./mvnw test`. Only `ShareWiseApplicationTests` (`@SpringBootTest`, production context) needs PostgreSQL once H2 leaves the runtime classpath.
 
 **Coordination with P1.3c:** P1.2 delivers PostgreSQL provisioning, the role bootstrap and a reusable "migrate this database" routine (D15). Rollback harnesses, per-fixture database lifecycle and parallel execution are P1.3c. The test-support API introduced in Phase D is kept small so P1.3c can build on it.
 
@@ -15,10 +15,10 @@
 
 ## Phase B – Dependencies and configuration
 
-- [ ] **Scope:** In `pom.xml`, remove `h2` and `spring-boot-h2console`; add the PostgreSQL JDBC driver (runtime), Spring Boot's Flyway starter and `flyway-database-postgresql`; add Spring Boot Testcontainers support and Testcontainers PostgreSQL (test scope); configure Maven Failsafe for `*IT` classes (D14). Artifact names and versions are taken from the Spring Boot 4.1 dependency management and verified with `./mvnw dependency:tree`.
-- In `application.properties`: datasource from `SPRING_DATASOURCE_*` with dev-container defaults (application role); Flyway credentials from `SPRING_FLYWAY_USER`/`SPRING_FLYWAY_PASSWORD` (migration role); `spring.flyway.locations=classpath:db/migration` (sub-folders per context); Flyway history in schema `flyway`; `spring.jpa.hibernate.ddl-auto=validate` (D11); `spring.jpa.open-in-view=false` (D12).
-- Rename `ShareWiseApplicationTests` to `ShareWiseApplicationIT` so `./mvnw test` no longer needs a database.
-- **Tests:** TC-2 (`./mvnw test` without Docker/PostgreSQL, including the P1.3a DI tests), TC-7 (no `h2` in the dependency tree).
+- [ ] **Scope:** Update the branch from `main` (after MR !16). In `pom.xml`, remove `spring-boot-h2console`, change `h2` to test scope (used by the P1.3b transaction tests); add the PostgreSQL JDBC driver (runtime), Spring Boot's Flyway starter and `flyway-database-postgresql`; add Spring Boot Testcontainers support and Testcontainers PostgreSQL (test scope); configure Maven Failsafe for `*IT` classes (D14). Artifact names and versions are taken from the Spring Boot 4.1 dependency management and verified with `./mvnw dependency:tree`.
+- In `application.properties`: datasource from `SPRING_DATASOURCE_*` with dev-container defaults (application role); Flyway credentials from `SPRING_FLYWAY_USER`/`SPRING_FLYWAY_PASSWORD` (migration role); `spring.flyway.locations=classpath:db/migration` (sub-folders per context); Flyway history in schema `flyway`; `spring.jpa.hibernate.ddl-auto=validate` (D11); keep P1.3b's `spring.jpa.open-in-view=false` (D12).
+- Rename `ShareWiseApplicationTests` to `ShareWiseApplicationIT` (including the P1.3b checks it contains) so `./mvnw test` no longer needs a database; it runs against PostgreSQL in Phase D.
+- **Tests:** TC-2 (`./mvnw test` without Docker/PostgreSQL, including the P1.3a DI tests), TC-7 (`h2` only in test scope).
 - **Gate:** Unit build green offline; dependency changes reviewed.
 
 ## Phase C – Baseline migration
@@ -34,7 +34,7 @@
     - Bootstrap: run `01-create-roles.sql` once per server.
     - `migrate(database)`: run Flyway with the migrator role against a given database and expose application-role connection properties (D15). P1.3c later calls this for each disposable database.
     - Clear failure when neither Docker nor an external URL is available (D16).
-- **Integration tests (`*IT`):** `ShareWiseApplicationIT` (TC-4), `BaselineMigrationIT` (TC-3, TC-5), `DatabaseRolePermissionsIT` (TC-10, TC-11, TC-12 using a temporary test table created by the migrator).
+- **Integration tests (`*IT`):** `ShareWiseApplicationIT` (TC-4, plus P1.3b's transaction-manager and jOOQ checks against PostgreSQL), `BaselineMigrationIT` (TC-3, TC-5), `DatabaseRolePermissionsIT` (TC-10, TC-11, TC-12 using a temporary test table created by the migrator).
 - **Verification:** TC-6 checked manually by running `./mvnw verify` with Docker stopped.
 - **Gate:** `./mvnw verify` green in the dev container; test-support API reviewed with the P1.3c owner.
 
