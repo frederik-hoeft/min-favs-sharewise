@@ -1,6 +1,6 @@
 # P1.3c - Implementation plan: integration-test execution and isolation
 
-**Status:** Approved implementation plan; Phase A is implemented and pending human review/acceptance; its checklist remains open until approval. Later phases are pending. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
+**Status:** Approved implementation plan; Phase A accepted. Phase B implementation is pending human review/acceptance. Later phases are pending. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
 
 ## Scope, baseline and dependency gates
 
@@ -18,9 +18,9 @@ Each phase is a small reviewable patch on the **approved previous phase**. Check
 
 **Focus:** An ergonomic test entry point over the existing operation scope with correct ownership and deterministic teardown. **Acceptance:** IT-01 through IT-03 (scope-facing portions) and non-database configuration isolation in IT-16.
 
-- [ ] Define a small test-facing `OperationTestHarness` / `OperationTestScope` (final names may differ) using `ServiceScopeFactory.createScope()` and `ServiceScope.run(...)`. Expose scoped resolution to tests without placing a service locator in production services; no physical transaction starts in the scope-only mode.
-- [ ] Preserve the scope/thread/provider lifetime rules, isolation between independent and nested scopes, and cleanup order. Resolve services only while the scope is active; ensure failures from the callback or destruction do not silently bypass remaining cleanup.
-- [ ] Add focused Spring tests for identity within one scope, independence across scopes, retained providers, wrong-thread access, nested scope behavior, exceptional exit and failed destruction callbacks. Exercise the real scope implementation rather than replacing it with a mock.
+- [x] Define a small test-facing `OperationTestHarness` / `OperationTestScope` (final names may differ) using `ServiceScopeFactory.createScope()` and `ServiceScope.run(...)`. Expose scoped resolution to tests without placing a service locator in production services; no physical transaction starts in the scope-only mode.
+- [x] Preserve the scope/thread/provider lifetime rules, isolation between independent and nested scopes, and cleanup order. Resolve services only while the scope is active; ensure failures from the callback or destruction do not silently bypass remaining cleanup.
+- [x] Add focused Spring tests for identity within one scope, independence across scopes, retained providers, wrong-thread access, nested scope behavior, exceptional exit and failed destruction callbacks. Exercise the real scope implementation rather than replacing it with a mock.
 
 **Gate A:** Focused tests and offline backend `clean verify` pass. No PostgreSQL, Docker or new persistence infrastructure is needed. Review the API and cleanup semantics before Phase B.
 
