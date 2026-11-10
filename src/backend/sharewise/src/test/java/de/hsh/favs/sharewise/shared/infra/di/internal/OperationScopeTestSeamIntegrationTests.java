@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
-import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
+import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -32,32 +32,26 @@ class OperationScopeTestSeamIntegrationTests {
     @Test
     void testCallbackInspectsAnEntryAndItsCollaboratorsBeforeScopeTeardown() {
         int destroyedBefore = lifecycle.destroyed.get();
-        OperationState firstState;
+        OperationState firstState = new OperationTestHarness(scopeFactory).inOperationScope(scope -> {
+            EntryService entry = scope.resolve(EntryService.class);
+            WriterService writer = scope.resolve(WriterService.class);
+            OperationState state = scope.resolve(OperationState.class);
+            LifecycleResource resource = scope.resolve(LifecycleResource.class);
 
-        try (ServiceScope scope = scopeFactory.createScope()) {
-            firstState = scope.run(provider -> {
-                EntryService entry = provider.getRequiredService(EntryService.class);
-                WriterService writer = provider.getRequiredService(WriterService.class);
-                OperationState state = provider.getRequiredService(OperationState.class);
-                LifecycleResource resource = provider.getRequiredService(LifecycleResource.class);
+            assertSame(state, entry.state());
+            assertSame(state, writer.state());
+            assertSame(writer, entry.writer());
+            assertSame(resource, entry.resource());
+            assertTrue(resource.initialized);
+            assertTrue(resource.postProcessed);
+            assertEquals("preferred", entry.label().value());
 
-                assertSame(state, entry.state());
-                assertSame(state, writer.state());
-                assertSame(writer, entry.writer());
-                assertSame(resource, entry.resource());
-                assertTrue(resource.initialized);
-                assertTrue(resource.postProcessed);
-                assertEquals("preferred", entry.label().value());
-
-                entry.write("one");
-                writer.write("two");
-                assertEquals(List.of("one", "two"), state.messages);
-                assertEquals(destroyedBefore, lifecycle.destroyed.get());
-                return state;
-            });
-            // run() only deactivates the scope; the caller still owns its destruction.
+            entry.write("one");
+            writer.write("two");
+            assertEquals(List.of("one", "two"), state.messages);
             assertEquals(destroyedBefore, lifecycle.destroyed.get());
-        }
+            return state;
+        });
         assertEquals(destroyedBefore + 1, lifecycle.destroyed.get());
 
         OperationState secondState = dispatcher.dispatch(EntryService.class, entry -> {
@@ -75,16 +69,12 @@ class OperationScopeTestSeamIntegrationTests {
     @Test
     void prototypeBeansAreNotOwnedOrDestroyedByTheOperationScope() {
         int closedBefore = lifecycle.prototypesClosed.get();
-        PrototypeResource first;
-        PrototypeResource second;
-        try (ServiceScope scope = scopeFactory.createScope()) {
-            PrototypePair pair = scope.run(provider -> new PrototypePair(
-                provider.getRequiredService(PrototypeResource.class),
-                provider.getRequiredService(PrototypeResource.class)));
-            first = pair.first();
-            second = pair.second();
-            assertNotSame(first, second);
-        }
+        PrototypePair pair = new OperationTestHarness(scopeFactory).inOperationScope(scope -> new PrototypePair(
+            scope.resolve(PrototypeResource.class),
+            scope.resolve(PrototypeResource.class)));
+        PrototypeResource first = pair.first();
+        PrototypeResource second = pair.second();
+        assertNotSame(first, second);
         assertEquals(closedBefore, lifecycle.prototypesClosed.get());
         // Spring's prototype ownership contract leaves disposal to the recipient.
         first.close();

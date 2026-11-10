@@ -1,6 +1,6 @@
 # P1.3c - Implementation plan: integration-test execution and isolation
 
-**Status:** Draft implementation plan for review; no phase is approved or implemented. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
+**Status:** Approved implementation plan; Phase A is implemented and pending human review/acceptance; its checklist remains open until approval. Later phases are pending. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
 
 ## Scope, baseline and dependency gates
 
