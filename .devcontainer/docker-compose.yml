@@ -10,7 +10,29 @@ services:
       - npm-cache:/home/vscode/.npm
     init: true
     command: sleep infinity
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Local development database. Dev-only credentials; never used outside the dev container.
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: sharewise
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev
+    volumes:
+      # PostgreSQL 18 images keep their data below /var/lib/postgresql.
+      - postgres-data:/var/lib/postgresql
+      # Runs once on an empty volume: creates the ShareWise roles and database grants.
+      - ../src/backend/sharewise/src/test/resources/db/bootstrap:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sharewise"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   maven-cache:
   npm-cache:
+  postgres-data:

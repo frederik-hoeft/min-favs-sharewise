@@ -8,15 +8,17 @@
 
 ## Phase A – PostgreSQL in the dev container
 
-- [ ] **Scope:** Add a `postgres:18` service to `.devcontainer/docker-compose.yml` with a named volume (PG 18 images store data under `/var/lib/postgresql`), a `pg_isready` health check, `POSTGRES_DB=sharewise` and dev-only admin credentials. Mount the role bootstrap script as an init script. Add the `docker-outside-of-docker` feature (D17) and the `ms-ossdata.vscode-pgsql` extension (D18) to `devcontainer.json`. Set dev datasource and Flyway environment variables on the `dev` service (D3).
-- **New files:** `src/backend/sharewise/src/test/resources/db/bootstrap/01-create-roles.sql` – idempotent creation of `sharewise_migrator` and `sharewise_app` (cluster-level, D2); grant of `CREATE` on the `sharewise` database to the migrator. Shared by dev container, tests and CI.
-- **Verification:** Rebuild the dev container; `docker ps` works inside it; the PostgreSQL extension connects as both roles; the init script runs only on an empty volume (documented reset: remove the volume).
+- [ ] **Scope:** Add a `postgres:18` service to `.devcontainer/docker-compose.yml` with a named volume (PG 18 images store data under `/var/lib/postgresql`), a `pg_isready` health check, `POSTGRES_DB=sharewise` and dev-only admin credentials; the `dev` service waits for it to be healthy. Mount the bootstrap scripts as init scripts. Add the `docker-outside-of-docker` feature (D17) and the `ms-ossdata.vscode-pgsql` extension (D18) to `devcontainer.json`. The datasource and Flyway environment variables (D3) are added in Phase B together with the PostgreSQL driver, so the H2-based starter keeps working until then.
+- **New files** in `src/backend/sharewise/src/test/resources/db/bootstrap/`, shared by dev container, tests and CI:
+    - `01-create-roles.sql` – idempotent creation of `sharewise_migrator` and `sharewise_app` (cluster-level, once per server, D2).
+    - `02-grant-database-access.sql` – `CONNECT`/`CREATE` for the migrator and `CONNECT` for the application role on the **current** database (once per database, so it also serves P1.3c's disposable databases).
+- **Verification:** Rebuild the dev container; `docker ps` works inside it; the PostgreSQL extension connects to host `postgres` as both roles; the init scripts run only on an empty volume (documented reset: remove the `postgres-data` volume).
 - **Gate:** Dev container starts cleanly with a healthy database and both roles.
 
 ## Phase B – Dependencies and configuration
 
 - [ ] **Scope:** Update the branch from `main` (after MR !16). In `pom.xml`, remove `spring-boot-h2console`, change `h2` to test scope (used by the P1.3b transaction tests); add the PostgreSQL JDBC driver (runtime), Spring Boot's Flyway starter and `flyway-database-postgresql`; add Spring Boot Testcontainers support and Testcontainers PostgreSQL (test scope); configure Maven Failsafe for `*IT` classes (D14). Artifact names and versions are taken from the Spring Boot 4.1 dependency management and verified with `./mvnw dependency:tree`.
-- In `application.properties`: datasource from `SPRING_DATASOURCE_*` with dev-container defaults (application role); Flyway credentials from `SPRING_FLYWAY_USER`/`SPRING_FLYWAY_PASSWORD` (migration role); `spring.flyway.locations=classpath:db/migration` (sub-folders per context); Flyway history in schema `flyway`; `spring.jpa.hibernate.ddl-auto=validate` (D11); keep P1.3b's `spring.jpa.open-in-view=false` (D12).
+- Set the dev datasource and Flyway environment variables on the `dev` service in `.devcontainer/docker-compose.yml` (D3). In `application.properties`: datasource from `SPRING_DATASOURCE_*` with dev-container defaults (application role); Flyway credentials from `SPRING_FLYWAY_USER`/`SPRING_FLYWAY_PASSWORD` (migration role); `spring.flyway.locations=classpath:db/migration` (sub-folders per context); Flyway history in schema `flyway`; `spring.jpa.hibernate.ddl-auto=validate` (D11); keep P1.3b's `spring.jpa.open-in-view=false` (D12).
 - Rename `ShareWiseApplicationTests` to `ShareWiseApplicationIT` (including the P1.3b checks it contains) so `./mvnw test` no longer needs a database; it runs against PostgreSQL in Phase D.
 - **Tests:** TC-2 (`./mvnw test` without Docker/PostgreSQL, including the P1.3a DI tests), TC-7 (`h2` only in test scope).
 - **Gate:** Unit build green offline; dependency changes reviewed.
