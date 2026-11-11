@@ -1,6 +1,6 @@
 # P1.1 - Implementation plan: application module structure and verification
 
-**Status:** Approved plan; Phases A and B are accepted; Phase C documentation is complete and the independent review and manual acceptance are pending. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
+**Status:** Approved plan; Phases A and B are accepted; Phase C documentation and manual acceptance are complete; the independent review is pending. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
 
 ## Baseline and prerequisites
 
