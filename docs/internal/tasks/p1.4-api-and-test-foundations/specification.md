@@ -1,6 +1,6 @@
 # P1.4 - API conventions, configuration, test conventions and frontend API foundation
 
-**Status:** Draft specification for review; no implementation or approval is implied. **Backlog item:** [P1.4](../backlog.md#phase-1---modular-application-and-persistence-foundation). This task depends on the [application architecture](../../../architecture.md), [DI architecture](../../../architecture/dependency-injection.md), [preliminary security design](../../../stack/security.md), [P1.3b transaction specification](../p1.3-transactions/specification.md), and [P1.3c integration-test specification](../p1.3c-integration-tests/specification.md). The [development workflow](../../../development/ai-development-workflow.md) defines the specification, planning and review gates.
+**Status:** Approved acceptance specification; implementation complete and verified, awaiting final human acceptance. **Backlog item:** [P1.4](../backlog.md#phase-1---modular-application-and-persistence-foundation). This task depends on the [application architecture](../../../architecture.md), [DI architecture](../../../architecture/dependency-injection.md), [preliminary security design](../../../stack/security.md), [P1.3b transaction specification](../p1.3-transactions/specification.md), and [P1.3c integration-test specification](../p1.3c-integration-tests/specification.md). The [development workflow](../../../development/ai-development-workflow.md) defines the specification, planning and review gates.
 
 ## Goal, scope and subtask decomposition
 

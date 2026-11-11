@@ -1,25 +1,26 @@
 'use client';
 
 import { useEffect, useState } from "react";
+import { apiClient, ApiError } from "@/lib/api";
 import styles from "./greetings.module.css";
 
+interface GreetingResponse {
+    readonly message: string;
+}
+
 export default function GreetingsPage() {
-    const [message, setMessage] = useState(null);
+    const [message, setMessage] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const res = await fetch('/api/greetings', {
-                    cache: 'no-store'
-                });
-                if (!res.ok) throw new Error('Failed to fetch data');
-                const data = await res.json();
+                const data = await apiClient.get<GreetingResponse>('/api/greetings');
                 setMessage(data.message);
-            } catch (error) {
-                if (error instanceof Error) {
-                    setError(error);
+            } catch (err) {
+                if (err instanceof ApiError || err instanceof Error) {
+                    setError(err);
                 }
             } finally {
                 setLoading(false);

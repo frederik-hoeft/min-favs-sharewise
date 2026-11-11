@@ -18,7 +18,7 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA, H2/H2 console, Lombok and test starters. PostgreSQL persistence, Spring Modulith and event publication remain architectural targets rather than installed backend features.
 
-The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. Its server-side route handler and current container image belong to the starter. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below still describe the starter.
+The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. During development, `next.config.ts` rewrites `/api/:path*` requests directly to the Spring Boot backend (`BACKEND_URL`), avoiding custom Next.js API route handlers. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding in production; that Nginx deployment is **not yet implemented**.
 
 ## Build, test and run
 
@@ -44,7 +44,7 @@ The starter defaults to frontend port 3000 and backend port 8080. Consult the ba
 
 ## Current starter: separate-container execution
 
-The Next.js `/api/greetings` route forwards server-side requests to the Spring Boot `/greeting` endpoint. `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
+The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`). `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
 
 ```sh
 cd src/backend/sharewise

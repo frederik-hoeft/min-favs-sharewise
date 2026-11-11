@@ -28,8 +28,8 @@ For changes that may propagate asynchronously, a producer commits its business d
 
 | Area | Technologies and responsibility | State |
 | --- | --- | --- |
-| Web UI | **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4**; build-time static site generation and browser UI | **Starter:** installed; static export pending |
-| Backend and HTTP | **Java 25**, **Spring Boot 4.1**, **Spring MVC**; REST endpoints and dependency-injected application services within a modular monolith | **Starter:** installed; module and application-service structure planned |
+| Web UI | **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4**; build-time static site generation, browser UI, typed `fetch` API client (`lib/api`), and `/api/:path*` development rewrite | **Starter + API client foundation:** installed; static export pending |
+| Backend and HTTP | **Java 25**, **Spring Boot 4.1**, **Spring MVC**; REST endpoints, RFC 9457 `ProblemDetail` error handling, `@ConfigurationProperties`, health probes (`/api/system/v1/health`), `Result<T, E>` outcomes, and dependency-injected application services within a modular monolith | **Implemented foundation:** HTTP error/validation/health and DI conventions in `shared`; business modules pending |
 | DI and operation lifetime | **Spring beans**, custom application-operation `Scope`, Java 25 `ScopedValue` and an inbound-agnostic dispatcher; scoped state independent of physical transactions | **Implemented foundation:** [DI architecture](../architecture/dependency-injection.md); transaction-aware participants and business adapters pending |
 | Authentication and authorization | **Spring Security** for password authentication, bearer JWT validation and method/request guards; IAM-managed refresh sessions and short-lived identity JWTs; issuer-qualified domain attestations | **Preliminary design:** [security](security.md); not installed |
 | Database and schema | **PostgreSQL** for authoritative, module-owned relational state; **Flyway** for reviewed SQL migrations | **Planned:** starter currently uses H2 |
