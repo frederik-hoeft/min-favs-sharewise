@@ -83,7 +83,7 @@ The full backend build runs module verification. From `src/backend/sharewise`, r
 ./mvnw test -Dtest=ApplicationModuleStructureTests,ModuleVerificationFixtureTests
 ```
 
-A violation names the modules and types involved, for example `Module 'consumer' depends on module 'provider' via ...Consumer -> ...ProviderApi. Allowed targets: none.` Fix it by using the other module's published API or, when the dependency is intended, by adding it to the consumer's `allowedDependencies` for review. Do not publish internal packages or open a module merely to silence verification.
+A violation names the modules and types involved, for example `Module 'consumer' depends on module 'provider' via ...Consumer -> ...ProviderApi. Allowed targets: none.` Fix it by using the other module's published API or, when the dependency is intended, by adding it to the consumer's `allowedDependencies` for review. Do not publish internal packages or open a module merely to silence verification; `ApplicationModuleStructureTests` rejects open modules and published DI implementation types, which Spring Modulith alone accepts.
 
 The verification tests also run small fixture applications under `de.hsh.favs.modulithfixtures` in the test sources, one per rule, to prove that each kind of violation is detected. They live outside the application root, so they are never part of the real application's module model or Spring context.
 

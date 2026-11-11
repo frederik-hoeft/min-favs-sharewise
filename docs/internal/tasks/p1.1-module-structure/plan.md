@@ -1,6 +1,6 @@
 # P1.1 - Implementation plan: application module structure and verification
 
-**Status:** Approved plan; Phases A and B are accepted; Phase C documentation and manual acceptance are complete; the independent review is pending. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
+**Status:** Approved plan; Phases A and B are accepted; Phase C documentation and manual acceptance are complete; the independent review findings are addressed and await human approval. It implements the approved [P1.1 specification](specification.md). **Execution gate:** Each implementation phase requires its own human review and approval before the next phase begins. The [AI development workflow](../../../development/ai-development-workflow.md) governs incremental review, independent merge-request review and final acceptance.
 
 ## Baseline and prerequisites
 
@@ -70,6 +70,7 @@ Java code follows the repository rule of explicit local-variable types; `var` is
     - [backlog](../backlog.md) framework projection: mark Spring Modulith 2.1.2 as adopted for structure verification.
 - [x] Run `./mvnw -B -ntp clean verify` and `git diff --check`; confirm that no unrelated files, frontend files or lockfiles changed, and that the relative links in changed documents resolve.
 - [ ] Hand over to the human for the independent merge-request review and the [manual acceptance procedure](manual-acceptance.md), steps A1 to A4. If the observed Spring Modulith messages differ materially from the procedure's expected results, update the procedure before acceptance.
+- [ ] Resolve the independent review findings for MOD-04 and MOD-07: the package-private test helper `ModulePublications` reports open modules and every type of a given package that any named interface publishes. `ApplicationModuleStructureTests` applies both checks to the real application; the fixtures `openmodule` and `publishedinternal` prove that each check detects its violation, which Spring Modulith verification alone accepts. Named interfaces contain only `public` types, so the real-application check guards `public` types later added to `shared.infra.di.internal`.
 
 **Gate C:** The independent review findings are resolved or justified, the human has executed and recorded the manual acceptance results, and the offline handoff has been regenerated for the changed POM where the team relies on it. As the final pre-merge commit, mark [P1.1](../backlog.md#phase-1---modular-application-and-persistence-foundation) complete in the backlog, then merge after human authorization.
 

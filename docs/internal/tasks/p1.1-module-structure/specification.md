@@ -1,6 +1,6 @@
 # P1.1 - Application module structure and verification
 
-**Status:** Approved specification; implementation and documentation are complete, with independent review and manual acceptance pending. **Backlog item:** [P1.1](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md) defines module ownership and the published-API rule; the [DI architecture](../../../architecture/dependency-injection.md) defines the contracts that `shared` publishes. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
+**Status:** Approved specification; implementation, documentation and manual acceptance are complete; independent review pending. **Backlog item:** [P1.1](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md) defines module ownership and the published-API rule; the [DI architecture](../../../architecture/dependency-injection.md) defines the contracts that `shared` publishes. The [development workflow](../../../development/ai-development-workflow.md) defines approval gates.
 
 ## Goal and scope
 
@@ -60,7 +60,7 @@ Because the POM changes, the separately supplied **offline dependency handoff mu
 
 ### Executable verification
 
-- **MOD-09 - Verification suite:** The backend test suite verifies the real application structure with Spring Modulith and checks that every detected module declares an explicit `allowedDependencies` whitelist (MOD-05). Spring Modulith does not enforce declaration by itself, so this convention check is project-owned and reusable against any root package.
+- **MOD-09 - Verification suite:** The backend test suite verifies the real application structure with Spring Modulith and checks that every detected module declares an explicit `allowedDependencies` whitelist (MOD-05). Spring Modulith does not enforce declaration by itself, so this convention check is project-owned and reusable against any root package. Likewise, Modulith does not report an `OPEN` module (MOD-04) or an implementation package published through an additional named interface (MOD-07) as a violation, so project-owned checks detect both.
 - **MOD-10 - Proof of detection:** Negative tests run the same verification against small, deliberately invalid **fixture applications** in test sources. Each fixture contains exactly one kind of violation, and its test asserts that verification fails **for that violation**, identifying the offending type or dependency, not merely that an exception occurred. A positive fixture with real cross-module dependencies shows that valid declared dependencies pass, because the real application does not yet contain business modules.
 - **MOD-11 - Fixture isolation:** Fixture packages live **outside** `de.hsh.favs.sharewise`, so they are never part of the real application's module model, component scanning or Spring context. Fixtures contain plain types only; they define no Spring beans.
 
@@ -71,7 +71,7 @@ All tests are database-independent and run as part of the normal Maven test phas
 | ID | Setup and action | Expected evidence |
 | --- | --- | --- |
 | **MOD-T01** | Verify the real application from `ShareWiseApplication`. | Verification passes. |
-| **MOD-T02** | Inspect the real application's module model. | `shared` is the only module, is `CLOSED` and declares no allowed dependencies. Its named interface `di` contains exactly the four DI contract types and no type from `shared.infra.di.internal`. |
+| **MOD-T02** | Inspect the real application's module model. | `shared` is the only module and declares no allowed dependencies; every module is `CLOSED`. The named interface `di` contains exactly the four DI contract types, and no named interface of any module publishes a type from `shared.infra.di.internal`. |
 | **MOD-T03** | Run the whitelist convention check (MOD-09) on the real application. | The check passes. |
 | **MOD-T04** | Positive fixture: a business module uses a second module's top-level API and a shared-style module's named interface, and declares both in its whitelist. | Verification and the whitelist convention check pass. |
 | **MOD-T05** | Negative fixture: a module references a type in another module's internal sub-package. | Verification fails, identifying the internal type access. |

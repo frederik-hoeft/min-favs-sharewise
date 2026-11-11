@@ -37,6 +37,7 @@ class ModuleVerificationFixtureTests {
 
         assertEquals(List.of(), violations.getMessages());
         assertEquals(List.of(), ModuleDependencyDeclarations.modulesWithoutDeclaredDependencies(modules));
+        assertEquals(List.of(), ModulePublications.openModules(modules));
     }
 
     @Test
@@ -91,6 +92,27 @@ class ModuleVerificationFixtureTests {
         assertEquals(List.of(), modules.detectViolations().getMessages(),
                 "the scenario must fail only the declaration convention");
         assertEquals(List.of("consumer"), ModuleDependencyDeclarations.modulesWithoutDeclaredDependencies(modules));
+    }
+
+    @Test
+    void openModuleIsReported() {
+        ApplicationModules modules = fixture("openmodule");
+
+        assertEquals(List.of(), modules.detectViolations().getMessages(),
+                "the scenario must fail only the closed-module convention");
+        assertEquals(List.of("provider"), ModulePublications.openModules(modules));
+    }
+
+    @Test
+    void implementationPackagePublishedThroughAnotherNamedInterfaceIsReported() {
+        ApplicationModules modules = fixture("publishedinternal");
+
+        assertEquals(List.of(), modules.detectViolations().getMessages(),
+                "publishing a package is not a verification violation, so a project check must detect it");
+        assertEquals(List.of("shared :: di-internal publishes "
+                        + FIXTURES + ".publishedinternal.shared.infra.di.internal.SharedImplementation"),
+                ModulePublications.publishedTypesIn(modules,
+                        FIXTURES + ".publishedinternal.shared.infra.di.internal"));
     }
 
     private static ApplicationModules fixture(String scenario) {

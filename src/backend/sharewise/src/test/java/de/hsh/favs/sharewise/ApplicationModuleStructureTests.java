@@ -2,7 +2,6 @@ package de.hsh.favs.sharewise;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
@@ -41,6 +40,12 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
+    void everyModuleIsClosed() {
+        assertEquals(List.of(), ModulePublications.openModules(modules),
+                "every module must use the default CLOSED type, not @ApplicationModule(type = OPEN)");
+    }
+
+    @Test
     void sharedIsTheOnlyModuleAndIsClosedWithoutModuleDependencies() {
         List<String> moduleNames = modules.stream()
                 .map(module -> module.getIdentifier().toString())
@@ -70,8 +75,12 @@ class ApplicationModuleStructureTests {
                 ServiceScope.class.getName(),
                 ServiceProvider.class.getName());
         assertEquals(expectedTypes, publishedTypes);
-        assertTrue(publishedTypes.stream().noneMatch(name -> name.startsWith(DI_INTERNAL_PACKAGE + ".")),
-                "shared::di must not publish implementation types from " + DI_INTERNAL_PACKAGE);
+    }
+
+    @Test
+    void noNamedInterfacePublishesDiImplementationTypes() {
+        assertEquals(List.of(), ModulePublications.publishedTypesIn(modules, DI_INTERNAL_PACKAGE),
+                "no named interface of any module may publish types from " + DI_INTERNAL_PACKAGE);
     }
 
     private ApplicationModule sharedModule() {
