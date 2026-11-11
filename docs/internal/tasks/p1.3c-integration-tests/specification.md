@@ -8,7 +8,7 @@ Integration tests exercise real operation-scoped Spring dependency injection and
 
 This is a test-infrastructure companion to P1.3a (operation-scoped DI) and P1.3b (production transactions), not a redesign of either. The production `OperationDispatcher`, `ServiceScopeFactory`/`ServiceScope`/`ServiceProvider` contracts, `Transactions` contract and `TransactionOutcome<T>` remain authoritative. The test harness shares the operation-scope machinery and may substitute a test-only implementation of `Transactions` through Spring's test bean configuration. Any necessary hook for controlled scope activation or active-segment resource access is a narrow extension point of the existing infrastructure, not a second container, a new ambient transaction registry, or a different production lifecycle.
 
-P1.2 supplies the PostgreSQL runtime, migrations and baseline persistence configuration; messaging infrastructure is introduced by its owning feature tasks. P1.3c supplies repeatable **test execution and isolation**, not a second PostgreSQL bootstrap, finance business logic, a broker, a publication registry or an application-wide mocking framework. These dependencies may be developed and verified incrementally without claiming unimplemented messaging guarantees.
+P1.2 supplies the PostgreSQL runtime, migrations and baseline persistence configuration; P1.5 verifies P1.3b transaction interoperability against that real configuration as a separate Phase 1 gate. Messaging infrastructure is introduced by its owning feature tasks. P1.3c supplies repeatable **test execution and isolation**, not a second PostgreSQL bootstrap, finance business logic, a broker, a publication registry or an application-wide mocking framework. These dependencies may be developed and verified incrementally without claiming unimplemented messaging guarantees.
 
 ## Test categories and guarantees
 
@@ -144,6 +144,10 @@ Each case specifies the setup/stimulus and observable result. Where a required S
 | **IT-17** | Run a rollback-isolated operation that emits an application event or invokes an external port. | No uncontrolled asynchronous or external effects escape the test transaction; no after-commit delivery or durable publication is claimed by the rollback test. |
 
 The [DI architecture](../../../architecture/dependency-injection.md) and [P1.3b transaction specification](../p1.3-transactions/specification.md) remain the source of truth for production scope, transaction and resource guards. P1.3c tests verify those contracts rather than defining different ones.
+
+## TODO before implementation planning: shared transaction-segment binding
+
+**Design review required for P1.3c:** Phase C introduces operation-scoped `JooqAccess.dsl()` and `JpaAccess.entityManager()` with one `TransactionSegmentAccess` lease contract. The rollback-test `Transactions` substitute must activate and invalidate a logical segment through that same mechanism, while the harness retains its separate test-owned physical PostgreSQL transaction for post-operation inspection. Revisit how segment activation is shared or substituted in Spring test configuration so production persistence adapters remain unchanged; do not depend on the concrete production `SpringTransactions` implementation or introduce a second ambient transaction registry. Verify that JPA query guards and jOOQ query/connection guards remain effective after logical completion, and that test-only SQL inspection cannot resurrect a closed application segment. Decide this integration seam **before writing P1.3c's implementation plan**.
 
 ## Deferred decisions and implementation handoff
 

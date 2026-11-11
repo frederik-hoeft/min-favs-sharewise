@@ -1,6 +1,6 @@
 # Application architecture
 
-**Status:** Target modular architecture. The operation-scoped DI foundation is implemented; module boundaries, business workflows and transaction-aware persistence are still planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
+**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md) and [transaction management](architecture/transactions.md) infrastructure are implemented; business modules, PostgreSQL bootstrap and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
 
 ## System organization
 
@@ -44,28 +44,9 @@ Command and query paths need not be symmetrical. Queries generally return direct
 
 ## Transaction-aware ports
 
-The application core owns commit decisions through an operation-scoped, technology-independent `Transactions` port. A [dispatched application operation](architecture/dependency-injection.md) has one Spring-managed **operation DI scope**, whose application services and data adapters may share a scoped transaction manager and persistence-access capabilities. The DI scope does not itself begin a physical transaction; the application service explicitly starts each required transaction segment. The same application service can be dispatched from REST, an event consumer, a scheduled job or a test.
+The application core decides when to commit through an operation-scoped `Transactions` port. The implemented [transaction architecture](architecture/transactions.md) defines its outcomes, sequential physical segments, rollback-only behavior, lifecycle and Spring-managed persistence participation. The [operation DI scope](architecture/dependency-injection.md) owns service lifetime independently of physical transaction boundaries; inbound adapters dispatch operations without owning their commits.
 
-Illustrative interface shapes (not existing source APIs):
-
-```java
-interface Transactions {
-    <T> T execute(Supplier<TransactionOutcome<T>> work);
-    void markRollbackOnly();
-}
-
-interface ExpenseCorrectionPort {
-    ExpenseCorrectionFacts inspect(CorrectExpense command);
-    AppendRevisionResult appendRevision(ExpenseRevision revision,
-                                        long expectedEntityRevision);
-}
-```
-
-`Transactions.execute(...)` begins one physical local transaction through the configured Spring transaction manager and returns only after its commit or rollback completes. Its callback produces one deferred **COMMIT**, **ROLLBACK**, or **ABSTAIN** decision and an independent operation result. The enclosing service alone authorizes commit; participating services can irreversibly mark the current segment rollback-only. An expected typed failure does not automatically mean rollback, and a nominal success cannot override a poisoned transaction. Exceptional, abandoned or failed finalizations do not produce apparent successful commit results.
-
-An operation scope can contain zero or more **sequential** physical transaction segments, but only one active segment at a time. A later failure cannot undo an earlier physical commit. Database adapters use operation-scoped, transaction-aware accessors; the accessor obtains jOOQ/JPA resources for the **currently active segment** and rejects access outside its lifetime. Database technology, transaction status and physical connections remain internal to infrastructure, without explicit session arguments on ordinary business port methods. Nested physical transactions and unrelated ambient Spring transactions cannot silently delay the claimed commit.
-
-Known database constraint errors may become typed results only where the transaction state remains safe or is irrevocably marked rollback-only. Unknown infrastructure failures propagate, and commit-time connection loss may leave the physical outcome uncertain. The detailed outcome and failure semantics belong to the [P1.3 specification](internal/tasks/p1.3-transactions/specification.md).
+Application services use domain-oriented outbound ports and interpret typed business results to select the disposition of each segment. Infrastructure adapters implement those ports with segment-bound jOOQ or JPA accessors; business APIs do not expose database connections, persistence sessions or transaction status. A segment is local to the owning application's data boundary, not an authorization to write another context's tables.
 
 Finance applies an additional business protocol **inside** this generic transaction:
 
