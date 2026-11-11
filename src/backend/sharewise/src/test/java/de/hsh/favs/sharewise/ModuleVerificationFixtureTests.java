@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.tngtech.archunit.core.importer.ImportOption;
+import de.hsh.favs.modulithfixtures.implicitshared.ImplicitSharedApplication;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.core.ApplicationModules;
@@ -18,6 +19,11 @@ import org.springframework.modulith.core.Violations;
  * package, whose direct sub-packages are its modules. Every negative scenario
  * contains exactly one violation, and its test asserts that verification
  * reports that violation rather than merely failing.
+ *
+ * <p>Fixtures are loaded by package name, which applies Spring Modulith's
+ * default configuration. The {@code implicitshared} scenario is loaded from
+ * its {@code @Modulithic} type instead, because that annotation carries its
+ * defect.
  */
 class ModuleVerificationFixtureTests {
 
@@ -37,6 +43,7 @@ class ModuleVerificationFixtureTests {
 
         assertEquals(List.of(), violations.getMessages());
         assertEquals(List.of(), ModuleDependencyDeclarations.modulesWithoutDeclaredDependencies(modules));
+        assertEquals(List.of(), ModuleDependencyDeclarations.globallySharedModules(modules));
         assertEquals(List.of(), ModulePublications.openModules(modules));
     }
 
@@ -92,6 +99,15 @@ class ModuleVerificationFixtureTests {
         assertEquals(List.of(), modules.detectViolations().getMessages(),
                 "the scenario must fail only the declaration convention");
         assertEquals(List.of("consumer"), ModuleDependencyDeclarations.modulesWithoutDeclaredDependencies(modules));
+    }
+
+    @Test
+    void globallySharedModuleIsReported() {
+        ApplicationModules modules = ApplicationModules.of(ImplicitSharedApplication.class, INCLUDE_TEST_CLASSES);
+
+        assertEquals(List.of(), modules.detectViolations().getMessages(),
+                "a globally shared module lets the consumer use it undeclared, so a project check must detect it");
+        assertEquals(List.of("shared"), ModuleDependencyDeclarations.globallySharedModules(modules));
     }
 
     @Test

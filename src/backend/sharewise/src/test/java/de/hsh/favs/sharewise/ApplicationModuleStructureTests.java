@@ -40,6 +40,12 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
+    void noModuleIsGloballyShared() {
+        assertEquals(List.of(), ModuleDependencyDeclarations.globallySharedModules(modules),
+                "modules must declare their dependencies on shared explicitly, not via @Modulithic(sharedModules = ...)");
+    }
+
+    @Test
     void everyModuleIsClosed() {
         assertEquals(List.of(), ModulePublications.openModules(modules),
                 "every module must use the default CLOSED type, not @ApplicationModule(type = OPEN)");
