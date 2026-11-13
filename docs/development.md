@@ -16,9 +16,24 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 ## Current toolchain
 
-The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, H2/H2 console, operation-scoped DI and transaction management, Lombok and test starters. PostgreSQL persistence, Spring Modulith and event publication remain architectural targets rather than installed backend features.
+The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, Lombok and test starters; H2 is a test-only dependency. Spring Modulith and event publication remain architectural targets rather than installed backend features.
 
 The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. Its server-side route handler and current container image belong to the starter. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below still describe the starter.
+
+## Database
+
+The application uses **PostgreSQL 18**. The dev container starts a `postgres` service next to the `dev` service (host `postgres`, port `5432`, database `sharewise`); it is reachable from the dev container and other compose services, not published on the host. On first start with an empty `postgres-data` volume, the scripts in `src/backend/sharewise/src/test/resources/db/bootstrap/` create two roles:
+
+| Role | Used by | Permissions |
+| --- | --- | --- |
+| `sharewise_migrator` | Flyway at application startup | Owns the context schemas; creates and changes tables (DDL) |
+| `sharewise_app` | Application runtime connection | Reads and writes data in the context schemas (DML); no DDL, no access to the Flyway history |
+
+Flyway applies the migrations in `src/main/resources/db/migration/` at startup. Each bounded context owns one schema (`identity`, `groups`, `finance`, `files`, `notifications`); the Flyway history lives in schema `flyway`. Hibernate only validates its mappings (`spring.jpa.hibernate.ddl-auto=validate`). Migration files follow `db/migration/<context>/V<yyyyMMddHHmm>__<context>_<description>.sql` and are immutable once committed and pushed; local work-in-progress migrations may be edited after resetting the local database.
+
+`application.properties` contains dev-only defaults for the dev-container database. Other environments override them with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec sharewise_devcontainer-postgres-1 psql -U postgres -d sharewise`. To reset the local database, stop the dev container and remove the `sharewise_devcontainer_postgres-data` volume; the roles are recreated on the next start.
+
+`./mvnw test` does not need PostgreSQL: the existing Spring tests use in-memory H2 through `src/test/resources/config/application.properties` (Flyway disabled, Hibernate `create-drop`). PostgreSQL-backed integration tests and their provisioning are introduced with [P1.3c](internal/tasks/p1.3c-integration-tests/specification.md).
 
 ## Build, test and run
 
@@ -59,7 +74,7 @@ docker run --rm --name sharewise-frontend --network sharewise \
   -p 3000:3000 sharewise-frontend
 ```
 
-The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The example backend uses the starter's H2 database and does not provide durable production storage.
+The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The backend container needs a reachable PostgreSQL database with the ShareWise roles: run a `postgres:18` container on the same network with the bootstrap scripts as init scripts and pass the `SPRING_DATASOURCE_*` and `SPRING_FLYWAY_*` variables to `sharewise-backend` (for example `SPRING_DATASOURCE_URL=jdbc:postgresql://<postgres-container>:5432/sharewise`). A Compose setup for this follows with P8.1.
 
 ## Operation scope usage
 
@@ -148,7 +163,7 @@ public Optional<Thing> getThingById(UUID id) {
 
 The examples use illustrative domain types and a generated `THING` table, not existing business classes. An accessor can be retained by the operation-scoped repository; **the returned jOOQ/JPA facade, queries and managed entities cannot be retained across calls or transaction segments**. Once a segment ends, obtaining another facade through the accessor is valid in a subsequent segment, but previously issued facades remain invalid. See the [transaction architecture](architecture/transactions.md) for outcomes, lifecycle and failure semantics.
 
-From `src/backend/sharewise`, exercise Spring transaction coordination and both adapters using `mvn test -Dtest=TransactionsIntegrationTests,RelationalTransactionIntegrationTests` or `mvn clean verify`. These checks use instrumented transaction managers and H2, not PostgreSQL. Production datasource interoperability, database isolation and engine-specific failure behavior require separate PostgreSQL integration tests.
+From `src/backend/sharewise`, exercise Spring transaction coordination and both adapters using `mvn test -Dtest=TransactionsIntegrationTests,RelationalTransactionIntegrationTests` or `mvn clean verify`. These checks use instrumented transaction managers and test-only H2 datasources, not PostgreSQL. Production datasource interoperability, database isolation and engine-specific failure behavior require separate PostgreSQL integration tests.
 
 ## Development conventions
 

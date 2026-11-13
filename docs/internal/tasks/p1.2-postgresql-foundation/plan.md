@@ -48,12 +48,11 @@
 
 ## Phase F – Documentation and close-out
 
-- [ ] **Scope:** Reconcile steady-state docs: `docs/development.md` (database, roles, reset, `test` vs. `verify`, PostgreSQL extension; remove H2 references), `docs/stack/persistence.md` (schema per context, roles, `uuid`/`uuidv7()`, migration naming and immutability, jOOQ deferral), `docs/stack/overview.md` (implementation status), backlog (check P0.3 and P1.2).
-- **Manual acceptance:** Repeat TC-1 on a freshly rebuilt dev container; record the result in the MR.
+- [ ] **Scope:** Reconcile steady-state docs: `docs/development.md` (new "Database" section: service, roles, migrations, overrides, inspection, reset, H2 test configuration; separate-container note), `docs/stack/persistence.md` and `docs/stack/overview.md` (implementation status).
+- **Manual acceptance:** TC-1 on the rebuilt dev container (application starts against PostgreSQL 18 as `sharewise_app`, Flyway creates the five context schemas and `flyway` as `sharewise_migrator`); TC-2 (`./mvnw test`: 71 tests, 0 failures).
 - **After merge:** Discord FYI about the dependency changes (offline handoff).
 - **Gate:** Docs describe the implemented state; MR approved and merged.
 
-## Open points for plan review
+## Scope change: Phases D and E move to P1.3c
 
-- Test naming: P1.3a uses `*IntegrationTests` for database-free Spring-context tests in Surefire. This plan uses `*IT` + Failsafe for PostgreSQL tests. Alternative: a JUnit tag (for example `@Tag("postgres")`), as P1.3c allows either.
-- Package name for the test support (`shared.infra.persistence.testing` proposed).
+PostgreSQL test provisioning (Phase D) and its CI execution (Phase E) overlap closely with the [P1.3c integration-test infrastructure](../p1.3c-integration-tests/specification.md) and are implemented there, on top of the P1.2 bootstrap scripts, migrations and configuration (pending confirmation by the P1.3c owner). P1.2 is complete with Phases A–C and F. The corresponding test cases (TC-3–TC-6, TC-8, TC-10–TC-12) are verified with P1.3c; the role permissions were checked manually against PostgreSQL during Phase C.
