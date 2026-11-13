@@ -17,16 +17,16 @@
 
 ## Phase B – Dependencies and configuration
 
-- [ ] **Scope:** Update the branch from `main` (after MR !16). In `pom.xml`, remove `spring-boot-h2console`, change `h2` to test scope (used by the P1.3b transaction tests); add the PostgreSQL JDBC driver (runtime), Spring Boot's Flyway starter and `flyway-database-postgresql`; add Spring Boot Testcontainers support and Testcontainers PostgreSQL (test scope); configure Maven Failsafe for `*IT` classes (D14). Artifact names and versions are taken from the Spring Boot 4.1 dependency management and verified with `./mvnw dependency:tree`.
-- Set the dev datasource and Flyway environment variables on the `dev` service in `.devcontainer/docker-compose.yml` (D3). In `application.properties`: datasource from `SPRING_DATASOURCE_*` with dev-container defaults (application role); Flyway credentials from `SPRING_FLYWAY_USER`/`SPRING_FLYWAY_PASSWORD` (migration role); `spring.flyway.locations=classpath:db/migration` (sub-folders per context); Flyway history in schema `flyway`; `spring.jpa.hibernate.ddl-auto=validate` (D11); keep P1.3b's `spring.jpa.open-in-view=false` (D12).
-- Rename `ShareWiseApplicationTests` to `ShareWiseApplicationIT` (including the P1.3b checks it contains) so `./mvnw test` no longer needs a database; it runs against PostgreSQL in Phase D.
-- **Tests:** TC-2 (`./mvnw test` without Docker/PostgreSQL, including the P1.3a DI tests), TC-7 (`h2` only in test scope).
-- **Gate:** Unit build green offline; dependency changes reviewed.
+- [ ] **Scope:** Update the branch from `main` (after MR !16). In `pom.xml`, remove `spring-boot-h2console`; move `h2` to test scope (used by the P1.3a/P1.3b tests); add `spring-boot-starter-flyway`, `flyway-database-postgresql` and the PostgreSQL JDBC driver (runtime). Versions come from the Spring Boot 4.1 dependency management.
+- In `application.properties`: datasource defaults for the dev-container database with the application role, overridable via `SPRING_DATASOURCE_*` (D3); Flyway credentials for the migration role, overridable via `SPRING_FLYWAY_USER`/`SPRING_FLYWAY_PASSWORD`; `spring.flyway.locations=classpath:db/migration` (sub-folders per context); Flyway history in schema `flyway`; `spring.jpa.hibernate.ddl-auto=validate` (D11); keep P1.3b's `spring.jpa.open-in-view=false` (D12). The dev defaults live in `application.properties` rather than in compose environment variables, so test configuration can override them.
+- **Interim test configuration:** `src/test/resources/config/application.properties` points the database-free Spring tests (including the full-context `ShareWiseApplicationTests` and `TransactionWebScopeIntegrationTests`) at an in-memory H2 database with Flyway disabled, so `./mvnw test` keeps running them without PostgreSQL. Moving these tests to PostgreSQL is part of the PostgreSQL test provisioning (Phase D / P1.3c).
+- **Tests:** TC-2 (`./mvnw test` without Docker/PostgreSQL, all existing tests green), TC-7 (`h2` only in test scope).
+- **Gate:** Unit build green; dependency changes reviewed.
 
 ## Phase C – Baseline migration
 
-- [ ] **Scope:** `db/migration/platform/V<timestamp>__platform_create_context_schemas.sql` (D8, D10): create schemas `identity`, `groups`, `finance`, `files`, `notifications`; grant `USAGE` on them to `sharewise_app`; set default privileges for tables (`SELECT, INSERT, UPDATE, DELETE`) and sequences (`USAGE, SELECT`) created by `sharewise_migrator`; no grants on schema `flyway`.
-- **Tests:** TC-1 (manual: backend starts in the dev container, Flyway applies the baseline as migrator, greeting flow works), TC-9 (manual: edited committed migration fails checksum validation).
+- [ ] **Scope:** `db/migration/platform/V202611131000__platform_create_context_schemas.sql` (D8, D10): create schemas `identity`, `groups`, `finance`, `files`, `notifications`; grant `USAGE` on them to `sharewise_app`; default privileges for tables (`SELECT, INSERT, UPDATE, DELETE`) and sequences (`USAGE, SELECT`) created by `sharewise_migrator`; no grants on schema `flyway`.
+- **Tests:** TC-1 (manual: backend starts in the dev container, Flyway applies the baseline as migrator, greeting flow works), TC-9 (manual: edited committed migration fails checksum validation). Role permissions (TC-10, TC-11) were checked manually against PostgreSQL with `psql`; automated coverage follows with the PostgreSQL test provisioning.
 - **Gate:** Application runs against PostgreSQL with the application role.
 
 ## Phase D – Integration-test provisioning and tests
