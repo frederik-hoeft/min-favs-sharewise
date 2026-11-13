@@ -1,8 +1,8 @@
-# ShareWise implementation backlog
+﻿# ShareWise implementation backlog
 
-**Status:** Active implementation roadmap; P1.3a operation-scoped DI and P1.3b transaction management are complete and approved. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
+**Status:** Active implementation roadmap; P1.3a operation-scoped DI and P1.3b transaction management are complete and approved. P1.1 module verification is implemented and manually accepted, with independent review pending. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
 
-The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them. The [development guide](../../development.md) describes the actual starter dependencies, which should not be mistaken for future framework commitments. The backend contains the greeting endpoint, operation-scoped DI/dispatch and Spring-backed transaction and jOOQ/JPA access infrastructure; business modules and PostgreSQL persistence are still planned. The frontend retains the greeting flow.
+The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them. The [development guide](../../development.md) describes the actual starter dependencies, which should not be mistaken for future framework commitments. The backend contains the greeting endpoint, operation-scoped DI/dispatch, Spring-backed transaction and jOOQ/JPA access infrastructure and build-time module verification; business modules and PostgreSQL persistence are still planned. The frontend retains the greeting flow.
 
 ## Working agreement
 
@@ -18,7 +18,7 @@ The existing [architecture](../../architecture.md) and [domain model](../../data
 | Responsibility | Proposed Java / web mechanism | Decision or constraint |
 | --- | --- | --- |
 | Application host and HTTP API | Existing Java 25, Spring Boot 4.1, Spring MVC, Jackson, Jakarta validation | Typed REST contracts; controllers are adapters, not domain services |
-| Module boundaries | Spring Modulith 2.1.x and package/API verification tests | **Candidate**, not installed; evaluate published interfaces and allowed dependencies before adopting |
+| Module boundaries | Spring Modulith 2.1.2 and package/API verification tests | **Adopted** in P1.1 for structure verification only: closed modules, named interfaces and mandatory `allowedDependencies` (see [architecture](../../architecture.md#module-structure-and-published-apis)) |
 | Service composition | Spring constructor injection and explicit `@Bean` composition where useful | Do not expose implementation adapters as public module APIs |
 | Identity and authorization | [Preliminary security design](../../stack/security.md): Spring Security, IAM access JWT + rotating refresh cookie, issuer-qualified domain attestations | Validate transaction/revocation semantics, token profiles, shared verification infrastructure, CSRF, permissions and optional authoritative introspection |
 | Transactions | Spring `TransactionTemplate` behind the documented `Transactions` port | Explicit operation-local session/outcome; database decides atomic commit, not an HTTP request scope |
@@ -50,9 +50,10 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Depends on:** Phase 0 decisions needed for infrastructure.
 
-- [ ] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
+- [x] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
     - packages are added with vertical slices
     - P1.1 should publish the existing `shared.infra.di` public contracts through a Spring Modulith named interface (`shared::di`); `shared.infra.di.internal` is implementation-only, and additional shared infrastructure gets separately named APIs as needed
+    - see the [specification](p1.1-module-structure/specification.md) and [plan](p1.1-module-structure/plan.md). **Implementation, documentation and [manual acceptance](p1.1-module-structure/manual-acceptance.md) complete; independent review remains pending.**
 - [ ] **P1.2:** Provide PostgreSQL 18 locally (Testcontainers) and in CI, cluster-wide role bootstrap, migrator-role Flyway migrations callable for any target database, and baseline persistence configuration; P1.3c owns disposable per-fixture databases. Remove or isolate starter H2 dependencies where inappropriate.
 - [ ] **P1.3 - Operation scopes and transactions:** deliver the following related foundations with independent reviewable steps:
     - [x] **P1.3a - DI scope:** implement the [reviewable DI-scope specification](p1.3a-di-scope/specification.md) using [inbound-agnostic operation dispatch and scoped Spring bean lifetimes](../../architecture/dependency-injection.md), including deterministic disposal and scope/provider misuse guards. **Implemented and accepted; the steady-state DI contract lives in `docs/architecture/dependency-injection.md`.**
