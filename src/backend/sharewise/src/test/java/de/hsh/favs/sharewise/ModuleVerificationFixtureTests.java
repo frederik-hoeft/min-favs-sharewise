@@ -45,6 +45,7 @@ class ModuleVerificationFixtureTests {
         assertEquals(List.of(), ModuleDependencyDeclarations.modulesWithoutDeclaredDependencies(modules));
         assertEquals(List.of(), ModuleDependencyDeclarations.globallySharedModules(modules));
         assertEquals(List.of(), ModulePublications.openModules(modules));
+        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules, FIXTURES + ".valid.shared"));
     }
 
     @Test
@@ -129,6 +130,19 @@ class ModuleVerificationFixtureTests {
                         + FIXTURES + ".publishedinternal.shared.infra.di.internal.SharedImplementation"),
                 ModulePublications.publishedTypesIn(modules,
                         FIXTURES + ".publishedinternal.shared.infra.di.internal"));
+    }
+
+    @Test
+    void typePublishedFromSharedTopLevelPackageIsReported() {
+        ApplicationModules modules = fixture("publishedtoplevel");
+
+        assertEquals(List.of(), modules.detectViolations().getMessages(),
+                "a public top-level type is published implicitly, so a project check must detect it");
+        String unnamedInterface = modules.getModuleByName("shared").orElseThrow()
+                .getNamedInterfaces().getUnnamedInterface().getName();
+        assertEquals(List.of("shared :: " + unnamedInterface + " publishes "
+                        + FIXTURES + ".publishedtoplevel.shared.SharedApi"),
+                ModulePublications.publishedTypesDirectlyIn(modules, FIXTURES + ".publishedtoplevel.shared"));
     }
 
     private static ApplicationModules fixture(String scenario) {

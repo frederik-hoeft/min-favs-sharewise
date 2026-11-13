@@ -89,6 +89,15 @@ class ApplicationModuleStructureTests {
                 "no named interface of any module may publish types from " + DI_INTERNAL_PACKAGE);
     }
 
+    @Test
+    void sharedTopLevelPackagePublishesNoTypes() {
+        String sharedBasePackage = sharedModule().getBasePackage().getName();
+
+        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules, sharedBasePackage),
+                "shared publishes capabilities only through dedicated named interfaces, never from "
+                        + sharedBasePackage);
+    }
+
     private ApplicationModule sharedModule() {
         return modules.getModuleByName("shared")
                 .orElseThrow(() -> new AssertionError("module 'shared' must exist"));
