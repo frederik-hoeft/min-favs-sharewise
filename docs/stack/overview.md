@@ -29,13 +29,14 @@ For changes that may propagate asynchronously, a producer commits its business d
 | Area | Technologies and responsibility | State |
 | --- | --- | --- |
 | Web UI | **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4**; build-time static site generation and browser UI | **Starter:** installed; static export pending |
-| Backend and HTTP | **Java 25**, **Spring Boot 4.1**, **Spring MVC**; REST endpoints and dependency-injected application services within a modular monolith | **Starter:** installed; module and application-service structure planned |
+| Backend and HTTP | **Java 25**, **Spring Boot 4.1**, **Spring MVC**; REST endpoints and dependency-injected application services within a modular monolith | **Starter:** installed; business modules and application services planned |
+| Module boundaries | **Spring Modulith** application modules: top-level package as published API, named interfaces, declared `allowedDependencies`, build-time verification of module dependencies | **Implemented:** [module structure](../architecture.md#module-structure-and-published-apis) and verification tests; `shared` is the only module |
 | DI and operation lifetime | **Spring beans**, custom application-operation `Scope`, Java 25 `ScopedValue` and an inbound-agnostic dispatcher; scoped state independent of physical transactions | **Implemented:** [DI architecture](../architecture/dependency-injection.md) |
 | Authentication and authorization | **Spring Security** for password authentication, bearer JWT validation and method/request guards; IAM-managed refresh sessions and short-lived identity JWTs; issuer-qualified domain attestations | **Preliminary design:** [security](security.md); not installed |
 | Database and schema | **PostgreSQL** for authoritative, module-owned relational state; **Flyway** for reviewed SQL migrations | **Planned:** starter currently uses H2 |
 | Transaction management | **Spring `TransactionTemplate`**, application-owned `Transactions` port and sequential physical segments | **Implemented and H2-tested:** [transaction architecture](../architecture/transactions.md); PostgreSQL verification pending |
 | Persistence adapters | **jOOQ** for typed, dialect-aware SQL operations; **Spring Data JPA / Hibernate** for managed entities; guarded segment-bound facades | **Implemented framework accessors:** jOOQ and JPA dependencies present; PostgreSQL, Flyway, schema generation and business adapters pending |
-| Asynchronous integration | **Spring Modulith**, JDBC-backed **Event Publication Registry**, transactional listeners and consumer-owned inbox/idempotency | **Planned:** no registry, listeners or broker installed |
+| Asynchronous integration | **Spring Modulith**, JDBC-backed **Event Publication Registry**, transactional listeners and consumer-owned inbox/idempotency | **Planned:** Spring Modulith is installed only for module verification; no registry, listeners or broker installed |
 | Edge / deployment | **Nginx** serves static assets, terminates TLS and proxies `/api/*` to the backend or an API gateway | **Planned** |
 | External integrations | Adapter-owned file storage, notification delivery and other external services; no provider or storage technology is selected by this overview | **To be selected** per integration |
 

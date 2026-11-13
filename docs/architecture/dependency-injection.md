@@ -76,6 +76,8 @@ DI scope identity governs object lifetime, not database atomicity, transaction p
 
 The infrastructure guarantees lifetime correctness along its own resolution, caching and destruction paths. It does not invalidate arbitrary Java references after a scope closes. Application components therefore do not retain operation-scoped beans in longer-lived services, retain scoped providers after activation, or let asynchronous work outlive the scope that owns its dependencies.
 
+The public contracts `OperationDispatcher`, `ServiceScopeFactory`, `ServiceScope` and `ServiceProvider` form the `shared` module's named interface `shared::di`. Modules that use them declare `"shared :: di"` in their `allowedDependencies`; the Spring implementations in `shared.infra.di.internal` are not published, and [module verification](../architecture.md#architecture-checks) rejects any access to them from another module.
+
 For integration tests, the same `ServiceScopeFactory` and `ServiceScope.run(...)` contract allows a callback to resolve and inspect multiple collaborators before teardown. Tests use the normal Spring bean factory and lifecycle rather than a second DI container. Production entry points use `OperationDispatcher` as their composition boundary.
 
 For concrete usage examples and build commands, see the [developer guide](../development.md#operation-scope-usage).
