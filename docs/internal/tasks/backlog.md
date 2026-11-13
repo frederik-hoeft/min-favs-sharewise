@@ -50,7 +50,7 @@ Framework introductions that modify the Maven POM or npm lockfile require **refr
 
 **Depends on:** Phase 0 decisions needed for infrastructure.
 
-- [ ] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
+- [x] **P1.1:** Establish the modular package skeleton and published API conventions; add executable module dependency verification where supported. Avoid placeholder interfaces or pass-through services.
     - packages are added with vertical slices
     - P1.1 should publish the existing `shared.infra.di` public contracts through a Spring Modulith named interface (`shared::di`); `shared.infra.di.internal` is implementation-only, and additional shared infrastructure gets separately named APIs as needed
     - see the [specification](p1.1-module-structure/specification.md) and [plan](p1.1-module-structure/plan.md). **Implementation, documentation and [manual acceptance](p1.1-module-structure/manual-acceptance.md) complete; independent review remains pending.**
