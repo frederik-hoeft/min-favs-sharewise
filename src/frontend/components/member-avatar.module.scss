@@ -1,0 +1,31 @@
+.avatar {
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  align-items: center;
+  width: 37px;
+  height: 37px;
+  border: 2px solid var(--sw-surface);
+  border-radius: 50%;
+  font-size: 0.69rem;
+  font-weight: 750;
+  color: #20382e;
+  letter-spacing: -0.03em;
+}
+.small {
+  width: 32px;
+  height: 32px;
+  font-size: 0.62rem;
+}
+.sage {
+  background: #c7dcb6;
+}
+.sand {
+  background: #ead4a9;
+}
+.lavender {
+  background: #cdc6e9;
+}
+.clay {
+  background: #e6bca9;
+}

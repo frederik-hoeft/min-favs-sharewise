@@ -6,8 +6,8 @@ import "@mantine/core/styles.css";
 import "./globals.scss";
 
 export const metadata: Metadata = {
-  title: "ShareWise",
-  description: "Group expense sharing and bookkeeping.",
+  title: "ShareWise | Shared costs, clearer together",
+  description: "Keep shared expenses, balances, external settlements and their history in one clear place.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

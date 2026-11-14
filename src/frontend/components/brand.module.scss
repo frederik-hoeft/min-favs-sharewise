@@ -1,0 +1,19 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--sw-ink);
+  text-decoration: none;
+  font-weight: 750;
+  font-size: 1.42rem;
+  letter-spacing: -0.065em;
+  white-space: nowrap;
+}
+.mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+.period {
+  color: var(--sw-display-accent);
+}

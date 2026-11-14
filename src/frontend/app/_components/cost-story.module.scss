@@ -1,0 +1,266 @@
+.grid {
+  display: grid;
+  grid-template-columns: 1.07fr 0.93fr;
+  gap: 1.25rem;
+}
+.tag {
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  font-weight: 850;
+}
+.allocationCard, .settlementCard {
+  border-radius: 20px;
+  padding: clamp(1.4rem, 3.3vw, 2.8rem);
+  min-width: 0;
+}
+.allocationCard {
+  border: 1px solid var(--sw-line);
+  background: var(--sw-surface);
+}
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 3.4rem;
+}
+.allocationHead {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  padding-bottom: 2rem;
+}
+.dinnerGlyph {
+  flex: none;
+  background: var(--sw-surface-soft);
+  border-radius: 14px;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  font-size: 2.3rem;
+  font-weight: 400;
+  color: var(--sw-ink);
+}
+.allocationHead > div {
+  flex: 1;
+  min-width: 0;
+  > span {
+    color: var(--sw-muted);
+    font-size: 0.59rem;
+    letter-spacing: 0.12em;
+    font-weight: 750;
+  }
+  h3 {
+    font-family: var(--sw-editorial-font);
+    font-size: clamp(1.45rem, 2.6vw, 2rem);
+    line-height: 1.1;
+    font-weight: 500;
+    letter-spacing: -0.04em;
+    margin: 0.25rem 0;
+  }
+  p {
+    font-size: 0.72rem;
+    margin: 0;
+    color: var(--sw-muted);
+  }
+}
+.allocationHead > strong {
+  font-size: 1.45rem;
+  white-space: nowrap;
+  letter-spacing: -0.06em;
+  span {
+    font-size: 0.65em;
+  }
+}
+.splitHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0;
+  border-top: 1px solid var(--sw-line);
+  border-bottom: 1px solid var(--sw-line);
+  gap: 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 750;
+  span:last-child {
+    color: var(--sw-muted);
+    font-weight: 500;
+  }
+}
+.splitRows {
+  padding: 0.7rem 0;
+}
+.splitRow {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.62rem 0;
+  font-size: 0.8rem;
+  span:nth-child(2) {
+    flex: 1;
+  }
+  small {
+    font-size: 0.7rem;
+    color: var(--sw-muted);
+  }
+  strong {
+    font-size: 0.82rem;
+  }
+}
+.allocationBottom {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--sw-line);
+  padding-top: 1rem;
+  font-size: 0.72rem;
+  color: var(--sw-muted);
+  strong {
+    color: var(--sw-ink);
+    margin-left: 5px;
+  }
+}
+.settlementCard {
+  display: flex;
+  flex-direction: column;
+  background: var(--sw-peach);
+  color: var(--sw-peach-ink);
+  overflow: hidden;
+}
+.settlementIcon {
+  align-self: flex-end;
+  margin: 0.8rem 0 0.3rem;
+  display: grid;
+  place-items: center;
+  width: 71px;
+  height: 71px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 2.5rem;
+}
+.settlementCard h3 {
+  font-family: var(--sw-editorial-font);
+  font-size: clamp(2.4rem, 4.1vw, 4.1rem);
+  line-height: 1.04;
+  letter-spacing: -0.06em;
+  font-weight: 500;
+  margin: 1.1rem 0;
+  em {
+    font-weight: 400;
+  }
+}
+.settlementCard > p {
+  font-size: 0.93rem;
+  line-height: 1.7;
+  max-width: 25rem;
+  margin: 0 0 2rem;
+}
+.settlementPaper {
+  margin-top: auto;
+  background: var(--sw-surface);
+  color: var(--sw-ink);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  transform: rotate(-1deg);
+  box-shadow: 0 12px 34px #311d1717;
+}
+.receiptTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--sw-muted);
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  font-weight: 750;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px dashed var(--sw-line);
+  span:last-child {
+    font-size: 1rem;
+    color: var(--sw-positive);
+  }
+}
+.transfers {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1.15rem 0;
+}
+.transferPerson {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 750;
+  white-space: nowrap;
+  small {
+    display: block;
+    color: var(--sw-muted);
+    font-size: 0.57rem;
+    margin-top: 2px;
+    font-weight: 400;
+  }
+}
+.transferArrow {
+  color: var(--sw-muted);
+}
+.transfers > strong {
+  margin-left: auto;
+  font-size: 1.25rem;
+  letter-spacing: -0.04em;
+}
+.receiptFoot {
+  border-top: 1px dashed var(--sw-line);
+  padding-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.58rem;
+  color: var(--sw-muted);
+  span {
+    font-weight: 750;
+  }
+}
+@media (max-width: 840px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .cardTop {
+    margin-bottom: 2rem;
+  }
+  .settlementIcon {
+    width: 56px;
+    height: 56px;
+    font-size: 1.8rem;
+  }
+  .settlementCard > p {
+    max-width: 38rem;
+  }
+}
+@media (max-width: 480px) {
+  .allocationCard, .settlementCard {
+    padding: 1.1rem;
+  }
+  .allocationHead {
+    gap: 0.6rem;
+  }
+  .dinnerGlyph {
+    width: 44px;
+    height: 44px;
+    font-size: 1.6rem;
+  }
+  .allocationHead > strong {
+    font-size: 1.13rem;
+  }
+  .transfers {
+    gap: 0.4rem;
+  }
+  .transferPerson {
+    font-size: 0.7rem;
+  }
+  .settlementCard h3 {
+    font-size: 2.7rem;
+  }
+}

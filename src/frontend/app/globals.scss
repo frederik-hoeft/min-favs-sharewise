@@ -1,4 +1,30 @@
-html,
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+}
+
 body {
   min-height: 100%;
+  margin: 0;
+  background: var(--sw-page);
+  color: var(--sw-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--sw-accent);
+  color: var(--sw-accent-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--mantine-color-citron-6);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

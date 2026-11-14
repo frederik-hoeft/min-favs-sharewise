@@ -1,0 +1,123 @@
+.panel {
+  background: var(--sw-surface);
+  border: 1px solid var(--sw-line);
+  border-radius: 20px;
+  padding: clamp(1.5rem, 3.6vw, 3.25rem);
+  color: var(--sw-ink);
+}
+.panelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.panelHead > div > span {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: var(--sw-muted);
+  font-weight: 850;
+}
+.panelHead h3 {
+  font-family: var(--sw-editorial-font);
+  font-size: clamp(2rem, 3.3vw, 3.5rem);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.055em;
+  margin: 0.8rem 0 0;
+}
+.timeline {
+  padding: 0 0 0 1.3rem;
+  margin: 0;
+  list-style: none;
+}
+.event {
+  display: flex;
+  position: relative;
+  gap: 1.2rem;
+  padding: 1.2rem 0 1.4rem 1.9rem;
+  border-left: 1px solid var(--sw-line);
+  &:last-child {
+    border-left-color: transparent;
+  }
+}
+.node {
+  position: absolute;
+  left: -15px;
+  top: 1.1rem;
+  height: 29px;
+  width: 29px;
+  border-radius: 50%;
+  background: var(--sw-surface-soft);
+  color: var(--sw-ink);
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+.event:first-child .node {
+  background: var(--sw-accent);
+  color: var(--sw-accent-ink);
+}
+.eventContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+  small {
+    color: var(--sw-muted);
+    font-size: 0.63rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+  strong {
+    font-size: 0.96rem;
+    font-weight: 750;
+  }
+  > span {
+    color: var(--sw-muted);
+    font-size: 0.76rem;
+  }
+}
+.revision {
+  white-space: nowrap;
+  font-size: 0.63rem;
+  letter-spacing: 0.12em;
+  color: var(--sw-muted);
+  font-weight: 750;
+}
+.panelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.4rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--sw-line);
+  font-size: 0.75rem;
+  color: var(--sw-muted);
+  span:last-child {
+    border-radius: 50%;
+    width: 29px;
+    height: 29px;
+    border: 1px solid var(--sw-line);
+    color: var(--sw-ink);
+    display: grid;
+    place-items: center;
+    font-size: 1.2rem;
+  }
+}
+@media (max-width: 500px) {
+  .panelHead {
+    flex-direction: column-reverse;
+  }
+  .event {
+    gap: 0.5rem;
+    padding-left: 1.3rem;
+  }
+  .timeline {
+    padding-left: 0.8rem;
+  }
+}
