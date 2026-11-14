@@ -17,7 +17,10 @@ Run the frontend checks before submitting changes:
 
 ```sh
 npm run lint
+npm run typecheck
 npm run build
 ```
 
-The application uses system fonts defined in `app/globals.css`, not `next/font/google`, so a production build does not fetch fonts from Google. For the supported toolchain, container networking, offline development and backend commands, see the [development guide](../../docs/development.md).
+The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The current page is a temporary starter, not the P2.0e landing-page design. CSS Modules provide locally scoped styling while the planned Mantine/SCSS foundation awaits a refreshed dependency lockfile and offline handoff.
+
+npm enforces `strict-allow-scripts=true` from `.npmrc`. The project's `allowScripts` policy explicitly blocks the optional `unrs-resolver` postinstall helper; all newly encountered dependency install scripts fail the install until reviewed. Do not blanket-approve scripts. This policy applies to dependency installation, not explicitly invoked `npm run` tasks. For the supported toolchain, container networking, offline development and backend commands, see the [development guide](../../docs/development.md).

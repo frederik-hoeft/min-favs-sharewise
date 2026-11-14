@@ -28,7 +28,7 @@ For changes that may propagate asynchronously, a producer commits its business d
 
 | Area | Technologies and responsibility | State |
 | --- | --- | --- |
-| Web UI | **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4**; build-time static site generation and browser UI | **Starter:** installed; static export pending |
+| Web UI | **Next.js 16**, **React 19**, **TypeScript**, **CSS Modules**; Mantine + SCSS Modules selected for [P2.0e](../internal/tasks/p2.0e-frontend-design/specification.md) | **Starter:** Next.js and CSS Modules installed; Mantine/Sass and static export pending |
 | Backend and HTTP | **Java 25**, **Spring Boot 4.1**, **Spring MVC**; REST endpoints and dependency-injected application services within a modular monolith | **Starter:** installed; business modules and application services planned |
 | Module boundaries | **Spring Modulith** application modules: top-level package as published API, named interfaces, declared `allowedDependencies`, build-time verification of module dependencies | **Implemented:** [module structure](../architecture.md#module-structure-and-published-apis) and verification tests; `shared` is the only module |
 | DI and operation lifetime | **Spring beans**, custom application-operation `Scope`, Java 25 `ScopedValue` and an inbound-agnostic dispatcher; scoped state independent of physical transactions | **Implemented:** [DI architecture](../architecture/dependency-injection.md) |
@@ -46,7 +46,7 @@ Backend modules retain ownership of their tables, public contracts, queries and 
 
 **Maven 3.10** builds and tests the Java application; **Node.js 24 and npm** manage the Next.js application. The checked-in Maven wrapper and npm lockfile establish repeatable dependencies. **JUnit/Spring tests** are present in the starter; **Mockito/fakes** are intended for database-independent application tests, with real **PostgreSQL integration tests** (normally using Testcontainers) required for migrations, transactions, and event-processing correctness. H2 is not a substitute for those PostgreSQL guarantees.
 
-Development tooling includes **Dockerfiles**, a **VS Code Dev Container**, and **GitLab CI** jobs for backend verification, frontend lint/build, SAST and secret detection. The existing frontend Dockerfile runs a Next.js server; the Nginx/static-asset deployment and PostgreSQL-backed runtime are not yet configured. For commands, ports, container networking and the offline dependency handoff, use the [development guide](../development.md). The [implementation backlog](../internal/tasks/backlog.md) tracks remaining work.
+Development tooling includes **Dockerfiles**, a **VS Code Dev Container**, and **GitLab CI** jobs for backend verification, frontend lint/typecheck/build, SAST and secret detection. The existing frontend Dockerfile runs a Next.js server; the Nginx/static-asset deployment and PostgreSQL-backed runtime are not yet configured. For commands, ports, container networking and the offline dependency handoff, use the [development guide](../development.md). The [implementation backlog](../internal/tasks/backlog.md) tracks remaining work.
 
 ## Detailed architecture and decisions
 

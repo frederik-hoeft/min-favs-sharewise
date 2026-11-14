@@ -29,6 +29,7 @@ build-frontend:
     - cd src/frontend
     - npm ci --no-audit --no-fund
     - npm run lint
+    - npm run typecheck
     - npm run build
 
 # Runs without downloading language SDKs or project dependencies. The Debian
