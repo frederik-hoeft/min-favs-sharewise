@@ -1,0 +1,46 @@
+.grid { display: grid; grid-template-columns: 1.08fr .92fr; gap: 20px; align-items: stretch; }
+.expenses, .settlement, .history {
+  min-width: 0;
+  border: 1px solid var(--sw-border);
+  border-radius: var(--mantine-radius-xl);
+  background: var(--sw-surface);
+  padding: clamp(25px, 3.2vw, 40px);
+}
+.panelHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.miniLabel { display: inline-block; color: var(--sw-accent); letter-spacing: .13em; font-size: 11px; font-weight: 800; }
+.grid h3 { font-size: clamp(23px, 2.4vw, 30px); line-height: 1.17; letter-spacing: -.045em; font-weight: 700; margin: 15px 0 10px; color: var(--sw-ink); }
+.description { margin: 0; line-height: 1.65; font-size: 14px; color: var(--sw-muted); max-width: 380px; }
+.ledger { margin-top: 31px; overflow: hidden; border: 1px solid var(--sw-border); border-radius: var(--mantine-radius-md); }
+.ledgerHeader { display: flex; justify-content: space-between; padding: 13px 17px; background: var(--sw-surface-subtle); border-bottom: 1px solid var(--sw-border); color: var(--sw-muted); font-size: 11px; font-weight: 700; }
+.expenseRow { display: flex; gap: 12px; align-items: center; padding: 17px; border-bottom: 1px solid var(--sw-border); }
+.expenseIcon { display: grid; place-items: center; width: 37px; height: 37px; flex-shrink: 0; border-radius: 11px; color: var(--sw-accent); background: var(--sw-surface-accent); font-size: 19px; }
+.expenseDescription { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 4px; }
+.expenseDescription strong, .expenseAmount strong { color: var(--sw-ink); font-size: 13px; font-weight: 730; }
+.expenseDescription span, .expenseAmount span { font-size: 11px; color: var(--sw-muted); }
+.expenseAmount { display: flex; flex-direction: column; gap: 4px; text-align: right; white-space: nowrap; }
+.allocation { display: flex; align-items: center; gap: 12px; padding: 17px; background: var(--sw-surface-accent); }
+.allocationIcon { display: grid; place-items: center; border-radius: 50%; width: 28px; height: 28px; flex-shrink: 0; background: var(--sw-accent); color: white; font-size: 21px; }
+.allocation div { display: flex; flex-direction: column; gap: 3px; }
+.allocation strong { color: var(--sw-ink); font-size: 12px; }
+.allocation span { color: var(--sw-muted); font-size: 11px; line-height: 1.4; }
+.side { display: flex; flex-direction: column; gap: 20px; }
+.settlement { flex: 0 0 auto; }
+.transfer { margin-top: 25px; padding: 16px 0 0; border-top: 1px solid var(--sw-border); display: flex; align-items: center; gap: 12px; }
+.transferAvatars { display: flex; flex-shrink: 0; }
+.transferAvatars span { display: grid; place-items: center; height: 32px; width: 32px; border-radius: 50%; background: #e2e4f8; color: #393b69; font-size: 10px; font-weight: 750; border: 2px solid var(--sw-surface); }
+.transferAvatars span + span { margin-left: -9px; background: #f3e2de; color: #6b4540; }
+.transferDescription { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.transferDescription strong { color: var(--sw-ink); font-size: 12px; }
+.transferDescription span { color: var(--sw-muted); font-size: 10px; line-height: 1.35; }
+.transferAmount { color: var(--sw-accent); font-size: 18px; }
+.history { flex: 1 1 auto; }
+.timeline { margin: 24px 0 0 5px; }
+.event { display: flex; gap: 17px; min-height: 64px; position: relative; }
+.event:not(:last-child)::before { content: ''; position: absolute; width: 1px; top: 15px; bottom: 0; left: 5px; background: var(--sw-border); }
+.timelineDot { width: 11px; height: 11px; flex-shrink: 0; background: var(--sw-surface); border: 2px solid var(--sw-accent); border-radius: 50%; margin-top: 3px; z-index: 1; }
+.event div { display: flex; flex-direction: column; gap: 5px; }
+.event strong { color: var(--sw-ink); font-size: 12px; font-weight: 680; }
+.event span:last-child { color: var(--sw-muted); font-size: 11px; line-height: 1.45; }
+.historyFooter { margin: 7px 0 0 27px; font-size: 11px; line-height: 1.55; color: var(--sw-muted); }
+@media (max-width: 890px) { .grid { grid-template-columns: 1fr; } }
+@media (max-width: 500px) { .expenses, .settlement, .history { padding: 22px; } .expenseRow { padding: 13px 11px; gap: 9px; } .expenseIcon { width: 31px; height: 31px; } .allocation { padding: 13px; } .transfer { flex-wrap: wrap; } }

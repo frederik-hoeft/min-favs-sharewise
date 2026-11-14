@@ -1,6 +1,6 @@
 # ShareWise frontend
 
-This directory contains the Next.js / React / TypeScript frontend for ShareWise. The UI is currently a starter page, not the implemented expense-sharing application. The server-side `/api/greetings` route forwards requests to the Spring Boot `/greeting` example endpoint.
+This directory contains the Next.js / React / TypeScript frontend for ShareWise. The homepage is currently a **Phase B static design candidate**, not an approved design or the implemented expense-sharing application. The server-side `/api/greetings` route forwards requests to the Spring Boot `/greeting` example endpoint.
 
 ## Develop and validate
 
@@ -24,7 +24,7 @@ npm run build
 
 The frontend component and accessibility smoke tests run with Vitest, React Testing Library and axe-core. The tests require no backend; jsdom does not provide meaningful color-contrast or responsive-layout verification, so those remain browser-level checks. The checked-in [Mantine component reference](../../.agents/references/frontend-mantine-llms-full.txt) and [frontend agent instructions](AGENTS.md) document the component/styling conventions.
 
-The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The current page is a neutral starter, not the P2.0e landing-page design. Mantine owns standard component styles and their shared color scheme; the root `app/providers.tsx` installs the theme from `lib/theme.ts`. `ColorSchemeScript` initializes light/dark/system selection before hydration.
+The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The current landing page explores the candidate visual direction documented in [Quiet clarity](../../docs/design/sharewise-simplistic-candidate.md); it is illustrative only, pending Phase B human review. Mantine owns standard component styles and their shared color scheme; the root `app/providers.tsx` installs the theme and semantic light/dark roles from `lib/theme.ts`. `ColorSchemeScript` initializes light/dark/system selection before hydration.
 
 Use adjacent `*.module.scss` files for local layout and composition, consuming Mantine CSS variables for shared tokens. `app/globals.scss` is reserved for document-level rules; component defaults and cross-app variants belong in the Mantine theme, not scattered global overrides. No Tailwind or external font service is required.
 

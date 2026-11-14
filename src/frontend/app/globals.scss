@@ -1,4 +1,5 @@
-html,
-body {
-  min-height: 100%;
-}
+html { scroll-behavior: smooth; }
+body { min-height: 100%; background: var(--sw-page); color: var(--sw-ink); }
+::selection { background: var(--sw-surface-accent); color: var(--sw-ink); }
+a:focus-visible { outline: 3px solid var(--sw-accent); outline-offset: 5px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
