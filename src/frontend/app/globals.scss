@@ -1,4 +1,29 @@
-html,
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 110px;
+}
+
 body {
+  min-width: 320px;
   min-height: 100%;
+  margin: 0;
+  color: var(--sw-ink);
+  background: var(--sw-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  color: var(--sw-accent-ink);
+  background: var(--sw-accent);
+}
+
+:focus-visible {
+  outline: 3px solid var(--mantine-color-lime-6);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

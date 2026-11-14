@@ -1,0 +1,29 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--sw-ink);
+  text-decoration: none;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.075em;
+  white-space: nowrap;
+}
+
+.period { color: #86a836; }
+
+.symbol {
+  display: grid;
+  width: 33px;
+  height: 33px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3px;
+  transform: rotate(-14deg);
+
+  span {
+    background: currentColor;
+    border-radius: 4px 8px 4px 8px;
+  }
+
+  span:nth-child(2), span:nth-child(3) { opacity: .55; }
+}
