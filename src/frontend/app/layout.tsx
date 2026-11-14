@@ -7,7 +7,7 @@ import "./globals.scss";
 
 export const metadata: Metadata = {
   title: "ShareWise",
-  description: "Group expense sharing and bookkeeping.",
+  description: "A clearer way to share costs, track balances, and keep the full story of your group expenses.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

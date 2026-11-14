@@ -17,6 +17,17 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+// Mantine's SegmentedControl positions its active indicator with ResizeObserver.
+class MockResizeObserver implements ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, "ResizeObserver", {
+  writable: true,
+  value: MockResizeObserver,
+});
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();

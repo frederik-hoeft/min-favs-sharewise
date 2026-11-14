@@ -1,0 +1,31 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--sw-ink);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.065em;
+  white-space: nowrap;
+}
+
+.period {
+  color: var(--sw-accent);
+}
+
+.symbol {
+  display: grid;
+  grid-template-columns: repeat(2, 9px);
+  grid-template-rows: repeat(2, 9px);
+  gap: 3px;
+  transform: rotate(-25deg);
+  i {
+    display: block;
+    background: var(--sw-accent);
+    border-radius: 2px;
+  }
+  i:nth-child(2), i:nth-child(3) {
+    background: var(--sw-ink);
+  }
+}
