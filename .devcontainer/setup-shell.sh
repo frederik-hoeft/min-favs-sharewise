@@ -56,5 +56,18 @@ wget \
 # default .zshrc is configured for system-wide install, so fix it to point to the local install in the devcontainer
 sed -i "s|/opt/shared/oh-my-zsh/oh-my-zsh|${ZSH_DIR}|g" "$HOME/.zshrc"
 
+# Docker named volumes are directories, so keep Zsh's standard history path
+# as a symlink to a file on the persistent, vscode-owned history volume.
+history_file="$HOME/.local/share/zsh-history/.zsh_history"
+if [ -f "$HOME/.zsh_history" ] && [ ! -L "$HOME/.zsh_history" ]; then
+    if [ -f "$history_file" ]; then
+        cat "$HOME/.zsh_history" >> "$history_file"
+        rm "$HOME/.zsh_history"
+    else
+        mv "$HOME/.zsh_history" "$history_file"
+    fi
+fi
+ln -sfn "$history_file" "$HOME/.zsh_history"
+
 # WSL volume mounts cause git to report dubious ownership
 git config --global --add safe.directory '*'
