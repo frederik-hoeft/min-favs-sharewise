@@ -16,7 +16,7 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 ## Current toolchain
 
-The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, Lombok and test starters; H2 is a test-only dependency. Spring Modulith and event publication remain architectural targets rather than installed backend features.
+The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, Lombok, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules); H2 is a test-only dependency. Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
 The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. Its server-side route handler and current container image belong to the starter. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below still describe the starter.
 
@@ -76,9 +76,35 @@ docker run --rm --name sharewise-frontend --network sharewise \
 
 The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The backend container needs a reachable PostgreSQL database with the ShareWise roles: run a `postgres:18` container on the same network with the bootstrap scripts as init scripts and pass the `SPRING_DATASOURCE_*` and `SPRING_FLYWAY_*` variables to `sharewise-backend` (for example `SPRING_DATASOURCE_URL=jdbc:postgresql://<postgres-container>:5432/sharewise`). A Compose setup for this follows with P8.1.
 
+## Application modules
+
+The backend is divided into Spring Modulith application modules; the [application architecture](architecture.md#module-structure-and-published-apis) defines their structure and dependency rules. The POM imports the Spring Modulith 2.1.2 BOM. `spring-modulith-api` provides the `@ApplicationModule` and `@NamedInterface` annotations on the compile classpath, and `spring-modulith-core` performs verification in test scope only. No Spring Modulith runtime feature, such as event publication, is installed.
+
+A vertical slice that introduces a module creates its package directly below `de.hsh.favs.sharewise` and declares every module API or named interface that the module uses in its `package-info.java`:
+
+```java
+// Example for a future module; no business modules exist yet.
+@ApplicationModule(allowedDependencies = { "shared :: di", "groups" })
+package de.hsh.favs.sharewise.finance;
+
+import org.springframework.modulith.ApplicationModule;
+```
+
+A module without dependencies declares `allowedDependencies = {}`. `ApplicationModuleStructureTests` pins the current list of modules, so the slice that adds a module also updates that expectation. To publish a sub-package to other modules, annotate its `package-info.java` with `@NamedInterface("<name>")`; consumers then declare `"<module> :: <name>"`. Keep a named interface limited to the contracts other modules need.
+
+The full backend build runs module verification. From `src/backend/sharewise`, run only the verification tests with:
+
+```bash
+./mvnw test -Dtest=ApplicationModuleStructureTests,ModuleVerificationFixtureTests
+```
+
+A violation names the modules and types involved, for example `Module 'consumer' depends on module 'provider' via ...Consumer -> ...ProviderApi. Allowed targets: none.` Fix it by using the other module's published API or, when the dependency is intended, by adding it to the consumer's `allowedDependencies` for review. Do not publish internal packages or open a module merely to silence verification; `ApplicationModuleStructureTests` rejects open modules and published DI implementation types, which Spring Modulith alone accepts.
+
+The verification tests also run small fixture applications under `de.hsh.favs.modulithfixtures` in the test sources, one per rule, to prove that each kind of violation is detected. They live outside the application root, so they are never part of the real application's module model or Spring context.
+
 ## Operation scope usage
 
-The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`; Spring-specific wiring under `shared.infra.di.internal` is infrastructure-private. The DI foundation, transaction manager and jOOQ/JPA accessors are implemented and tested; domain-specific business modules are not yet present.
+The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published. The DI foundation, transaction manager and jOOQ/JPA accessors are implemented and tested; domain-specific business modules are not yet present.
 
 Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Production inbound adapters inject the singleton `OperationDispatcher` and dispatch an entry-service type rather than obtaining an operation-scoped bean from a singleton during construction:
 
@@ -169,6 +195,7 @@ From `src/backend/sharewise`, exercise Spring transaction coordination and both 
 
 - Use UTF-8 without BOM, LF line endings and final newlines, following repository formatting configuration. Prefer four-space indentation for Java unless an adopted formatter specifies otherwise.
 - Keep application/core contracts separated from transport DTOs and persistence implementation details; refer to [architecture](architecture.md) and [domain model](data-model-design.md).
+- Use other modules only through their top-level API or named interfaces, and declare every module dependency in `allowedDependencies`; see [application modules](#application-modules).
 - Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of singleton services. Follow the [operation-scope usage rules](#operation-scope-usage) and the [DI architecture](architecture/dependency-injection.md) for lifecycle ownership; singleton capture and escaped-reference misuse are reviewed rather than automatically detected by Spring.
 - Add and run focused tests for changed behavior. Validate database concurrency and query contracts against the intended database once those adapters are introduced.
 - When a build or test cannot run, identify whether the blocker is tooling, dependency resolution, project compilation, a test failure, or external infrastructure. Do not conflate missing local prerequisites with source-code defects.
