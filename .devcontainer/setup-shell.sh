@@ -56,5 +56,27 @@ wget \
 # default .zshrc is configured for system-wide install, so fix it to point to the local install in the devcontainer
 sed -i "s|/opt/shared/oh-my-zsh/oh-my-zsh|${ZSH_DIR}|g" "$HOME/.zshrc"
 
+# Preserve a pre-volume history file without overwriting existing volume history.
+# The volume is a directory: HISTFILE itself must point inside it, not at a
+# symlink in $HOME, because Zsh's HIST_SAVE_BY_COPY can replace that symlink.
+history_file="$HOME/.local/share/zsh-history/.zsh_history"
+legacy_history="$HOME/.zsh_history"
+if [ -f "$legacy_history" ] && [ ! -L "$legacy_history" ]; then
+    if [ -f "$history_file" ]; then
+        cat "$legacy_history" >> "$history_file"
+        rm "$legacy_history"
+    else
+        mv "$legacy_history" "$history_file"
+    fi
+fi
+# Clean up the link installed by earlier revisions of this setup script.
+if [ -L "$legacy_history" ] && [ "$(readlink "$legacy_history")" = "$history_file" ]; then
+    rm "$legacy_history"
+fi
+
+# Set this before Oh My Zsh initializes (it otherwise defaults to ~/.zsh_history).
+# The .zshrc was just downloaded, so prepending the setting is idempotent.
+sed -i '1i HISTFILE="$HOME/.local/share/zsh-history/.zsh_history"' "$HOME/.zshrc"
+
 # WSL volume mounts cause git to report dubious ownership
 git config --global --add safe.directory '*'
