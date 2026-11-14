@@ -2,12 +2,16 @@
 
 import { MantineProvider } from "@mantine/core";
 import type { ReactNode } from "react";
-import { theme } from "@/lib/theme";
+import { cssVariablesResolver, theme } from "@/lib/theme";
 
-// Keep the client boundary at the provider; routes/layouts may remain server components.
+// The only root client boundary: pages and their static product previews remain server components.
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <MantineProvider defaultColorScheme="auto" theme={theme}>
+    <MantineProvider
+      defaultColorScheme="auto"
+      cssVariablesResolver={cssVariablesResolver}
+      theme={theme}
+    >
       {children}
     </MantineProvider>
   );

@@ -1,0 +1,21 @@
+.brand {
+  --sw-brand-mark: var(--sw-paper);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--sw-ink);
+  white-space: nowrap;
+}
+.mark {
+  width: 38px;
+  height: 38px;
+  color: var(--sw-brand);
+  flex: none;
+}
+.wordmark {
+  font-size: 23px;
+  font-weight: 780;
+  letter-spacing: -0.075em;
+  span { font-weight: 480; }
+}
+.period { color: var(--mantine-color-clay-5); }

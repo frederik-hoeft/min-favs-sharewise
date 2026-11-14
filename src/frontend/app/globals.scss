@@ -1,4 +1,27 @@
-html,
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  min-height: 100%;
+  min-width: 320px;
+  min-height: 100dvh;
+  margin: 0;
+  color: var(--sw-ink);
+  background: var(--sw-page);
+}
+
+::selection {
+  background: var(--sw-highlight);
+  color: var(--sw-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--mantine-primary-color-filled);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

@@ -1,0 +1,8 @@
+.selector {
+  width: 133px;
+  flex: none;
+}
+.icon { color: var(--sw-positive); font-size: 17px; }
+@media (max-width: 480px) {
+  .selector { width: 110px; }
+}
