@@ -1,0 +1,28 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--sw-text);
+  white-space: nowrap;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-brand-7);
+  color: #fff;
+
+  svg {
+    width: 29px;
+    height: 29px;
+  }
+}
+
+.wordmark {
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.055em;
+}

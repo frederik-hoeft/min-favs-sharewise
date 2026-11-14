@@ -17,6 +17,14 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+// jsdom does not calculate element bounds or provide ResizeObserver.
+class ResizeObserverStub implements ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub });
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();

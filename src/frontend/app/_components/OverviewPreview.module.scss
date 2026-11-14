@@ -1,0 +1,263 @@
+.figure {
+  margin: 0;
+  min-width: 0;
+
+  figcaption {
+    margin-top: 0.85rem;
+    color: var(--sw-text-muted);
+    font-size: 0.73rem;
+    text-align: right;
+  }
+}
+
+.window {
+  overflow: hidden;
+  border: 1px solid var(--sw-line-strong);
+  border-radius: 15px;
+  background: var(--sw-surface);
+  box-shadow: 0 20px 52px rgb(18 45 44 / 6%);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 61px;
+  padding: 0 1.35rem;
+  border-bottom: 1px solid var(--sw-line);
+  color: var(--sw-text-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 18px;
+  background: var(--sw-line-strong);
+}
+
+.toolbarContext {
+  margin-left: auto;
+  color: var(--sw-text-muted);
+  font-weight: 450;
+}
+
+.content {
+  padding: 1.6rem 1.7rem 1.5rem;
+}
+
+.headingRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.overline {
+  margin: 0 0 0.5rem;
+  color: var(--sw-brand-text);
+  font-size: 0.61rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.groupName {
+  margin: 0;
+  color: var(--sw-text);
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
+  font-weight: 740;
+  letter-spacing: -0.045em;
+}
+
+.groupSubtitle {
+  margin: 0.35rem 0 0;
+  color: var(--sw-text-muted);
+  font-size: 0.73rem;
+}
+
+.members {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  color: var(--sw-text-muted);
+  font-size: 0.7rem;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+  margin-top: 1.7rem;
+}
+
+.summaryPrimary,
+.summarySecondary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  padding: 1.08rem 1.1rem;
+  border: 1px solid var(--sw-line);
+  border-radius: var(--mantine-radius-md);
+  background: var(--sw-surface-muted);
+
+  strong {
+    color: var(--sw-text);
+    font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+    font-weight: 730;
+    letter-spacing: -0.045em;
+  }
+}
+
+.summaryPrimary {
+  border-color: transparent;
+  background: var(--sw-surface-accent);
+}
+
+.summaryLabel {
+  color: var(--sw-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.summaryDescription {
+  color: var(--sw-text-muted);
+  font-size: 0.65rem;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.6rem 0 0.7rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 0.87rem;
+  font-weight: 720;
+  letter-spacing: -0.015em;
+}
+
+.balanceList,
+.expenseList {
+  border: 1px solid var(--sw-line);
+  border-radius: var(--mantine-radius-md);
+  overflow: hidden;
+}
+
+.balanceRow,
+.expenseRow {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 47px;
+  padding: 0.58rem 0.85rem;
+  font-size: 0.78rem;
+
+  + .balanceRow,
+  + .expenseRow {
+    border-top: 1px solid var(--sw-line);
+  }
+
+  > strong:last-child {
+    margin-left: auto;
+    white-space: nowrap;
+    font-weight: 740;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.avatarLetter {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--sw-surface-accent);
+  color: var(--sw-brand-text);
+  font-weight: 720;
+  font-size: 0.73rem;
+}
+
+.memberName {
+  font-weight: 650;
+}
+
+.balanceLabel {
+  margin-left: auto;
+  color: var(--sw-text-muted);
+  font-size: 0.7rem;
+}
+
+.expenseIcon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 27px;
+  height: 27px;
+  border-radius: 6px;
+  color: var(--sw-brand-text);
+  background: var(--sw-surface-muted);
+}
+
+.expenseName {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+
+  strong {
+    font-weight: 660;
+  }
+
+  small {
+    color: var(--sw-text-muted);
+    font-size: 0.68rem;
+  }
+}
+
+.miniNote {
+  color: var(--sw-text-muted);
+  font-size: 0.67rem;
+}
+
+@media (max-width: 560px) {
+  .toolbar {
+    min-height: 52px;
+    padding-inline: 1rem;
+  }
+
+  .toolbarContext {
+    display: none;
+  }
+
+  .content {
+    padding: 1.15rem 1rem;
+  }
+
+  .summaryGrid {
+    margin-top: 1.25rem;
+  }
+
+  .summaryPrimary,
+  .summarySecondary {
+    padding: 0.8rem;
+  }
+
+  .members {
+    align-items: flex-end;
+    gap: 0.3rem;
+  }
+
+  .balanceRow,
+  .expenseRow {
+    padding: 0.5rem 0.55rem;
+    gap: 0.5rem;
+  }
+
+  .balanceLabel {
+    display: none;
+  }
+}

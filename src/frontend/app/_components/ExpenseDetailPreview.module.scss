@@ -1,0 +1,126 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1.2rem, 3vw, 2rem);
+}
+
+.topline,
+.titleRow,
+.allocationHeading,
+.allocation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.overline {
+  color: var(--sw-brand-text);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.titleRow {
+  align-items: flex-end;
+  margin-top: 1.5rem;
+
+  h3 {
+    margin: 0;
+    font-size: clamp(1.2rem, 2.4vw, 1.55rem);
+    font-weight: 700;
+    letter-spacing: -0.05em;
+  }
+
+  p {
+    margin: 0.5rem 0 0;
+    color: var(--sw-text-muted);
+    font-size: 0.82rem;
+  }
+
+  > strong {
+    flex-shrink: 0;
+    font-size: clamp(1.45rem, 3vw, 2rem);
+    font-weight: 730;
+    letter-spacing: -0.045em;
+  }
+}
+
+.divider {
+  height: 1px;
+  margin: 1.65rem 0 1.35rem;
+  background: var(--sw-line);
+}
+
+.allocationHeading {
+  margin-bottom: 0.7rem;
+  font-size: 0.86rem;
+
+  h4 {
+    margin: 0;
+    font-size: inherit;
+    font-weight: 700;
+  }
+
+  > span {
+    color: var(--sw-text-muted);
+    font-size: 0.75rem;
+  }
+}
+
+.allocationList {
+  border: 1px solid var(--sw-line);
+  border-radius: var(--mantine-radius-md);
+  overflow: hidden;
+}
+
+.allocation {
+  justify-content: flex-start;
+  min-height: 58px;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.8rem;
+
+  + .allocation {
+    border-top: 1px solid var(--sw-line);
+  }
+
+  > strong {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.shareType {
+  color: var(--sw-text-muted);
+  font-size: 0.72rem;
+}
+
+.footnote {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: auto;
+  padding-top: 1.5rem;
+  color: var(--sw-text-muted);
+  font-size: 0.76rem;
+}
+
+.noteDot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--mantine-color-brand-6);
+}
+
+@media (max-width: 480px) {
+  .titleRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .shareType {
+    display: none;
+  }
+}

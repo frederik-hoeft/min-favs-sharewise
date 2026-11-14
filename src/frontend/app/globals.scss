@@ -1,4 +1,29 @@
-html,
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 7rem;
+}
+
 body {
-  min-height: 100%;
+  min-width: 280px;
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--sw-canvas);
+  color: var(--sw-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--mantine-color-brand-2);
+  color: #132c28;
+}
+
+:focus-visible {
+  outline: 3px solid var(--mantine-color-brand-5);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
