@@ -1,11 +1,16 @@
-import styles from "./page.module.css";
+import { Container, Stack, Text, Title } from "@mantine/core";
+import styles from "./page.module.scss";
 
-// Temporary starter page. P2.0e design candidates replace this composition.
+// Neutral starter page; design candidates replace this composition in Phase B.
 export default function Home() {
   return (
     <main className={styles.main}>
-      <h1>ShareWise</h1>
-      <p>Group expense sharing and bookkeeping.</p>
+      <Container size="sm">
+        <Stack align="center" gap="sm">
+          <Title order={1}>ShareWise</Title>
+          <Text c="dimmed">Group expense sharing and bookkeeping.</Text>
+        </Stack>
+      </Container>
     </main>
   );
 }

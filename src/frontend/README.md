@@ -21,6 +21,10 @@ npm run typecheck
 npm run build
 ```
 
-The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The current page is a temporary starter, not the P2.0e landing-page design. CSS Modules provide locally scoped styling while the planned Mantine/SCSS foundation awaits a refreshed dependency lockfile and offline handoff.
+The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The current page is a neutral starter, not the P2.0e landing-page design. Mantine owns standard component styles and their shared color scheme; the root `app/providers.tsx` installs the theme from `lib/theme.ts`. `ColorSchemeScript` initializes light/dark/system selection before hydration.
 
-npm enforces `strict-allow-scripts=true` from `.npmrc`. The project's `allowScripts` policy explicitly blocks the optional `unrs-resolver` postinstall helper; all newly encountered dependency install scripts fail the install until reviewed. Do not blanket-approve scripts. This policy applies to dependency installation, not explicitly invoked `npm run` tasks. For the supported toolchain, container networking, offline development and backend commands, see the [development guide](../../docs/development.md).
+Use adjacent `*.module.scss` files for local layout and composition, consuming Mantine CSS variables for shared tokens. `app/globals.scss` is reserved for document-level rules; component defaults and cross-app variants belong in the Mantine theme, not scattered global overrides. No Tailwind or external font service is required.
+
+The current `output: "standalone"` and server-side greeting proxy remain temporary starter behavior. The intended static export is a separate deployment task; `cacheComponents`/partial prefetching are intentionally not enabled because PPR is incompatible with static export.
+
+npm enforces `strict-allow-scripts=true` from `.npmrc`. The project's `allowScripts` policy explicitly blocks the optional `unrs-resolver` and `@parcel/watcher` installation helpers; all newly encountered dependency install scripts fail the install until reviewed. Do not blanket-approve scripts. This policy applies to dependency installation, not explicitly invoked `npm run` tasks. For the supported toolchain, container networking, offline development and backend commands, see the [development guide](../../docs/development.md).

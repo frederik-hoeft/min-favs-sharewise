@@ -1,0 +1,7 @@
+.main {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: var(--mantine-spacing-xl);
+  text-align: center;
+}

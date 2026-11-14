@@ -4,11 +4,11 @@
 
 ## Baseline, dependencies and execution model
 
-The approved source snapshot currently has Next.js 16 / React 19 / TypeScript, npm, Tailwind 4 starter styling, a template homepage and a standalone Next.js server/greeting proxy. The P2.0e target is **Mantine + SCSS Modules**, with a coherent landing-page and product-preview design determined later through candidate comparison. The intended production static export is described in the [stack overview](../../../stack/overview.md), but P8.1/P8.2 own replacing the server/proxy deployment. Avoid touching P1.x backend work or designing P1.4's future HTTP-client conventions.
+The current source snapshot contains Next.js 16 / React 19 / TypeScript, npm, Mantine, Sass/SCSS Modules, a neutral starter homepage and a standalone Next.js server/greeting proxy. The P2.0e target is **Mantine + SCSS Modules**, with a coherent landing-page and product-preview design determined later through candidate comparison. The intended production static export is described in the [stack overview](../../../stack/overview.md), but P8.1/P8.2 own replacing the server/proxy deployment. Avoid touching P1.x backend work or designing P1.4's future HTTP-client conventions.
 
 Use the existing approved Git baseline and a distinct branch/patch for each coherent reviewed increment. Keep prototype alternatives isolated; only the selected design is merged into the P2.0e implementation line. Progress checkboxes are checked **only after verification and human approval**. Architectural changes return to the specification gate before the plan is revised. Every phase records commands, observed results, unavailable tooling and the precise patch baseline.
 
-The currently supplied handoff selects **Node only** and does not contain Mantine, Sass or proposed test dependencies. Phase A therefore requires a regenerated offline npm dependency bundle against the updated lockfile. Do not claim strict offline verification using an incomplete archive or silently switch to online install/system caches. The frontend's generated [Next.js instructions](../../../../src/frontend/AGENTS.md) require consulting the local version's documentation before code changes.
+The supplied **Node-only** handoff matches Mantine and Sass in the current lockfile, but does **not** include the proposed Vitest/Testing Library/axe test dependencies. Adding those packages requires another refreshed offline bundle. Do not claim strict offline verification using an incomplete archive or silently switch to online install/system caches. The frontend's generated [Next.js instructions](../../../../src/frontend/AGENTS.md) require consulting the local version's documentation before code changes.
 
 ## Phase A - Fix the frontend technology stack and checks
 
@@ -49,7 +49,7 @@ The currently supplied handoff selects **Node only** and does not contain Mantin
 **Covers:** FE-07 through FE-10; FE-T01, FE-T05, FE-T08 and FE-T10.
 
 - [ ] Make frontend CI exercise lint, a generated-type-aware TypeScript check, component/accessibility tests and production build, including nonzero exit behavior on failures; avoid redundant scripts or a second build system.
-- [ ] Verify the selected landing page and its UI dependencies in a clean **isolated `output: "export"` build**. If the current server-only `/api/greetings` route still blocks full export, exclude it only from the disposable probe and document the limitation; do not claim P8.1 completion or remove P1.4's integration seam as a test workaround.
+- [ ] Verify the selected landing page and its UI dependencies in a clean **isolated `output: "export"` build**. If the current server-only `/api/greetings` route still blocks full export, exclude it only from the disposable probe. Disable incompatible Next.js prerendering/PPR options in that probe when necessary and document the limitation; do not claim P8.1 completion or remove P1.4's integration seam as a test workaround.
 - [ ] Serve the generated static output without Node/Next.js runtime and exercise the page, navigation and theme control. Confirm illustrative previews render entirely from bundled assets/data, without backend requests, remote fonts/assets or server-only APIs. Keep any export-test harness minimal, reproducible and clearly separated from production deployment.
 - [ ] Run full relevant frontend validation with the updated offline cache, inspect the complete branch diff and verify no backend or unrelated application files changed.
 

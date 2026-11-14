@@ -1,5 +1,9 @@
+import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import type { Metadata } from "next";
-import "./globals.css";
+import { Providers } from "./providers";
+
+import "@mantine/core/styles.css";
+import "./globals.scss";
 
 export const metadata: Metadata = {
   title: "ShareWise",
@@ -8,8 +12,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" {...mantineHtmlProps}>
+      <head>
+        <ColorSchemeScript defaultColorScheme="auto" />
+      </head>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
