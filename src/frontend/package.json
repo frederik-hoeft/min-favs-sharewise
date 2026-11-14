@@ -10,19 +10,23 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
-    "next": "16.4.1",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "@mantine/core": "9.8.0",
+    "@mantine/hooks": "9.8.0",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "24.19.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.1",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.6",
+    "sass": "1.108.2",
     "typescript": "^5"
   },
   "allowScripts": {
-    "unrs-resolver": false
+    "unrs-resolver": false,
+    "@parcel/watcher": false
   }
 }
