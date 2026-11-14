@@ -1,0 +1,36 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+
+  th {
+    color: var(--sw-muted);
+    border-bottom: 1px solid var(--sw-line);
+    font-size: 0.67rem;
+    letter-spacing: 0.075em;
+    text-transform: uppercase;
+    padding: 0 0 0.9rem;
+    font-weight: 700;
+  }
+
+  td {
+    border-bottom: 1px solid var(--sw-line);
+    padding: 0.87rem 0;
+  }
+}
+
+.person { display: inline-flex; align-items: center; gap: 0.8rem; font-weight: 600; }
+.initials {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sw-soft);
+  color: var(--sw-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+.amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 700; }
+.credit { color: var(--sw-accent); }
+.debit { color: var(--sw-ink); }

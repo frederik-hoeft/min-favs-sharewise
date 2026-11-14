@@ -1,4 +1,32 @@
-html,
+html {
+  scroll-behavior: smooth;
+}
+
 body {
+  min-width: 320px;
   min-height: 100%;
+  margin: 0;
+  background: var(--sw-canvas);
+  color: var(--sw-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--sw-accent-quiet);
+  color: var(--sw-ink);
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--sw-accent);
+  outline-offset: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

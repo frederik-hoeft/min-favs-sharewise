@@ -17,6 +17,14 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+// jsdom has no element resize notifications; Mantine uses this for its segmented indicator.
+class NoopResizeObserver implements ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: NoopResizeObserver });
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
