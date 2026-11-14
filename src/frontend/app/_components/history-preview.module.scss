@@ -1,0 +1,111 @@
+.history {
+  border: 1px solid rgba(213, 238, 213, 0.16);
+  border-radius: 22px;
+  background: #18382a;
+  padding: clamp(1.15rem, 3vw, 2rem);
+  color: #f4f9ef;
+  box-shadow: 0 24px 65px rgba(0,0,0,0.15);
+  --sw-ink: #f4f9ef;
+  --sw-muted: #b0c8b5;
+  --sw-line: #3d6049;
+  --sw-credit: #bde6ac;
+  --sw-debit: #f5baa5;
+}
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.7rem;
+  h3 {
+    font-size: clamp(1.05rem, 2vw, 1.45rem);
+    letter-spacing: -0.04em;
+    line-height: 1.2;
+    margin: 0.4rem 0 0;
+  }
+}
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: #bdd4b9;
+  font-weight: 800;
+}
+.timeline {
+  margin: 1.6rem 0 1.25rem;
+  padding: 0 0 0 0.55rem;
+  list-style: none;
+  li {
+    position: relative;
+    border-left: 1px solid #45634e;
+    padding: 0 0 1.3rem 1.45rem;
+    &:last-child {
+      border-left-color: transparent;
+      padding-bottom: 0;
+    }
+  }
+}
+.node {
+  position: absolute;
+  top: 0.27rem;
+  left: -0.31rem;
+  width: 0.58rem;
+  height: 0.58rem;
+  background: #c9e58b;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px #18382a;
+}
+.event {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  .revision {
+    flex: none;
+    background: #30533a;
+    color: #dceccf;
+    border-radius: 0.4rem;
+    padding: 0.2rem 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 760;
+  }
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.22rem;
+  }
+  strong {
+    font-size: 0.85rem;
+  }
+  div span {
+    font-size: 0.8rem;
+    color: #d0dfd1;
+  }
+  small {
+    color: #9eb5a3;
+    font-size: 0.7rem;
+  }
+}
+.snapshot {
+  background: #204330;
+  border: 1px solid #3d6049;
+  border-radius: 14px;
+  padding: 1rem 1.1rem 0.65rem;
+}
+.snapshotHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+  strong {
+    font-size: 0.84rem;
+  }
+  span {
+    font-size: 0.72rem;
+    color: #ccdea8;
+  }
+}
+.snapshot p {
+  color: #b7c8b4;
+  font-size: 0.71rem;
+  line-height: 1.5;
+  margin: 0.7rem 0 0;
+}

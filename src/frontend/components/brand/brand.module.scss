@@ -1,0 +1,18 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--sw-ink);
+  font-size: 1.45rem;
+  font-weight: 790;
+  letter-spacing: -0.075em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.mark {
+  color: var(--sw-deep);
+  flex: none;
+}
+.period {
+  color: var(--mantine-color-pine-5);
+}

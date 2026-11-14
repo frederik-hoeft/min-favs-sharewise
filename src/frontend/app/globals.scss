@@ -1,4 +1,25 @@
-html,
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   min-height: 100%;
+  margin: 0;
+  background: var(--sw-page);
+  color: var(--sw-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--sw-highlight);
+  color: var(--sw-highlight-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--mantine-color-pine-4);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
 }

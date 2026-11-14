@@ -6,8 +6,8 @@ import "@mantine/core/styles.css";
 import "./globals.scss";
 
 export const metadata: Metadata = {
-  title: "ShareWise",
-  description: "Group expense sharing and bookkeeping.",
+  title: "ShareWise | More living. Less keeping score.",
+  description: "Keep the good memories, and a clear record of shared expenses, splits, external settlements, and group balances.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -16,9 +16,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>
-      <body>
-        <Providers>{children}</Providers>
-      </body>
+      <body><Providers>{children}</Providers></body>
     </html>
   );
 }
