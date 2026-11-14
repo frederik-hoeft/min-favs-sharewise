@@ -1,0 +1,129 @@
+.card {
+  background: var(--sw-surface);
+  border: 1px solid var(--sw-line);
+  border-radius: 1.4rem;
+  box-shadow: var(--sw-panel-shadow);
+  color: var(--sw-ink);
+  padding: clamp(1.3rem, 3.4vw, 2.3rem);
+  min-width: 0;
+}
+
+.topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.microLabel {
+  color: var(--sw-accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.card h3 {
+  font-size: clamp(1.4rem, 3vw, 1.85rem);
+  margin: 1.3rem 0 0.2rem;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--sw-muted);
+  font-size: 0.83rem;
+  margin: 0;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0 1.5rem;
+}
+
+.event {
+  display: flex;
+  gap: 1rem;
+  align-items: start;
+  position: relative;
+  padding: 0 0 1.8rem;
+
+  &:last-child { padding-bottom: 0.5rem; }
+
+  &:not(:last-child)::after {
+    content: "";
+    background: var(--sw-line);
+    position: absolute;
+    width: 1px;
+    height: calc(100% - 2.75rem);
+    left: 1.27rem;
+    top: 2.7rem;
+  }
+}
+
+.eventSymbol {
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--sw-accent-soft);
+  color: var(--sw-accent);
+  font-size: 1.15rem;
+  font-weight: 700;
+  border-radius: 0.7rem;
+  height: 2.55rem;
+  width: 2.55rem;
+}
+
+.expense { background: var(--sw-subtle); color: var(--mantine-color-brand-5); }
+.revision { color: var(--sw-muted); font-size: 0.71rem; font-variant-numeric: tabular-nums; }
+
+.eventContent {
+  flex: 1;
+  min-width: 0;
+
+  p {
+    color: var(--sw-muted);
+    font-size: 0.79rem;
+    line-height: 1.5;
+    margin: 0.32rem 0 0;
+
+    span { font-weight: 650; }
+  }
+}
+
+.eventHead {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+
+  strong { font-size: 0.86rem; }
+  span { color: var(--sw-muted); font-size: 0.7rem; white-space: nowrap; }
+}
+
+.bottomNote {
+  background: var(--sw-accent-soft);
+  border-radius: 0.85rem;
+  display: flex;
+  gap: 0.85rem;
+  padding: 1.1rem;
+
+  strong { font-size: 0.82rem; }
+  p { margin: 0.35rem 0 0; color: var(--sw-muted); font-size: 0.77rem; line-height: 1.5; }
+}
+
+.noteIcon {
+  color: var(--sw-accent);
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+@media (max-width: 480px) {
+  .event { gap: 0.55rem; }
+  .eventSymbol { height: 2rem; width: 2rem; border-radius: 0.45rem; }
+  .event:not(:last-child)::after { left: 1rem; top: 2.2rem; height: calc(100% - 2.35rem); }
+  .eventHead strong { font-size: 0.8rem; }
+  .eventHead span { font-size: 0.65rem; }
+  .revision { font-size: 0.65rem; }
+}

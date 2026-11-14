@@ -1,4 +1,31 @@
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+}
+
 html,
 body {
   min-height: 100%;
+}
+
+body {
+  background: var(--sw-canvas);
+  color: var(--sw-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+:where(a, button, input, [role="menuitem"]):focus-visible {
+  outline: 3px solid var(--mantine-color-brand-4);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--mantine-color-brand-2);
+  color: #142b43;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

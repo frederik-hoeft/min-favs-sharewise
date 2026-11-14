@@ -1,0 +1,39 @@
+.lockup {
+  align-items: center;
+  color: var(--sw-ink);
+  display: inline-flex;
+  flex: none;
+  gap: 0.55rem;
+  white-space: nowrap;
+}
+
+.mark {
+  align-items: center;
+  background: var(--mantine-color-brand-6);
+  border-radius: 0.75rem;
+  color: #fff;
+  display: grid;
+  height: 2.65rem;
+  place-items: center;
+  width: 2.65rem;
+
+  svg {
+    height: 1.8rem;
+    width: 1.8rem;
+  }
+}
+
+.name {
+  font-size: 1.52rem;
+  font-weight: 780;
+  letter-spacing: -0.065em;
+  line-height: 1;
+
+  span {
+    color: var(--mantine-color-brand-6);
+  }
+}
+
+:global([data-mantine-color-scheme='dark']) .name span {
+  color: var(--mantine-color-brand-3);
+}
