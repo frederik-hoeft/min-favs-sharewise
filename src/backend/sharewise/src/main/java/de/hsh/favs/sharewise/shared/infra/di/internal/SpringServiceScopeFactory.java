@@ -8,7 +8,7 @@ import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 
 /** Per-application-context scope factory and lexical binding owner. */
-final class SpringServiceScopeFactory implements ServiceScopeFactory, BeanFactoryPostProcessor {
+final class SpringServiceScopeFactory implements ServiceScopeFactory, OperationScopeAccess, BeanFactoryPostProcessor {
 
     private final ScopedValue<SpringServiceScope> current = ScopedValue.newInstance();
     private ConfigurableListableBeanFactory beanFactory;
@@ -31,6 +31,12 @@ final class SpringServiceScopeFactory implements ServiceScopeFactory, BeanFactor
 
     <T> T activate(SpringServiceScope scope, java.util.function.Supplier<T> action) {
         return ScopedValue.where(current, scope).call(action::get);
+    }
+
+    @Override
+    public ScopeLease captureCurrent() {
+        SpringServiceScope scope = currentScope();
+        return scope::requireCurrent;
     }
 
     boolean hasActiveBinding() {

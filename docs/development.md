@@ -16,17 +16,18 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 ## Current toolchain
 
-The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA, H2/H2 console, Lombok and test starters. PostgreSQL persistence, Spring Modulith and event publication remain architectural targets rather than installed backend features.
+The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, H2/H2 console, operation-scoped DI and transaction management, Lombok, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). PostgreSQL persistence and Spring Modulith event publication remain architectural targets rather than installed backend features.
 
 The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. During development, `next.config.ts` rewrites `/api/:path*` requests directly to the Spring Boot backend (`BACKEND_URL`), avoiding custom Next.js API route handlers. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding in production; that Nginx deployment is **not yet implemented**.
 
 ## Build, test and run
 
-Backend, from the repository root:
+Backend, from the repository root (the default `test` run excludes `@Tag("integration")` database suites; pass `-Pintegration-tests` to run `@DatabaseIntegrationTest` suites explicitly):
 
 ```sh
 cd src/backend/sharewise
 ./mvnw test
+./mvnw test -Pintegration-tests
 ./mvnw spring-boot:run
 ```
 
@@ -35,6 +36,7 @@ Frontend, in a separate terminal from the repository root:
 ```sh
 cd src/frontend
 npm ci
+node --test lib/api/client.test.ts
 npm run lint
 npm run build
 npm run dev
@@ -61,9 +63,35 @@ docker run --rm --name sharewise-frontend --network sharewise \
 
 The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The example backend uses the starter's H2 database and does not provide durable production storage.
 
+## Application modules
+
+The backend is divided into Spring Modulith application modules; the [application architecture](architecture.md#module-structure-and-published-apis) defines their structure and dependency rules. The POM imports the Spring Modulith 2.1.2 BOM. `spring-modulith-api` provides the `@ApplicationModule` and `@NamedInterface` annotations on the compile classpath, and `spring-modulith-core` performs verification in test scope only. No Spring Modulith runtime feature, such as event publication, is installed.
+
+A vertical slice that introduces a module creates its package directly below `de.hsh.favs.sharewise` and declares every module API or named interface that the module uses in its `package-info.java`:
+
+```java
+// Example for a future module; no business modules exist yet.
+@ApplicationModule(allowedDependencies = { "shared :: di", "groups" })
+package de.hsh.favs.sharewise.finance;
+
+import org.springframework.modulith.ApplicationModule;
+```
+
+A module without dependencies declares `allowedDependencies = {}`. `ApplicationModuleStructureTests` pins the current list of modules, so the slice that adds a module also updates that expectation. To publish a sub-package to other modules, annotate its `package-info.java` with `@NamedInterface("<name>")`; consumers then declare `"<module> :: <name>"`. Keep a named interface limited to the contracts other modules need.
+
+The full backend build runs module verification. From `src/backend/sharewise`, run only the verification tests with:
+
+```bash
+./mvnw test -Dtest=ApplicationModuleStructureTests,ModuleVerificationFixtureTests
+```
+
+A violation names the modules and types involved, for example `Module 'consumer' depends on module 'provider' via ...Consumer -> ...ProviderApi. Allowed targets: none.` Fix it by using the other module's published API or, when the dependency is intended, by adding it to the consumer's `allowedDependencies` for review. Do not publish internal packages or open a module merely to silence verification; `ApplicationModuleStructureTests` rejects open modules and published DI implementation types, which Spring Modulith alone accepts.
+
+The verification tests also run small fixture applications under `de.hsh.favs.modulithfixtures` in the test sources, one per rule, to prove that each kind of violation is detected. They live outside the application root, so they are never part of the real application's module model or Spring context.
+
 ## Operation scope usage
 
-The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`; Spring-specific wiring under `shared.infra.di.internal` is infrastructure-private. The DI foundation is implemented and tested, but business modules and transaction-aware adapters have not yet been added.
+The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published. The DI foundation, transaction manager and jOOQ/JPA accessors are implemented and tested; domain-specific business modules are not yet present.
 
 Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Production inbound adapters inject the singleton `OperationDispatcher` and dispatch an entry-service type rather than obtaining an operation-scoped bean from a singleton during construction:
 
@@ -109,12 +137,52 @@ try (ServiceScope scope = scopeFactory.createScope()) {
 
 The factory may create independent nested DI scopes, but **nested `OperationDispatcher.dispatch(...)` calls are prohibited**. Do not use the outer scope's provider or already-created services from within a nested activation. Scopes and providers are confined to their creating thread; after closure, references must not be retained or used. Singleton-to-scoped dependency capture and escaped references are code-review concerns, not guarantees of automatic lifetime analysis.
 
-The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or the full `mvn clean verify`. In the supplied isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution. P1.3b/P1.3c require additional integration tests against real PostgreSQL once implemented.
+The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or the full `mvn clean verify`. In an isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution.
+
+## Transaction and persistence adapter usage
+
+An operation-scoped entry service decides when to open a transaction and what to persist. The returned `TransactionOutcome` controls the physical disposition **after** the callback finishes; expected business errors are ordinary result values, not automatic rollback triggers:
+
+```java
+@Service
+@Scope("operation")
+final class ThingService {
+    private final Transactions transactions;
+    private final ThingStore things;
+
+    ThingService(Transactions transactions, ThingStore things) {
+        this.transactions = transactions;
+        this.things = things;
+    }
+
+    Optional<Thing> find(UUID id) {
+        return transactions.execute(() ->
+            TransactionOutcome.abstain(things.getThingById(id)));
+    }
+}
+```
+
+An operation-scoped persistence implementation injects `JooqAccess` or `JpaAccess` rather than a `DSLContext` or `EntityManager` obtained during construction. A repository method obtains its current-segment facade locally and finishes all SQL access before returning:
+
+```java
+@Override
+public Optional<Thing> getThingById(UUID id) {
+    DSLContext db = database.dsl();
+    return db.selectFrom(THING)
+        .where(THING.ID.eq(id))
+        .fetchOptional(this::mapThing);
+}
+```
+
+The examples use illustrative domain types and a generated `THING` table, not existing business classes. An accessor can be retained by the operation-scoped repository; **the returned jOOQ/JPA facade, queries and managed entities cannot be retained across calls or transaction segments**. Once a segment ends, obtaining another facade through the accessor is valid in a subsequent segment, but previously issued facades remain invalid. See the [transaction architecture](architecture/transactions.md) for outcomes, lifecycle and failure semantics.
+
+From `src/backend/sharewise`, exercise Spring transaction coordination and both adapters using `mvn test -Dtest=TransactionsIntegrationTests,RelationalTransactionIntegrationTests` or `mvn clean verify`. These checks use instrumented transaction managers and H2, not PostgreSQL. Production datasource interoperability, database isolation and engine-specific failure behavior require separate PostgreSQL integration tests.
 
 ## Development conventions
 
 - Use UTF-8 without BOM, LF line endings and final newlines, following repository formatting configuration. Prefer four-space indentation for Java unless an adopted formatter specifies otherwise.
 - Keep application/core contracts separated from transport DTOs and persistence implementation details; refer to [architecture](architecture.md) and [domain model](data-model-design.md).
+- Use other modules only through their top-level API or named interfaces, and declare every module dependency in `allowedDependencies`; see [application modules](#application-modules).
 - Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of singleton services. Follow the [operation-scope usage rules](#operation-scope-usage) and the [DI architecture](architecture/dependency-injection.md) for lifecycle ownership; singleton capture and escaped-reference misuse are reviewed rather than automatically detected by Spring.
 - Add and run focused tests for changed behavior. Validate database concurrency and query contracts against the intended database once those adapters are introduced.
 - When a build or test cannot run, identify whether the blocker is tooling, dependency resolution, project compilation, a test failure, or external infrastructure. Do not conflate missing local prerequisites with source-code defects.

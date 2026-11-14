@@ -1,6 +1,7 @@
 package de.hsh.favs.sharewise.shared.infra.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Core application configuration properties bound at startup.
@@ -18,17 +19,22 @@ public record ShareWiseProperties(String name, int apiDefaultPageSize) {
     private static final int DEFAULT_PAGE_SIZE = 50;
     private static final int MAX_PAGE_SIZE = 200;
 
+    @ConstructorBinding
+    public ShareWiseProperties(String name, Integer apiDefaultPageSize) {
+        this(
+                (name == null) ? DEFAULT_NAME : name,
+                (apiDefaultPageSize == null) ? DEFAULT_PAGE_SIZE : apiDefaultPageSize.intValue());
+    }
+
     public ShareWiseProperties {
         String resolvedName = (name == null) ? DEFAULT_NAME : name;
         if (resolvedName.isBlank()) {
             throw new IllegalArgumentException("sharewise.app.name must not be blank");
         }
-        int resolvedPageSize = (apiDefaultPageSize == 0) ? DEFAULT_PAGE_SIZE : apiDefaultPageSize;
-        if (resolvedPageSize < 1 || resolvedPageSize > MAX_PAGE_SIZE) {
+        if (apiDefaultPageSize < 1 || apiDefaultPageSize > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException(
                     "sharewise.app.api-default-page-size must be between 1 and " + MAX_PAGE_SIZE);
         }
         name = resolvedName;
-        apiDefaultPageSize = resolvedPageSize;
     }
 }

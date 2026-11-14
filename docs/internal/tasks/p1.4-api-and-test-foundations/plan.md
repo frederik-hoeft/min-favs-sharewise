@@ -13,7 +13,7 @@ The repository contains the Java 25 / Spring Boot 4.1.2 Maven backend (`src/back
 **Covers:** API-04, API-07; P1.4-T07 (relevant portions).
 
 - [x] Add `Result<T, E>` (sealed interface with `Ok<T, E>` / `Err<T, E>` record variants and concise mapping/inspection helpers) in `de.hsh.favs.sharewise.shared` for expected application-level business outcomes.
-- [x] Establish JUnit 5 tag conventions (`@Tag("component")` and `@Tag("integration")`) and configure Maven Surefire so default `./mvnw test` runs fast offline unit and component tests while database-dependent integration tests remain explicitly selectable.
+- [x] Establish JUnit 5 tag conventions (`@Tag("component")` and `@Tag("integration")`), configure Maven Surefire (`excludedGroups` = `integration` by default with an `integration-tests` profile) so default `./mvnw test` runs fast offline unit and component tests while database-dependent integration tests remain explicitly selectable, and add a tag-selection regression test.
 - [x] Add unit tests for `Result<T, E>` invariants and verify existing DI tests continue to pass with explicit types.
 
 **Gate A:** From `src/backend/sharewise`, `./mvnw test` passes offline and `git diff --check` is clean.

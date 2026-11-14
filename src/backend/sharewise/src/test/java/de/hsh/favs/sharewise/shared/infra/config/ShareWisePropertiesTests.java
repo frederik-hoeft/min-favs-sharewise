@@ -54,6 +54,14 @@ class ShareWisePropertiesTests {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             TestPropertyValues.of(
                     "sharewise.app.name=sharewise",
+                    "sharewise.app.api-default-page-size=0").applyTo(context);
+            context.register(TestPropertiesConfig.class);
+            assertThrows(BeanCreationException.class, context::refresh);
+        }
+
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            TestPropertyValues.of(
+                    "sharewise.app.name=sharewise",
                     "sharewise.app.api-default-page-size=999").applyTo(context);
             context.register(TestPropertiesConfig.class);
             assertThrows(BeanCreationException.class, context::refresh);

@@ -83,7 +83,7 @@ async function parseErrorResponse(response: Response): Promise<ApiError> {
         try {
             const payload = (await response.json()) as ProblemDetailPayload;
             return new ApiError({
-                status: typeof payload.status === 'number' ? payload.status : response.status,
+                status: response.status,
                 code: typeof payload.code === 'string' && payload.code.length > 0 ? payload.code : 'http_error',
                 title: typeof payload.title === 'string' && payload.title.length > 0 ? payload.title : (response.statusText || 'Request Failed'),
                 detail: typeof payload.detail === 'string' && payload.detail.length > 0 ? payload.detail : `Request failed with status ${response.status}.`,
