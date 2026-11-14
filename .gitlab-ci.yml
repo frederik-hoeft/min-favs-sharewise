@@ -30,6 +30,7 @@ build-frontend:
     - npm ci --no-audit --no-fund
     - npm run lint
     - npm run typecheck
+    - npm exec --offline -- vitest run
     - npm run build
 
 # Runs without downloading language SDKs or project dependencies. The Debian

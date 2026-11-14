@@ -37,6 +37,7 @@ cd src/frontend
 npm ci
 npm run lint
 npm run typecheck
+npm exec --offline -- vitest run
 npm run build
 npm run dev
 ```

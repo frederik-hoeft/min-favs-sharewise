@@ -8,7 +8,7 @@ The current source snapshot contains Next.js 16 / React 19 / TypeScript, npm, Ma
 
 Use the existing approved Git baseline and a distinct branch/patch for each coherent reviewed increment. Keep prototype alternatives isolated; only the selected design is merged into the P2.0e implementation line. Progress checkboxes are checked **only after verification and human approval**. Architectural changes return to the specification gate before the plan is revised. Every phase records commands, observed results, unavailable tooling and the precise patch baseline.
 
-The supplied **Node-only** handoff matches Mantine and Sass in the current lockfile, but does **not** include the proposed Vitest/Testing Library/axe test dependencies. Adding those packages requires another refreshed offline bundle. Do not claim strict offline verification using an incomplete archive or silently switch to online install/system caches. The frontend's generated [Next.js instructions](../../../../src/frontend/AGENTS.md) require consulting the local version's documentation before code changes.
+The refreshed **Node-only** handoff includes the pinned Mantine, Sass, Vitest, React Testing Library, user-event, jsdom and axe-core dependencies. Keep the source manifest and lockfile aligned with this handoff for strict offline verification. Do not claim strict offline verification using an incomplete archive or silently switch to online install/system caches. The frontend's generated [Next.js instructions](../../../../src/frontend/AGENTS.md) require consulting the local version's documentation before code changes.
 
 ## Phase A - Fix the frontend technology stack and checks
 
@@ -16,8 +16,8 @@ The supplied **Node-only** handoff matches Mantine and Sass in the current lockf
 
 - [ ] Pin compatible Mantine core/supporting packages and Sass in `package.json` / `package-lock.json`; remove Tailwind packages, imports, classes and Turbopack integration while retaining a functioning starter frontend. Keep the stack independent of any candidate palette or page composition.
 - [ ] Introduce the root Mantine stylesheet/provider, a minimal neutral theme configuration and SCSS Module conventions. Use supported Mantine APIs and Next.js App Router provider/client boundaries; do not build an application-specific control framework.
-- [ ] Add focused React component testing with **Vitest, React Testing Library/user-event and axe-core** (or a documented compatible axe adapter). Add deterministic test and generated-type-aware type-check scripts, retaining the existing ESLint and Next.js production build.
-- [ ] Update the frontend CI job to execute the new scripts, without weakening the backend jobs. Refresh the Node-only offline npm handoff from the locked dependencies and validate a clean restore/build using only the supplied tools/cache.
+- [ ] Add focused React component testing with **Vitest, React Testing Library/user-event and axe-core** (or a documented compatible axe adapter). Add a deterministic test invocation and a generated-type-aware type-check script, retaining the existing ESLint and Next.js production build.
+- [ ] Update the frontend CI job to execute the test command and existing checks, without weakening the backend jobs. Refresh the Node-only offline npm handoff from the locked dependencies and validate a clean restore/build using only the supplied tools/cache.
 - [ ] Verify no transitive stylesheet or scaffold dependency is silently loading Tailwind; confirm tests, lint, type check and build pass. Record any limitations involving native modules or external services.
 
 **Gate A:** The migrated frontend builds and the basic test harness runs reproducibly with the updated lockfile and complete offline cache. A human reviews the independent stack patch before design exploration begins. No page aesthetics are approved by this phase.

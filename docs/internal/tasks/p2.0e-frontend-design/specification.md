@@ -83,6 +83,6 @@ Manual acceptance consists of opening the chosen landing page at narrow and wide
 
 ## Dependencies, deferrals and review gate
 
-Mantine and Sass are **present in the supplied Node-only offline handoff**, but the planned Vitest, React Testing Library and axe-core dependencies are not. Adding test dependencies requires a refreshed, reproducible npm cache/toolchain validation under the [offline development workflow](../../../development/chatgpt-development-workflow.md); do not weaken strict-offline checks or substitute unrelated caches. An offline Java/Maven backend handoff is unnecessary for this frontend-only task.
+Mantine, Sass, Vitest, React Testing Library and axe-core are **present in the refreshed Node-only offline handoff**. Dependency changes require a regenerated, reproducible npm cache/toolchain validation under the [offline development workflow](../../../development/chatgpt-development-workflow.md); do not weaken strict-offline checks or substitute unrelated caches. An offline Java/Maven backend handoff is unnecessary for this frontend-only task.
 
 The [plan](plan.md) sequences dependency migration, candidate exploration, selected-design implementation, quality/static-export checks and final documentation reconciliation. P1.4 owns subsequent HTTP/client conventions, P2.1/P2.2 own actual authenticated business journeys, and P8.1/P8.2 complete static production deployment. The documentation and plan require approval before implementation; the visual direction receives a **separate team/human gate** before it is finalized.

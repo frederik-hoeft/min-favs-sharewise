@@ -18,8 +18,11 @@ Run the frontend checks before submitting changes:
 ```sh
 npm run lint
 npm run typecheck
+npm exec --offline -- vitest run
 npm run build
 ```
+
+The frontend component and accessibility smoke tests run with Vitest, React Testing Library and axe-core. The tests require no backend; jsdom does not provide meaningful color-contrast or responsive-layout verification, so those remain browser-level checks. The checked-in [Mantine component reference](../../.agents/references/frontend-mantine-llms-full.txt) and [frontend agent instructions](AGENTS.md) document the component/styling conventions.
 
 The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The current page is a neutral starter, not the P2.0e landing-page design. Mantine owns standard component styles and their shared color scheme; the root `app/providers.tsx` installs the theme from `lib/theme.ts`. `ColorSchemeScript` initializes light/dark/system selection before hydration.
 

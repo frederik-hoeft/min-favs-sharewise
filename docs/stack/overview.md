@@ -46,7 +46,7 @@ Backend modules retain ownership of their tables, public contracts, queries and 
 
 **Maven 3.10** builds and tests the Java application; **Node.js 24 and npm** manage the Next.js application. The checked-in Maven wrapper and npm lockfile establish repeatable dependencies. **JUnit/Spring tests** are present in the starter; **Mockito/fakes** are intended for database-independent application tests, with real **PostgreSQL integration tests** (normally using Testcontainers) required for migrations, transactions, and event-processing correctness. H2 is not a substitute for those PostgreSQL guarantees.
 
-Development tooling includes **Dockerfiles**, a **VS Code Dev Container**, and **GitLab CI** jobs for backend verification, frontend lint/typecheck/build, SAST and secret detection. The existing frontend Dockerfile runs a Next.js server; the Nginx/static-asset deployment and PostgreSQL-backed runtime are not yet configured. For commands, ports, container networking and the offline dependency handoff, use the [development guide](../development.md). The [implementation backlog](../internal/tasks/backlog.md) tracks remaining work.
+Development tooling includes **Dockerfiles**, a **VS Code Dev Container**, and **GitLab CI** jobs for backend verification, frontend lint/typecheck/component-and-accessibility-tests/build, SAST and secret detection. The existing frontend Dockerfile runs a Next.js server; the Nginx/static-asset deployment and PostgreSQL-backed runtime are not yet configured. For commands, ports, container networking and the offline dependency handoff, use the [development guide](../development.md). The [implementation backlog](../internal/tasks/backlog.md) tracks remaining work.
 
 ## Detailed architecture and decisions
 
