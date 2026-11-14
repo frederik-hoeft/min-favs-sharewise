@@ -1,0 +1,25 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--sw-ink);
+  font-size: 1.42rem;
+  font-weight: 470;
+  letter-spacing: -0.075em;
+  text-decoration: none;
+  line-height: 1;
+  white-space: nowrap;
+  .mark {
+    width: 2.5rem;
+    height: 2.5rem;
+    color: var(--mantine-color-cobalt-6);
+    flex: none;
+  }
+  .bold {
+    font-weight: 800;
+  }
+  .period {
+    color: var(--sw-accent);
+    font-weight: 800;
+  }
+}

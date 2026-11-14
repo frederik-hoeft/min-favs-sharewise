@@ -1,4 +1,33 @@
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+}
+
 html,
 body {
   min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--sw-page);
+  color: var(--sw-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--sw-accent-subtle);
+  color: var(--sw-ink);
+}
+
+a:focus-visible {
+  outline: 3px solid var(--sw-accent);
+  outline-offset: 5px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
