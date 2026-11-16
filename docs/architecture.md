@@ -30,7 +30,7 @@ A module's **top-level package is its published API**: the operation-focused com
 
 Every module is a closed module and declares its permitted dependencies with `@ApplicationModule(allowedDependencies = {...})` in its base `package-info.java`, listing each module API or named interface it uses. A new cross-module dependency therefore changes that declaration and is visible in review. The declaration records a dependency but does not approve it: a synchronous cross-context call still requires the reviewed integration boundary described above. Dependencies on `shared` are listed explicitly, for example `"shared :: di"`, rather than implicitly allowed for all modules.
 
-`shared` declares `allowedDependencies = {}`, so infrastructure can never depend on a business context, and the module graph stays acyclic and extractable. Its top-level package publishes nothing; each infrastructure capability has its own named interface. The DI contracts in `shared.infra.di` are published as `shared::di`, while their Spring implementations in `shared.infra.di.internal` are not.
+`shared` declares `allowedDependencies = {}`, so infrastructure can never depend on a business context, and the module graph stays acyclic and extractable. Its top-level package publishes nothing; each infrastructure capability has its own named interface. For example, the DI contracts in `shared.infra.di` are published as `shared::di`, the operation result contracts in `shared.result` as `shared::result`, and the controller error/validation contracts in `shared.infra.web` as `shared::web`, while Spring implementations under `internal` sub-packages are not published.
 
 ## Operation- and data-flow-oriented services
 

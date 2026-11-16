@@ -12,7 +12,7 @@ The repository contains the Java 25 / Spring Boot 4.1.2 Maven backend (`src/back
 
 **Covers:** API-04, API-07; P1.4-T07 (relevant portions).
 
-- [x] Add `Result<T, E>` (sealed interface with `Ok<T, E>` / `Err<T, E>` record variants and concise mapping/inspection helpers) in `de.hsh.favs.sharewise.shared` for expected application-level business outcomes.
+- [x] Add `Result<T, E>` (sealed interface with `Ok<T, E>` / `Err<T, E>` record variants and concise mapping/inspection helpers) in `de.hsh.favs.sharewise.shared.result`, published as `shared::result`, for expected application-level business outcomes.
 - [x] Establish JUnit 5 tag conventions (`@Tag("component")` and `@Tag("integration")`), configure Maven Surefire (`excludedGroups` = `integration` by default with an `integration-tests` profile) so default `./mvnw test` runs fast offline unit and component tests while database-dependent integration tests remain explicitly selectable, and add a tag-selection regression test.
 - [x] Add unit tests for `Result<T, E>` invariants and verify existing DI tests continue to pass with explicit types.
 
@@ -22,7 +22,7 @@ The repository contains the Java 25 / Spring Boot 4.1.2 Maven backend (`src/back
 
 **Covers:** API-01, API-02, API-03, API-04, API-05, API-06; P1.4-T01 through P1.4-T04.
 
-- [x] Implement the shared API error contract (`ProblemDetail` builder utilities, stable `code` property, `FieldErrorDetail(String field, String code, String message)` list, and boundary validation exception types) and a global `@RestControllerAdvice` handling validation errors (`400`, `validation_failed`), unreadable/malformed payloads (`400`, `malformed_request`), method/media-type errors (`405`/`415`), and unexpected exceptions (`500`, `internal_error` without stack trace or class-name leakage).
+- [x] Implement the shared API error contract (`ProblemDetail` builder utilities, stable `code` property, `FieldErrorDetail(String field, String code, String message)` list, and boundary validation exception types) published as `shared::web`, and an internal global `@RestControllerAdvice` in `shared.infra.web.internal` handling validation errors (`400`, `validation_failed`), unreadable/malformed payloads (`400`, `malformed_request`), method/media-type errors (`405`/`415`), and unexpected or return-value validation exceptions (`500`, `internal_error` without stack trace or class-name leakage).
 - [x] Enable and bind fail-fast immutable `@ConfigurationProperties` records for core application settings, validating required values at startup.
 - [x] Implement `GET /api/system/v1/health` (and align `/api/greetings` or greeting compatibility for the starter page) returning `200 OK` (`{"status":"UP"}`) when healthy and `503 Service Unavailable` (`{"status":"DOWN"}`) when a registered readiness probe fails.
 - [x] Add MockMvc / component and Spring context tests covering `P1.4-T01` through `P1.4-T04` (invalid fields, malformed JSON, `Result.Err` mapping, `500` diagnostic suppression, fail-fast configuration properties, and health status transitions).

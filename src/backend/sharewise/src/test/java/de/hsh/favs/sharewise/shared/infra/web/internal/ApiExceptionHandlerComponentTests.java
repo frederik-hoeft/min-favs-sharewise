@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.shared.infra.web;
+package de.hsh.favs.sharewise.shared.infra.web.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,6 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
+import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
+import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
 import java.lang.reflect.Method;
@@ -119,6 +122,24 @@ class ApiExceptionHandlerComponentTests {
                 .andExpect(jsonPath("$.fieldErrors[0].message").value("must be at least 1"));
 
         assertEquals(0, dispatchCounter.count.get());
+    }
+
+    @Test
+    void returnValueHandlerMethodValidationMapsToInternalErrorWithoutLeakingConstraintDetails() throws Exception {
+        MvcResult mvcResult = mockMvc.perform(get("/api/sample/v1/items/invalid-return-value"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.code").value("internal_error"))
+                .andExpect(jsonPath("$.title").value("Internal Server Error"))
+                .andExpect(jsonPath("$.detail").value("An unexpected error occurred."))
+                .andExpect(jsonPath("$.fieldErrors").doesNotExist())
+                .andReturn();
+
+        String body = mvcResult.getResponse().getContentAsString();
+        assertFalse(body.contains("HandlerMethodValidationException"));
+        assertFalse(body.contains("secret_return_value_constraint"));
+        assertFalse(body.contains("invalidReturnValue"));
     }
 
     @Test
@@ -304,6 +325,29 @@ class ApiExceptionHandlerComponentTests {
                 throw new HandlerMethodValidationException(validationResult);
             }
             return ResponseEntity.ok("limit-" + limit);
+        }
+
+        @GetMapping("/invalid-return-value")
+        ResponseEntity<String> invalidReturnValue() throws NoSuchMethodException {
+            Method method = SampleController.class.getDeclaredMethod("invalidReturnValue");
+            MethodParameter returnType = new MethodParameter(method, -1);
+            MessageSourceResolvable error = new DefaultMessageSourceResolvable(
+                    new String[]{"NotNull.invalidReturnValue"},
+                    null,
+                    "secret_return_value_constraint violated");
+            ParameterValidationResult returnResult = new ParameterValidationResult(
+                    returnType,
+                    null,
+                    List.of(error),
+                    null,
+                    null,
+                    null,
+                    (resolvable, type) -> null);
+            MethodValidationResult validationResult = MethodValidationResult.create(
+                    this,
+                    method,
+                    List.of(returnResult));
+            throw new HandlerMethodValidationException(validationResult);
         }
 
         @GetMapping("/{id}")

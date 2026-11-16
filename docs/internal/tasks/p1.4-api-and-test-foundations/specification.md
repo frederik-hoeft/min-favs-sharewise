@@ -20,7 +20,7 @@ P1.4 does **not** implement IAM authentication, JWT decoding, CSRF token issuanc
 
 Inbound REST controllers are thin transport adapters under their owning module (or `shared` for system probes) and delegate business execution through `OperationDispatcher`. Versioned domain routes follow the P0.2 convention `/api/<context>/v<version>/<resource>`.
 
-**Typed error contract:** All `/api/**` error responses use Spring's RFC 9457 `ProblemDetail` (`application/problem+json`) handled by a centralized `@RestControllerAdvice`. To allow programmatic client handling without parsing human-readable messages, every error response includes a stable machine-readable `code` property alongside the standard `status`, `title` and `detail` fields, plus an optional `fieldErrors` list for input validation failures:
+**Typed error contract:** All `/api/**` error responses use Spring's RFC 9457 `ProblemDetail` (`application/problem+json`) handled by a centralized `@RestControllerAdvice` in `shared.infra.web.internal`. Reusable controller error and boundary-validation contracts (`ApiProblems`, `FieldErrorDetail`, and `RequestValidationException`) live in `de.hsh.favs.sharewise.shared.infra.web` and are published as the named interface `shared::web`. To allow programmatic client handling without parsing human-readable messages, every error response includes a stable machine-readable `code` property alongside the standard `status`, `title` and `detail` fields, plus an optional `fieldErrors` list for input validation failures:
 
 ```json
 {
@@ -51,7 +51,7 @@ Controller boundary failures map deterministically:
 
 ### 2. Application result and test conventions (P1.4b)
 
-**Shared operation result (`Result<T, E>`):** A small sealed interface in `de.hsh.favs.sharewise.shared` (with `Success<T, E>` and `Failure<T, E>` / `Err<T, E>` record variants) represents expected business outcomes returned by application services and inspected by `Transactions.execute(...)` orchestrators. `Optional<T>` remains preferred for simple absence-only lookups. `Result` is an in-process contract and is never serialized directly as an HTTP payload.
+**Shared operation result (`Result<T, E>`):** A small sealed interface in `de.hsh.favs.sharewise.shared.result` (with `Ok<T, E>` and `Err<T, E>` record variants), published as the named interface `shared::result`, represents expected business outcomes returned by application services and inspected by `Transactions.execute(...)` orchestrators. `Optional<T>` remains preferred for simple absence-only lookups. `Result` is an in-process contract and is never serialized directly as an HTTP payload.
 
 **Test classification and execution:** Building on [P1.3c](../p1.3c-integration-tests/specification.md), tests are organized so the default developer loop remains fast and offline:
 

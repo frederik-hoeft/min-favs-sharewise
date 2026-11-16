@@ -1,5 +1,8 @@
-package de.hsh.favs.sharewise.shared.infra.web;
+package de.hsh.favs.sharewise.shared.infra.web.internal;
 
+import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
+import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
+import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -34,14 +37,16 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * Spring's native validation exceptions.
  */
 @RestControllerAdvice
-public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(ApiExceptionHandler.class);
     private static final String DEFAULT_VALIDATION_DETAIL = "Request validation failed.";
     private static final String DEFAULT_FIELD_MESSAGE = "Invalid value";
+    private static final String INTERNAL_ERROR_TITLE = "Internal Server Error";
+    private static final String INTERNAL_ERROR_DETAIL = "An unexpected error occurred.";
 
     @ExceptionHandler(RequestValidationException.class)
-    public ResponseEntity<ProblemDetail> handleRequestValidation(RequestValidationException exception) {
+    ResponseEntity<ProblemDetail> handleRequestValidation(RequestValidationException exception) {
         ProblemDetail problem = ApiProblems.validationFailed(
                 exception.getMessage(),
                 exception.fieldErrors());
@@ -66,7 +71,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             HttpStatusCode status,
             WebRequest request) {
         if (exception.isForReturnValue()) {
-            return super.handleHandlerMethodValidationException(exception, headers, status, request);
+            LOG.error("Return-value validation failed during API request processing", exception);
+            ProblemDetail problem = ApiProblems.of(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    ApiProblems.CODE_INTERNAL_ERROR,
+                    INTERNAL_ERROR_TITLE,
+                    INTERNAL_ERROR_DETAIL);
+            return handleExceptionInternal(
+                    exception,
+                    problem,
+                    headers,
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    request);
         }
         List<FieldErrorDetail> fieldErrors = extractMethodValidationErrors(exception);
         ProblemDetail problem = ApiProblems.validationFailed(DEFAULT_VALIDATION_DETAIL, fieldErrors);
@@ -74,13 +90,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ProblemDetail> handleUnexpected(Exception exception) {
+    ResponseEntity<ProblemDetail> handleUnexpected(Exception exception) {
         LOG.error("Unhandled exception during API request processing", exception);
         return ApiProblems.response(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 ApiProblems.CODE_INTERNAL_ERROR,
-                "Internal Server Error",
-                "An unexpected error occurred.");
+                INTERNAL_ERROR_TITLE,
+                INTERNAL_ERROR_DETAIL);
     }
 
     @Override
