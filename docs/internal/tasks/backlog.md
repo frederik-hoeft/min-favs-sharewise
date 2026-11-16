@@ -1,8 +1,8 @@
 # ShareWise implementation backlog
 
-**Status:** Active implementation roadmap; P1.3a operation-scoped DI and P1.3b transaction management are complete and approved. P1.1 module verification is implemented and manually accepted, with independent review pending. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
+**Status:** Active implementation roadmap. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
 
-The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them. The [development guide](../../development.md) describes the actual starter dependencies, which should not be mistaken for future framework commitments. The backend contains the greeting endpoint, operation-scoped DI/dispatch, Spring-backed transaction and jOOQ/JPA access infrastructure and build-time module verification; business modules and PostgreSQL persistence are still planned. The frontend retains the greeting flow.
+The existing [architecture](../../architecture.md) and [domain model](../../data-model-design.md) define the intended boundaries, domain language, transaction model, and invariants. This backlog schedules work against those contracts; it is **not** a replacement for them.
 
 ## Working agreement
 
