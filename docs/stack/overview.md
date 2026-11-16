@@ -53,6 +53,7 @@ Development tooling includes **Dockerfiles**, a **VS Code Dev Container**, and *
 The detailed architecture and technology decisions are documented in:
 
 - [Application architecture](../architecture.md): modular monolith, dependency direction, published APIs, application services and transaction boundaries.
+- [Frontend architecture](../architecture/frontend.md): Next.js route ownership, shared UI and the intended domain-first service organization.
 - [Operation-scope DI architecture](../architecture/dependency-injection.md), [pending integrations](dependency-injection.md) and [selection rationale](dependency-injection-alternatives.md): explicit service lifetime, Spring bean resolution and cleanup.
 - [Transaction management architecture](../architecture/transactions.md): application-owned outcomes, sequential segments, failure semantics and guarded jOOQ/JPA access.
 - [Persistence architecture](persistence.md) and [alternatives](persistence-alternatives.md): PostgreSQL, Flyway, jOOQ/JPA, schema generation, coordinated transactions and database tests.
