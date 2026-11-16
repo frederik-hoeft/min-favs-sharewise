@@ -8,7 +8,7 @@
 
 ## Phase A – PostgreSQL in the dev container
 
-- [ ] **Scope:** Add a `postgres:18` service to `.devcontainer/docker-compose.yml` with a named volume (PG 18 images store data under `/var/lib/postgresql`), a `pg_isready` health check, `POSTGRES_DB=sharewise` and dev-only admin credentials; the `dev` service waits for it to be healthy. Mount the bootstrap scripts as init scripts. Add the `docker-outside-of-docker` feature (D17) and the `ms-ossdata.vscode-pgsql` extension (D18) to `devcontainer.json`. The datasource and Flyway environment variables (D3) are added in Phase B together with the PostgreSQL driver, so the H2-based starter keeps working until then.
+- [x] **Scope:** Add a `postgres:18` service to `.devcontainer/docker-compose.yml` with a named volume (PG 18 images store data under `/var/lib/postgresql`), a `pg_isready` health check, `POSTGRES_DB=sharewise` and dev-only admin credentials; the `dev` service waits for it to be healthy. Mount the bootstrap scripts as init scripts. Add the `docker-outside-of-docker` feature (D17) and the `ms-ossdata.vscode-pgsql` extension (D18) to `devcontainer.json`. The datasource and Flyway environment variables (D3) are added in Phase B together with the PostgreSQL driver, so the H2-based starter keeps working until then.
 - **New files** in `src/backend/sharewise/src/test/resources/db/bootstrap/`, shared by dev container, tests and CI:
     - `01-create-roles.sql` – idempotent creation of `sharewise_migrator` and `sharewise_app` (cluster-level, once per server, D2).
     - `02-grant-database-access.sql` – `CONNECT`/`CREATE` for the migrator and `CONNECT` for the application role on the **current** database (once per database, so it also serves P1.3c's disposable databases).
