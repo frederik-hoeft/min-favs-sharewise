@@ -21,3 +21,11 @@ export function displayMoney(cents: number): string {
   const absolute = Math.abs(cents);
   return new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(absolute / 100);
 }
+
+/** Stable display tones for this fictional group; not a financial-domain property. */
+export const previewAvatarTones = {
+  Maya: "indigo",
+  Leo: "rose",
+  Ana: "violet",
+  Noah: "plum",
+} as const;

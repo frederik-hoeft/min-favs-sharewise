@@ -1,7 +1,7 @@
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 11px;
+  gap: 0.6875rem;
   color: var(--sw-ink);
   white-space: nowrap;
 }
@@ -9,26 +9,33 @@
 .symbol {
   position: relative;
   display: block;
-  width: 30px;
-  height: 30px;
-
+  width: 1.875rem;
+  height: 1.875rem;
   span {
     position: absolute;
-    width: 19px;
-    height: 19px;
-    border: 3px solid var(--sw-accent);
-    border-radius: 7px;
+    width: 1.1875rem;
+    height: 1.1875rem;
+    border: 0.1875rem solid var(--sw-accent);
+    border-radius: 0.4375rem;
     transform: rotate(-9deg);
   }
-
-  span:first-child { top: 0; left: 0; }
-  span:last-child { bottom: 0; right: 0; background: var(--sw-page); }
+  span:first-child {
+    top: 0;
+    left: 0;
+  }
+  span:last-child {
+    bottom: 0;
+    right: 0;
+    background: var(--sw-page);
+  }
 }
 
 .wordmark {
-  font-size: 22px;
+  font-size: 1.375rem;
   letter-spacing: -0.065em;
   font-weight: 760;
 }
 
-.period { color: var(--sw-accent); }
+.period {
+  color: var(--sw-accent);
+}

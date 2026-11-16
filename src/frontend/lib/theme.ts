@@ -1,6 +1,6 @@
-import { Button, createTheme, type CSSVariablesResolver, Menu } from "@mantine/core";
+import { Button, Card, createTheme, type CSSVariablesResolver, Menu, Paper } from "@mantine/core";
 
-/** Candidate B: graphite neutrals with an explicitly non-green indigo accent. */
+/** Shared Quiet clarity foundation: graphite neutrals and a non-green indigo accent. */
 export const theme = createTheme({
   primaryColor: "indigoBrand",
   primaryShade: { light: 6, dark: 4 },
@@ -19,8 +19,8 @@ export const theme = createTheme({
     textWrap: "balance",
   },
   defaultRadius: "md",
-  radius: { xs: "5px", sm: "9px", md: "14px", lg: "20px", xl: "28px" },
-  spacing: { xs: "8px", sm: "12px", md: "16px", lg: "24px", xl: "32px" },
+  radius: { xs: "0.3125rem", sm: "0.5625rem", md: "0.875rem", lg: "1.25rem", xl: "1.75rem" },
+  spacing: { xs: "0.5rem", sm: "0.75rem", md: "1rem", lg: "1.5rem", xl: "2rem" },
   components: {
     Button: Button.extend({
       defaultProps: { radius: "xl" },
@@ -31,6 +31,13 @@ export const theme = createTheme({
           ? { root: { color: "var(--sw-action-ink)" } }
           : {},
     }),
+    Card: Card.extend({
+      defaultProps: { radius: "xl", withBorder: true },
+      styles: { root: { background: "var(--sw-surface)", borderColor: "var(--sw-border)" } },
+    }),
+    Paper: Paper.extend({
+      defaultProps: { radius: "xl" },
+    }),
     Menu: Menu.extend({
       defaultProps: { radius: "md", shadow: "md" },
     }),
@@ -40,7 +47,15 @@ export const theme = createTheme({
 /** Scheme-specific semantic roles, shared by public and future application views. */
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {
-    "--sw-content-width": "1180px",
+    "--container-size-content": "73.75rem",
+    "--sw-content-width": "var(--container-size-content)",
+    "--sw-on-inverse": "#ffffff",
+    "--sw-summary": "#272a4b",
+    "--sw-summary-muted": "#c1c4e7",
+    "--sw-summary-border": "#626897",
+    "--sw-inverse-muted": "#d4d6ef",
+    "--sw-inverse-kicker": "#bfc4ff",
+    "--sw-inverse-mark": "#909aff",
     "--sw-accent": "var(--mantine-primary-color-filled)",
   },
   light: {

@@ -1,0 +1,19 @@
+@use "sass:map";
+
+// Existing layout transitions, expressed in rem to scale with the root font size.
+// Keep responsive thresholds here rather than repeating media-query literals.
+$max-widths: (
+  compact: 24.375rem,
+  narrow: 31.25rem,
+  mobile: 38.125rem,
+  preview: 40.625rem,
+  tablet: 53.125rem,
+  details: 55.625rem,
+  desktop: 66.25rem,
+);
+
+@mixin down($name) {
+  @media (max-width: map.get($max-widths, $name)) {
+    @content;
+  }
+}

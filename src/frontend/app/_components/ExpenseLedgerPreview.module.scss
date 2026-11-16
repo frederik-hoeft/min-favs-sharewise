@@ -1,0 +1,153 @@
+@use "../../styles/breakpoints";
+@use "preview-panel" as panel;
+
+.panel {
+  @include panel.panel;
+}
+
+.kicker {
+  @include panel.kicker;
+}
+
+.title {
+  @include panel.heading;
+}
+
+.description {
+  @include panel.description;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem;
+}
+
+.ledger {
+  margin-top: 1.9375rem;
+  overflow: hidden;
+  border-color: var(--sw-border);
+}
+
+.ledgerHeader {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.8125rem 1.0625rem;
+  background: var(--sw-surface-subtle);
+  border-bottom: 1px solid var(--sw-border);
+  color: var(--sw-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.expenseRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1.0625rem;
+  border-bottom: 1px solid var(--sw-border);
+}
+
+.expenseIcon {
+  display: grid;
+  place-items: center;
+  width: 2.3125rem;
+  height: 2.3125rem;
+  flex-shrink: 0;
+  border-radius: 0.6875rem;
+  color: var(--sw-accent);
+  background: var(--sw-surface-accent);
+  font-size: 1.1875rem;
+}
+
+.expenseDescription {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 0.25rem;
+
+  strong {
+    color: var(--sw-ink);
+    font-size: 0.8125rem;
+    font-weight: 730;
+  }
+
+  span {
+    font-size: 0.6875rem;
+    color: var(--sw-muted);
+  }
+}
+
+.expenseAmount {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: right;
+  white-space: nowrap;
+
+  strong {
+    color: var(--sw-ink);
+    font-size: 0.8125rem;
+    font-weight: 730;
+  }
+
+  span {
+    font-size: 0.6875rem;
+    color: var(--sw-muted);
+  }
+}
+
+.allocation {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.0625rem;
+  background: var(--sw-surface-accent);
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1875rem;
+  }
+
+  strong {
+    color: var(--sw-ink);
+    font-size: 0.75rem;
+  }
+
+  > div span {
+    color: var(--sw-muted);
+    font-size: 0.6875rem;
+    line-height: 1.4;
+  }
+}
+
+.allocationIcon {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  background: var(--sw-accent);
+  color: var(--sw-on-inverse);
+  font-size: 1.3125rem;
+}
+
+@include breakpoints.down(narrow) {
+  .expenseRow {
+    padding: 0.8125rem 0.6875rem;
+    gap: 0.5625rem;
+  }
+
+  .expenseIcon {
+    width: 1.9375rem;
+    height: 1.9375rem;
+  }
+
+  .allocation {
+    padding: 0.8125rem;
+  }
+}

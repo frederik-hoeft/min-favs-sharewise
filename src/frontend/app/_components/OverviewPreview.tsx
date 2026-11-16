@@ -1,5 +1,6 @@
-import { Badge } from "@mantine/core";
-import { displayMoney, previewGroup } from "./preview-data";
+import { AvatarGroup, Badge, Paper, Title } from "@mantine/core";
+import { ParticipantAvatar } from "@/components/participants/ParticipantAvatar";
+import { displayMoney, previewAvatarTones, previewGroup } from "./preview-data";
 import styles from "./OverviewPreview.module.scss";
 
 const { members } = previewGroup;
@@ -9,7 +10,7 @@ export function OverviewPreview() {
   return (
     <div className={styles.scene} aria-label="Illustration of a ShareWise group overview">
       <div className={styles.grid} aria-hidden="true" />
-      <div className={styles.window}>
+      <Paper className={styles.window}>
         <div className={styles.windowBar}>
           <div className={styles.windowBrand}><span className={styles.brandDot} /> sharewise <span className={styles.slash}>/</span> Groups</div>
           <span className={styles.sample}>EXAMPLE VIEW</span>
@@ -18,14 +19,17 @@ export function OverviewPreview() {
           <div className={styles.groupHeader}>
             <div>
               <p className={styles.overline}>YOUR GROUP</p>
-              <h2>{previewGroup.name}</h2>
+              <Title order={2}>{previewGroup.name}</Title>
               <p className={styles.minor}>4 participants <span aria-hidden="true">·</span> EUR</p>
             </div>
-            <div className={styles.avatars} aria-label="Maya, Leo, Ana and Noah">
-              {members.map((member) => <span key={member.name} title={member.name}>{member.initials}</span>)}
-            </div>
+            <AvatarGroup className={styles.avatars} spacing="0.5625rem" aria-label="Maya, Leo, Ana and Noah">
+              {members.map((member) => (
+                <ParticipantAvatar key={member.name} name={member.name} initials={member.initials}
+                  tone={previewAvatarTones[member.name]} size="var(--sw-group-avatar-size)" />
+              ))}
+            </AvatarGroup>
           </div>
-          <div className={styles.summary}>
+          <Paper className={styles.summary}>
             <div>
               <p>Shared expenses</p>
               <strong>{displayMoney(previewGroup.sharedCents)}</strong>
@@ -36,15 +40,15 @@ export function OverviewPreview() {
               <p>External settlements recorded</p>
               <strong>{displayMoney(previewGroup.settlement.amountCents)}</strong>
             </div>
-          </div>
+          </Paper>
           <div className={styles.balanceTitle}>
-            <h3>Group balances</h3>
+            <Title order={3}>Group balances</Title>
             <Badge color="indigoBrand" variant="light" size="sm">Up to date</Badge>
           </div>
           <div className={styles.balances}>
             {members.map((member) => (
               <div className={styles.balance} key={member.name}>
-                <span className={styles.miniAvatar}>{member.initials}</span>
+                <ParticipantAvatar name={member.name} initials={member.initials} />
                 <span className={styles.person}>{member.name}</span>
                 <span className={member.balanceCents > 0 ? styles.positive : styles.negative}>
                   {member.balanceCents > 0 ? "+" : "−"}{displayMoney(member.balanceCents)}
@@ -54,11 +58,11 @@ export function OverviewPreview() {
           </div>
           <p className={styles.legend}>Positive balances are owed to a participant.</p>
         </div>
-      </div>
-      <div className={styles.floating} aria-hidden="true">
+      </Paper>
+      <Paper className={styles.floating} aria-hidden="true">
         <span className={styles.floatingIcon}>↗</span>
         <div><small>RECORDED SETTLEMENT</small><strong>{previewGroup.settlement.sender} → {previewGroup.settlement.recipient}</strong><span>{displayMoney(previewGroup.settlement.amountCents)} · outside ShareWise</span></div>
-      </div>
+      </Paper>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { Button, useMantineColorScheme } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { Providers } from "./providers";
+import { Providers } from "@/app/providers";
 
 function ThemeAwareButton({ onClick }: { onClick: () => void }) {
   const { colorScheme } = useMantineColorScheme();

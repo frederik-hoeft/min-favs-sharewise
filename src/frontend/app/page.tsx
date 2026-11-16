@@ -1,4 +1,4 @@
-import { Button } from "@mantine/core";
+import { Button, Container, Paper, Text, Title } from "@mantine/core";
 import { Brand } from "@/components/brand/Brand";
 import { AppearanceMenu } from "@/components/theme/AppearanceMenu";
 import { DetailsPreview } from "./_components/DetailsPreview";
@@ -16,7 +16,7 @@ export default function Home() {
     <>
       <a className={styles.skip} href="#main">Skip to content</a>
       <header className={styles.siteHeader}>
-        <div className={styles.headerInner}>
+        <Container size="content" className={styles.headerInner}>
           <a href="#top" className={styles.brandLink} aria-label="ShareWise, back to top"><Brand /></a>
           <nav className={styles.navigation} aria-label="Main navigation">
             <a href="#product">The product</a>
@@ -27,14 +27,14 @@ export default function Home() {
             <AppearanceMenu />
             <Button component="a" href="#product" size="sm" className={styles.headerCta}>Take a look <span aria-hidden="true">↗</span></Button>
           </div>
-        </div>
+        </Container>
       </header>
       <main id="main">
         <section className={styles.hero} id="top" aria-labelledby="hero-title">
           <div className={styles.heroCopy}>
             <div className={styles.eyebrow}><span className={styles.spark} /> GOOD WITH PEOPLE. GOOD WITH NUMBERS.</div>
-            <h1 id="hero-title">Keep the plans.<br /><span>Lose the math.</span></h1>
-            <p className={styles.heroLead}>Shared expenses don’t have to be complicated. Keep everyone in sync, see where the money went, and know exactly where things stand.</p>
+            <Title order={1} id="hero-title">Keep the plans.<br /><span>Lose the math.</span></Title>
+            <Text component="p" className={styles.heroLead}>Shared expenses don’t have to be complicated. Keep everyone in sync, see where the money went, and know exactly where things stand.</Text>
             <div className={styles.heroActions}>
               <Button component="a" href="#product" size="lg" rightSection={<span aria-hidden="true">↗</span>}>Explore ShareWise</Button>
               <Button component="a" href="#how-it-works" size="lg" variant="subtle" color="gray">See how it works <span aria-hidden="true">→</span></Button>
@@ -45,18 +45,18 @@ export default function Home() {
         </section>
 
         <section className={styles.thought} aria-label="What ShareWise is for">
-          <div className={styles.thoughtInner}>
+          <Container size="content" className={styles.thoughtInner}>
             <span className={styles.thoughtMark}>“</span>
             <p>Less back-and-forth about money.<br /><strong>More time for everything else.</strong></p>
             <span className={styles.thoughtAside}>A clearer way to keep the group together.</span>
-          </div>
+          </Container>
         </section>
 
         <section className={styles.productSection} id="product" aria-labelledby="product-title">
           <div className={styles.sectionHeading}>
             <div>
               <span className={styles.sectionKicker}>THE DETAILS, TAKEN CARE OF</span>
-              <h2 id="product-title">Made for the way<br />we actually share.</h2>
+              <Title order={2} id="product-title">Made for the way<br />we actually share.</Title>
             </div>
             <p>From splitting the first bill to looking back at a correction, ShareWise keeps the important details easy to find. These are illustrative product views.</p>
           </div>
@@ -64,36 +64,36 @@ export default function Home() {
         </section>
 
         <section className={styles.stepsSection} id="how-it-works" aria-labelledby="steps-title">
-          <div className={styles.stepsHeading}>
+          <Container size="content" px={0} className={styles.stepsHeading}>
             <span className={styles.sectionKicker}>SIMPLE BY DESIGN</span>
-            <h2 id="steps-title">Good for the group.<br />Easy on everyone.</h2>
-          </div>
-          <div className={styles.steps}>
+            <Title order={2} id="steps-title">Good for the group.<br />Easy on everyone.</Title>
+          </Container>
+          <Container size="content" px={0} className={styles.steps}>
             {steps.map((step) => (
               <div className={styles.step} key={step.number}>
                 <span className={styles.stepNumber}>{step.number}</span>
-                <h3>{step.title}</h3>
+                <Title order={3}>{step.title}</Title>
                 <p>{step.text}</p>
               </div>
             ))}
-          </div>
+          </Container>
         </section>
 
-        <section className={styles.closing} id="about" aria-labelledby="closing-title">
+        <Paper component="section" className={styles.closing} id="about" aria-labelledby="closing-title">
           <div className={styles.closingMark} aria-hidden="true"><span /><span /></div>
           <div>
             <span className={styles.closingKicker}>MADE FOR SHARING</span>
-            <h2 id="closing-title">Better together.<br />Clearer with ShareWise.</h2>
+            <Title order={2} id="closing-title">Better together.<br />Clearer with ShareWise.</Title>
             <p>One shared view of expenses, balances, and the decisions along the way. No payment processing, no mystery math.</p>
           </div>
           <Button component="a" href="#top" color="gray" variant="white" size="md" rightSection={<span aria-hidden="true">↑</span>}>Back to top</Button>
-        </section>
+        </Paper>
       </main>
-      <footer className={styles.footer}>
+      <Container component="footer" size="content" className={styles.footer}>
         <Brand />
         <span>Thoughtfully simple group finances.</span>
         <a href="#top">Back to top ↑</a>
-      </footer>
+      </Container>
     </>
   );
 }

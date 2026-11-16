@@ -2,9 +2,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { describe, expect, it } from "vitest";
-import Home from "./page";
-import { Providers } from "./providers";
-import { displayMoney, previewGroup } from "./_components/preview-data";
+import Home from "@/app/page";
+import { Providers } from "@/app/providers";
+import { displayMoney, previewGroup } from "@/app/_components/preview-data";
 
 function renderHome() {
   return render(<Providers><Home /></Providers>);
@@ -61,6 +61,18 @@ describe("ShareWise landing page", () => {
     expect(screen.getByText("Noah paid Maya")).toBeInTheDocument();
     expect(screen.getByText(/No transfers through ShareWise/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /settle|pay|add expense|create group/i })).not.toBeInTheDocument();
+  });
+
+  it("renders the reusable financial panels as non-interactive illustrations", () => {
+    renderHome();
+
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.getByRole("heading", { name: "Group balances" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Every expense, in its place." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Paid in real life. Recorded here." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Clarity, even when plans change." })).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Maya").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByLabelText("Noah").length).toBeGreaterThanOrEqual(1);
   });
 
   it("has no detectable structural accessibility violations", async () => {
