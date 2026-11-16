@@ -2,9 +2,10 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  root: fileURLToPath(new URL("..", import.meta.url)),
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL(".", import.meta.url)),
+      "@": fileURLToPath(new URL("..", import.meta.url)),
     },
   },
   test: {
@@ -12,8 +13,8 @@ export default defineConfig({
     environmentOptions: {
       jsdom: { url: "http://localhost:3000" },
     },
-    setupFiles: ["./test/setup.ts"],
-    include: ["**/*.test.{ts,tsx}"],
+    setupFiles: ["./tests/setup.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
     clearMocks: true,
   },
 });

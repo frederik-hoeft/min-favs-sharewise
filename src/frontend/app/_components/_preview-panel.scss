@@ -1,0 +1,36 @@
+@use "../../styles/breakpoints";
+
+// Shared styling for the three landing-page illustration cards; not a global UI component.
+@mixin panel {
+  min-width: 0;
+  padding: clamp(1.5625rem, 3.2vw, 2.5rem);
+
+  @include breakpoints.down(narrow) {
+    padding: 1.375rem;
+  }
+}
+
+@mixin kicker {
+  display: inline-block;
+  color: var(--sw-accent);
+  letter-spacing: 0.13em;
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+@mixin heading {
+  font-size: clamp(1.4375rem, 2.4vw, 1.875rem);
+  line-height: 1.17;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+  margin: 0.9375rem 0 0.625rem;
+  color: var(--sw-ink);
+}
+
+@mixin description {
+  margin: 0;
+  line-height: 1.65;
+  font-size: 0.875rem;
+  color: var(--sw-muted);
+  max-width: 23.75rem;
+}

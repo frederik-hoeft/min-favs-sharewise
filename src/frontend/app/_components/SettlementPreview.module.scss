@@ -1,0 +1,62 @@
+@use "../../styles/breakpoints";
+@use "preview-panel" as panel;
+
+.panel {
+  @include panel.panel;
+  flex: 0 0 auto;
+}
+
+.kicker {
+  @include panel.kicker;
+}
+
+.title {
+  @include panel.heading;
+}
+
+.description {
+  @include panel.description;
+}
+
+.transfer {
+  margin-top: 1.5625rem;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--sw-border);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.avatars {
+  flex-shrink: 0;
+}
+
+.transferDescription {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1875rem;
+
+  strong {
+    color: var(--sw-ink);
+    font-size: 0.75rem;
+  }
+
+  span {
+    color: var(--sw-muted);
+    font-size: 0.625rem;
+    line-height: 1.35;
+  }
+}
+
+.transferAmount {
+  color: var(--sw-accent);
+  font-size: 1.125rem;
+}
+
+@include breakpoints.down(narrow) {
+  .transfer {
+    flex-wrap: wrap;
+  }
+}

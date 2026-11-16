@@ -18,7 +18,7 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, H2/H2 console, operation-scoped DI and transaction management, Lombok, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). PostgreSQL persistence and Spring Modulith event publication remain architectural targets rather than installed backend features.
 
-The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The current homepage is a neutral starter, not the P2.0e landing-page design. Its server-side route handler and current container image belong to the starter. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below still describe the starter.
+The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. Its server-side route handler and current container image belong to the starter. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below still describe the starter.
 
 ## Build, test and run
 
@@ -37,7 +37,8 @@ cd src/frontend
 npm ci
 npm run lint
 npm run typecheck
-npm exec --offline -- vitest run
+npm run test
+npm run test:typecheck
 npm run build
 npm run dev
 ```

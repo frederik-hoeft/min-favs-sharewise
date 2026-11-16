@@ -1,6 +1,6 @@
 # ShareWise frontend
 
-This directory contains the Next.js / React / TypeScript frontend for ShareWise. The UI is currently a starter page, not the implemented expense-sharing application. The server-side `/api/greetings` route forwards requests to the Spring Boot `/greeting` example endpoint.
+This directory contains the Next.js / React / TypeScript frontend for ShareWise. The homepage demonstrates the **selected Quiet clarity visual foundation** with illustrative, nonfunctional financial previews. It is not the implemented expense-sharing application. The server-side `/api/greetings` route forwards requests to the Spring Boot `/greeting` example endpoint.
 
 ## Develop and validate
 
@@ -18,15 +18,18 @@ Run the frontend checks before submitting changes:
 ```sh
 npm run lint
 npm run typecheck
-npm exec --offline -- vitest run
+npm run test
+npm run test:typecheck
 npm run build
 ```
 
-The frontend component and accessibility smoke tests run with Vitest, React Testing Library and axe-core. The tests require no backend; jsdom does not provide meaningful color-contrast or responsive-layout verification, so those remain browser-level checks. The checked-in [Mantine component reference](../../.agents/references/frontend-mantine-llms-full.txt) and [frontend agent instructions](AGENTS.md) document the component/styling conventions.
+The separate `tests/` package contains component, theme, and accessibility smoke tests (Vitest, React Testing Library, and axe-core). Its own `package.json` and TypeScript project share the locked dependencies installed by `npm ci` at the frontend root. The production TypeScript project excludes this test project. The tests require no backend; jsdom does not provide meaningful color-contrast or responsive-layout verification, so those remain browser-level checks. The checked-in [Mantine component reference](../../.agents/references/frontend-mantine-llms-full.txt) and [frontend agent instructions](AGENTS.md) document the component/styling conventions.
 
-The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The current page is a neutral starter, not the P2.0e landing-page design. Mantine owns standard component styles and their shared color scheme; the root `app/providers.tsx` installs the theme from `lib/theme.ts`. `ColorSchemeScript` initializes light/dark/system selection before hydration.
+For directory ownership, route-local versus shared components, and the intended domain-first service organization, see the [frontend architecture guide](../../docs/architecture/frontend.md).
 
-Use adjacent `*.module.scss` files for local layout and composition, consuming Mantine CSS variables for shared tokens. `app/globals.scss` is reserved for document-level rules; component defaults and cross-app variants belong in the Mantine theme, not scattered global overrides. No Tailwind or external font service is required.
+The frontend uses browser/system fonts, not `next/font/google`, so the production build does not fetch fonts from Google. The landing page uses the selected [Quiet clarity design foundation](../../docs/design/sharewise-design-foundation.md); its finance illustrations remain static examples, not production workflows. Mantine owns standard component styles and their shared color scheme; the root `app/providers.tsx` installs the theme and semantic light/dark roles from `lib/theme.ts`. `ColorSchemeScript` initializes light/dark/system selection before hydration.
+
+Use adjacent `*.module.scss` files for local layout and composition, consuming Mantine CSS variables for shared tokens. Import `styles/_breakpoints.scss` for shared media queries; use `rem` for dimensions and typography, except simple borders. Mantine `Container` size `content` aligns main page sections. `app/globals.scss` is reserved for document-level rules; component defaults and cross-app variants belong in the Mantine theme, not scattered global overrides. No Tailwind or external font service is required.
 
 The current `output: "standalone"` and server-side greeting proxy remain temporary starter behavior. The intended static export is a separate deployment task; `cacheComponents`/partial prefetching are intentionally not enabled because PPR is incompatible with static export.
 
