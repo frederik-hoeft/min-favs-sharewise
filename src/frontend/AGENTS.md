@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## ShareWise frontend conventions
 
-Follow the [frontend ownership and module organization](../../docs/architecture/frontend.md) for the separation between route-local presentation, shared UI and future domain-oriented services. Keep domain/application logic outside the Next.js route tree; add domain modules only for implemented workflows.
+Follow the [frontend ownership and module organization](../../docs/architecture/frontend.md) for the separation between route-local presentation, shared UI and future domain-oriented services. Keep domain/application logic outside the Next.js route tree; add domain modules only for implemented workflows. The public and application route groups own independent AppShell layouts. Add application features under `app/(app)/app/`, extending the existing navigation rather than installing another shell per page.
 
 Use Mantine (`@mantine/core`, `@mantine/hooks`) for standard controls, color-scheme management and shared theme defaults. Its **checked-in API and component documentation** is at [`.agents/references/frontend-mantine-llms-full.txt`](../../.agents/references/frontend-mantine-llms-full.txt). This reference is large: search for the relevant component, hook or Styles API section and read only that section before implementing or overriding Mantine behavior. Use the installed package types as the final authority for the version actually present. The official [Mantine documentation](https://mantine.dev/) is a supplementary reference when online access is available.
 

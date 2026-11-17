@@ -11,7 +11,8 @@ The current directories under `src/frontend/` have distinct responsibilities:
 | Location | Ownership |
 | --- | --- |
 | `app/` | Next.js routes, layouts, providers, page composition and route-local presentation |
-| `app/(public)/` | Public route group with an AppShell layout and route-local navigation, footer and landing-page previews |
+| `app/(public)/` | Public route group with its own AppShell layout, navigation, footer and landing-page previews |
+| `app/(app)/app/` | Application route group and `/app` URL subtree; shared AppShell, responsive navigation and route-owned feature pages |
 | `components/` | Reusable application UI, grouped by meaningful responsibility (`brand/`, `navigation/`, `participants/`, `theme/`) |
 | `lib/` | Cross-cutting, non-domain infrastructure or configuration, currently the Mantine theme |
 | `styles/` | Shared Sass utilities; component- and page-specific styling remains in adjacent SCSS Modules |
@@ -19,13 +20,15 @@ The current directories under `src/frontend/` have distinct responsibilities:
 
 A route can own a private `_components/` directory (and, when needed, `_lib/` for route-specific non-visual presentation helpers). A component stays close to its owning page while it represents that page's layout, illustration or workflow. A component moves to `components/` when it expresses a stable UI responsibility that other routes can realistically reuse. Grouping shared components by their subject, as with `components/participants/ParticipantAvatar.tsx`, makes ownership clearer than a flat collection of generic widgets. Extraction is not required merely because two elements use similar markup.
 
-Next.js treats `_components/` and other underscore-prefixed folders under `app/` as **private routing folders**: they are excluded from route matching, but are not TypeScript visibility or security boundaries. A `(public)` route group likewise does not contribute a URL segment, but allows a dedicated public layout to wrap several pages. Files such as `page.tsx` and `layout.tsx` are Next.js route conventions; neighboring `*.module.scss` files provide locally scoped styling. Application-wide standard controls and visual tokens are configured through Mantine rather than duplicated in these local styles.
+Next.js treats `_components/` and other underscore-prefixed folders under `app/` as **private routing folders**: they are excluded from route matching, but are not TypeScript visibility or security boundaries. Parenthesized route groups such as `(public)` and `(app)` do not contribute URL segments; the `app/` folder beneath `(app)` **does** create the `/app` URL prefix. Files such as `page.tsx` and `layout.tsx` are Next.js route conventions; neighboring `*.module.scss` files provide locally scoped styling. Application-wide standard controls and visual tokens are configured through Mantine rather than duplicated in these local styles.
 
 ## Application layouts
 
 The top-level `app/layout.tsx` owns the document, metadata and Mantine providers, not the application navigation. The public route group, `app/(public)/layout.tsx`, configures Mantine `AppShell` with a fixed header and `AppShell.Main` (the sole semantic `<main>` landmark). Its public navigation and footer live in `app/(public)/_components/`, alongside the landing-page-specific illustrations. Mantine owns the main-content offset; the page owns only in-page anchor clearance and section layouts. The shared `components/navigation/ShellHeader` provides the elevated, inset `AppShell.Header` surface, without embedding public navigation or any login state. Use Mantine's separately exported `AppShellHeader` and `AppShellMain` components when composing the shell from Next.js Server Components; reading compound properties such as `AppShell.Header` across the Server/Client Component boundary is not reliable.
 
-Authenticated application routes should have their own route-group layout with an independently configured `AppShell`, adopting `AppShell.Navbar`, `AppShell.Aside`, responsive collapse and associated navigation when those workflows exist. They can reuse `ShellHeader` and the global theme but do not need to inherit the public header contents. A single root AppShell that switches between marketing and authenticated states would unnecessarily couple unrelated navigation and layouts, complicate server/client responsibilities and prevent local ownership. Do not create an empty sidebar or authentication-aware runtime shell before the first real application route. The unrelated greeting starter remains outside the public route group.
+The application subtree, `app/(app)/app/`, has its own layout and `ApplicationShell`: the `AppShell` configuration and its `AppShell.Navbar` provide a persistent desktop navigation area, while Mantine `Drawer` provides a mobile flyout with a backdrop, focus management and Escape-key dismissal. The ShareWise symbol toggles the mobile flyout; the desktop wordmark links to `/app`. Both navigation surfaces use the same route links and active-state logic. The fixed header renders breadcrumbs based on the `/app` URL segments and an account avatar whose menu currently offers only appearance selection. A named scroll-to-top button fills unused header space behind other controls without intercepting their clicks. `AppShell.Main` owns the unique main landmark and responsive content offsets. `ShellHeader`, `SkipLink`, `Brand`, appearance options and the Mantine theme are shared with the public site, but neither layout imports the other's navigation.
+
+This is **an unauthenticated demo skeleton**, not a protected application or an implemented login flow. `/app`, `/app/dummy1` and `/app/dummy2` contain static placeholders; future features replace route content and extend navigation without replacing the layout. Authentication and optional `AppShell.Aside` are deliberately absent. A single root AppShell that switches between marketing and application states would conflate unrelated navigation concerns. The unrelated greeting starter remains outside both route groups.
 
 ## Future application and domain services
 
@@ -35,10 +38,12 @@ For new business workflows, use a **domain-first** organization outside the App 
 src/frontend/
 ├── app/
 │   ├── (public)/                     # Public AppShell layout and routes
-│   └── (app)/                        # Future authenticated layout (not implemented)
-│       └── groups/
-│           ├── page.tsx
-│           └── _components/           # Route-owned presentation
+│   └── (app)/                        # Application layout group (implemented)
+│       └── app/                      # URL prefix /app
+│           ├── _components/          # Application shell and navigation
+│           └── groups/              # Example future feature route
+│               ├── page.tsx
+│               └── _components/      # Route-owned presentation
 ├── components/
 │   └── participants/                   # Shared UI patterns
 ├── core/                               # Introduce with the first real workflow
@@ -73,4 +78,4 @@ The backend remains authoritative for permissions, expense allocation, balances,
 
 Component and interaction tests belong to the dedicated `tests/` project, not alongside production TSX files. As domain modules appear, test their pure logic and API-boundary behavior in the same test project, with test layout reflecting the owned module or route where useful. Browser-level checks still cover responsive layout and behavior that jsdom cannot establish.
 
-This structure is deliberately incremental. The route/shared-component split is in use now; `core/` and additional infrastructure directories are established only when a real application slice gives them meaningful contents. Reassess a boundary when reuse, data flow or ownership changes rather than keeping a speculative framework in place.
+This structure is deliberately incremental. The route/shared-component split and both AppShell layouts are in use now; `core/` and additional infrastructure directories are established only when a real business feature gives them meaningful contents. Reassess a boundary when reuse, data flow or ownership changes rather than keeping a speculative framework in place.

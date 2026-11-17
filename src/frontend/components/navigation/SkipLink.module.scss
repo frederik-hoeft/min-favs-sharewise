@@ -1,14 +1,14 @@
-.skip {
+.link {
   position: fixed;
   top: -6.25rem;
   left: 0.875rem;
-  z-index: 300;
-  background: var(--sw-surface);
-  color: var(--sw-ink);
+  z-index: 400;
   padding: 0.625rem 1rem;
   border-radius: var(--mantine-radius-sm);
-}
+  background: var(--sw-surface);
+  color: var(--sw-ink);
 
-.skip:focus-visible {
-  top: 0.75rem;
+  &:focus-visible {
+    top: 0.75rem;
+  }
 }

@@ -1,0 +1,43 @@
+@use "../../../../styles/breakpoints";
+
+.navbar {
+  padding: 0.75rem 0 1rem 1rem;
+  background: transparent;
+}
+
+.navSurface {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--sw-surface);
+  border-color: var(--sw-border);
+}
+
+.navLabel {
+  padding: 0.75rem 0.875rem 1rem;
+  letter-spacing: 0.12em;
+  color: var(--sw-muted);
+}
+
+.mainContent {
+  padding-block: 2rem 4rem;
+}
+
+// Keep the mobile flyout beneath the floating header so its brand symbol remains clickable.
+.mobileDrawerInner,
+.mobileDrawerOverlay {
+  top: 6rem;
+}
+
+@include breakpoints.down(mobile) {
+  .mobileDrawerInner,
+  .mobileDrawerOverlay {
+    top: 5rem;
+  }
+}
+
+@include breakpoints.down(appNavigation) {
+  .mainContent {
+    padding-block: 1rem 3rem;
+  }
+}
