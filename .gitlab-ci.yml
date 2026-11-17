@@ -13,6 +13,17 @@ stages:
 build-backend:
   stage: build
   image: eclipse-temurin:25-jdk
+  # PostgreSQL integration tests (*IT) run against this service; the GWDG runner offers no Docker-in-Docker.
+  services:
+    - name: postgres:18
+      alias: postgres
+  variables:
+    POSTGRES_DB: sharewise
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres_dev
+    SHAREWISE_TEST_DB_URL: jdbc:postgresql://postgres:5432/postgres
+    SHAREWISE_TEST_DB_ADMIN_USER: postgres
+    SHAREWISE_TEST_DB_ADMIN_PASSWORD: postgres_dev
   script:
     - cd src/backend/sharewise
     - chmod +x mvnw

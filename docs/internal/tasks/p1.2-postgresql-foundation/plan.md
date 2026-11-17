@@ -31,32 +31,25 @@
 
 ## Phase D – Integration-test provisioning and tests
 
-***transferred to P1.3c***
-
-- [ ] **Scope:** Test support in `src/test/java/.../shared/infra/persistence/testing/` (name to be aligned with P1.3c):
-    - Server provisioning: PostgreSQL 18 Testcontainer by default; external server when `SHAREWISE_TEST_DB_URL` and admin credentials are set (CI).
-    - Bootstrap: run `01-create-roles.sql` once per server.
-    - `migrate(database)`: run Flyway with the migrator role against a given database and expose application-role connection properties (D15). P1.3c later calls this for each disposable database.
-    - Clear failure when neither Docker nor an external URL is available (D16).
-- **Integration tests (`*IT`):** `ShareWiseApplicationIT` (TC-4, plus P1.3b's transaction-manager and jOOQ checks against PostgreSQL), `BaselineMigrationIT` (TC-3, TC-5), `DatabaseRolePermissionsIT` (TC-10, TC-11, TC-12 using a temporary test table created by the migrator).
-- **Verification:** TC-6 checked manually by running `./mvnw verify` with Docker stopped.
-- **Gate:** `./mvnw verify` green in the dev container; test-support API reviewed with the P1.3c owner.
+- [x] **Scope:** Test support `PostgresTestDatabase` in `src/test/java/.../shared/infra/persistence/testing/` (D15):
+    - Server: the dev-container `postgres` service by default; another server via `SHAREWISE_TEST_DB_URL`, `SHAREWISE_TEST_DB_ADMIN_USER` and `SHAREWISE_TEST_DB_ADMIN_PASSWORD` (CI).
+    - Bootstrap: `01-create-roles.sql` per server (idempotent), a disposable `sharewise_it_*` database per test class, `02-grant-database-access.sql` in that database, dropped again after the class.
+    - `createMigrated()` applies the Flyway migrations as the migration role; `createBootstrapped()` leaves migration to the application under test.
+    - Clear `IllegalStateException` when no server is reachable (D16).
+- `maven-failsafe-plugin` runs `*IT` classes in `./mvnw verify`; `./mvnw test` stays database-free.
+- **Integration tests:** `BaselineMigrationIT` (TC-3 schemas and owners, TC-5 no cross-schema foreign keys, TC-10 no DDL and no Flyway-history access for the application role, TC-11 default privileges, TC-12 `uuidv7()` keys), `ShareWiseApplicationPostgresIT` (TC-4: production context on PostgreSQL, Flyway applied as migrator, runtime connection as `sharewise_app`, `Transactions` + jOOQ against PostgreSQL 18).
+- **Verification:** TC-6 by running `./mvnw verify` with the PostgreSQL service stopped.
+- **Gate:** `./mvnw verify` green in the dev container.
 
 ## Phase E – CI
 
-***transferred to P1.3c***
-
-- [ ] **Scope:** In `.gitlab-ci.yml`, give `build-backend` a `postgres:18` service with admin credentials and set `SHAREWISE_TEST_DB_URL` so the fixture uses the external server (Q2: no Docker-in-Docker on the GWDG runner). Ensure `./mvnw clean verify` runs both Surefire and Failsafe and reports which suites ran.
+- [x] **Scope:** In `.gitlab-ci.yml`, give `build-backend` a `postgres:18` service (alias `postgres`) with admin credentials and the `SHAREWISE_TEST_DB_*` variables (Q2: no Docker-in-Docker on the GWDG runner). `./mvnw clean verify` runs Surefire and Failsafe.
 - **Tests:** TC-8 (merge request pipeline green with integration tests against the CI service).
 - **Gate:** Green pipeline on the GWDG runner.
 
 ## Phase F – Documentation and close-out
 
 - [x] **Scope:** Reconcile steady-state docs: `docs/development.md` (new "Database" section: service, roles, migrations, overrides, inspection, reset, H2 test configuration; separate-container note), `docs/stack/persistence.md` and `docs/stack/overview.md` (implementation status).
-- **Manual acceptance:** TC-1 on the rebuilt dev container (application starts against PostgreSQL 18 as `sharewise_app`, Flyway creates the five context schemas and `flyway` as `sharewise_migrator`); TC-2 (`./mvnw test`: 71 tests, 0 failures).
+- **Manual acceptance:** TC-1 on the rebuilt dev container (application starts against PostgreSQL 18 as `sharewise_app`, Flyway creates the five context schemas and `flyway` as `sharewise_migrator`); TC-2 (`./mvnw test` green without PostgreSQL); `./mvnw verify` green with the `*IT` tests; TC-8 green pipeline.
 - **After merge:** Discord FYI about the dependency changes (offline handoff).
 - **Gate:** Docs describe the implemented state; MR approved and merged.
-
-## Scope change: Phases D and E move to P1.3c
-
-PostgreSQL test provisioning (Phase D) and its CI execution (Phase E) overlap closely with the [P1.3c integration-test infrastructure](../p1.3c-integration-tests/specification.md) and are implemented there, on top of the P1.2 bootstrap scripts, migrations and configuration (pending confirmation by the P1.3c owner). P1.2 is complete with Phases A–C and F. The corresponding test cases (TC-3–TC-6, TC-8, TC-10–TC-12) are verified with P1.3c; the role permissions were checked manually against PostgreSQL during Phase C.

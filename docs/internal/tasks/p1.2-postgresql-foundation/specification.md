@@ -15,11 +15,11 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 | Environment | PostgreSQL provisioning | Role bootstrap |
 | --- | --- | --- |
 | Dev container | `postgres` service in `.devcontainer/docker-compose.yml`, named data volume, health check | Shared bootstrap script as container init script |
-| Integration tests (local) | Testcontainers PostgreSQL via Docker-outside-of-Docker | Fixture runs the shared bootstrap script |
+| Integration tests (local) | The dev-container `postgres` service; each test class creates and drops its own database | Test fixture runs the shared bootstrap scripts |
 | CI (GWDG runner) | `postgres:18` GitLab CI service; the GWDG runner does not offer Docker-in-Docker | Fixture runs the shared bootstrap script against the service |
 | Production / Compose deployment | Out of scope (P8.1) | Out of scope (P8.x) |
 
-- **D1 – PostgreSQL version:** PostgreSQL **18**, pinned to the same major version in the dev container, Testcontainers image and CI service.
+- **D1 – PostgreSQL version:** PostgreSQL **18**, pinned to the same major version in the dev container and the CI service.
 - **D2 – Database roles:** Two roles are used from the start.
   - **Migration role** (for example `sharewise_migrator`): owns the context schemas and executes Flyway migrations (DDL).
   - **Application role** (for example `sharewise_app`): used by the application's runtime connection. It has `USAGE` on the context schemas and `SELECT`, `INSERT`, `UPDATE`, `DELETE` on their tables and sequences, granted through default privileges so that tables created by later migrations are covered automatically. It cannot create, alter or drop database objects and has no access to the Flyway history schema.
@@ -50,15 +50,15 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 
 ### Tests
 
-- **D14 – Test split:** `./mvnw test` runs unit tests and database-free Spring tests (including the P1.3a/P1.3b H2-based tests) and requires neither Docker nor PostgreSQL. PostgreSQL integration tests are named `*IT`, run in `./mvnw verify` (Maven Failsafe) and require real PostgreSQL. Until PostgreSQL test provisioning exists, the full-context Spring tests (`ShareWiseApplicationTests`, `TransactionWebScopeIntegrationTests`) run in `./mvnw test` on an in-memory H2 database through a test-only configuration override with Flyway disabled; they move to PostgreSQL together with the provisioning (D15).
-- **D15 – PostgreSQL test provisioning:** P1.2 provides the minimal PostgreSQL provisioning that the [P1.3c integration-test infrastructure](../p1.3c-integration-tests/specification.md) builds on: a PostgreSQL 18 server (Testcontainers locally, an external JDBC URL in CI), the cluster-wide role bootstrap, and a reusable routine that migrates a given database with the migration role and connects the application with the application role. Because roles are cluster-level but schemas, grants and default privileges are per database, the routine works for any database on the server, including the disposable per-fixture databases P1.3c introduces. Rollback-isolated harnesses, per-fixture database lifecycle and parallel execution belong to P1.3c, not P1.2.
+- **D14 – Test split:** `./mvnw test` runs unit tests and database-free Spring tests (including the P1.3a/P1.3b H2-based tests) and requires neither Docker nor PostgreSQL. PostgreSQL integration tests are named `*IT`, run in `./mvnw verify` (Maven Failsafe) and require real PostgreSQL. The existing full-context Spring tests (`ShareWiseApplicationTests`, `TransactionWebScopeIntegrationTests`) keep running in `./mvnw test` on an in-memory H2 database through a test-only configuration override with Flyway disabled; `ShareWiseApplicationPostgresIT` starts the same production context against PostgreSQL.
+- **D15 – PostgreSQL test provisioning:** A reusable test fixture (`PostgresTestDatabase`) connects to an **external PostgreSQL 18 server** with administrative credentials: the dev-container `postgres` service by default, or the server configured via `SHAREWISE_TEST_DB_URL`, `SHAREWISE_TEST_DB_ADMIN_USER` and `SHAREWISE_TEST_DB_ADMIN_PASSWORD` (CI service). It runs the cluster-wide role bootstrap, creates a disposable database per test class, grants database access, optionally applies the Flyway migrations as the migration role, and drops the database afterwards. Because roles are cluster-level but schemas, grants and default privileges are per database, the same routine serves any later per-fixture database. Local tests and CI use the same mechanism, so neither depends on Testcontainers or Docker-in-Docker. Rollback-isolated harnesses, parallel execution and PostgreSQL transaction-contract evidence remain with P1.3c/P1.5.
 - **D16 – No silent fallback:** If PostgreSQL is unavailable, integration tests fail with a clear message. They never pass via H2 or mocks.
-- **D17 – Docker-outside-of-Docker in the dev container:** The dev container receives access to the host's Docker engine through the `docker-outside-of-docker` Dev Container feature, so Testcontainers works there.
+- **D17 – Docker-outside-of-Docker in the dev container:** The dev container receives access to the host's Docker engine through the `docker-outside-of-docker` Dev Container feature. P1.2's tests do not need it (D15); it remains available for later container-based tooling such as Testcontainers in P1.3c.
 
 ### Developer tooling and dependencies
 
 - **D18 – PostgreSQL extension:** The dev container installs the `ms-ossdata.vscode-pgsql` VS Code extension as a visual client for inspecting the database and running test queries.
-- Remove `spring-boot-h2console` and remove `h2` from the runtime classpath. P1.3b's H2-based transaction tests (`TransactionsIntegrationTests`, `RelationalTransactionIntegrationTests`, `JooqAccessIntegrationTests`, `JpaAccessIntegrationTests`) configure their own in-memory datasource, so `h2` remains a **test-scope** dependency until P1.3c moves that coverage to PostgreSQL. Add the PostgreSQL JDBC driver, Flyway (core + PostgreSQL module) and Testcontainers PostgreSQL (test scope). Exact artifact names and versions follow the Spring Boot 4.1 dependency management and are confirmed in the plan.
+- Remove `spring-boot-h2console` and remove `h2` from the runtime classpath. P1.3b's H2-based transaction tests (`TransactionsIntegrationTests`, `RelationalTransactionIntegrationTests`, `JooqAccessIntegrationTests`, `JpaAccessIntegrationTests`) configure their own in-memory datasource, so `h2` remains a **test-scope** dependency until P1.3c moves that coverage to PostgreSQL. Add the PostgreSQL JDBC driver, Flyway (core + PostgreSQL module) and the Maven Failsafe plugin for `*IT` tests. Exact artifact names and versions follow the Spring Boot 4.1 dependency management and are confirmed in the plan.
 - The offline dependency handoff is a local convenience for the ChatGPT workflow. After this MR is merged, a short FYI in the team Discord announces the dependency change so that members using that workflow regenerate their handoff archives.
 
 ## Scope
@@ -96,7 +96,7 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 | TC-3 | Integration | Empty PostgreSQL 18 | Run bootstrap and migrations through the fixture | Schemas `identity`, `groups`, `finance`, `files`, `notifications` and the Flyway history exist |
 | TC-4 | Integration | Migrated database | Application context starts with `ddl-auto=validate` | Context loads (replaces the starter context-load test) |
 | TC-5 | Integration | Migrated database | Query `pg_constraint` for foreign keys whose referencing and referenced tables are in different schemas | Result is empty |
-| TC-6 | Integration | No reachable PostgreSQL / Docker | `./mvnw verify` | Fails with a clear infrastructure message, not a pass |
+| TC-6 | Integration | No reachable PostgreSQL server | `./mvnw verify` | Fails with a clear infrastructure message, not a pass |
 | TC-7 | Build | — | `./mvnw dependency:tree` | `h2` appears only in test scope; the packaged application contains no H2 |
 | TC-8 | CI | Merge request pipeline on the GWDG runner | Run backend job | Unit and integration tests run and pass against the `postgres:18` CI service |
 | TC-9 | Manual | Dev container with applied baseline | Edit the applied baseline migration locally, restart backend | Startup fails on checksum validation (then revert) |
@@ -111,6 +111,6 @@ TC-12 applies once a test table or the first business table exists; the fixture 
 | ID | Question | Decision |
 | --- | --- | --- |
 | Q1 | Approve schema per context, identifiers, migration naming and jOOQ deferral? | Approved; identifiers revised to native `uuid` with `uuidv7()` default (D6) |
-| Q2 | Does the GWDG runner support Docker-in-Docker for Testcontainers? | No; CI uses a `postgres:18` service and the fixture's external-URL mode (D15) |
+| Q2 | Does the GWDG runner support Docker-in-Docker for Testcontainers? | No; CI uses a `postgres:18` service, and local tests use the dev-container database through the same fixture (D15) |
 | Q3 | Separate migration and application roles already in development? | Yes; least-privilege application role from the start (D2, D3) |
 | Q4 | Who regenerates the offline handoff after the POM change? | Local ChatGPT-workflow concern; Discord FYI after merge |
