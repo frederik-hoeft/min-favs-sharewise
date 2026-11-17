@@ -26,7 +26,7 @@ Subdomain classification and bounded contexts are not one-to-one: User & Identit
 
 ### Organizational versus financial membership
 
-A Group retains at least one member and at least one administrator. The final member cannot leave except through group deletion, and an administrator must transfer administration before leaving if they are the last one. Pending invitations are removed when their group is deleted. The deletion/retention implementation is a separate lifecycle concern.
+A Group retains at least one member and at least one administrator. The final member cannot leave except through group deletion, and an administrator must transfer administration before leaving if they are the last one. Group administrators can create and revoke shareable invitation links; links can optionally have an expiration time or single-use limit. A link is an invitation to join, not proof of current membership. Pending invitation links are invalidated when their group is deleted. The deletion/retention implementation is a separate lifecycle concern.
 
 Within a surviving FinancialGroup, `FinancialActor` records are **retained when organizational membership ends**. Departing deactivates the financial actor locally; rejoining reactivates the *same* `(groupId, userId)` identity. Existing expenses/settlements and their audit history remain associated with that actor. A FinancialGroup contains `1..*` actors; this does **not** imply every actor is currently active. Temporary cross-context replication lag must be tolerated. Caller authorization is a separate question from eligibility of referenced participants. Versioned, idempotent propagation and recovery are defined by the [messaging architecture](stack/messaging.md).
 
