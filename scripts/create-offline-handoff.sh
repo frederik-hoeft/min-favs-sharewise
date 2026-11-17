@@ -382,7 +382,8 @@ run_maven() {
     local bundle="$1" tools="$2" mode="$3" source="$4"
     (
         cd "$source/src/backend/sharewise"
-        "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" "$mode" clean verify
+        # PostgreSQL integration tests (*IT) need a database server, which the offline environment lacks.
+        "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" "$mode" -DskipITs clean verify
     )
 }
 
@@ -446,7 +447,7 @@ prepare_dependencies() {
         (
             cd "$source/src/backend/sharewise"
             "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" dependency:go-offline
-            "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" clean verify
+            "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" -DskipITs clean verify
         )
     fi
     if uses_node "$selection"; then

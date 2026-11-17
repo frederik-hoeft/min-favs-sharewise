@@ -14,16 +14,16 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
-import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -61,7 +61,8 @@ class ShareWiseApplicationPostgresIT {
     /**
      * The test classpath contains H2-only probe entities of the P1.3b tests inside production packages.
      * They have no PostgreSQL tables, so this context scans only production entity packages. There are
-     * none yet; list each context's entity package here when it introduces JPA entities.
+     * none yet. When the first production entity is added, move these probe entities to a test-only package and scan
+     * {@code de.hsh.favs.sharewise} here, so new entities are validated automatically.
      */
     @TestConfiguration(proxyBeanMethods = false)
     @EntityScan(basePackages = "de.hsh.favs.sharewise.persistence.production.entities")

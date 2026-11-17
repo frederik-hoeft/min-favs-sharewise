@@ -63,7 +63,7 @@ The Next.js `/api/greetings` route forwards server-side requests to the Spring B
 
 ```sh
 cd src/backend/sharewise
-./mvnw clean verify
+./mvnw clean package -DskipITs
 cd ../../..
 docker build -t sharewise-backend src/backend/sharewise
 docker build -t sharewise-frontend src/frontend
@@ -150,7 +150,7 @@ try (ServiceScope scope = scopeFactory.createScope()) {
 
 The factory may create independent nested DI scopes, but **nested `OperationDispatcher.dispatch(...)` calls are prohibited**. Do not use the outer scope's provider or already-created services from within a nested activation. Scopes and providers are confined to their creating thread; after closure, references must not be retained or used. Singleton-to-scoped dependency capture and escaped references are code-review concerns, not guarantees of automatic lifetime analysis.
 
-The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or the full `mvn clean verify`. In an isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution.
+The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or all database-free tests with `mvn test` (`mvn clean verify` additionally runs the PostgreSQL integration tests and needs the database, see [Database](#database)). In an isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution.
 
 ## Transaction and persistence adapter usage
 
@@ -189,7 +189,7 @@ public Optional<Thing> getThingById(UUID id) {
 
 The examples use illustrative domain types and a generated `THING` table, not existing business classes. An accessor can be retained by the operation-scoped repository; **the returned jOOQ/JPA facade, queries and managed entities cannot be retained across calls or transaction segments**. Once a segment ends, obtaining another facade through the accessor is valid in a subsequent segment, but previously issued facades remain invalid. See the [transaction architecture](architecture/transactions.md) for outcomes, lifecycle and failure semantics.
 
-From `src/backend/sharewise`, exercise Spring transaction coordination and both adapters using `mvn test -Dtest=TransactionsIntegrationTests,RelationalTransactionIntegrationTests` or `mvn clean verify`. These checks use instrumented transaction managers and test-only H2 datasources, not PostgreSQL. Production datasource interoperability, database isolation and engine-specific failure behavior require separate PostgreSQL integration tests.
+From `src/backend/sharewise`, exercise Spring transaction coordination and both adapters using `mvn test -Dtest=TransactionsIntegrationTests,RelationalTransactionIntegrationTests` or `mvn test`. These checks use instrumented transaction managers and test-only H2 datasources, not PostgreSQL. Production datasource interoperability, database isolation and engine-specific failure behavior require separate PostgreSQL integration tests.
 
 ## Development conventions
 
