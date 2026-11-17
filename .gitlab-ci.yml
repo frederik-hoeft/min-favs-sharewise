@@ -29,8 +29,13 @@ build-backend:
     - chmod +x mvnw
     - ./mvnw clean verify
   artifacts:
+    when: always
     paths:
       - src/backend/sharewise/target/*.jar
+    reports:
+      junit:
+        - src/backend/sharewise/target/surefire-reports/TEST-*.xml
+        - src/backend/sharewise/target/failsafe-reports/TEST-*.xml
     expire_in: 1 hour
 
 build-frontend:

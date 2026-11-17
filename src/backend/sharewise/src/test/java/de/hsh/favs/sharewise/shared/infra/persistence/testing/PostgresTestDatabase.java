@@ -49,16 +49,21 @@ public final class PostgresTestDatabase implements AutoCloseable {
             statement.execute(bootstrapScript("01-create-roles.sql"));
             statement.execute("CREATE DATABASE " + name);
         } catch (SQLException e) {
-            throw new IllegalStateException("PostgreSQL for integration tests is not reachable at " + ADMIN_URL
-                + " (user " + ADMIN_USER + "). Start the dev-container database or set SHAREWISE_TEST_DB_URL, "
-                + "SHAREWISE_TEST_DB_ADMIN_USER and SHAREWISE_TEST_DB_ADMIN_PASSWORD.", e);
+            if (isConnectionFailure(e)) {
+                throw new IllegalStateException("PostgreSQL for integration tests is not reachable at " + ADMIN_URL
+                    + " (user " + ADMIN_USER + "). Start the dev-container database or set SHAREWISE_TEST_DB_URL, "
+                    + "SHAREWISE_TEST_DB_ADMIN_USER and SHAREWISE_TEST_DB_ADMIN_PASSWORD.", e);
+            }
+            throw new IllegalStateException("Could not bootstrap roles or create test database " + name
+                + " on " + ADMIN_URL, e);
         }
         PostgresTestDatabase database = new PostgresTestDatabase(name, withDatabaseName(ADMIN_URL, name));
         try (Connection admin = database.connectAsAdmin(); Statement statement = admin.createStatement()) {
             statement.execute(bootstrapScript("02-grant-database-access.sql"));
         } catch (SQLException e) {
-            database.close();
-            throw new IllegalStateException("Could not grant database access on " + name, e);
+            IllegalStateException failure = new IllegalStateException("Could not grant database access on " + name, e);
+            closeSuppressing(database, failure);
+            throw failure;
         }
         return database;
     }
@@ -75,7 +80,7 @@ public final class PostgresTestDatabase implements AutoCloseable {
                 .load()
                 .migrate();
         } catch (RuntimeException e) {
-            database.close();
+            closeSuppressing(database, e);
             throw e;
         }
         return database;
@@ -105,6 +110,20 @@ public final class PostgresTestDatabase implements AutoCloseable {
         } catch (SQLException e) {
             throw new IllegalStateException("Could not drop test database " + name, e);
         }
+    }
+
+    private static void closeSuppressing(PostgresTestDatabase database, Throwable failure) {
+        try {
+            database.close();
+        } catch (RuntimeException closeFailure) {
+            failure.addSuppressed(closeFailure);
+        }
+    }
+
+    /** SQLSTATE class 08 ("connection exception") or no SQLSTATE at all (socket-level failure). */
+    private static boolean isConnectionFailure(SQLException e) {
+        String state = e.getSQLState();
+        return state == null || state.startsWith("08");
     }
 
     private static String withDatabaseName(String url, String databaseName) {

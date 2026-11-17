@@ -72,6 +72,7 @@ class BaselineMigrationIT {
         try (Connection app = database.connectAsApplication()) {
             assertThrows(SQLException.class, () -> execute(app, "CREATE TABLE groups.it_ddl_probe (x int)"));
             assertThrows(SQLException.class, () -> execute(app, "CREATE SCHEMA it_ddl_probe"));
+            assertThrows(SQLException.class, () -> execute(app, "CREATE TEMPORARY TABLE it_temp_probe (x int)"));
             assertThrows(SQLException.class, () -> execute(app, "SELECT * FROM flyway.flyway_schema_history"));
         }
     }

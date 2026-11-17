@@ -1,6 +1,6 @@
 # P1.2 – PostgreSQL and migration foundation
 
-**Status:** Specification for P1.2, revised after the first team review (MR !10) and aligned with P1.3b (MR !16). Covers the P0.3 database-contract decisions required by P1.2 and the P1.2 implementation scope. Nothing in this document is implemented yet. Implementation planning starts once the team approves this revision.
+**Status:** Specification for P1.2, revised after the first team review (MR !10) and aligned with P1.3b (MR !16). Covers the P0.3 database-contract decisions required by P1.2 and the P1.2 implementation scope. Implemented in MR !10; see the [implementation plan](plan.md) for phases and verification.
 
 **Related documents:** [persistence architecture](../../../stack/persistence.md), [application architecture](../../../architecture.md), [development guide](../../../development.md), [backlog](../backlog.md) (P0.3, P1.2).
 
@@ -22,7 +22,7 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 - **D1 – PostgreSQL version:** PostgreSQL **18**, pinned to the same major version in the dev container and the CI service.
 - **D2 – Database roles:** Two roles are used from the start.
   - **Migration role** (for example `sharewise_migrator`): owns the context schemas and executes Flyway migrations (DDL).
-  - **Application role** (for example `sharewise_app`): used by the application's runtime connection. It has `USAGE` on the context schemas and `SELECT`, `INSERT`, `UPDATE`, `DELETE` on their tables and sequences, granted through default privileges so that tables created by later migrations are covered automatically. It cannot create, alter or drop database objects and has no access to the Flyway history schema.
+  - **Application role** (for example `sharewise_app`): used by the application's runtime connection. It has `USAGE` on the context schemas and `SELECT`, `INSERT`, `UPDATE`, `DELETE` on their tables and sequences, granted through default privileges so that tables created by later migrations are covered automatically. It cannot create, alter or drop database objects (including temporary tables: `TEMPORARY` is revoked from `PUBLIC`) and has no access to the Flyway history schema.
   - Roles are cluster-level objects and are created by one idempotent **bootstrap SQL script** shared by the dev container, the integration-test fixture and CI. Flyway migrations create schemas and grants but not login roles.
 - **D3 – Connection configuration:** The runtime datasource reads `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` and `SPRING_DATASOURCE_PASSWORD` (application role). Flyway uses separate credentials (`SPRING_FLYWAY_USER`, `SPRING_FLYWAY_PASSWORD`, migration role). Defaults target the dev-container database and are dev-only credentials. No production credentials are committed.
 
@@ -35,7 +35,7 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 ### Migrations
 
 - **D7 – Single Flyway history in the modulith:** One Flyway configuration applies all migrations in version order at application startup, using the migration role. Extracted services later receive their own history.
-- **D8 – Layout and naming:** `src/main/resources/db/migration/<context>/V<yyyyMMddHHmm>__<context>_<description>.sql`, for example `db/migration/groups/V202611051200__groups_create_group_tables.sql`. Timestamp versions avoid number collisions between parallel branches. A migration that is older than the newest migration on `main` at merge time is re-timestamped before merge; `outOfOrder` stays disabled.
+- **D8 – Layout and naming:** `src/main/resources/db/migration/<context>/V<yyyyMMddHHmm>__<context>_<description>.sql`, for example `db/migration/groups/V202611051200__groups_create_group_tables.sql`. Cross-cutting migrations that belong to no single context (such as the baseline that creates all context schemas) live in `db/migration/platform/`. Timestamp versions avoid number collisions between parallel branches. A migration that is older than the newest migration on `main` at merge time is re-timestamped before merge; `outOfOrder` stays disabled.
 - **D9 – Immutable once committed:** A migration is immutable **once it is committed and pushed** to the shared repository; later changes are follow-up migrations (roll forward). While a migration is still local work in progress, developers may edit or delete it and reset their local database. Flyway's checksum validation runs on every startup.
 - **D10 – Baseline migration:** The first migration creates the five context schemas, the application role's schema grants and its default privileges. Business tables are introduced by the feature slices that own them (P2.x and later), not as placeholders.
 
@@ -94,7 +94,7 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 | TC-1 | Manual E2E | Fresh dev container (rebuild) | Start backend and frontend, open `/greetings` | App starts against PostgreSQL with the application role, Flyway applies the baseline with the migration role, greeting flow works |
 | TC-2 | Build | Machine without Docker / PostgreSQL | `./mvnw test` | Succeeds |
 | TC-3 | Integration | Empty PostgreSQL 18 | Run bootstrap and migrations through the fixture | Schemas `identity`, `groups`, `finance`, `files`, `notifications` and the Flyway history exist |
-| TC-4 | Integration | Migrated database | Application context starts with `ddl-auto=validate` | Context loads (replaces the starter context-load test) |
+| TC-4 | Integration | Bootstrapped empty database | Application context starts with Flyway enabled and `ddl-auto=validate`, scanning production entity packages only | Context loads; Flyway applied the baseline as migrator; runtime connection is `sharewise_app` |
 | TC-5 | Integration | Migrated database | Query `pg_constraint` for foreign keys whose referencing and referenced tables are in different schemas | Result is empty |
 | TC-6 | Integration | No reachable PostgreSQL server | `./mvnw verify` | Fails with a clear infrastructure message, not a pass |
 | TC-7 | Build | — | `./mvnw dependency:tree` | `h2` appears only in test scope; the packaged application contains no H2 |

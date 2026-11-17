@@ -13,19 +13,26 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
+import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.context.annotation.Bean;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * Starts the production application context against PostgreSQL (TC-4): Flyway migrates a fresh
- * database as the migration role and the runtime datasource connects as the application role.
+ * database as the migration role, Hibernate validates its mappings ({@code ddl-auto=validate}) and the
+ * runtime datasource connects as the application role.
  */
 @SpringBootTest
 @DirtiesContext
@@ -48,15 +55,38 @@ class ShareWiseApplicationPostgresIT {
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("spring.flyway.user", () -> PostgresTestDatabase.MIGRATOR_USER);
         registry.add("spring.flyway.password", () -> PostgresTestDatabase.MIGRATOR_PASSWORD);
-        // The test classpath contains H2-only probe entities of the P1.3b tests; there are no production
-        // entities yet, so Hibernate schema validation is exercised by the application startup itself.
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
     }
 
-    @AfterAll
-    static void drop() {
-        if (database != null) {
-            database.close();
+    /**
+     * The test classpath contains H2-only probe entities of the P1.3b tests inside production packages.
+     * They have no PostgreSQL tables, so this context scans only production entity packages. There are
+     * none yet; list each context's entity package here when it introduces JPA entities.
+     */
+    @TestConfiguration(proxyBeanMethods = false)
+    @EntityScan(basePackages = "de.hsh.favs.sharewise.persistence.production.entities")
+    static class ProductionEntitiesOnly {
+
+        /**
+         * Drops the test database when the context closes ({@code @DirtiesContext}), after the connection
+         * pool and the EntityManagerFactory: the datasource depends on this bean, so it is destroyed first.
+         */
+        @Bean(destroyMethod = "close")
+        PostgresTestDatabase postgresTestDatabase() {
+            return database;
+        }
+
+        @Bean
+        static BeanFactoryPostProcessor dropDatabaseAfterDataSource() {
+            return beanFactory -> {
+                if (!beanFactory.containsBeanDefinition("dataSource")) {
+                    return;
+                }
+                BeanDefinition dataSource = beanFactory.getBeanDefinition("dataSource");
+                String[] dependsOn = dataSource.getDependsOn() == null ? new String[0] : dataSource.getDependsOn();
+                dataSource.setDependsOn(Stream.concat(Arrays.stream(dependsOn), Stream.of("postgresTestDatabase"))
+                    .toArray(String[]::new));
+            };
         }
     }
 

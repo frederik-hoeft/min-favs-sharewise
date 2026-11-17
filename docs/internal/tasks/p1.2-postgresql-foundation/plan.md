@@ -1,6 +1,6 @@
 # P1.2 – Implementation plan
 
-**Status:** Draft plan for review. Implements the [P1.2 specification](specification.md); requirement IDs (D1–D18) and test cases (TC-1–TC-12) refer to it. A checked box means the phase is implemented, verified **and approved** in review.
+**Status:** Implemented in MR !10 (phases A–F). Implements the [P1.2 specification](specification.md); requirement IDs (D1–D18) and test cases (TC-1–TC-12) refer to it. A checked box means the phase is implemented, verified **and approved** in review.
 
 **Starting point:** `main` **after P1.3b (MR !16) is merged**; the P1.2 branch is updated from `main` before Phase B. P1.3b adds `spring-boot-starter-jooq`, `spring.jpa.open-in-view=false`, the `Transactions`/`JooqAccess`/`JpaAccess` infrastructure and H2-based transaction tests with their own in-memory datasources. The P1.3a/P1.3b tests stay database-free and must keep passing in `./mvnw test`. Only `ShareWiseApplicationTests` (`@SpringBootTest`, production context) needs PostgreSQL once H2 leaves the runtime classpath.
 
@@ -37,7 +37,7 @@
     - `createMigrated()` applies the Flyway migrations as the migration role; `createBootstrapped()` leaves migration to the application under test.
     - Clear `IllegalStateException` when no server is reachable (D16).
 - `maven-failsafe-plugin` runs `*IT` classes in `./mvnw verify`; `./mvnw test` stays database-free.
-- **Integration tests:** `BaselineMigrationIT` (TC-3 schemas and owners, TC-5 no cross-schema foreign keys, TC-10 no DDL and no Flyway-history access for the application role, TC-11 default privileges, TC-12 `uuidv7()` keys), `ShareWiseApplicationPostgresIT` (TC-4: production context on PostgreSQL, Flyway applied as migrator, runtime connection as `sharewise_app`, `Transactions` + jOOQ against PostgreSQL 18).
+- **Integration tests:** `BaselineMigrationIT` (TC-3 schemas and owners, TC-5 no cross-schema foreign keys, TC-10 no DDL and no Flyway-history access for the application role, TC-11 default privileges, TC-12 `uuidv7()` keys), `ShareWiseApplicationPostgresIT` (TC-4: production context on PostgreSQL with `ddl-auto=validate` over production entity packages, Flyway applied as migrator, runtime connection as `sharewise_app`, `Transactions` + jOOQ against PostgreSQL 18).
 - **Verification:** TC-6 by running `./mvnw verify` with the PostgreSQL service stopped.
 - **Gate:** `./mvnw verify` green in the dev container.
 
