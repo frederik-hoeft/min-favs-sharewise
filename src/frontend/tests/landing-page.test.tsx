@@ -2,18 +2,22 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { describe, expect, it } from "vitest";
-import Home from "@/app/page";
+import Home from "@/app/(public)/page";
+import PublicLayout from "@/app/(public)/layout";
 import { Providers } from "@/app/providers";
-import { displayMoney, previewGroup } from "@/app/_components/preview-data";
+import { displayMoney, previewGroup } from "@/app/(public)/_components/preview-data";
 
 function renderHome() {
-  return render(<Providers><Home /></Providers>);
+  return render(<Providers><PublicLayout><Home /></PublicLayout></Providers>);
 }
 
 describe("ShareWise landing page", () => {
   it("introduces the product and links only to real page sections", () => {
     renderHome();
-    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(screen.getByRole("contentinfo")).toBeInTheDocument();
+    expect(screen.getAllByRole("banner")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1, name: /keep the plans.*lose the math/i })).toBeVisible();
     expect(screen.getByRole("link", { name: /skip to content/i })).toHaveAttribute("href", "#main");
 
@@ -26,7 +30,10 @@ describe("ShareWise landing page", () => {
     }
     const header = screen.getByRole("banner");
     expect(within(header).getByRole("link", { name: /sharewise, back to top/i })).toHaveAttribute("href", "#top");
-    expect(within(header).getByRole("link", { name: /take a look/i })).toHaveAttribute("href", "#product");
+    const explore = within(header).getByRole("link", { name: /take a look/i });
+    expect(explore).toHaveAttribute("href", "#product");
+    expect(explore.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
+    expect(explore.textContent).toBe("Take a look");
     const closing = screen.getByRole("region", { name: /better together.*clearer with sharewise/i });
     const backToTop = within(closing).getByRole("link", { name: /back to top/i });
     expect(backToTop).toHaveAttribute("href", "#top");

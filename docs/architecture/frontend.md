@@ -11,7 +11,7 @@ The current directories under `src/frontend/` have distinct responsibilities:
 | Location | Ownership |
 | --- | --- |
 | `app/` | Next.js routes, layouts, providers, page composition and route-local presentation |
-| `app/_components/` | Landing-page-only illustrations and their static example data |
+| `app/(public)/` | Public route group with an AppShell layout and route-local navigation, footer and landing-page previews |
 | `components/` | Reusable application UI, grouped by meaningful responsibility (`brand/`, `navigation/`, `participants/`, `theme/`) |
 | `lib/` | Cross-cutting, non-domain infrastructure or configuration, currently the Mantine theme |
 | `styles/` | Shared Sass utilities; component- and page-specific styling remains in adjacent SCSS Modules |
@@ -19,7 +19,13 @@ The current directories under `src/frontend/` have distinct responsibilities:
 
 A route can own a private `_components/` directory (and, when needed, `_lib/` for route-specific non-visual presentation helpers). A component stays close to its owning page while it represents that page's layout, illustration or workflow. A component moves to `components/` when it expresses a stable UI responsibility that other routes can realistically reuse. Grouping shared components by their subject, as with `components/participants/ParticipantAvatar.tsx`, makes ownership clearer than a flat collection of generic widgets. Extraction is not required merely because two elements use similar markup.
 
-Next.js treats `_components/` and other underscore-prefixed folders under `app/` as **private routing folders**: they are excluded from route matching, but are not TypeScript visibility or security boundaries. Files such as `page.tsx` and `layout.tsx` are Next.js route conventions; neighboring `*.module.scss` files provide locally scoped styling. Application-wide standard controls and visual tokens are configured through Mantine rather than duplicated in these local styles. The shared `components/navigation/FloatingHeader` handles the sticky, elevated header frame; each route remains responsible for the navigation content it places inside it.
+Next.js treats `_components/` and other underscore-prefixed folders under `app/` as **private routing folders**: they are excluded from route matching, but are not TypeScript visibility or security boundaries. A `(public)` route group likewise does not contribute a URL segment, but allows a dedicated public layout to wrap several pages. Files such as `page.tsx` and `layout.tsx` are Next.js route conventions; neighboring `*.module.scss` files provide locally scoped styling. Application-wide standard controls and visual tokens are configured through Mantine rather than duplicated in these local styles.
+
+## Application layouts
+
+The top-level `app/layout.tsx` owns the document, metadata and Mantine providers, not the application navigation. The public route group, `app/(public)/layout.tsx`, configures Mantine `AppShell` with a fixed header and `AppShell.Main` (the sole semantic `<main>` landmark). Its public navigation and footer live in `app/(public)/_components/`, alongside the landing-page-specific illustrations. Mantine owns the main-content offset; the page owns only in-page anchor clearance and section layouts. The shared `components/navigation/ShellHeader` provides the elevated, inset `AppShell.Header` surface, without embedding public navigation or any login state. Use Mantine's separately exported `AppShellHeader` and `AppShellMain` components when composing the shell from Next.js Server Components; reading compound properties such as `AppShell.Header` across the Server/Client Component boundary is not reliable.
+
+Authenticated application routes should have their own route-group layout with an independently configured `AppShell`, adopting `AppShell.Navbar`, `AppShell.Aside`, responsive collapse and associated navigation when those workflows exist. They can reuse `ShellHeader` and the global theme but do not need to inherit the public header contents. A single root AppShell that switches between marketing and authenticated states would unnecessarily couple unrelated navigation and layouts, complicate server/client responsibilities and prevent local ownership. Do not create an empty sidebar or authentication-aware runtime shell before the first real application route. The unrelated greeting starter remains outside the public route group.
 
 ## Future application and domain services
 
@@ -28,9 +34,11 @@ For new business workflows, use a **domain-first** organization outside the App 
 ```text
 src/frontend/
 ├── app/
-│   └── groups/
-│       ├── page.tsx
-│       └── _components/                 # Route-owned presentation
+│   ├── (public)/                     # Public AppShell layout and routes
+│   └── (app)/                        # Future authenticated layout (not implemented)
+│       └── groups/
+│           ├── page.tsx
+│           └── _components/           # Route-owned presentation
 ├── components/
 │   └── participants/                   # Shared UI patterns
 ├── core/                               # Introduce with the first real workflow

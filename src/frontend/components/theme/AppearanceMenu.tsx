@@ -1,6 +1,6 @@
 "use client";
 
-import { ActionIcon, Menu, useMantineColorScheme, type MantineColorScheme } from "@mantine/core";
+import { ActionIcon, CheckIcon, Menu, useMantineColorScheme, type MantineColorScheme } from "@mantine/core";
 
 const choices: { value: MantineColorScheme; label: string }[] = [
   { value: "light", label: "Light" },
@@ -27,7 +27,7 @@ export function AppearanceMenu() {
           <Menu.Item
             key={value}
             onClick={() => setColorScheme(value)}
-            rightSection={colorScheme === value ? <span aria-hidden="true">✓</span> : null}
+            rightSection={colorScheme === value ? <CheckIcon aria-hidden="true" width="0.875rem" height="0.875rem" /> : null}
             aria-label={`${label} theme${colorScheme === value ? ", selected" : ""}`}
           >
             {label}

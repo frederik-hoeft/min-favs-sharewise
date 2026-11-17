@@ -1,12 +1,14 @@
 @use "../../styles/breakpoints";
 
 .header {
-  position: sticky;
+  // AppShell owns fixed positioning and the content offset.
   top: 0.875rem;
   z-index: 20;
-  width: calc(100% - 3rem);
+  width: auto;
   max-width: calc(var(--sw-content-width) + 3rem);
-  margin: 0.875rem auto 0;
+  inset-inline: 1.5rem;
+  margin-inline: auto;
+  height: 5.125rem;
   background: var(--sw-surface);
   border: 1px solid var(--sw-border);
   border-radius: var(--mantine-radius-xl);
@@ -30,8 +32,8 @@
 @include breakpoints.down(mobile) {
   .header {
     top: 0.5rem;
-    width: calc(100% - 2rem);
-    margin-top: 0.5rem;
+    inset-inline: 1rem;
+    height: 4.5rem;
   }
 
   .content {
