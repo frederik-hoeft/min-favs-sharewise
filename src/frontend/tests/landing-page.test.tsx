@@ -37,9 +37,12 @@ describe("ShareWise landing page", () => {
     const closing = screen.getByRole("region", { name: /better together.*clearer with sharewise/i });
     const backToTop = within(closing).getByRole("link", { name: /back to top/i });
     expect(backToTop).toHaveAttribute("href", "#top");
+    expect(backToTop.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
     // Mantine white buttons use their filled color as label color. Gray was too pale.
     expect(backToTop.style.getPropertyValue("--button-color")).toBe("var(--mantine-color-dark-filled)");
     expect(screen.getByText("EXAMPLE VIEW")).toBeInTheDocument();
+    // Phosphor glyphs decorate the previews without introducing false controls.
+    expect(screen.getByText("Clear, equal allocations").closest("div")?.parentElement?.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
     expect(screen.getByText(/These are illustrative product views/i)).toBeInTheDocument();
   });
 

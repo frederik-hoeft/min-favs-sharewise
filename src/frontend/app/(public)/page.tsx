@@ -1,5 +1,5 @@
 import { Button, Container, Paper, Text, Title } from "@mantine/core";
-import { ArrowIcon } from "@/components/icons/ArrowIcon";
+import { ArrowRightIcon, ArrowUpIcon, ArrowUpRightIcon, SparkleIcon } from "@phosphor-icons/react/ssr";
 import { DetailsPreview } from "./_components/DetailsPreview";
 import { OverviewPreview } from "./_components/OverviewPreview";
 import styles from "./page.module.scss";
@@ -19,10 +19,10 @@ export default function Home() {
           <Title order={1} id="hero-title">Keep the plans.<br /><span>Lose the math.</span></Title>
           <Text component="p" className={styles.heroLead}>Shared expenses don’t have to be complicated. Keep everyone in sync, see where the money went, and know exactly where things stand.</Text>
           <div className={styles.heroActions}>
-            <Button component="a" href="#product" size="lg" rightSection={<ArrowIcon direction="up-right" />}>Explore ShareWise</Button>
-            <Button component="a" href="#how-it-works" size="lg" variant="subtle" color="gray" rightSection={<ArrowIcon direction="right" />}>See how it works</Button>
+            <Button component="a" href="#product" size="lg" rightSection={<ArrowUpRightIcon size="1rem" aria-hidden="true" />}>Explore ShareWise</Button>
+            <Button component="a" href="#how-it-works" size="lg" variant="subtle" color="gray" rightSection={<ArrowRightIcon size="1rem" aria-hidden="true" />}>See how it works</Button>
           </div>
-          <div className={styles.heroFootnote}><span aria-hidden="true">✦</span> One place for groups, shared costs, and the story behind them.</div>
+          <div className={styles.heroFootnote}><SparkleIcon size="1.1875rem" aria-hidden="true" /> One place for groups, shared costs, and the story behind them.</div>
         </div>
         <OverviewPreview />
       </section>
@@ -69,7 +69,7 @@ export default function Home() {
           <Title order={2} id="closing-title">Better together.<br />Clearer with ShareWise.</Title>
           <p>One shared view of expenses, balances, and the decisions along the way. No payment processing, no mystery math.</p>
         </div>
-        <Button component="a" href="#top" color="dark" variant="white" size="md" rightSection={<ArrowIcon direction="up" />}>Back to top</Button>
+        <Button component="a" href="#top" color="dark" variant="white" size="md" rightSection={<ArrowUpIcon size="1rem" aria-hidden="true" />}>Back to top</Button>
       </Paper>
     </>
   );

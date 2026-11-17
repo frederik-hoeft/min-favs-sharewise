@@ -1,4 +1,5 @@
 import { AvatarGroup, Badge, Paper, Title } from "@mantine/core";
+import { ArrowUpRightIcon } from "@phosphor-icons/react/ssr";
 import { ParticipantAvatar } from "@/components/participants/ParticipantAvatar";
 import { displayMoney, previewAvatarTones, previewGroup } from "./preview-data";
 import styles from "./OverviewPreview.module.scss";
@@ -36,7 +37,7 @@ export function OverviewPreview() {
               <span>Across 3 expenses</span>
             </div>
             <div className={styles.summaryRight}>
-              <span className={styles.summaryGlyph} aria-hidden="true">↗</span>
+              <span className={styles.summaryGlyph}><ArrowUpRightIcon size="1.0625rem" aria-hidden="true" /></span>
               <p>External settlements recorded</p>
               <strong>{displayMoney(previewGroup.settlement.amountCents)}</strong>
             </div>
@@ -60,7 +61,7 @@ export function OverviewPreview() {
         </div>
       </Paper>
       <Paper className={styles.floating} aria-hidden="true">
-        <span className={styles.floatingIcon}>↗</span>
+        <span className={styles.floatingIcon}><ArrowUpRightIcon size="1.25rem" aria-hidden="true" /></span>
         <div><small>RECORDED SETTLEMENT</small><strong>{previewGroup.settlement.sender} → {previewGroup.settlement.recipient}</strong><span>{displayMoney(previewGroup.settlement.amountCents)} · outside ShareWise</span></div>
       </Paper>
     </div>

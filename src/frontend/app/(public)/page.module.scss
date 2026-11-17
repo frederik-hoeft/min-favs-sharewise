@@ -81,9 +81,9 @@
   line-height: 1.5;
 }
 
-.heroFootnote span {
+.heroFootnote svg {
+  flex-shrink: 0;
   color: var(--sw-accent);
-  font-size: 1.1875rem;
 }
 
 .thought {

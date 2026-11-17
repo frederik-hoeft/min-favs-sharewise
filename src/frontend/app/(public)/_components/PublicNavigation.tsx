@@ -1,6 +1,6 @@
 import { Button } from "@mantine/core";
 import { Brand } from "@/components/brand/Brand";
-import { ArrowIcon } from "@/components/icons/ArrowIcon";
+import { ArrowUpRightIcon } from "@phosphor-icons/react/ssr";
 import { AppearanceMenu } from "@/components/theme/AppearanceMenu";
 import styles from "./PublicNavigation.module.scss";
 
@@ -17,7 +17,7 @@ export function PublicNavigation() {
       <div className={styles.actions}>
         <AppearanceMenu />
         <Button component="a" href="#product" size="sm" className={styles.cta}
-          rightSection={<ArrowIcon direction="up-right" />}>
+          rightSection={<ArrowUpRightIcon size="1rem" aria-hidden="true" />}>
           Take a look
         </Button>
       </div>

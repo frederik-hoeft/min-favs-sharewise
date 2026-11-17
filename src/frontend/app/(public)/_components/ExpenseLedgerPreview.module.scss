@@ -58,7 +58,6 @@
   border-radius: 0.6875rem;
   color: var(--sw-accent);
   background: var(--sw-surface-accent);
-  font-size: 1.1875rem;
 }
 
 .expenseDescription {
@@ -133,7 +132,6 @@
   flex-shrink: 0;
   background: var(--sw-accent);
   color: var(--sw-on-inverse);
-  font-size: 1.3125rem;
 }
 
 @include breakpoints.down(narrow) {

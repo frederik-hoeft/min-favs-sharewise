@@ -1,6 +1,7 @@
 "use client";
 
-import { ActionIcon, CheckIcon, Menu, useMantineColorScheme, type MantineColorScheme } from "@mantine/core";
+import { ActionIcon, Menu, useMantineColorScheme, type MantineColorScheme } from "@mantine/core";
+import { CheckIcon, CircleHalfIcon } from "@phosphor-icons/react";
 
 const choices: { value: MantineColorScheme; label: string }[] = [
   { value: "light", label: "Light" },
@@ -16,9 +17,7 @@ export function AppearanceMenu() {
     <Menu position="bottom-end" width="10.25rem" withinPortal>
       <Menu.Target>
         <ActionIcon variant="default" size="lg" radius="xl" aria-label="Choose appearance" title="Appearance">
-          <svg width="1.1875rem" height="1.1875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 3a9 9 0 1 0 0 18V3Z" /><circle cx="12" cy="12" r="9" />
-          </svg>
+          <CircleHalfIcon size="1.1875rem" aria-hidden="true" />
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown aria-label="Appearance">
@@ -27,7 +26,7 @@ export function AppearanceMenu() {
           <Menu.Item
             key={value}
             onClick={() => setColorScheme(value)}
-            rightSection={colorScheme === value ? <CheckIcon aria-hidden="true" width="0.875rem" height="0.875rem" /> : null}
+            rightSection={colorScheme === value ? <CheckIcon size="0.875rem" weight="bold" aria-hidden="true" /> : null}
             aria-label={`${label} theme${colorScheme === value ? ", selected" : ""}`}
           >
             {label}
