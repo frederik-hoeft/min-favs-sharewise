@@ -1,0 +1,40 @@
+@use "../../styles/breakpoints";
+
+.header {
+  position: sticky;
+  top: 0.875rem;
+  z-index: 20;
+  width: calc(100% - 3rem);
+  max-width: calc(var(--sw-content-width) + 3rem);
+  margin: 0.875rem auto 0;
+  background: var(--sw-surface);
+  border: 1px solid var(--sw-border);
+  border-radius: var(--mantine-radius-xl);
+  box-shadow: 0 0.625rem 1.875rem var(--sw-shadow);
+}
+
+.content {
+  min-height: 5.125rem;
+  display: flex;
+  align-items: center;
+  gap: 2.25rem;
+  padding-inline: 1.5rem;
+}
+
+@include breakpoints.down(tablet) {
+  .content {
+    min-height: 4.5rem;
+  }
+}
+
+@include breakpoints.down(mobile) {
+  .header {
+    top: 0.5rem;
+    width: calc(100% - 2rem);
+    margin-top: 0.5rem;
+  }
+
+  .content {
+    padding-inline: 1.125rem;
+  }
+}

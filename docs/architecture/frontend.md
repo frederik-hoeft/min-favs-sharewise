@@ -12,14 +12,14 @@ The current directories under `src/frontend/` have distinct responsibilities:
 | --- | --- |
 | `app/` | Next.js routes, layouts, providers, page composition and route-local presentation |
 | `app/_components/` | Landing-page-only illustrations and their static example data |
-| `components/` | Reusable application UI, grouped by meaningful responsibility (`brand/`, `participants/`, `theme/`) |
+| `components/` | Reusable application UI, grouped by meaningful responsibility (`brand/`, `navigation/`, `participants/`, `theme/`) |
 | `lib/` | Cross-cutting, non-domain infrastructure or configuration, currently the Mantine theme |
 | `styles/` | Shared Sass utilities; component- and page-specific styling remains in adjacent SCSS Modules |
 | `tests/` | Separate Vitest/TypeScript test project, outside production routes and components |
 
 A route can own a private `_components/` directory (and, when needed, `_lib/` for route-specific non-visual presentation helpers). A component stays close to its owning page while it represents that page's layout, illustration or workflow. A component moves to `components/` when it expresses a stable UI responsibility that other routes can realistically reuse. Grouping shared components by their subject, as with `components/participants/ParticipantAvatar.tsx`, makes ownership clearer than a flat collection of generic widgets. Extraction is not required merely because two elements use similar markup.
 
-Next.js treats `_components/` and other underscore-prefixed folders under `app/` as **private routing folders**: they are excluded from route matching, but are not TypeScript visibility or security boundaries. Files such as `page.tsx` and `layout.tsx` are Next.js route conventions; neighboring `*.module.scss` files provide locally scoped styling. Application-wide standard controls and visual tokens are configured through Mantine rather than duplicated in these local styles.
+Next.js treats `_components/` and other underscore-prefixed folders under `app/` as **private routing folders**: they are excluded from route matching, but are not TypeScript visibility or security boundaries. Files such as `page.tsx` and `layout.tsx` are Next.js route conventions; neighboring `*.module.scss` files provide locally scoped styling. Application-wide standard controls and visual tokens are configured through Mantine rather than duplicated in these local styles. The shared `components/navigation/FloatingHeader` handles the sticky, elevated header frame; each route remains responsible for the navigation content it places inside it.
 
 ## Future application and domain services
 

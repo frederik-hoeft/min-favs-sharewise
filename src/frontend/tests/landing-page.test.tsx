@@ -24,6 +24,14 @@ describe("ShareWise landing page", () => {
     for (const id of ["product", "how-it-works", "about", "top", "main"]) {
       expect(document.getElementById(id)).toBeInTheDocument();
     }
+    const header = screen.getByRole("banner");
+    expect(within(header).getByRole("link", { name: /sharewise, back to top/i })).toHaveAttribute("href", "#top");
+    expect(within(header).getByRole("link", { name: /take a look/i })).toHaveAttribute("href", "#product");
+    const closing = screen.getByRole("region", { name: /better together.*clearer with sharewise/i });
+    const backToTop = within(closing).getByRole("link", { name: /back to top/i });
+    expect(backToTop).toHaveAttribute("href", "#top");
+    // Mantine white buttons use their filled color as label color. Gray was too pale.
+    expect(backToTop.style.getPropertyValue("--button-color")).toBe("var(--mantine-color-dark-filled)");
     expect(screen.getByText("EXAMPLE VIEW")).toBeInTheDocument();
     expect(screen.getByText(/These are illustrative product views/i)).toBeInTheDocument();
   });

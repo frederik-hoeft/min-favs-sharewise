@@ -1,5 +1,6 @@
 import { Button, Container, Paper, Text, Title } from "@mantine/core";
 import { Brand } from "@/components/brand/Brand";
+import { FloatingHeader } from "@/components/navigation/FloatingHeader";
 import { AppearanceMenu } from "@/components/theme/AppearanceMenu";
 import { DetailsPreview } from "./_components/DetailsPreview";
 import { OverviewPreview } from "./_components/OverviewPreview";
@@ -15,21 +16,19 @@ export default function Home() {
   return (
     <>
       <a className={styles.skip} href="#main">Skip to content</a>
-      <header className={styles.siteHeader}>
-        <Container size="content" className={styles.headerInner}>
-          <a href="#top" className={styles.brandLink} aria-label="ShareWise, back to top"><Brand /></a>
-          <nav className={styles.navigation} aria-label="Main navigation">
-            <a href="#product">The product</a>
-            <a href="#how-it-works">How it works</a>
-            <a href="#about">Our approach</a>
-          </nav>
-          <div className={styles.headerActions}>
-            <AppearanceMenu />
-            <Button component="a" href="#product" size="sm" className={styles.headerCta}>Take a look <span aria-hidden="true">↗</span></Button>
-          </div>
-        </Container>
-      </header>
-      <main id="main">
+      <FloatingHeader>
+        <a href="#top" className={styles.brandLink} aria-label="ShareWise, back to top"><Brand /></a>
+        <nav className={styles.navigation} aria-label="Main navigation">
+          <a href="#product">The product</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#about">Our approach</a>
+        </nav>
+        <div className={styles.headerActions}>
+          <AppearanceMenu />
+          <Button component="a" href="#product" size="sm" className={styles.headerCta}>Take a look <span aria-hidden="true">↗</span></Button>
+        </div>
+      </FloatingHeader>
+      <main id="main" className={styles.main}>
         <section className={styles.hero} id="top" aria-labelledby="hero-title">
           <div className={styles.heroCopy}>
             <div className={styles.eyebrow}><span className={styles.spark} /> GOOD WITH PEOPLE. GOOD WITH NUMBERS.</div>
@@ -86,7 +85,7 @@ export default function Home() {
             <Title order={2} id="closing-title">Better together.<br />Clearer with ShareWise.</Title>
             <p>One shared view of expenses, balances, and the decisions along the way. No payment processing, no mystery math.</p>
           </div>
-          <Button component="a" href="#top" color="gray" variant="white" size="md" rightSection={<span aria-hidden="true">↑</span>}>Back to top</Button>
+          <Button component="a" href="#top" color="dark" variant="white" size="md" rightSection={<span aria-hidden="true">↑</span>}>Back to top</Button>
         </Paper>
       </main>
       <Container component="footer" size="content" className={styles.footer}>
