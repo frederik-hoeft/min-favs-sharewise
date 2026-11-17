@@ -1,9 +1,8 @@
 "use client";
 
-import { Anchor, Breadcrumbs, UnstyledButton } from "@mantine/core";
+import { Anchor, Breadcrumbs, Burger } from "@mantine/core";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brand } from "@/components/brand/Brand";
 import { AccountMenu } from "./AccountMenu";
 import { appBreadcrumbs } from "./app-routes";
 import styles from "./ApplicationHeader.module.scss";
@@ -12,38 +11,31 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
   const pathname = usePathname();
   const crumbs = appBreadcrumbs(pathname);
 
-  function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
-  }
-
   return (
-    <>
-      {/* The otherwise empty header surface scrolls to the top; controls sit above it. */}
-      <UnstyledButton className={styles.scrollSurface} aria-label="Scroll to top" onClick={scrollToTop} />
-      <div className={styles.content}>
-        <UnstyledButton
-          className={styles.mobileBrand}
-          onClick={toggleNavigation}
-          aria-label={opened ? "Close navigation" : "Open navigation"}
-          aria-expanded={opened}
-          aria-controls="mobile-app-navigation"
-          title={opened ? "Close navigation" : "Open navigation"}
-        >
-          <Brand symbolOnly />
-        </UnstyledButton>
-        <nav className={styles.breadcrumbs} aria-label="Breadcrumb">
-          <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.crumbsRow }}>
-            {crumbs.map(({ href, label }, index) => index === crumbs.length - 1 ? (
-              <span key={href} aria-current="page" className={styles.currentCrumb}>{label}</span>
-            ) : (
-              <Anchor component={Link} key={href} href={href} className={styles.crumbLink}>{label}</Anchor>
-            ))}
-          </Breadcrumbs>
-        </nav>
-        <div className={styles.account}>
-          <AccountMenu />
-        </div>
+    <div className={styles.content}>
+      <Burger
+        className={styles.mobileToggle}
+        opened={opened}
+        onClick={toggleNavigation}
+        color="var(--sw-ink)"
+        size="sm"
+        aria-label={opened ? "Close navigation" : "Open navigation"}
+        aria-expanded={opened}
+        aria-controls="mobile-app-navigation"
+        title={opened ? "Close navigation" : "Open navigation"}
+      />
+      <nav className={styles.breadcrumbs} aria-label="Breadcrumb">
+        <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.crumbsRow }}>
+          {crumbs.map(({ href, label }, index) => index === crumbs.length - 1 ? (
+            <span key={href} aria-current="page" className={styles.currentCrumb}>{label}</span>
+          ) : (
+            <Anchor component={Link} key={href} href={href} className={styles.crumbLink}>{label}</Anchor>
+          ))}
+        </Breadcrumbs>
+      </nav>
+      <div className={styles.account}>
+        <AccountMenu />
       </div>
-    </>
+    </div>
   );
 }

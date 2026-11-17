@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { DEFAULT_THEME } from "@mantine/core";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Providers } from "@/app/providers";
+import { theme, cssVariablesResolver } from "@/lib/theme";
 import { ApplicationShell } from "@/app/(app)/app/_components/ApplicationShell";
 import { appBreadcrumbs } from "@/app/(app)/app/_components/app-routes";
 import DummyOnePage from "@/app/(app)/app/dummy1/page";
@@ -42,14 +44,18 @@ describe("Application route shell", () => {
     expect(screen.getByRole("link", { name: "ShareWise workspace" })).toHaveAttribute("href", "/app");
   });
 
-  it("uses the brand symbol to open and close the accessible mobile flyout", async () => {
+  it("uses a Mantine hamburger to open and close the accessible mobile flyout", async () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(screen.getByRole("button", { name: "Open navigation" }));
+    const toggle = screen.getByRole("button", { name: "Open navigation" });
+    expect(toggle).toHaveClass("mantine-Burger-root");
+    expect(within(screen.getByRole("banner")).queryByLabelText("ShareWise")).not.toBeInTheDocument();
+    await user.click(toggle);
     const drawer = await screen.findByRole("dialog", { name: "Workspace navigation" });
     expect(drawer).toBeInTheDocument();
     expect(within(drawer).getByRole("link", { name: "Dummy 2" })).toHaveAttribute("href", "/app/dummy2");
+    expect(within(drawer).getByText("sharewise")).toBeInTheDocument();
     await user.click(within(drawer).getByRole("button", { name: "Close workspace navigation" }));
     expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false");
 
@@ -108,20 +114,35 @@ describe("Application route shell", () => {
     expect(await screen.findByRole("menuitem", { name: "Appearance" })).toBeInTheDocument();
   });
 
-  it("scrolls to the top when its otherwise empty header surface is clicked", async () => {
+  it("keeps the header noninteractive outside explicit controls", async () => {
+    const user = userEvent.setup();
     const scrollTo = vi.fn();
     vi.stubGlobal("scrollTo", scrollTo);
     try {
-      const user = userEvent.setup();
       renderApp();
-      await user.click(screen.getByRole("button", { name: "Scroll to top" }));
-      expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
-      scrollTo.mockClear();
-      await user.click(screen.getByRole("button", { name: "Account menu" }));
+      const header = screen.getByRole("banner");
+      expect(within(header).queryByRole("button", { name: "Scroll to top" })).not.toBeInTheDocument();
+      await user.click(header);
       expect(scrollTo).not.toHaveBeenCalled();
+      expect(within(header).getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-controls", "mobile-app-navigation");
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("configures shared NavLink and Menu styling through Mantine's theme", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const roles = cssVariablesResolver(DEFAULT_THEME);
+    expect(roles.light["--sw-interactive-hover"]).not.toBe(roles.dark["--sw-interactive-hover"]);
+    expect(roles.light["--sw-nav-selected"]).not.toBe(roles.dark["--sw-nav-selected"]);
+    expect(theme.components?.NavLink?.classNames).toBeDefined();
+    expect(theme.components?.Menu?.styles).toMatchObject({
+      dropdown: { background: "var(--sw-surface)", borderColor: "var(--sw-border)" },
+      item: { "--menu-item-hover": "var(--sw-interactive-hover)" },
+    });
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(await screen.findByRole("menuitem", { name: "Appearance" })).toBeInTheDocument();
   });
 
   it("has no detectable structural accessibility violations", async () => {

@@ -1,11 +1,5 @@
 @use "@/styles/breakpoints";
 
-.link {
-  border-radius: var(--mantine-radius-md);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 @include breakpoints.up(appRailStart) {
   @include breakpoints.down(appRailEnd) {
     // The desktop rail sets this variable, leaving the mobile drawer untouched.

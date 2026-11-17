@@ -1,4 +1,5 @@
-import { Button, Card, createTheme, type CSSVariablesResolver, Menu, Paper } from "@mantine/core";
+import { Button, Card, createTheme, type CSSVariablesResolver, Menu, NavLink, Paper } from "@mantine/core";
+import navLinkStyles from "./theme-components/NavLink.module.scss";
 
 /** Shared Quiet clarity foundation: graphite neutrals and a non-green indigo accent. */
 export const theme = createTheme({
@@ -40,6 +41,15 @@ export const theme = createTheme({
     }),
     Menu: Menu.extend({
       defaultProps: { radius: "md", shadow: "md" },
+      styles: {
+        dropdown: { background: "var(--sw-surface)", borderColor: "var(--sw-border)" },
+        item: { color: "var(--sw-ink)", "--menu-item-hover": "var(--sw-interactive-hover)" },
+        label: { color: "var(--sw-muted)" },
+        divider: { borderColor: "var(--sw-border)" },
+      },
+    }),
+    NavLink: NavLink.extend({
+      classNames: { root: navLinkStyles.root },
     }),
   },
 });
@@ -66,6 +76,10 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--sw-surface": "#ffffff",
     "--sw-surface-subtle": "#f2f3f7",
     "--sw-surface-accent": "#eeefff",
+    "--sw-interactive-hover": "#e8eafe",
+    "--sw-nav-selected": "#e5e7ff",
+    "--sw-nav-selected-hover": "#d8dcff",
+    "--sw-nav-selected-ink": "#2e3494",
     "--sw-ink": "#191b2b",
     "--sw-muted": "#60657a",
     "--sw-border": "#e3e5ed",
@@ -79,6 +93,10 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--sw-surface": "#1d2030",
     "--sw-surface-subtle": "#262a3a",
     "--sw-surface-accent": "#292c53",
+    "--sw-interactive-hover": "#303654",
+    "--sw-nav-selected": "#171a41",
+    "--sw-nav-selected-hover": "#343a65",
+    "--sw-nav-selected-ink": "#d4d8ff",
     "--sw-ink": "#f2f2fb",
     "--sw-muted": "#aeb3c9",
     "--sw-border": "#35394e",
