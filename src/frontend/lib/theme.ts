@@ -116,7 +116,7 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--container-size-content": "73.75rem",
     "--sw-content-width": "var(--container-size-content)",
     "--sw-app-header-height": "4.5rem",
-    "--sw-app-navbar-rail-width": "5rem",
+    "--sw-app-navbar-rail-width": "4.35rem",
     "--sw-app-navbar-width": "15.5rem",
     "--sw-on-inverse": "#ffffff",
     "--sw-summary": "#272a4b",

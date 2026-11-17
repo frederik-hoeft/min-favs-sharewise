@@ -27,7 +27,6 @@
   flex: 0 0 var(--sw-app-header-height);
   align-items: center;
   padding-inline: 1.25rem;
-  border-bottom: 1px solid var(--sw-border);
 }
 
 .brandLink {
@@ -93,12 +92,16 @@
   @include breakpoints.down(appRailEnd) {
     .navSurface {
       --sw-nav-label-opacity: 0;
-      transition: width 170ms ease;
+      --sw-rail-body-visibility: hidden;
+      --sw-rail-section-gap: 0;
+      transition: width 170ms ease, visibility 170ms ease;
     }
 
     .navSurface[data-expanded="true"] {
       width: var(--sw-app-navbar-width);
       --sw-nav-label-opacity: 1;
+      --sw-rail-body-visibility: visible;
+      --sw-rail-section-gap: var(--mantine-spacing-sm);
     }
 
     .navBrand {

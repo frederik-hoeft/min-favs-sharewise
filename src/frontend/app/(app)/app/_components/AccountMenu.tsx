@@ -1,10 +1,9 @@
 "use client";
 
-import { Avatar, Menu, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Menu } from "@mantine/core";
 import { CaretLeftIcon, CaretRightIcon, CircleHalfIcon, UserCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { AppearanceMenuItems } from "@/components/theme/AppearanceMenuItems";
-import styles from "./AccountMenu.module.scss";
 
 /** A two-level Mantine menu; the secondary view fits narrow/mobile viewports. */
 export function AccountMenu() {
@@ -12,16 +11,29 @@ export function AccountMenu() {
   const [screen, setScreen] = useState<"account" | "appearance">("account");
   const appearanceRef = useRef<HTMLButtonElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
+  const restoreKeyboardFocus = useRef(false);
 
-  // Changing in-menu views removes the focused item. Restore keyboard focus to
-  // the newly displayed navigation item, including after returning from Appearance.
+  // Replacing the menu's contents removes the current item. Restore focus
+  // only after keyboard activation: pointer activation must not leave the
+  // new top item permanently highlighted by an artificial focus state.
   useEffect(() => {
-    if (opened) (screen === "account" ? appearanceRef : backRef).current?.focus();
+    if (opened && restoreKeyboardFocus.current) {
+      (screen === "account" ? appearanceRef : backRef).current?.focus();
+      restoreKeyboardFocus.current = false;
+    }
   }, [opened, screen]);
+
+  function changeScreen(nextScreen: "account" | "appearance", keyboardActivated: boolean) {
+    restoreKeyboardFocus.current = keyboardActivated;
+    setScreen(nextScreen);
+  }
 
   function updateOpened(nextOpened: boolean) {
     setOpened(nextOpened);
-    if (!nextOpened) setScreen("account");
+    if (!nextOpened) {
+      restoreKeyboardFocus.current = false;
+      setScreen("account");
+    }
   }
 
   return (
@@ -36,11 +48,9 @@ export function AccountMenu() {
       hideDetached={false}
     >
       <Menu.Target>
-        <UnstyledButton className={styles.trigger} aria-label="Account menu" title="Account menu">
-          <Avatar color="indigoBrand" variant="light" radius="xl" size="md">
-            <UserCircleIcon size="1.5rem" aria-hidden="true" />
-          </Avatar>
-        </UnstyledButton>
+        <ActionIcon variant="subtle" color="gray" radius="xl" size="lg" aria-label="Account menu" title="Account menu">
+          <UserCircleIcon size="1.5rem" aria-hidden="true" />
+        </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown aria-label={screen === "account" ? "Account menu" : "Appearance menu"}>
         {screen === "account" ? (
@@ -50,7 +60,7 @@ export function AccountMenu() {
               ref={appearanceRef}
               leftSection={<CircleHalfIcon size="1.125rem" aria-hidden="true" />}
               rightSection={<CaretRightIcon size="0.875rem" aria-hidden="true" />}
-              onClick={() => setScreen("appearance")}
+              onClick={(event) => changeScreen("appearance", event.detail === 0)}
             >
               Appearance
             </Menu.Item>
@@ -60,7 +70,7 @@ export function AccountMenu() {
             <Menu.Item
               ref={backRef}
               leftSection={<CaretLeftIcon size="0.875rem" aria-hidden="true" />}
-              onClick={() => setScreen("account")}
+              onClick={(event) => changeScreen("account", event.detail === 0)}
             >
               Back to account
             </Menu.Item>

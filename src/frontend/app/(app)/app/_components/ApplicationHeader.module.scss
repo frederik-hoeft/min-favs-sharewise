@@ -38,9 +38,7 @@
 
 .currentCrumb {
   display: block;
-  overflow: hidden;
   color: var(--sw-ink);
-  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

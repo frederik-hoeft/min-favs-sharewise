@@ -2,16 +2,18 @@
 
 @include breakpoints.up(appRailStart) {
   @include breakpoints.down(appRailEnd) {
-    // The desktop rail sets this variable, leaving the mobile drawer untouched.
-    .railLabel {
-      opacity: var(--sw-nav-label-opacity, 1);
-      transition: opacity 120ms ease;
+    // Center the icon in the compact rail. The label must not reserve width or
+    // Mantine's default section margin shifts the icon to the left.
+    .railLink {
+      justify-content: center;
     }
-  }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .railLabel {
-    transition: none;
+    .railLink .railSection {
+      margin-inline-end: var(--sw-rail-section-gap, 0);
+    }
+
+    .railBody {
+      visibility: var(--sw-rail-body-visibility, hidden);
+    }
   }
 }

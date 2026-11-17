@@ -39,8 +39,12 @@ describe("Application route shell", () => {
     expect(within(navigation).getByRole("link", { name: "Dummy 2" })).toHaveAttribute("href", "/app/dummy2");
 
     const breadcrumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(within(breadcrumbs).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/app");
-    expect(within(breadcrumbs).getByText("Dummy 1")).toHaveAttribute("aria-current", "page");
+    const parentCrumb = within(breadcrumbs).getByRole("link", { name: "Workspace" });
+    const currentCrumb = within(breadcrumbs).getByText("Dummy 1");
+    expect(parentCrumb).toHaveAttribute("href", "/app");
+    expect(parentCrumb).toHaveAttribute("data-size", "sm");
+    expect(currentCrumb).toHaveAttribute("aria-current", "page");
+    expect(currentCrumb).toHaveAttribute("data-size", "sm");
     expect(screen.getByRole("link", { name: "ShareWise workspace" })).toHaveAttribute("href", "/app");
   });
 
@@ -102,12 +106,27 @@ describe("Application route shell", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const accountButton = screen.getByRole("button", { name: "Account menu" });
+    expect(accountButton).toHaveClass("mantine-ActionIcon-root");
+    expect(accountButton.style.getPropertyValue("--ai-bg")).toBe("transparent");
+    expect(accountButton.style.getPropertyValue("--ai-hover")).toBe("var(--mantine-color-default-hover)");
+    await user.click(accountButton);
     await user.click(await screen.findByRole("menuitem", { name: "Appearance" }));
     const back = screen.getByRole("menuitem", { name: "Back to account" });
-    expect(back).toHaveFocus();
+    expect(back).not.toHaveFocus(); // Mouse navigation must not create sticky focused hover styling.
     await user.click(back);
-    await user.click(await screen.findByRole("menuitem", { name: "Appearance" }));
+    const appearance = await screen.findByRole("menuitem", { name: "Appearance" });
+    expect(appearance).not.toHaveFocus();
+
+    // Keyboard navigation still restores focus when switching menu views.
+    appearance.focus();
+    await user.keyboard("{Enter}");
+    const keyboardBack = screen.getByRole("menuitem", { name: "Back to account" });
+    expect(keyboardBack).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("menuitem", { name: "Appearance" })).toHaveFocus();
+
+    await user.click(screen.getByRole("menuitem", { name: "Appearance" }));
     await user.click(await screen.findByRole("menuitem", { name: "Dark theme" }));
     expect(window.localStorage.getItem("mantine-color-scheme-value")).toBe("dark");
     await user.click(screen.getByRole("button", { name: "Account menu" }));

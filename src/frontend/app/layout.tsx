@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" {...mantineHtmlProps}>
+    <html lang="en" data-scroll-behavior="smooth" {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>

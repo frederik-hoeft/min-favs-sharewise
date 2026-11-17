@@ -1,6 +1,6 @@
 "use client";
 
-import { Anchor, Breadcrumbs, Burger } from "@mantine/core";
+import { Anchor, Breadcrumbs, Burger, Text } from "@mantine/core";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AccountMenu } from "./AccountMenu";
@@ -26,9 +26,9 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
       <nav className={styles.breadcrumbs} aria-label="Breadcrumb">
         <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.crumbsRow }}>
           {crumbs.map(({ href, label }, index) => index === crumbs.length - 1 ? (
-            <span key={href} aria-current="page" className={styles.currentCrumb}>{label}</span>
+            <Text span size="sm" key={href} aria-current="page" className={styles.currentCrumb}>{label}</Text>
           ) : (
-            <Anchor component={Link} key={href} href={href} className={styles.crumbLink}>{label}</Anchor>
+            <Anchor component={Link} size="sm" key={href} href={href} className={styles.crumbLink}>{label}</Anchor>
           ))}
         </Breadcrumbs>
       </nav>
