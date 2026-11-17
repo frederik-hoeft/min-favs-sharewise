@@ -17,7 +17,6 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
         className={styles.mobileToggle}
         opened={opened}
         onClick={toggleNavigation}
-        color="var(--sw-ink)"
         size="sm"
         aria-label={opened ? "Close navigation" : "Open navigation"}
         aria-expanded={opened}

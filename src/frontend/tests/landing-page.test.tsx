@@ -34,6 +34,11 @@ describe("ShareWise landing page", () => {
     expect(explore).toHaveAttribute("href", "#product");
     expect(explore.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
     expect(explore.textContent).toBe("Take a look");
+    const primaryAction = screen.getByRole("link", { name: /explore sharewise/i });
+    expect(primaryAction.style.getPropertyValue("--button-color")).toBe("var(--sw-action-ink)");
+    const secondaryAction = screen.getByRole("link", { name: /see how it works/i });
+    expect(secondaryAction.style.getPropertyValue("--button-hover"))
+      .toBe("var(--mantine-color-default-hover)");
     const closing = screen.getByRole("region", { name: /better together.*clearer with sharewise/i });
     const backToTop = within(closing).getByRole("link", { name: /back to top/i });
     expect(backToTop).toHaveAttribute("href", "#top");

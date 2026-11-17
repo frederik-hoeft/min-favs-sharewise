@@ -135,12 +135,25 @@ describe("Application route shell", () => {
     renderApp();
     const roles = cssVariablesResolver(DEFAULT_THEME);
     expect(roles.light["--sw-interactive-hover"]).not.toBe(roles.dark["--sw-interactive-hover"]);
-    expect(roles.light["--sw-nav-selected"]).not.toBe(roles.dark["--sw-nav-selected"]);
-    expect(theme.components?.NavLink?.classNames).toBeDefined();
+    // Mantine's own NavLink inactive hover uses gray-0 and dark-6.
+    expect(theme.colors?.gray?.[0]).toBe(roles.light["--sw-interactive-hover"]);
+    expect(theme.colors?.dark?.[6]).toBe(roles.dark["--sw-interactive-hover"]);
+    expect(roles.light["--mantine-color-default-hover"]).toBe("var(--sw-interactive-hover)");
+    expect(roles.dark["--mantine-color-default-hover"]).toBe("var(--sw-interactive-hover)");
+    expect(theme.components?.NavLink?.defaultProps).toMatchObject({ variant: "filled", autoContrast: true });
     expect(theme.components?.Menu?.styles).toMatchObject({
       dropdown: { background: "var(--sw-surface)", borderColor: "var(--sw-border)" },
-      item: { "--menu-item-hover": "var(--sw-interactive-hover)" },
+      item: { "--menu-item-hover": "var(--mantine-color-default-hover)" },
     });
+    const toggle = screen.getByRole("button", { name: "Open navigation" });
+    expect(theme.components?.Burger?.defaultProps).toMatchObject({ color: "var(--mantine-color-text)" });
+    expect(theme.components?.Burger?.styles).toMatchObject({
+      root: { alignItems: "center", justifyContent: "center", minHeight: "2.75rem" },
+    });
+    const selected = within(screen.getByRole("navigation", { name: "Workspace navigation" }))
+      .getByRole("link", { name: "Dummy 1" });
+    expect(selected.style.getPropertyValue("--nl-bg")).toBe("var(--mantine-color-indigoBrand-filled)");
+    expect(selected.style.getPropertyValue("--nl-color")).toBe("var(--sw-action-ink)");
     await user.click(screen.getByRole("button", { name: "Account menu" }));
     expect(await screen.findByRole("menuitem", { name: "Appearance" })).toBeInTheDocument();
   });

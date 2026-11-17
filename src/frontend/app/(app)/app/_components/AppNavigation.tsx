@@ -32,7 +32,6 @@ export function AppNavigation({ onNavigate, rail = false }: { onNavigate?: () =>
             aria-label={label}
             aria-current={active ? "page" : undefined}
             onClick={onNavigate}
-            variant="light"
             classNames={{ label: rail ? styles.railLabel : undefined }}
           />
         );
