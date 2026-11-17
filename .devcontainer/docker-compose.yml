@@ -8,6 +8,7 @@ services:
       - ..:/workspace:cached
       - maven-cache:/home/vscode/.m2
       - npm-cache:/home/vscode/.npm
+      - zsh-history:/home/vscode/.local/share/zsh-history
     init: true
     command: sleep infinity
     depends_on:
@@ -38,3 +39,4 @@ volumes:
   maven-cache:
   npm-cache:
   postgres-data:
+  zsh-history:
