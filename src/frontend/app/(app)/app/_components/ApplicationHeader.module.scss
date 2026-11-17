@@ -4,7 +4,6 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  border-radius: inherit;
   cursor: pointer;
 
   &:focus-visible {
@@ -15,14 +14,13 @@
 
 .content {
   display: flex;
-  width: 100%;
-  min-width: 0;
   height: 100%;
+  min-width: 0;
   align-items: center;
-  gap: 0;
+  gap: 1rem;
+  padding-inline: 1.5rem;
 }
 
-.workspaceBrand,
 .mobileBrand,
 .breadcrumbs,
 .account {
@@ -30,19 +28,10 @@
   z-index: 1;
 }
 
-.workspaceBrand {
-  display: flex;
-  align-items: center;
-  flex: 0 0 calc(var(--app-shell-navbar-offset) - 1.5625rem);
-  text-decoration: none;
-}
-
-.railBrand {
-  display: none;
-}
-
 .mobileBrand {
   display: none;
+  flex-shrink: 0;
+  align-items: center;
   border-radius: var(--mantine-radius-sm);
 
   &:focus-visible {
@@ -86,29 +75,12 @@
   margin-left: auto;
 }
 
-@include breakpoints.up(appRailStart) {
-  @include breakpoints.down(appRailEnd) {
-    .fullBrand {
-      display: none;
-    }
-
-    .railBrand {
-      display: block;
-    }
-  }
-}
-
 @include breakpoints.down(appNavigation) {
   .content {
-    gap: 1rem;
-  }
-
-  .workspaceBrand {
-    display: none;
+    padding-inline: 1rem;
   }
 
   .mobileBrand {
     display: inline-flex;
-    align-items: center;
   }
 }

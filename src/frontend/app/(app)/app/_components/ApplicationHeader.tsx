@@ -18,13 +18,9 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
 
   return (
     <>
-      {/* The button sits behind the interactive header controls. It covers the otherwise empty header surface. */}
+      {/* The otherwise empty header surface scrolls to the top; controls sit above it. */}
       <UnstyledButton className={styles.scrollSurface} aria-label="Scroll to top" onClick={scrollToTop} />
       <div className={styles.content}>
-        <Anchor component={Link} href="/app" className={styles.workspaceBrand} aria-label="ShareWise workspace">
-          <span className={styles.fullBrand}><Brand /></span>
-          <span className={styles.railBrand}><Brand symbolOnly /></span>
-        </Anchor>
         <UnstyledButton
           className={styles.mobileBrand}
           onClick={toggleNavigation}

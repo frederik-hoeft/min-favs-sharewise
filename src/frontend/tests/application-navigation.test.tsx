@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,13 +50,46 @@ describe("Application route shell", () => {
     const drawer = await screen.findByRole("dialog", { name: "Workspace navigation" });
     expect(drawer).toBeInTheDocument();
     expect(within(drawer).getByRole("link", { name: "Dummy 2" })).toHaveAttribute("href", "/app/dummy2");
-    await user.click(screen.getByRole("button", { name: "Close navigation" }));
+    await user.click(within(drawer).getByRole("button", { name: "Close workspace navigation" }));
     expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false");
 
     await user.click(screen.getByRole("button", { name: "Open navigation" }));
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Workspace navigation" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the compact rail after choosing a route, even when it remains hovered or focused", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const navigation = screen.getByRole("navigation", { name: "Workspace navigation" });
+    const rail = navigation.querySelector("[data-expanded]");
+    expect(rail).not.toBeNull();
+    const destination = within(navigation).getByRole("link", { name: "Dummy 2" });
+    // jsdom has no Next.js router: prevent document navigation while exercising onClick.
+    destination.addEventListener("click", (event) => event.preventDefault());
+
+    fireEvent.pointerEnter(rail!, { pointerType: "mouse" });
+    expect(rail).toHaveAttribute("data-expanded", "true");
+    await user.click(destination);
+    expect(rail).toHaveAttribute("data-expanded", "false");
+
+    // The pointer is still over the rail. Only leaving and reentering may expand it.
+    fireEvent.pointerEnter(rail!, { pointerType: "mouse" });
+    expect(rail).toHaveAttribute("data-expanded", "false");
+    fireEvent.pointerLeave(rail!, { pointerType: "mouse" });
+    fireEvent.pointerEnter(rail!, { pointerType: "mouse" });
+    expect(rail).toHaveAttribute("data-expanded", "true");
+
+    fireEvent.pointerLeave(rail!, { pointerType: "mouse" });
+    fireEvent.focus(destination);
+    expect(rail).toHaveAttribute("data-expanded", "true");
+    fireEvent.blur(destination, { relatedTarget: document.body });
+    expect(rail).toHaveAttribute("data-expanded", "false");
+
+    fireEvent.focus(destination);
+    fireEvent.click(destination);
+    expect(rail).toHaveAttribute("data-expanded", "false");
   });
 
   it("opens account options and exposes the appearance submenu", async () => {
