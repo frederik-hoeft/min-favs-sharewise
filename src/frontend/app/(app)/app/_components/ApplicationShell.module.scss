@@ -1,32 +1,64 @@
 @use "@/styles/breakpoints";
 
 .navbar {
-  padding: 0.75rem 0 1rem 1rem;
+  padding: 0.75rem 0 1.5rem 1.5rem;
+  overflow: visible;
   background: transparent;
 }
 
 .navSurface {
   flex: 1;
   min-height: 0;
+  width: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
   background: var(--sw-surface);
   border-color: var(--sw-border);
+  box-shadow: 0 0.625rem 1.875rem var(--sw-shadow);
 }
 
 .navLabel {
   padding: 0.75rem 0.875rem 1rem;
   letter-spacing: 0.12em;
   color: var(--sw-muted);
+  white-space: nowrap;
 }
 
 .mainContent {
-  padding-block: 2rem 4rem;
+  // Align content with the workspace navigation grid rather than independently
+  // centering it in the remaining viewport space.
+  margin-inline: 0;
+  padding: 2rem 1.5rem 4rem;
+  max-width: calc(var(--sw-content-width) + 3rem);
 }
 
-// Keep the mobile flyout beneath the floating header so its brand symbol remains clickable.
+// The floating mobile navigation is a true Mantine Drawer, but uses the same
+// scheme-aware surface and radii as the desktop workspace navigation.
 .mobileDrawerInner,
 .mobileDrawerOverlay {
   top: 6rem;
+}
+
+.mobileDrawerContent {
+  background: var(--sw-surface);
+  border: 1px solid var(--sw-border);
+  border-radius: 0 var(--mantine-radius-xl) var(--mantine-radius-xl) 0;
+  box-shadow: 0 0.625rem 1.875rem var(--sw-shadow);
+}
+
+.mobileDrawerHeader {
+  background: transparent;
+  padding: 1.5rem 1.5rem 0.75rem;
+  color: var(--sw-ink);
+}
+
+.mobileDrawerTitle {
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 700;
+}
+
+.mobileDrawerBody {
+  padding: 0.75rem 1rem 2rem;
 }
 
 @include breakpoints.down(mobile) {
@@ -38,6 +70,36 @@
 
 @include breakpoints.down(appNavigation) {
   .mainContent {
-    padding-block: 1rem 3rem;
+    padding: 1rem 1rem 3rem;
+  }
+}
+
+// AppShell reserves the compact rail's width; expansion overlays the page
+// rather than shifting content. Focus expansion supports keyboard and touch.
+@include breakpoints.up(appRailStart) {
+  @include breakpoints.down(appRailEnd) {
+    .navSurface {
+      position: relative;
+      z-index: 2;
+      --sw-nav-label-opacity: 0;
+      transition: width 170ms ease, box-shadow 170ms ease;
+    }
+
+    .navSurface:hover,
+    .navSurface:focus-within {
+      width: 15.5rem;
+      --sw-nav-label-opacity: 1;
+      overflow-x: visible;
+    }
+
+    .navSurface:not(:hover, :focus-within) .navLabel {
+      opacity: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navSurface {
+    transition: none;
   }
 }

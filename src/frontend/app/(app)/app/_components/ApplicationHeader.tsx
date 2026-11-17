@@ -21,8 +21,9 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
       {/* The button sits behind the interactive header controls. It covers the otherwise empty header surface. */}
       <UnstyledButton className={styles.scrollSurface} aria-label="Scroll to top" onClick={scrollToTop} />
       <div className={styles.content}>
-        <Anchor component={Link} href="/app" className={styles.desktopBrand} aria-label="ShareWise workspace">
-          <Brand />
+        <Anchor component={Link} href="/app" className={styles.workspaceBrand} aria-label="ShareWise workspace">
+          <span className={styles.fullBrand}><Brand /></span>
+          <span className={styles.railBrand}><Brand symbolOnly /></span>
         </Anchor>
         <UnstyledButton
           className={styles.mobileBrand}
@@ -35,7 +36,7 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
           <Brand symbolOnly />
         </UnstyledButton>
         <nav className={styles.breadcrumbs} aria-label="Breadcrumb">
-          <Breadcrumbs separator="/" separatorMargin="xs">
+          <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.crumbsRow }}>
             {crumbs.map(({ href, label }, index) => index === crumbs.length - 1 ? (
               <span key={href} aria-current="page" className={styles.currentCrumb}>{label}</span>
             ) : (

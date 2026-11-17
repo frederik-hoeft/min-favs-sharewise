@@ -10,7 +10,7 @@ import { ApplicationHeader } from "./ApplicationHeader";
 import { AppNavigation } from "./AppNavigation";
 import styles from "./ApplicationShell.module.scss";
 
-/** Routes own their content; this client island owns only responsive navigation state. */
+/** Public and workspace layouts use distinct AppShell configurations and a shared visual foundation. */
 export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>) {
   const [mobileOpened, { toggle, close }] = useDisclosure(false);
   const pathname = usePathname();
@@ -32,15 +32,15 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
         padding={0}
         withBorder={false}
         header={{ height: { base: "5rem", "38.125rem": "6rem" } }}
-        navbar={{ width: "15.5rem", breakpoint: "sm", collapsed: { mobile: true } }}
+        navbar={{ width: { sm: "6.5rem", lg: "17rem" }, breakpoint: "sm", collapsed: { mobile: true } }}
       >
-        <ShellHeader>
+        <ShellHeader fluid>
           <ApplicationHeader opened={mobileOpened} toggleNavigation={toggle} />
         </ShellHeader>
         <AppShellNavbar className={styles.navbar} withBorder={false} aria-label="Workspace navigation">
-          <Paper className={styles.navSurface} withBorder radius="xl" p="md">
+          <Paper className={styles.navSurface} withBorder radius="xl" p="sm">
             <Text className={styles.navLabel} size="xs" fw={700} tt="uppercase">Workspace</Text>
-            <AppNavigation />
+            <AppNavigation rail />
           </Paper>
         </AppShellNavbar>
         <AppShellMain id="app-main">
@@ -56,9 +56,16 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
         size="19rem"
         title="Workspace navigation"
         id="mobile-app-navigation"
-        overlayProps={{ backgroundOpacity: 0.5, blur: 2 }}
+        overlayProps={{ backgroundOpacity: 0.55, blur: 2 }}
         zIndex={19}
-        classNames={{ inner: styles.mobileDrawerInner, overlay: styles.mobileDrawerOverlay }}
+        classNames={{
+          inner: styles.mobileDrawerInner,
+          overlay: styles.mobileDrawerOverlay,
+          content: styles.mobileDrawerContent,
+          header: styles.mobileDrawerHeader,
+          title: styles.mobileDrawerTitle,
+          body: styles.mobileDrawerBody,
+        }}
       >
         <nav aria-label="Mobile workspace navigation">
           <AppNavigation onNavigate={close} />

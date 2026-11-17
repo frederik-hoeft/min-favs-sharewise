@@ -15,13 +15,14 @@
 
 .content {
   display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 2rem;
+  width: 100%;
   min-width: 0;
+  height: 100%;
+  align-items: center;
+  gap: 0;
 }
 
-.desktopBrand,
+.workspaceBrand,
 .mobileBrand,
 .breadcrumbs,
 .account {
@@ -29,9 +30,15 @@
   z-index: 1;
 }
 
-.desktopBrand {
+.workspaceBrand {
   display: flex;
+  align-items: center;
+  flex: 0 0 calc(var(--app-shell-navbar-offset) - 1.5625rem);
   text-decoration: none;
+}
+
+.railBrand {
+  display: none;
 }
 
 .mobileBrand {
@@ -46,12 +53,14 @@
 
 .breadcrumbs {
   min-width: 0;
+  flex: 1;
   font-size: var(--mantine-font-size-sm);
   color: var(--sw-muted);
+}
 
-  :global(.mantine-Breadcrumbs-root) {
-    flex-wrap: nowrap;
-  }
+.crumbsRow {
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .crumbLink {
@@ -77,12 +86,24 @@
   margin-left: auto;
 }
 
+@include breakpoints.up(appRailStart) {
+  @include breakpoints.down(appRailEnd) {
+    .fullBrand {
+      display: none;
+    }
+
+    .railBrand {
+      display: block;
+    }
+  }
+}
+
 @include breakpoints.down(appNavigation) {
   .content {
     gap: 1rem;
   }
 
-  .desktopBrand {
+  .workspaceBrand {
     display: none;
   }
 

@@ -1,7 +1,6 @@
 @use "@/styles/breakpoints";
 
 .header {
-  // AppShell owns fixed positioning and the content offset.
   top: 0.875rem;
   z-index: 20;
   width: auto;
@@ -15,18 +14,18 @@
   box-shadow: 0 0.625rem 1.875rem var(--sw-shadow);
 }
 
+// The application header spans the same horizontal canvas as its sidebar.
+// The public header intentionally remains centered at the content width.
+.fluid {
+  max-width: none;
+}
+
 .content {
-  min-height: 5.125rem;
+  height: 100%;
   display: flex;
   align-items: center;
   gap: 2.25rem;
   padding-inline: 1.5rem;
-}
-
-@include breakpoints.down(tablet) {
-  .content {
-    min-height: 4.5rem;
-  }
 }
 
 @include breakpoints.down(mobile) {

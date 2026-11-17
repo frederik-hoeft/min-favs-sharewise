@@ -12,8 +12,8 @@ const icons = {
   "/app/dummy2": SquaresFourIcon,
 } satisfies Record<(typeof appRoutes)[number]["href"], typeof HouseIcon>;
 
-/** The same navigation is rendered in the desktop navbar and the mobile drawer. */
-export function AppNavigation({ onNavigate }: { onNavigate?: () => void }) {
+/** Shared links for expanded nav, focus/hover rail and mobile drawer. */
+export function AppNavigation({ onNavigate, rail = false }: { onNavigate?: () => void; rail?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -27,12 +27,14 @@ export function AppNavigation({ onNavigate }: { onNavigate?: () => void }) {
             component={Link}
             href={href}
             label={label}
-            leftSection={<Icon size="1.125rem" aria-hidden="true" />}
+            leftSection={<Icon size="1.25rem" aria-hidden="true" />}
             active={active}
+            aria-label={label}
             aria-current={active ? "page" : undefined}
             onClick={onNavigate}
             variant="light"
             className={styles.link}
+            classNames={{ label: rail ? styles.railLabel : undefined }}
           />
         );
       })}

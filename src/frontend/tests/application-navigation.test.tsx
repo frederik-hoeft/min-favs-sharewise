@@ -59,13 +59,20 @@ describe("Application route shell", () => {
     expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("opens the account menu and changes the shared appearance preference", async () => {
+  it("opens account options and exposes the appearance submenu", async () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(screen.getByRole("button", { name: "Account and appearance" }));
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Appearance" }));
+    const back = screen.getByRole("menuitem", { name: "Back to account" });
+    expect(back).toHaveFocus();
+    await user.click(back);
+    await user.click(await screen.findByRole("menuitem", { name: "Appearance" }));
     await user.click(await screen.findByRole("menuitem", { name: "Dark theme" }));
     expect(window.localStorage.getItem("mantine-color-scheme-value")).toBe("dark");
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(await screen.findByRole("menuitem", { name: "Appearance" })).toBeInTheDocument();
   });
 
   it("scrolls to the top when its otherwise empty header surface is clicked", async () => {
@@ -77,7 +84,7 @@ describe("Application route shell", () => {
       await user.click(screen.getByRole("button", { name: "Scroll to top" }));
       expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
       scrollTo.mockClear();
-      await user.click(screen.getByRole("button", { name: "Account and appearance" }));
+      await user.click(screen.getByRole("button", { name: "Account menu" }));
       expect(scrollTo).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
