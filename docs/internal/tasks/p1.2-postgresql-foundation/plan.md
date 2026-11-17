@@ -17,7 +17,7 @@
 
 ## Phase B – Dependencies and configuration
 
-- [ ] **Scope:** Update the branch from `main` (after MR !16). In `pom.xml`, remove `spring-boot-h2console`; move `h2` to test scope (used by the P1.3a/P1.3b tests); add `spring-boot-starter-flyway`, `flyway-database-postgresql` and the PostgreSQL JDBC driver (runtime). Versions come from the Spring Boot 4.1 dependency management.
+- [x] **Scope:** Update the branch from `main` (after MR !16). In `pom.xml`, remove `spring-boot-h2console`; move `h2` to test scope (used by the P1.3a/P1.3b tests); add `spring-boot-starter-flyway`, `flyway-database-postgresql` and the PostgreSQL JDBC driver (runtime). Versions come from the Spring Boot 4.1 dependency management.
 - In `application.properties`: datasource defaults for the dev-container database with the application role, overridable via `SPRING_DATASOURCE_*` (D3); Flyway credentials for the migration role, overridable via `SPRING_FLYWAY_USER`/`SPRING_FLYWAY_PASSWORD`; `spring.flyway.locations=classpath:db/migration` (sub-folders per context); Flyway history in schema `flyway`; `spring.jpa.hibernate.ddl-auto=validate` (D11); keep P1.3b's `spring.jpa.open-in-view=false` (D12). The dev defaults live in `application.properties` rather than in compose environment variables, so test configuration can override them.
 - **Interim test configuration:** `src/test/resources/config/application.properties` points the database-free Spring tests (including the full-context `ShareWiseApplicationTests` and `TransactionWebScopeIntegrationTests`) at an in-memory H2 database with Flyway disabled, so `./mvnw test` keeps running them without PostgreSQL. Moving these tests to PostgreSQL is part of the PostgreSQL test provisioning (Phase D / P1.3c).
 - **Tests:** TC-2 (`./mvnw test` without Docker/PostgreSQL, all existing tests green), TC-7 (`h2` only in test scope).
@@ -25,11 +25,13 @@
 
 ## Phase C – Baseline migration
 
-- [ ] **Scope:** `db/migration/platform/V202611131000__platform_create_context_schemas.sql` (D8, D10): create schemas `identity`, `groups`, `finance`, `files`, `notifications`; grant `USAGE` on them to `sharewise_app`; default privileges for tables (`SELECT, INSERT, UPDATE, DELETE`) and sequences (`USAGE, SELECT`) created by `sharewise_migrator`; no grants on schema `flyway`.
+- [x] **Scope:** `db/migration/platform/V202611131000__platform_create_context_schemas.sql` (D8, D10): create schemas `identity`, `groups`, `finance`, `files`, `notifications`; grant `USAGE` on them to `sharewise_app`; default privileges for tables (`SELECT, INSERT, UPDATE, DELETE`) and sequences (`USAGE, SELECT`) created by `sharewise_migrator`; no grants on schema `flyway`.
 - **Tests:** TC-1 (manual: backend starts in the dev container, Flyway applies the baseline as migrator, greeting flow works), TC-9 (manual: edited committed migration fails checksum validation). Role permissions (TC-10, TC-11) were checked manually against PostgreSQL with `psql`; automated coverage follows with the PostgreSQL test provisioning.
 - **Gate:** Application runs against PostgreSQL with the application role.
 
 ## Phase D – Integration-test provisioning and tests
+
+***transferred to P1.3c***
 
 - [ ] **Scope:** Test support in `src/test/java/.../shared/infra/persistence/testing/` (name to be aligned with P1.3c):
     - Server provisioning: PostgreSQL 18 Testcontainer by default; external server when `SHAREWISE_TEST_DB_URL` and admin credentials are set (CI).
@@ -42,13 +44,15 @@
 
 ## Phase E – CI
 
+***transferred to P1.3c***
+
 - [ ] **Scope:** In `.gitlab-ci.yml`, give `build-backend` a `postgres:18` service with admin credentials and set `SHAREWISE_TEST_DB_URL` so the fixture uses the external server (Q2: no Docker-in-Docker on the GWDG runner). Ensure `./mvnw clean verify` runs both Surefire and Failsafe and reports which suites ran.
 - **Tests:** TC-8 (merge request pipeline green with integration tests against the CI service).
 - **Gate:** Green pipeline on the GWDG runner.
 
 ## Phase F – Documentation and close-out
 
-- [ ] **Scope:** Reconcile steady-state docs: `docs/development.md` (new "Database" section: service, roles, migrations, overrides, inspection, reset, H2 test configuration; separate-container note), `docs/stack/persistence.md` and `docs/stack/overview.md` (implementation status).
+- [x] **Scope:** Reconcile steady-state docs: `docs/development.md` (new "Database" section: service, roles, migrations, overrides, inspection, reset, H2 test configuration; separate-container note), `docs/stack/persistence.md` and `docs/stack/overview.md` (implementation status).
 - **Manual acceptance:** TC-1 on the rebuilt dev container (application starts against PostgreSQL 18 as `sharewise_app`, Flyway creates the five context schemas and `flyway` as `sharewise_migrator`); TC-2 (`./mvnw test`: 71 tests, 0 failures).
 - **After merge:** Discord FYI about the dependency changes (offline handoff).
 - **Gate:** Docs describe the implemented state; MR approved and merged.

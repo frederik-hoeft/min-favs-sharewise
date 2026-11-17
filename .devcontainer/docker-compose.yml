@@ -27,7 +27,9 @@ services:
       # Runs once on an empty volume: creates the ShareWise roles and database grants.
       - ../src/backend/sharewise/src/test/resources/db/bootstrap:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d sharewise"]
+      # TCP probe: the image's temporary init server listens only on the Unix socket, so this
+      # succeeds only after the bootstrap scripts have run and the final server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d sharewise"]
       interval: 5s
       timeout: 5s
       retries: 10
