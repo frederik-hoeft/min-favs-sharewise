@@ -59,8 +59,12 @@ class ShareWiseApplicationE2E extends E2ETestBase {
     }
 
     @Test
-    void productionDiscoveryDoesNotIncludeTestOnlyComponents() {
-        assertEquals(0, beanFactory.getBeanNamesForAnnotation(TestComponent.class).length);
+    void productionDiscoveryIncludesOnlyExplicitlyRegisteredTestComponents() {
+        String[] testComponents = beanFactory.getBeanNamesForAnnotation(TestComponent.class);
+        // @TestConfiguration is meta-annotated with @TestComponent. The entity-scan
+        // configuration is deliberately passed to start(...) rather than discovered.
+        assertEquals(1, testComponents.length);
+        assertEquals(ProductionEntityScanConfiguration.class, beanFactory.getType(testComponents[0]));
     }
 
     @Test
