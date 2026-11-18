@@ -1,4 +1,4 @@
-# ShareWise frontend
+﻿# ShareWise frontend
 
 This directory contains the Next.js / React / TypeScript frontend for ShareWise. The homepage demonstrates the **selected Quiet clarity visual foundation** with illustrative, nonfunctional financial previews. The `/app` workspace and `/app/dummy1`, `/app/dummy2` routes demonstrate the separate responsive application shell; they are not authenticated or connected to business services. The server-side `/api/greetings` route forwards requests to the Spring Boot `/greeting` example endpoint.
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-The frontend is available at [http://localhost:3000](http://localhost:3000). For the greeting endpoint to work, the backend must be running and accessible to the Next.js server at `BACKEND_URL` (default: `http://localhost:8080`).
+The frontend is available at [http://localhost:3000](http://localhost:3000). To verify the development API rewrite, start the backend and request `http://localhost:3000/api/system/v1/health`. The Next.js server forwards `/api/*` to `BACKEND_URL` (default: `http://localhost:8080`).
 
 Run the frontend checks before submitting changes:
 

@@ -1,4 +1,4 @@
-# Development environment
+﻿# Development environment
 
 **Status:** Setup guidance for the supplied starter. The repository contains a backend and frontend skeleton; architecture documents describe the intended system rather than features already implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
@@ -37,11 +37,12 @@ Flyway applies the migrations in `src/main/resources/db/migration/` at startup. 
 
 ## Build, test and run
 
-Backend, from the repository root:
+Backend, from the repository root (the default `test` run excludes `@Tag("integration")` database suites; pass `-Pintegration-tests` to run `@DatabaseIntegrationTest` suites explicitly):
 
 ```sh
 cd src/backend/sharewise
 ./mvnw test
+./mvnw test -Pintegration-tests
 ./mvnw spring-boot:run
 ```
 
@@ -50,6 +51,7 @@ Frontend, in a separate terminal from the repository root:
 ```sh
 cd src/frontend
 npm ci
+node --test lib/api/client.test.ts
 npm run lint
 npm run typecheck
 npm run test
@@ -64,7 +66,7 @@ The starter defaults to frontend port 3000 and backend port 8080. Consult the ba
 
 ## Current starter: separate-container execution
 
-The Next.js `/api/greetings` route forwards server-side requests to the Spring Boot `/greeting` endpoint. `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
+The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`). `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
 
 ```sh
 cd src/backend/sharewise
