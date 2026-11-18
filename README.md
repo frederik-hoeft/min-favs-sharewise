@@ -43,7 +43,7 @@ npm ci
 npm run dev
 ```
 
-The frontend runs on port 3000 and the backend on port 8080 in the provided starter setup. The backend contains a greeting example; the full financial APIs are not yet implemented.
+The frontend runs on port 3000 and the backend on port 8080 in the provided starter setup. The backend exposes a readiness endpoint at `/api/system/v1/health`; the full financial APIs are not yet implemented.
 
 For setup, builds and tests, consult the [development guide](docs/development.md). The backend runs on PostgreSQL 18 with Flyway migrations; the dev container provides the database.
 
