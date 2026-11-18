@@ -18,7 +18,8 @@
     "ghcr.io/devcontainers/features/node:2": {
       "version": "24",
       "pnpmVersion": "none"
-    }
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false }
   },
   "customizations": {
     "vscode": {
@@ -27,7 +28,8 @@
         "vmware.vscode-spring-boot",
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
-        "shd101wyy.markdown-preview-enhanced"
+        "shd101wyy.markdown-preview-enhanced",
+        "ms-ossdata.vscode-pgsql"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",
