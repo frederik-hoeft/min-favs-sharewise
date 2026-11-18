@@ -9,6 +9,7 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,8 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -38,7 +38,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * Component-level SQL tests against H2. Real PostgreSQL integration is a
  * separate acceptance gate; H2 cannot establish its isolation semantics.
  */
-@SpringJUnitConfig(JooqAccessIntegrationTests.Fixtures.class)
+@SpringJUnitConfig({InfrastructureTestComponents.class, JooqAccessIntegrationTests.Fixtures.class})
 class JooqAccessIntegrationTests {
 
     @Autowired OperationDispatcher dispatcher;
@@ -170,12 +170,7 @@ class JooqAccessIntegrationTests {
 
     record Probe(Transactions transactions, JooqAccess jooq) { }
 
-    @Configuration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = {
-        "de.hsh.favs.sharewise.shared.infra.di.internal",
-        "de.hsh.favs.sharewise.shared.infra.transactions.internal",
-        "de.hsh.favs.sharewise.shared.infra.persistence.jooq.internal"
-    })
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean
         DataSource dataSource() {

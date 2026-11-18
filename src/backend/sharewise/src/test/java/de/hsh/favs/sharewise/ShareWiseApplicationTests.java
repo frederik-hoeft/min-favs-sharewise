@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestComponent;
 
 @SpringBootTest
 class ShareWiseApplicationTests {
@@ -30,6 +32,11 @@ class ShareWiseApplicationTests {
     void contextLoads() {
         assertNotNull(scopeFactory);
         assertNotNull(beanFactory.getRegisteredScope("operation"));
+    }
+
+    @Test
+    void productionDiscoveryDoesNotIncludeTestOnlyComponents() {
+        assertEquals(0, beanFactory.getBeanNamesForAnnotation(TestComponent.class).length);
     }
 
     @Test

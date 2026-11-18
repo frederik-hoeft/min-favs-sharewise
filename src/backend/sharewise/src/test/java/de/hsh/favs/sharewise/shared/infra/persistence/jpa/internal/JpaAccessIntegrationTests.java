@@ -9,6 +9,7 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -22,8 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -35,7 +35,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Component-level H2 coverage; PostgreSQL interoperability remains in Phase D. */
-@SpringJUnitConfig(JpaAccessIntegrationTests.Fixtures.class)
+@SpringJUnitConfig({InfrastructureTestComponents.class, JpaAccessIntegrationTests.Fixtures.class})
 class JpaAccessIntegrationTests {
 
     @Autowired OperationDispatcher dispatcher;
@@ -164,12 +164,7 @@ class JpaAccessIntegrationTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = {
-        "de.hsh.favs.sharewise.shared.infra.di.internal",
-        "de.hsh.favs.sharewise.shared.infra.transactions.internal",
-        "de.hsh.favs.sharewise.shared.infra.persistence.jpa.internal"
-    })
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean
         DataSource dataSource() {

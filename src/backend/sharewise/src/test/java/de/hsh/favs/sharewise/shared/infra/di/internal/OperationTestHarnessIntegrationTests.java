@@ -20,7 +20,7 @@ import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.config.Scope;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class OperationTestHarnessIntegrationTests {
@@ -216,7 +216,7 @@ class OperationTestHarnessIntegrationTests {
         void destroy() { count.destroyed.incrementAndGet(); }
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean SingletonToken singletonToken() { return new SingletonToken(); }
         @Bean LifecycleCount lifecycleCount() { return new LifecycleCount(); }

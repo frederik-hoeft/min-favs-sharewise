@@ -16,7 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
@@ -119,7 +119,7 @@ class OperationScopeTestSeamIntegrationTests {
         @Override public void close() { counters.prototypesClosed.incrementAndGet(); }
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean LifecycleCounters lifecycleCounters() { return new LifecycleCounters(); }
         @Bean("preferred") Label preferredLabel() { return new Label("preferred"); }

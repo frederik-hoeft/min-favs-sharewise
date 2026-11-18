@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.context.TestComponent;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 import org.springframework.test.web.servlet.MockMvc;
@@ -44,6 +45,7 @@ class TransactionWebScopeIntegrationTests {
 
     record Probe(Transactions transactions, JpaAccess jpa) { }
 
+    @TestComponent
     @RestController
     static final class SegmentProbeController {
         private final OperationDispatcher dispatcher;

@@ -18,6 +18,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
+import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactionTestConfiguration;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
@@ -28,7 +29,10 @@ import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Id;
 import jakarta.persistence.Query;
 import jakarta.persistence.Table;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -39,9 +43,10 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.context.TestComponent;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Scope;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -57,12 +62,22 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Preliminary H2 evidence for logical leases and wiring; PostgreSQL acceptance is Phase D. */
-@SpringJUnitConfig(RollbackTransactionsIntegrationTests.Fixtures.class)
+@SpringJUnitConfig({InfrastructureTestComponents.class, RollbackTransactionsIntegrationTests.Fixtures.class})
 class RollbackTransactionsIntegrationTests {
 
     @Autowired ServiceScopeFactory scopes;
     @Autowired PlatformTransactionManager physicalManager;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ConfigurableListableBeanFactory beanFactory;
+
+    @Test
+    void onlyOptedInTestConfigurationsAreRegistered() {
+        Set<Class<?>> discovered = Arrays.stream(beanFactory.getBeanNamesForAnnotation(TestComponent.class))
+            .map(beanFactory::getType)
+            .collect(Collectors.toSet());
+        assertEquals(Set.of(InfrastructureTestComponents.class, Fixtures.class,
+            RollbackTransactionTestConfiguration.class), discovered);
+    }
 
     @BeforeEach
     void clearRows() {
@@ -395,12 +410,6 @@ class RollbackTransactionsIntegrationTests {
     }
 
     @TestConfiguration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = {
-        "de.hsh.favs.sharewise.shared.infra.di.internal",
-        "de.hsh.favs.sharewise.shared.infra.transactions.internal",
-        "de.hsh.favs.sharewise.shared.infra.persistence.jooq.internal",
-        "de.hsh.favs.sharewise.shared.infra.persistence.jpa.internal"
-    })
     @Import(RollbackTransactionTestConfiguration.class)
     static class Fixtures {
         @Bean

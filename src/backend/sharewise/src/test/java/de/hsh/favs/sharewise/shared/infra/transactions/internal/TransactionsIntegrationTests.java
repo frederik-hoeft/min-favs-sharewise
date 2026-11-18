@@ -16,6 +16,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
+import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.Callable;
@@ -30,8 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.TransactionDefinition;
@@ -41,7 +41,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** Exercises the real DI scope and Spring TransactionTemplate against an instrumented physical manager. */
-@SpringJUnitConfig(TransactionsIntegrationTests.Fixtures.class)
+@SpringJUnitConfig({InfrastructureTestComponents.class, TransactionsIntegrationTests.Fixtures.class})
 class TransactionsIntegrationTests {
 
     @Autowired OperationDispatcher dispatcher;
@@ -603,11 +603,7 @@ class TransactionsIntegrationTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = {
-        "de.hsh.favs.sharewise.shared.infra.di.internal",
-        "de.hsh.favs.sharewise.shared.infra.transactions.internal"
-    })
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean RecordingTransactionManager transactionManager() { return new RecordingTransactionManager(); }
 

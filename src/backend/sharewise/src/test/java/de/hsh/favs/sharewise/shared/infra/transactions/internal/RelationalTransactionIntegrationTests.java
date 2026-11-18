@@ -11,6 +11,7 @@ import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
@@ -31,8 +32,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -51,7 +51,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * H2 integration coverage of Spring-managed jOOQ/JPA participation, independent
  * physical connections and exceptional paths. PostgreSQL acceptance is separate.
  */
-@SpringJUnitConfig(RelationalTransactionIntegrationTests.Fixtures.class)
+@SpringJUnitConfig({InfrastructureTestComponents.class, RelationalTransactionIntegrationTests.Fixtures.class})
 class RelationalTransactionIntegrationTests {
 
     @Autowired OperationDispatcher dispatcher;
@@ -366,13 +366,7 @@ class RelationalTransactionIntegrationTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = {
-        "de.hsh.favs.sharewise.shared.infra.di.internal",
-        "de.hsh.favs.sharewise.shared.infra.transactions.internal",
-        "de.hsh.favs.sharewise.shared.infra.persistence.jooq.internal",
-        "de.hsh.favs.sharewise.shared.infra.persistence.jpa.internal"
-    })
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean
         DataSource dataSource() {
