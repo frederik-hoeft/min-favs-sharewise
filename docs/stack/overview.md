@@ -55,7 +55,7 @@ The detailed architecture and technology decisions are documented in:
 - [Application architecture](../architecture.md): modular monolith, dependency direction, published APIs, application services and transaction boundaries.
 - [Operation-scope DI architecture](../architecture/dependency-injection.md), [pending integrations](dependency-injection.md) and [selection rationale](dependency-injection-alternatives.md): explicit service lifetime, Spring bean resolution and cleanup.
 - [Transaction management architecture](../architecture/transactions.md): application-owned outcomes, sequential segments, failure semantics and guarded jOOQ/JPA access.
-- [Persistence architecture](persistence.md) and [alternatives](persistence-alternatives.md): PostgreSQL, Flyway, jOOQ/JPA, schema generation, coordinated transactions and database tests.
+- [Persistence architecture](../architecture/persistence.md), [implementation status](persistence.md) and [alternatives](persistence-alternatives.md): PostgreSQL, Flyway, schema ownership, roles, adapter access and transaction participation.
 - [Messaging architecture](messaging.md) and [alternatives](messaging-alternatives.md): Spring Modulith, durable publication, inboxes, idempotency, retention and later broker externalization.
 - [Identity and authorization architecture](security.md) and [alternatives](security-alternatives.md): Spring Security, IAM sessions and JWTs, scoped attestations, trust boundaries, refresh and revocation.
 - [Domain model](../data-model-design.md): bounded-context ownership, business invariants and consistency contracts; not a technology specification.

@@ -22,7 +22,7 @@ The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, Ty
 
 ## Database
 
-The application uses **PostgreSQL 18**. The dev container starts a `postgres` service next to the `dev` service (host `postgres`, port `5432`, database `sharewise`); it is reachable from the dev container and other compose services, not published on the host. On first start with an empty `postgres-data` volume, the scripts in `src/backend/sharewise/src/test/resources/db/bootstrap/` create two roles:
+The application uses **PostgreSQL 18**. The [persistence architecture](architecture/persistence.md) defines schema ownership, migration authority and adapter boundaries; this section covers local setup and commands. The dev container starts a `postgres` service next to the `dev` service (host `postgres`, port `5432`, database `sharewise`); it is reachable from the dev container and other compose services, not published on the host. On first start with an empty `postgres-data` volume, the scripts in `src/backend/sharewise/src/test/resources/db/bootstrap/` create two roles:
 
 | Role | Used by | Permissions |
 | --- | --- | --- |

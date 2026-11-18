@@ -14,7 +14,7 @@ The repository is an **early implementation baseline**, not a finished product. 
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
 | `docs/architecture.md` | Component-level hexagonal/modulith architecture and service conventions |
 | `docs/architecture/tests.md` | Backend Unit, Integration and E2E boundaries, isolation and evidence guarantees |
-| `docs/stack/persistence.md` | Preliminary database-first persistence and transaction design |
+| `docs/architecture/persistence.md` | Implemented database ownership, migrations, privileges and persistence adapter boundaries |
 | `docs/stack/messaging.md` | Preliminary cross-context event delivery, idempotency and recovery design |
 | `docs/stack/security.md` | Preliminary IAM, JWT/refresh, scoped attestation and authorization design |
 | `docs/development.md` | Local development, build and validation guidance |

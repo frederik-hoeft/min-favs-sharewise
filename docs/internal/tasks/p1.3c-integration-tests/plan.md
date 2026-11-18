@@ -1,6 +1,6 @@
 # P1.3c - Implementation plan: integration-test execution and isolation
 
-**Status:** Approved implementation plan; Phases A–D accepted. Phase E implementation reviewed, but its E2E CI gate requires a successful rerun after the E4 correction. Phase F documentation and final acceptance remain in review. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
+**Status:** Implemented and accepted, including the corrected E2E discovery assertion and the Unit, Integration and E2E CI gates. **Specification:** [P1.3c integration-test contract](specification.md). The [development workflow](../../../development/ai-development-workflow.md) and [documentation skill](../../../../.agents/skills/documentation/SKILL.md) govern review and final reconciliation.
 
 ## Scope, baseline and dependency gates
 
@@ -71,9 +71,9 @@ share the migrated database only for rollback-isolated Integration tests, and re
 - [x] Provide a JUnit-root-owned, once-per-suite migrated PostgreSQL database and application context for Integration. Physical transactions and operation scopes must remain test-local and rollback-only; test data and assertions may execute concurrently on independent connections. Teardown must close the context before dropping the database.
 - [x] Migrate all existing H2 and production-context tests to their appropriate suites without losing contract assertions; real commit, role/schema, MVC/HTTP and cross-transaction coverage belongs in E2E with a fresh disposable database per test. Remove H2 and the globally injected test datasource properties.
 - [x] Split GitLab backend packaging, Unit, Integration and E2E into independent jobs with Surefire/Failsafe JUnit reports. Both PostgreSQL jobs use `postgres:18-trixie` as runner-provisioned TCP services and P1.2 role bootstrap without DinD, sockets, or container APIs. A missing database must fail the corresponding job.
-- [ ] Verify both PostgreSQL suites and per-test database teardown in the GitLab runner and against a locally provisioned endpoint where available. Verify job-level separation, executed test counts, order independence and compatible concurrent rollback operations. Do not conflate offline compilation with PostgreSQL acceptance.
+- [x] Verify both PostgreSQL suites, suite separation and disposable-database cleanup in the GitLab runner. The reviewer confirmed the corrected pipeline is green. Local execution is optional when a PostgreSQL endpoint is available; offline compilation alone does not establish acceptance.
 
-**Gate E (pending CI evidence):** Three independently reported CI test jobs must execute and pass, with the Unit job
+**Gate E (accepted; reviewer-confirmed CI):** Three independently reported CI test jobs execute and pass, with the Unit job
 entirely database-free, the Integration job using one shared migrated fixture plus independent
 rollback transactions, and the E2E job creating/cleaning up scenario-owned databases with real
 commits. Missing PostgreSQL, failed migrations and incomplete cleanup fail the relevant gate.
@@ -85,11 +85,11 @@ P1.5 remains a separate real-PostgreSQL transaction acceptance task.
 
 - [x] Update developer/test guidance with the selected test entry points, modes, PostgreSQL endpoint configuration, local optional Testcontainers prerequisites, GitLab service setup, roles/privileges, deterministic fixture ownership, failure diagnostics and commands that were actually validated. Preserve `docs/architecture` as a steady-state description, updating it only for genuinely new architectural behavior.
 - [x] Verify internal links, Markdown formatting and task/backlog references, and run focused tests plus the strongest available backend checks. Record actual Unit/Integration/E2E/CI execution separately, including any deferred P1.5 and messaging evidence.
-- [ ] Provide a focused operational acceptance procedure (provision server, initialize two independent databases, run rollback and real-commit suites, assert cleanup) for human review. Mark phases and P1.3c complete only after their tests, review and manual acceptance; do not silently declare blocked PostgreSQL work done.
+- [x] Provide the operational acceptance procedure (provision server, initialize independent databases, exercise rollback and real-commit suites, assert cleanup) in the [backend testing guide](../../../development/tests.md#operational-acceptance). The reviewer accepted P1.3c after confirming the corrected CI pipeline passed.
 
-**Documentation validation evidence:** The strict-offline Java 25 / Maven 3.10 Unit gate (`-Punit-tests clean verify`) passed **106 tests** after E4. The E2E CI job for revision `d6e86df4` executed 40 tests with one failing discovery assertion: the test counted an explicitly imported `@TestConfiguration` as an unexpected component. E4 corrects this assertion; PostgreSQL execution of that fix remains unverified, and successful Integration and E2E CI results for the corrected revision must be recorded before Gate E closes. The operational acceptance procedure is documented in [Backend testing](../../../development/tests.md#operational-acceptance) and remains subject to human review. P1.5's independent transaction acceptance and unimplemented messaging/system-level tests remain outside this gate.
+**Acceptance evidence:** The strict-offline Java 25 / Maven 3.10 Unit gate passed **106 tests** after E4. An earlier E2E pipeline exposed an assertion that treated an explicitly imported `@TestConfiguration` as an unintended component; E4 corrected it. The reviewer subsequently confirmed that the **corrected CI pipeline is green** and explicitly accepted P1.3c. The [operational acceptance procedure](../../../development/tests.md#operational-acceptance) remains available for repeatable manual verification. P1.5's independent transaction acceptance and unimplemented messaging/system-level tests remain outside this gate.
 
-**Gate F:** Implementation, approved specification, test evidence and documentation agree. The human has reviewed the complete changes and executed or explicitly dispositioned the operational acceptance procedure; merge remains separately authorized.
+**Gate F (accepted):** Implementation, approved specification, CI evidence and steady-state documentation agree. The reviewer accepted the task; merge remains separately authorized.
 
 ## Out of scope and handoff ownership
 

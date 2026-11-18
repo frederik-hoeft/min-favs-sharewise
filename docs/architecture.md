@@ -1,6 +1,6 @@
 # Application architecture
 
-**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md) and [transaction management](architecture/transactions.md) infrastructure and executable module-boundary verification are implemented; business modules, PostgreSQL bootstrap and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
+**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md) and [transaction management](architecture/transactions.md) infrastructure and executable module-boundary verification are implemented; business modules and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
 
 ## System organization
 
@@ -65,7 +65,7 @@ Finance applies an additional business protocol **inside** this generic transact
 3. Allocate the next **group-local financial revision**, persist the immutable Expense/Settlement state and its children, and append the corresponding ChangeRecord.
 4. Persist an integration-event publication record in the same transaction when required; only then authorize commit.
 
-All financial mutations in one group must follow the same ordering and locking protocol. A database sequence or independent auto-increment IDs alone cannot guarantee the required logical commit order. Historical reads at one group revision must be consistent. The exact COW tables and indexes are infrastructure choices; the [persistence architecture](stack/persistence.md) describes the preliminary database and adapter technology decisions. See [domain history](data-model-design.md#financial-revisions-and-history).
+All financial mutations in one group must follow the same ordering and locking protocol. A database sequence or independent auto-increment IDs alone cannot guarantee the required logical commit order. Historical reads at one group revision must be consistent. The exact COW tables and indexes are infrastructure choices; the [persistence architecture](architecture/persistence.md) defines the implemented database foundation and adapter boundaries. See [domain history](data-model-design.md#financial-revisions-and-history).
 
 ## Integration events and extraction
 
@@ -77,7 +77,7 @@ The [preliminary security architecture](stack/security.md) separates IAM identit
 
 ## Infrastructure integration
 
-The [technical stack overview](stack/overview.md) maps the selected frameworks and tools to the runtime layers and distinguishes the starter from the intended system. The [persistence](stack/persistence.md), [messaging](stack/messaging.md) and [security](stack/security.md) designs own their corresponding technology-specific contracts; this document owns the module boundaries and application interaction model.
+The [technical stack overview](stack/overview.md) maps the selected frameworks and tools to the runtime layers and distinguishes the starter from the intended system. The [implemented persistence architecture](architecture/persistence.md) and the [preliminary messaging](stack/messaging.md) and [security](stack/security.md) designs own their corresponding technology-specific contracts; this document owns the module boundaries and application interaction model.
 
 Backend services use Spring constructor injection. Stateless shared infrastructure normally remains singleton-scoped, while the [application-operation DI scope](architecture/dependency-injection.md) gives stateful entry services, participants and adapters one explicitly dispatched lifetime. Operation-scoped `Transactions` uses Spring's programmatic transaction manager (normally `TransactionTemplate`) to physically finalize each segment. The dispatcher, REST adapters, message listeners and application-core services need no `@Transactional` annotations; event publication records enlist in the business operation's physical Spring transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
 

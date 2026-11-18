@@ -26,4 +26,4 @@
 | Short-lived in-memory replay cache | Restart, multiple instances and delayed replay can defeat ephemeral deduplication. Persist the marker with the business effect or use a durable domain invariant. |
 | Fixed short inbox retention for all consumers | The permitted replay, retry and dead-letter horizons vary. Premature deletion allows an old event to apply again; retention follows the consumer's actual replay contract. |
 
-Consumer-side idempotency and business authorization remain independent of the delivery transport. Revisit technology choices through explicit design review when failure, throughput or deployment requirements justify a change; preserve [context ownership and persistence guarantees](persistence.md) throughout.
+Consumer-side idempotency and business authorization remain independent of the delivery transport. Revisit technology choices through explicit design review when failure, throughput or deployment requirements justify a change; preserve [context ownership and persistence guarantees](../architecture/persistence.md) throughout.
