@@ -164,7 +164,6 @@ describe("Application route shell", () => {
       dropdown: { background: "var(--sw-surface)", borderColor: "var(--sw-border)" },
       item: { "--menu-item-hover": "var(--mantine-color-default-hover)" },
     });
-    const toggle = screen.getByRole("button", { name: "Open navigation" });
     expect(theme.components?.Burger?.defaultProps).toMatchObject({ color: "var(--mantine-color-text)" });
     expect(theme.components?.Burger?.styles).toMatchObject({
       root: { alignItems: "center", justifyContent: "center", minHeight: "2.75rem" },
