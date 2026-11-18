@@ -1,39 +1,40 @@
 # ShareWise visual design: Quiet clarity
 
-**Status:** Selected frontend design direction. The implemented pages demonstrate the foundation; the static financial examples and dummy application routes are not finalized business workflows.
+**Status:** Selected visual foundation for the implemented public site and demonstration workspace. Their financial previews and placeholder routes are not working business features.
 
-ShareWise deals with money shared among people, so its interface should make both the numbers and their context easy to understand. **Quiet clarity** pairs generous spacing and direct language with compact, structured financial information. Neutral canvases let balances and history remain legible, while a restrained indigo accent indicates navigation, emphasis and action. Green, teal and olive are deliberately absent from the identity.
+ShareWise presents decisions about money shared among people. Its visual language puts the amount, the people involved and the history of a decision in a clear hierarchy. **Quiet clarity** combines direct typography and generous whitespace with structured, compact records. Neutral surfaces provide the canvas; restrained indigo identifies actions, selected navigation and important emphasis. The identity contains no green, teal or olive accents.
 
-The public website and application share typography, surfaces, controls and color semantics, but they express different densities. The public page uses editorial headings, whitespace and a floating navigation surface to introduce the product. The workspace uses a docked header and sidebar to prioritize predictable navigation and usable screen area. The two shells are composed separately in Next.js; neither defines a competing theme.
+The public and workspace experiences express the same design at different densities. The public site uses editorial scale and an inset floating header to introduce the product. The workspace uses an edge-attached sidebar, header and centered content area to keep navigation predictable while leaving room for data-rich views. The distinction is compositional: both shells resolve their colors, controls and typography from the same Mantine theme.
 
-## Color and typography
+## Theme and color semantics
 
-The [Mantine theme](../../src/frontend/lib/theme.ts) is the source of truth for exact palette values, radii, typography scales and component defaults. It defines a ten-step `indigoBrand` palette, replaces Mantine's `gray` and `dark` scales with ShareWise neutrals, and provides semantic CSS variables in both light and dark schemes. Light, dark and system appearance choices use Mantine's color-scheme provider and persistence.
+[`lib/theme.ts`](../../src/frontend/lib/theme.ts) defines the global Mantine theme and its CSS-variable resolver. It owns the indigo primary palette, ShareWise replacements for Mantine's `gray` and `dark` palettes, typography and spacing scales, radii, and defaults for standard components. Semantic variables bridge those palettes to page and application surfaces in light and dark modes.
 
-| Semantic role | Design intention | Theme examples |
+| Role | Meaning | Examples |
 | --- | --- | --- |
-| Canvas and panels | Distinguish page background, cards and subordinate surfaces without heavy borders | `--sw-page`, `--sw-surface`, `--sw-surface-subtle` |
-| Content hierarchy | Main text remains strong; supporting information is quiet but readable | `--sw-ink`, `--sw-muted` |
-| Boundaries | Subtle dividers separate regions without dominating them | `--sw-border` |
-| Actions and selection | Indigo identifies primary actions and selected navigation; inactive hover uses a restrained neutral tint | `--sw-accent`, `--sw-action-ink`, `--sw-interactive-hover` |
-| Inverse surfaces | Consistent dark closing/summary panels in either appearance mode | `--sw-inverse`, `--sw-on-inverse` |
+| Canvas and surfaces | Page background, panels and subordinate regions | `--sw-page`, `--sw-surface`, `--sw-surface-subtle` |
+| Content and boundaries | Primary text, supporting text and subtle separators | `--sw-ink`, `--sw-muted`, `--sw-border` |
+| Interaction | Primary action, action foreground and understated hover | `--sw-accent`, `--sw-action-ink`, `--sw-interactive-hover` |
+| Inverse presentation | Closing and summary surfaces that remain dark in either scheme | `--sw-inverse`, `--sw-on-inverse` |
 
-Mantine's `cssVariablesResolver` maps shared semantic colors, while `variantColorResolver` provides legible primary filled foregrounds for buttons and active navigation in both schemes. Standard `Menu`, `NavLink`, `Button`, `Card`, `Paper` and `Burger` behavior is customized centrally through supported Mantine theme/component APIs when their application-wide presentation differs. Components should consume these roles instead of copying hex values or overriding Mantine's internal DOM structure.
+The Mantine provider applies a light, dark or system-derived color scheme. `cssVariablesResolver` supplies scheme-specific semantic values and maps Mantine's common text and neutral interaction roles to them. `variantColorResolver` gives filled primary controls a legible foreground, including the different foreground needed by the lighter dark-mode indigo. As a result, a selected navigation link and a primary Button share a color contract rather than maintaining separate selection palettes.
 
-Typography uses a local system font stack (`Inter`, `Segoe UI`, `Arial`, sans-serif) without network font downloads. Headings are bold with tight tracking; financial data uses aligned, tabular numerals. Mantine's spacing and radius scales control recurring geometry; local SCSS Modules compose individual layouts. Exact values belong in the theme or the relevant component stylesheet, where they remain maintainable as the design evolves.
+Standard components inherit the common foundation. Mantine component extensions establish application-wide defaults for Buttons, NavLinks, Menus, Cards, Paper and Burger controls. Component-specific customization remains where the component has a distinct semantic responsibility, such as a dropdown surface; the application does not restyle Mantine's internal markup independently on each page. Exact palette values and dimensions live in the theme or owning SCSS Module, where changes remain consistent across consumers.
 
-## Components and responsive composition
+The font stack is local (`Inter`, `Segoe UI`, `Arial`, sans-serif), without remote font loading. Strong headings and aligned tabular numbers establish the hierarchy for financial information. Spacing and radii come from Mantine scales; SCSS Modules describe compositions that do not correspond to standard controls.
 
-Mantine provides standard controls, layout primitives and accessibility behavior. ShareWise-specific components wrap it only when they express a genuinely reusable responsibility, such as `Brand` or `ParticipantAvatar`. Page-specific illustrations remain private to the public route. Phosphor is the shared UI icon set; the overlapping-square ShareWise mark is an identity asset, not a general-purpose icon.
+## Layout, navigation and responsive behavior
 
-The public page uses a fixed, inset `AppShell.Header` and a centered content column. The workspace uses Mantine `AppShell` with `layout="alt"`: a full-height edge-attached sidebar, header and a content area centered in the remaining workspace. The sidebar adapts from a full navigation list to an icon rail at intermediate widths, then to a Mantine Drawer below the mobile breakpoint. Its controls reuse the same theme as the public page, even though the shells have distinct geometry.
+The public site's fixed `AppShell.Header` is inset and centered above an editorial content column. The workspace's `AppShell` uses `layout="alt"`, placing the sidebar along the full left edge and the header beside it. Main content is centered within the remaining workspace, not the entire viewport, so it stays visually centered as navigation changes width.
 
-Responsive breakpoints are named in [`styles/_breakpoints.scss`](../../src/frontend/styles/_breakpoints.scss); Mantine's `sm` and `lg` thresholds govern the application navigation states. Component-level rules stay in adjacent `*.module.scss` files, and shared Sass imports use the frontend `@/` alias. This keeps the layout adaptable without duplicating breakpoints or introducing global page selectors.
+Workspace navigation has three forms: a persistent expanded sidebar on wide screens, a collapsible icon rail at intermediate widths and a Mantine Drawer on mobile. Rail expansion overlays content rather than changing its layout position. Selecting a route collapses the rail, including when the pointer remains over its previous position. On mobile, the hamburger belongs to the header and the brand appears inside the navigation drawer. The public shell retains its own header and links, independent of workspace navigation state.
 
-Navigation, appearance selection and mobile menus use Mantine's keyboard and focus semantics. Both shells provide a skip link, visible keyboard focus and appropriate landmarks. Icon-only controls have accessible labels; decorative icons are hidden from assistive technology. Financial direction is conveyed by signs and text, never by color alone. Reduced-motion preferences suppress nonessential movement. Browser inspection remains necessary for contrast, layout and interaction checks that jsdom cannot establish.
+The responsive thresholds come from the shared Sass breakpoints and Mantine theme. Presentation-specific spacing remains local to each shell or component; it is not part of the frontend's architectural contract. Shared components represent recurring interface responsibilities, while the public financial previews retain their local composition. Phosphor provides application icons, and the custom overlapping-square mark identifies ShareWise itself.
 
-## Example content and scope
+Accessibility is part of this presentation model. Both shells provide landmarks, skip navigation, labeled icon-only controls and visible keyboard focus. Mantine handles the menu and Drawer interaction semantics. Financial meaning survives without reliance on color: signs, labels and descriptions convey amounts and direction. Nonessential movement respects reduced-motion preferences.
 
-The landing page illustrates one coherent group: four participants share three expenses totaling €680, and an external €60 settlement is recorded separately. Balances and revisions remain internally consistent across the previews. The presentation demonstrates how real financial records could read in this design without performing calculations, contacting the backend, processing payments or implying that the demo is a working account.
+## Illustrative financial content
 
-These examples establish a visual vocabulary, not templates that every production feature must duplicate. New pages should reuse the theme and meaningful shared components, then design their own domain-facing workflows from actual requirements. See [frontend architecture](../architecture/frontend.md) for ownership and the [developer guide](../development/frontend.md) for implementation conventions.
+The landing page depicts one consistent fictional group of four participants. Its three shared expenses total €680, while an external €60 settlement is recorded separately; the balance and history previews refer to that same example. They demonstrate the intended readability of allocations, settlement records and revisions without requesting live data, calculating balances or processing payments.
+
+These previews establish a visual vocabulary rather than a data contract. Real workflows remain governed by the [frontend application boundaries](../architecture/frontend.md) and the backend [domain model](../data-model-design.md). Contributor conventions and the checked-in Mantine reference are linked from the [frontend development guide](../development/frontend.md).
