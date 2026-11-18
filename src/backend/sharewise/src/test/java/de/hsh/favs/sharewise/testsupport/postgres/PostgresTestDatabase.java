@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.testsupport.postgres;
 
+import de.hsh.favs.sharewise.testsupport.database.TestDatabase;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -22,7 +23,7 @@ import org.flywaydb.core.Flyway;
  * drops the database again on {@link #close()}. If no server is reachable, creation fails with a
  * descriptive {@link IllegalStateException}; tests never fall back to H2 or mocks.
  */
-public final class PostgresTestDatabase implements AutoCloseable {
+public final class PostgresTestDatabase implements TestDatabase {
 
     public static final String APPLICATION_USER = "sharewise_app";
     public static final String APPLICATION_PASSWORD = "sharewise_app_dev";

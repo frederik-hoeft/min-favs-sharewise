@@ -15,9 +15,10 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.p13crollback.RollbackProbeRow;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.transactions.PendingStateInspector;
-import de.hsh.favs.sharewise.testsupport.transactions.PostgresRollbackOperationHarness;
+import de.hsh.favs.sharewise.testsupport.integration.AbstractIntegrationTest;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestRunner;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
 import jakarta.persistence.EntityManager;
@@ -34,12 +35,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jooq.DSLContext;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.extension.ExtendWith;
-import de.hsh.favs.sharewise.testsupport.postgres.SharedPostgresIntegrationExtension;
 import org.springframework.dao.DataAccessException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -47,22 +44,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** PostgreSQL-only acceptance for one logical segment inside a physically rolled-back transaction. */
 @Tag("integration")
-@ExtendWith(SharedPostgresIntegrationExtension.class)
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class PostgresRollbackOperationIT {
-
-    private PostgresApplicationFixture sharedFixture;
-
-    @BeforeAll
-    void initialize(PostgresApplicationFixture fixture) {
-        this.sharedFixture = fixture;
-    }
+class PostgresRollbackOperationIT extends AbstractIntegrationTest {
 
     @Test
     void commitRollbackAndAbstainRemainPendingUntilHarnessRollback() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
+        IntegrationTestContext fixture = fixture();
         for (TransactionDecision decision : TransactionDecision.values()) {
-            PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+            IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
             String result = harness.inRollbackOperation(scope -> {
                 RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
                 assertSame(manager, scope.resolve(Transactions.class));
@@ -94,13 +82,11 @@ class PostgresRollbackOperationIT {
     }
 
     @Test
-    void inspectorUsesOriginalPostgresSessionAndExpiresAfterCallback() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
+    void inspectorUsesOriginalPostgresSessionAndExpiresAfterCallback() {
+        IntegrationTestContext fixture = fixture();
         AtomicReference<PendingStateInspector> retainedInspector = new AtomicReference<>();
         AtomicReference<RollbackTransactions> retainedManager = new AtomicReference<>();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
-        harness.inRollbackOperation(scope -> {
-            RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
+        runTransactionTest((manager, scope) -> {
             retainedManager.set(manager);
             Integer backendPid = manager.execute(() -> {
                 Integer pid = scope.resolve(JooqAccess.class).dsl()
@@ -114,7 +100,6 @@ class PostgresRollbackOperationIT {
             assertEquals(backendPid, inspectedPid);
             assertThrows(IllegalStateException.class,
                 () -> retainedInspector.get().queryForObject("select 1", Integer.class));
-            return null;
         });
         assertThrows(IllegalStateException.class, retainedManager.get()::observation);
         assertThrows(IllegalStateException.class,
@@ -123,8 +108,8 @@ class PostgresRollbackOperationIT {
 
     @Test
     void pendingJpaChangesAreNotFlushedByInspector() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+        IntegrationTestContext fixture = fixture();
+        IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         harness.inRollbackOperation(scope -> {
             scope.resolve(Transactions.class).execute(() -> {
                 scope.resolve(JpaAccess.class).entityManager().persist(new RollbackProbeRow(3, "unflushed"));
@@ -153,8 +138,8 @@ class PostgresRollbackOperationIT {
     @Test
     void poisonedCommitAndTypedBusinessResultAreDistinguished() throws SQLException {
         record NotFound(int id) { }
-        PostgresApplicationFixture fixture = fixture();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+        IntegrationTestContext fixture = fixture();
+        IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
             IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
@@ -180,8 +165,8 @@ class PostgresRollbackOperationIT {
 
     @Test
     void callbackExceptionsAndExceptionalAssertionsAlwaysRollback() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+        IntegrationTestContext fixture = fixture();
+        IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         IllegalArgumentException expected = new IllegalArgumentException("application callback");
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
@@ -212,8 +197,8 @@ class PostgresRollbackOperationIT {
 
     @Test
     void postgresConstraintErrorAbortsTransactionButTeardownRestoresDatabase() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+        IntegrationTestContext fixture = fixture();
+        IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
             org.jooq.exception.DataAccessException failure = assertThrows(
@@ -234,9 +219,9 @@ class PostgresRollbackOperationIT {
 
     @Test
     void inspectionNeedsACompletedSegmentAndTheOriginalActiveTransaction() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
+        IntegrationTestContext fixture = fixture();
         PlatformTransactionManager physical = fixture.context().getBean(PlatformTransactionManager.class);
-        new PostgresRollbackOperationHarness(fixture).inRollbackOperation(scope -> {
+        new IntegrationTestRunner(fixture).inRollbackOperation(scope -> {
             assertThrows(IllegalStateException.class, () -> scope.inspect(
                 inspector -> inspector.queryForObject("select 1", Integer.class)));
             scope.resolve(Transactions.class).execute(() -> TransactionOutcome.commit(null));
@@ -255,8 +240,8 @@ class PostgresRollbackOperationIT {
 
     @Test
     void ambientPhysicalTransactionCannotBeReusedAsTheHarnessTransaction() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+        IntegrationTestContext fixture = fixture();
+        IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         TransactionTemplate outer = new TransactionTemplate(
             fixture.context().getBean(PlatformTransactionManager.class));
         outer.execute(status -> {
@@ -269,8 +254,8 @@ class PostgresRollbackOperationIT {
 
     @Test
     void staleJooqAndJpaFacadesCannotBeReusedByInspection() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
-        new PostgresRollbackOperationHarness(fixture).inRollbackOperation(scope -> {
+        IntegrationTestContext fixture = fixture();
+        new IntegrationTestRunner(fixture).inRollbackOperation(scope -> {
             AtomicReference<DSLContext> retainedDsl = new AtomicReference<>();
             AtomicReference<org.jooq.Query> retainedQuery = new AtomicReference<>();
             AtomicReference<EntityManager> retainedJpa = new AtomicReference<>();
@@ -301,8 +286,8 @@ class PostgresRollbackOperationIT {
 
     @Test
     void nestedAndRepeatedLogicalSegmentsAreRejected() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+        IntegrationTestContext fixture = fixture();
+        IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
             assertThrows(IllegalStateException.class, () -> manager.execute(() -> {
@@ -320,11 +305,11 @@ class PostgresRollbackOperationIT {
 
     @Test
     void suspensionRejectsBothDatabaseAdaptersUntilOriginalTransactionResumes() throws SQLException {
-        PostgresApplicationFixture fixture = fixture();
+        IntegrationTestContext fixture = fixture();
         PlatformTransactionManager physical = fixture.context().getBean(PlatformTransactionManager.class);
         for (int propagation : new int[]{TransactionDefinition.PROPAGATION_REQUIRES_NEW,
                 TransactionDefinition.PROPAGATION_NOT_SUPPORTED}) {
-            new PostgresRollbackOperationHarness(fixture).inRollbackOperation(scope -> {
+            new IntegrationTestRunner(fixture).inRollbackOperation(scope -> {
                 RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
                 manager.execute(() -> {
                     JooqAccess jooq = scope.resolve(JooqAccess.class);
@@ -355,8 +340,8 @@ class PostgresRollbackOperationIT {
 
     @Test
     void concurrentRollbackOperationsNeverPublishPendingRows() throws Exception {
-        PostgresApplicationFixture fixture = fixture();
-        PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
+        IntegrationTestContext fixture = fixture();
+        IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         CountDownLatch pendingBoth = new CountDownLatch(2);
         try (ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<Void> first = workers.submit(() -> concurrentOperation(fixture, harness, pendingBoth, 20));
@@ -368,8 +353,8 @@ class PostgresRollbackOperationIT {
         assertEquals(0, independentlyVisible(fixture, 21));
     }
 
-    private static Void concurrentOperation(PostgresApplicationFixture fixture,
-            PostgresRollbackOperationHarness harness, CountDownLatch pendingBoth, int id) throws Exception {
+    private static Void concurrentOperation(IntegrationTestContext fixture,
+            IntegrationTestRunner harness, CountDownLatch pendingBoth, int id) throws Exception {
         harness.inRollbackOperation(scope -> {
             scope.resolve(Transactions.class).execute(() -> {
                 insert(scope, id, "concurrent");
@@ -405,17 +390,13 @@ class PostgresRollbackOperationIT {
             "Expected a segment lifetime rejection, got: " + failure);
     }
 
-    private static void insert(de.hsh.favs.sharewise.testsupport.transactions.PostgresRollbackOperationScope scope,
+    private static void insert(de.hsh.favs.sharewise.testsupport.integration.IntegrationTestScope scope,
             int id, String label) {
         scope.resolve(JooqAccess.class).dsl().execute(
             "insert into groups.p13c_rollback_probe (id,label) values (?,?)", id, label);
     }
 
-    private PostgresApplicationFixture fixture() {
-        return sharedFixture;
-    }
-
-    private static int independentlyVisible(PostgresApplicationFixture fixture, int id) throws SQLException {
+    private static int independentlyVisible(IntegrationTestContext fixture, int id) throws SQLException {
         try (Connection connection = fixture.connectAsApplication();
              PreparedStatement statement = connection.prepareStatement(
                  "select count(*) from groups.p13c_rollback_probe where id = ?")) {

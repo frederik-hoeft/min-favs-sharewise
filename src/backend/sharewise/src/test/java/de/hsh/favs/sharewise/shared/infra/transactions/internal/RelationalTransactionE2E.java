@@ -11,7 +11,7 @@ import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresE2ETestCase;
+import de.hsh.favs.sharewise.testsupport.e2e.AbstractE2ETest;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -39,7 +39,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 /** Real-commit mixed jOOQ/JPA transactions and failure handling against isolated PostgreSQL. */
 @org.junit.jupiter.api.Tag("e2e")
-class RelationalTransactionE2E extends PostgresE2ETestCase {
+class RelationalTransactionE2E extends AbstractE2ETest {
 
     OperationDispatcher dispatcher;
     DataSource dataSource;

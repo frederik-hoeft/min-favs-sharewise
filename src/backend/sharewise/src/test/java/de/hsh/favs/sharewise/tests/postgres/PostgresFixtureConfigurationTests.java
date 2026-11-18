@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import org.junit.jupiter.api.Test;
 
 /** Database-free checks of the strict fixture configuration and missing-service behavior. */
@@ -23,7 +23,7 @@ class PostgresFixtureConfigurationTests {
         PostgresTestDatabase.ConnectionSettings settings = new PostgresTestDatabase.ConnectionSettings(
             "jdbc:postgresql://localhost:5432/postgres", "postgres", "admin", "migrator", "app");
         assertThrows(IllegalArgumentException.class,
-            () -> PostgresApplicationFixture.start(settings, database -> { }));
+            () -> IntegrationTestContext.start(settings, database -> { }));
     }
 
     @Test
@@ -31,7 +31,7 @@ class PostgresFixtureConfigurationTests {
         PostgresTestDatabase.ConnectionSettings settings = new PostgresTestDatabase.ConnectionSettings(
             "jdbc:postgresql://127.0.0.1:1/postgres?connectTimeout=1", "postgres", "admin", "migrator", "app");
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-            () -> PostgresApplicationFixture.start(settings, database -> { }, ShareWiseApplication.class));
+            () -> IntegrationTestContext.start(settings, database -> { }, ShareWiseApplication.class));
         assertTrue(failure.getMessage().contains("not reachable"), failure.getMessage());
     }
 }

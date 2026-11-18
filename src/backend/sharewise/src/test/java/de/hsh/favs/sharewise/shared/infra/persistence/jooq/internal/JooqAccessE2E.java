@@ -9,7 +9,7 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresE2ETestCase;
+import de.hsh.favs.sharewise.testsupport.e2e.AbstractE2ETest;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,7 +28,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Real-commit jOOQ and transaction lease coverage against an independently migrated database. */
 @org.junit.jupiter.api.Tag("e2e")
-class JooqAccessE2E extends PostgresE2ETestCase {
+class JooqAccessE2E extends AbstractE2ETest {
 
     OperationDispatcher dispatcher;
     JdbcTemplate jdbc;

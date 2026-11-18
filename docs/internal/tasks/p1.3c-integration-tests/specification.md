@@ -46,6 +46,41 @@ An **operation** is a business entry operation whose behavior fits within one `T
 
 Operation integration tests do **not** establish physical commit, physical rollback, after-commit event delivery, cross-transaction visibility, savepoint or recovery guarantees. Those belong to E2E tests even when the tested application method happens to execute only one segment.
 
+## Test-authoring convenience APIs (before Phase F)
+
+Test-support owns the **fixtures and the operation boundary**, not an alternative DI or
+transaction model. Shared helpers are in `testsupport`: `IntegrationTestContext` owns the
+application context and an owned `TestDatabase` (currently provisioned by
+`PostgresTestDatabase`); `IntegrationTestRunner` owns a physical rollback transaction and
+operation scope. `IntegrationTestScope` resolves operation-scoped services and exposes the
+post-segment, read-only pending-state inspector. PostgreSQL bootstrap, roles and migrations
+remain implementation-specific, and PostgreSQL-named tests may use them directly.
+
+For **Integration** tests, extend `AbstractIntegrationTest`. Its inherited JUnit extension
+provides one shared migrated database/context for the suite; each
+`runIntegrationTest(scope -> ...)`, `runTransactionTest((transactions, scope) -> ...)`, or
+`runServiceTest(MyService.class, (service, scope) -> ...)` creates a **new rollback-only
+physical transaction and operation scope**. The service owns its own logical
+`Transactions.execute(...)` segment, and the helper never opens one prematurely.
+Pending-state inspection remains possible only after that segment completes.
+
+For **E2E** tests, extend `AbstractE2ETest`. Use `runTest(context -> ...)` or
+`runServiceTest(MyService.class, (service, context) -> ...)` with optional explicitly
+selected configuration classes; use `runTestWithSchema(ddl, ...)` only when testing an
+infrastructure-specific schema. The helper creates and tears down a migrated database
+and uncached Spring context within the invocation, preserving real physical commits.
+Older test cases may continue to initialize the fixture in `@BeforeEach` and let the
+base class close it in `@AfterEach`; new tests should prefer the higher-order methods.
+Tests that specifically verify startup failure, context lifetime or database creation
+can use the lower-level types directly.
+
+Callbacks accept checked exceptions so test methods need no incidental `throws`
+declarations. The higher-order boundary retains an existing `AssertionError` unchanged,
+wraps other exceptions into `AssertionError` with the original cause and suppressed
+cleanup failures intact, and does not swallow fatal JVM failures. It restores the thread
+interrupt flag when catching `InterruptedException`. Test-local fixture wiring stays
+explicit, and none of these conveniences is available to production code.
+
 ## Spring component discovery and test fixtures
 
 Tests requiring the complete application use the production `ShareWiseApplication` component scan through `@SpringBootTest` (or an explicitly started application context for disposable PostgreSQL fixtures). They obtain the normal production service graph and opt into only the test-specific replacements or additions they need. **All test-defined Spring components use `@TestComponent`; test-defined bean configurations use `@TestConfiguration` rather than ordinary `@Component`/`@Configuration`.** Test-local controllers may additionally use `@Controller`/`@RestController` for their MVC semantics, but must also declare `@TestComponent`. Spring Boot's default application scan excludes these test stereotypes; explicit `@Import` or application source selection registers only the fixtures needed by an individual test. Spring Boot also includes nested `@TestConfiguration` declared directly inside a `@SpringBootTest` class by convention; this remains local to the declaring test and does not enable general component discovery of other tests' fixtures. A test fixture must not be implicitly discovered simply because its class is on the test runtime classpath. Bean replacement or priority must preserve required service scopes and interface identity; `@Primary` alone does not change scope or remove the production bean definition.
@@ -59,14 +94,14 @@ An architecture test enforces the test-only stereotypes and centralized scan pol
 A reusable **operation test harness** exposes the real application's scope creation, Spring bean resolution and destruction semantics to test code. It uses the **same underlying Spring `Scope` and operation context** as `OperationDispatcher`. Tests can resolve the entry service and other scoped collaborators, invoke an operation, inspect scoped state, and make assertions before the scope closes. Scope resolution is intentionally test-facing; production application services continue to use constructor injection, not a general service locator.
 
 The test-facing APIs are separated by ownership. `OperationTestHarness` provides scope-only
-execution; `PostgresRollbackOperationHarness` adds the owning physical transaction and delegates
-to that same scope harness. The rollback callback receives a `PostgresRollbackOperationScope`,
+execution; `IntegrationTestRunner` adds the owning physical transaction and delegates
+to that same scope harness. The rollback callback receives a `IntegrationTestScope`,
 which resolves application services, retrieves a completed `TransactionObservation`, and offers
 post-segment inspection. The inspector exposes only materialized JDBC query results, not
 connections or transaction control. The APIs are used as follows (illustrative):
 
 ```java
-new PostgresRollbackOperationHarness(fixture).inRollbackOperation(scope -> {
+new IntegrationTestRunner(fixture).inRollbackOperation(scope -> {
     Transactions transactions = scope.resolve(Transactions.class);
     transactions.execute(() -> TransactionOutcome.commit(operation.run()));
     TransactionObservation observation = scope.observation();

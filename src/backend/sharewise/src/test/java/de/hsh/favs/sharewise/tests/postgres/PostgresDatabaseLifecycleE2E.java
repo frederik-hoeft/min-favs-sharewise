@@ -16,7 +16,7 @@ import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -33,14 +33,14 @@ import org.springframework.context.annotation.Bean;
 
 /** PostgreSQL-backed Phase C acceptance for owned databases and uncached application contexts. */
 @org.junit.jupiter.api.Tag("e2e")
-class PostgresApplicationFixtureE2E {
+class PostgresDatabaseLifecycleE2E {
 
     @Test
     void independentContextsUseMigratedDatabasesAndCommittedSeedData() throws SQLException {
         String firstName;
         String secondName;
-        try (PostgresApplicationFixture first = newFixture("first");
-             PostgresApplicationFixture second = newFixture("second")) {
+        try (IntegrationTestContext first = newFixture("first");
+             IntegrationTestContext second = newFixture("second")) {
             firstName = first.database().databaseName();
             secondName = second.database().databaseName();
             assertNotEquals(firstName, secondName);
@@ -80,9 +80,9 @@ class PostgresApplicationFixtureE2E {
 
     @Test
     void failedSeedTransactionDoesNotCommitAnyChanges() throws SQLException {
-        try (PostgresApplicationFixture fixture = newFixture("original")) {
+        try (IntegrationTestContext fixture = newFixture("original")) {
             assertThrows(IllegalArgumentException.class, () ->
-                PostgresApplicationFixture.seedCommitted(fixture.database(), app -> {
+                IntegrationTestContext.seedCommitted(fixture.database(), app -> {
                     try (Statement statement = app.createStatement()) {
                         statement.executeUpdate(
                             "INSERT INTO groups.it_fixture_probe (label) VALUES ('not-committed')");
@@ -95,7 +95,7 @@ class PostgresApplicationFixtureE2E {
 
     @Test
     void closingTheFixtureInvalidatesItsTestFacingAccess() throws SQLException {
-        PostgresApplicationFixture fixture = newFixture("closed");
+        IntegrationTestContext fixture = newFixture("closed");
         String name = fixture.database().databaseName();
         fixture.close();
         assertThrows(IllegalStateException.class, fixture::context);
@@ -108,7 +108,7 @@ class PostgresApplicationFixtureE2E {
     void failedPreparationDropsOnlyItsOwnedDatabase() throws SQLException {
         AtomicReference<String> name = new AtomicReference<>();
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-            () -> PostgresApplicationFixture.start(
+            () -> IntegrationTestContext.start(
                 PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> {
                     name.set(database.databaseName());
                     throw new IllegalArgumentException("intentional seed failure");
@@ -121,7 +121,7 @@ class PostgresApplicationFixtureE2E {
     void failedSpringStartupAlsoDropsTheProvisionedDatabase() throws SQLException {
         AtomicReference<String> name = new AtomicReference<>();
         RuntimeException failure = assertThrows(RuntimeException.class,
-            () -> PostgresApplicationFixture.start(
+            () -> IntegrationTestContext.start(
                 PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database ->
                     name.set(database.databaseName()),
                 ShareWiseApplication.class, ProductionEntityScanConfiguration.class, BrokenConfiguration.class));
@@ -129,14 +129,14 @@ class PostgresApplicationFixtureE2E {
         assertDatabaseAbsent(name.get());
     }
 
-    private static PostgresApplicationFixture newFixture(String seed) {
-        return PostgresApplicationFixture.start(
+    private static IntegrationTestContext newFixture(String seed) {
+        return IntegrationTestContext.start(
             PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> {
                 try (Connection migrator = database.connectAsMigrator();
                      Statement statement = migrator.createStatement()) {
                     statement.execute("CREATE TABLE groups.it_fixture_probe (label text PRIMARY KEY)");
                 }
-                PostgresApplicationFixture.seedCommitted(database, app -> {
+                IntegrationTestContext.seedCommitted(database, app -> {
                     try (PreparedStatement statement = app.prepareStatement(
                         "INSERT INTO groups.it_fixture_probe (label) VALUES (?)")) {
                         statement.setString(1, seed);
@@ -147,7 +147,7 @@ class PostgresApplicationFixtureE2E {
     }
 
     private static String concurrentFixture(String value, CountDownLatch bothStarted) throws Exception {
-        try (PostgresApplicationFixture fixture = newFixture(value)) {
+        try (IntegrationTestContext fixture = newFixture(value)) {
             String name = fixture.database().databaseName();
             bothStarted.countDown();
             assertTrue(bothStarted.await(40, TimeUnit.SECONDS), "parallel fixture initialization timed out");
@@ -157,7 +157,7 @@ class PostgresApplicationFixtureE2E {
         }
     }
 
-    private static void commitThroughProductionTransactions(PostgresApplicationFixture fixture, String value) {
+    private static void commitThroughProductionTransactions(IntegrationTestContext fixture, String value) {
         ServiceScopeFactory scopes = fixture.context().getBean(ServiceScopeFactory.class);
         new OperationTestHarness(scopes).inOperationScope(scope -> {
             Transactions transactions = scope.resolve(Transactions.class);
@@ -170,7 +170,7 @@ class PostgresApplicationFixtureE2E {
         });
     }
 
-    private static String labels(PostgresApplicationFixture fixture) throws SQLException {
+    private static String labels(IntegrationTestContext fixture) throws SQLException {
         try (Connection connection = fixture.connectAsApplication();
              Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery(

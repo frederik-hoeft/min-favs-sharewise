@@ -1,8 +1,9 @@
-package de.hsh.favs.sharewise.testsupport.transactions;
+package de.hsh.favs.sharewise.testsupport.integration;
 
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
+import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import java.util.Objects;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -17,13 +18,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * The Spring physical transaction starts before operation-scoped services are resolved; its
  * only permitted physical disposition is rollback, including when user assertions throw.
  */
-public final class PostgresRollbackOperationHarness {
+public final class IntegrationTestRunner {
 
     private final ServiceScopeFactory scopes;
     private final PlatformTransactionManager physicalManager;
     private final DataSource dataSource;
 
-    public PostgresRollbackOperationHarness(PostgresApplicationFixture fixture) {
+    public IntegrationTestRunner(IntegrationTestContext fixture) {
         Objects.requireNonNull(fixture, "fixture");
         scopes = fixture.context().getBean(ServiceScopeFactory.class);
         physicalManager = fixture.context().getBean(PlatformTransactionManager.class);
@@ -33,7 +34,7 @@ public final class PostgresRollbackOperationHarness {
         }
     }
 
-    public <T> T inRollbackOperation(Function<PostgresRollbackOperationScope, T> assertion) {
+    public <T> T inRollbackOperation(Function<IntegrationTestScope, T> assertion) {
         Objects.requireNonNull(assertion, "assertion");
         if (TransactionSynchronizationManager.isActualTransactionActive()
                 || TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -52,8 +53,8 @@ public final class PostgresRollbackOperationHarness {
             TransactionSynchronizationManager.registerSynchronization(witness);
             try {
                 return new OperationTestHarness(scopes).inOperationScope(operation -> {
-                    PostgresRollbackOperationScope scope =
-                        new PostgresRollbackOperationScope(operation, dataSource, witness, holder);
+                    IntegrationTestScope scope =
+                        new IntegrationTestScope(operation, dataSource, witness, holder);
                     try {
                         return assertion.apply(scope);
                     } finally {

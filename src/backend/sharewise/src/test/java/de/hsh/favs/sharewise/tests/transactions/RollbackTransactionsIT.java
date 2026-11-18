@@ -18,9 +18,8 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
 import de.hsh.favs.p13crollback.RollbackTestProbeRow;
-import de.hsh.favs.sharewise.testsupport.postgres.SharedPostgresIntegrationExtension;
+import de.hsh.favs.sharewise.testsupport.integration.AbstractIntegrationTest;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackProbe;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
@@ -43,21 +42,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** Logical lease/transaction checks sharing the PostgreSQL integration database and context. */
 @org.junit.jupiter.api.Tag("integration")
-@org.junit.jupiter.api.TestInstance(org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS)
-@org.junit.jupiter.api.extension.ExtendWith(SharedPostgresIntegrationExtension.class)
-class RollbackTransactionsIT {
+class RollbackTransactionsIT extends AbstractIntegrationTest {
 
     ServiceScopeFactory scopes;
     PlatformTransactionManager physicalManager;
     JdbcTemplate jdbc;
     ConfigurableListableBeanFactory beanFactory;
 
-    @org.junit.jupiter.api.BeforeAll
-    void initialize(PostgresApplicationFixture fixture) {
-        scopes = fixture.context().getBean(ServiceScopeFactory.class);
-        physicalManager = fixture.context().getBean(PlatformTransactionManager.class);
-        jdbc = fixture.context().getBean(JdbcTemplate.class);
-        beanFactory = fixture.context().getBean(ConfigurableListableBeanFactory.class);
+    @org.junit.jupiter.api.BeforeEach
+    void initialize() {
+        scopes = fixture().context().getBean(ServiceScopeFactory.class);
+        physicalManager = fixture().context().getBean(PlatformTransactionManager.class);
+        jdbc = fixture().context().getBean(JdbcTemplate.class);
+        beanFactory = fixture().context().getBean(ConfigurableListableBeanFactory.class);
     }
 
     @Test

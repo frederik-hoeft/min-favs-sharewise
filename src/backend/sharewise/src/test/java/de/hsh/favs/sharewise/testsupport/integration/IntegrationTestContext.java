@@ -1,5 +1,7 @@
-package de.hsh.favs.sharewise.testsupport.postgres;
+package de.hsh.favs.sharewise.testsupport.integration;
 
+import de.hsh.favs.sharewise.testsupport.database.TestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
@@ -16,12 +18,12 @@ import org.springframework.core.env.MapPropertySource;
  * E2E tests own one instance per scenario; the Integration suite owns one shared instance. Closing the context releases its connection pool before database drop.
  * No Docker API or Spring TestContext caching participates in fixture creation.
  */
-public final class PostgresApplicationFixture implements AutoCloseable {
+public final class IntegrationTestContext implements AutoCloseable {
 
     @FunctionalInterface
     public interface DatabasePreparation {
         /** Runs after Flyway migration but before the application context starts. */
-        void prepare(PostgresTestDatabase database) throws Exception;
+        void prepare(TestDatabase database) throws Exception;
     }
 
     @FunctionalInterface
@@ -30,7 +32,7 @@ public final class PostgresApplicationFixture implements AutoCloseable {
     }
 
     /** Seeds as the application role in a physically committed, independently owned transaction. */
-    public static void seedCommitted(PostgresTestDatabase database, DatabaseSeed seeder) throws SQLException {
+    public static void seedCommitted(TestDatabase database, DatabaseSeed seeder) throws SQLException {
         Objects.requireNonNull(database, "database");
         Objects.requireNonNull(seeder, "seeder");
         try (Connection connection = database.connectAsApplication()) {
@@ -49,23 +51,23 @@ public final class PostgresApplicationFixture implements AutoCloseable {
         }
     }
 
-    private final PostgresTestDatabase database;
+    private final TestDatabase database;
     private final ConfigurableApplicationContext context;
     private boolean closed;
 
-    private PostgresApplicationFixture(PostgresTestDatabase database, ConfigurableApplicationContext context) {
+    private IntegrationTestContext(TestDatabase database, ConfigurableApplicationContext context) {
         this.database = database;
         this.context = context;
     }
 
     /** Starts an independent context with the supplied production application and test configurations. */
-    public static PostgresApplicationFixture start(Class<?>... applicationSources) {
+    public static IntegrationTestContext start(Class<?>... applicationSources) {
         return start(PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> { },
             applicationSources);
     }
 
     /** Uses explicit PostgreSQL server/role credentials and an optional committed-data initializer. */
-    public static PostgresApplicationFixture start(
+    public static IntegrationTestContext start(
         PostgresTestDatabase.ConnectionSettings connections,
         DatabasePreparation preparation,
         Class<?>... applicationSources
@@ -94,7 +96,7 @@ public final class PostgresApplicationFixture implements AutoCloseable {
                 .initializers(application -> application.getEnvironment().getPropertySources()
                     .addFirst(new MapPropertySource("isolated-postgres-fixture", properties)))
                 .run();
-            return new PostgresApplicationFixture(database, context);
+            return new IntegrationTestContext(database, context);
         } catch (Throwable failure) {
             try {
                 database.close();
@@ -107,11 +109,11 @@ public final class PostgresApplicationFixture implements AutoCloseable {
             if (failure instanceof Error error) {
                 throw error;
             }
-            throw new IllegalStateException("Failed to prepare PostgreSQL application fixture", failure);
+            throw new IllegalStateException("Failed to prepare application test context", failure);
         }
     }
 
-    public PostgresTestDatabase database() {
+    public TestDatabase database() {
         requireOpen();
         return database;
     }

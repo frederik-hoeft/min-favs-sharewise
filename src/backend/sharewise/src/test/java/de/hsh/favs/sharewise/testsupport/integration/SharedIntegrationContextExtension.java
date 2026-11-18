@@ -1,6 +1,7 @@
-package de.hsh.favs.sharewise.testsupport.postgres;
+package de.hsh.favs.sharewise.testsupport.integration;
 
 import de.hsh.favs.sharewise.ShareWiseApplication;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
 import de.hsh.favs.sharewise.testsupport.postgres.RollbackProbeEntityScanConfiguration;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackProbeTestConfiguration;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactionTestConfiguration;
@@ -17,10 +18,10 @@ import org.junit.jupiter.api.extension.ParameterResolver;
  * JUnit's root store owns cleanup. Every test operation gets its own Spring physical transaction;
  * nothing mutable or transaction-bound is shared between test invocations.
  */
-public final class SharedPostgresIntegrationExtension implements BeforeAllCallback, ParameterResolver {
+public final class SharedIntegrationContextExtension implements BeforeAllCallback, ParameterResolver {
 
     private static final ExtensionContext.Namespace NAMESPACE =
-        ExtensionContext.Namespace.create(SharedPostgresIntegrationExtension.class);
+        ExtensionContext.Namespace.create(SharedIntegrationContextExtension.class);
 
     @Override
     public void beforeAll(ExtensionContext context) {
@@ -29,7 +30,7 @@ public final class SharedPostgresIntegrationExtension implements BeforeAllCallba
 
     @Override
     public boolean supportsParameter(ParameterContext parameter, ExtensionContext context) {
-        return parameter.getParameter().getType() == PostgresApplicationFixture.class;
+        return parameter.getParameter().getType() == IntegrationTestContext.class;
     }
 
     @Override
@@ -43,10 +44,10 @@ public final class SharedPostgresIntegrationExtension implements BeforeAllCallba
     }
 
     private static final class SharedFixture implements AutoCloseable {
-        private final PostgresApplicationFixture fixture;
+        private final IntegrationTestContext fixture;
 
         private SharedFixture() {
-            fixture = PostgresApplicationFixture.start(
+            fixture = IntegrationTestContext.start(
                 PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> {
                     try (Connection migrator = database.connectAsMigrator();
                          Statement statement = migrator.createStatement()) {
@@ -55,7 +56,7 @@ public final class SharedPostgresIntegrationExtension implements BeforeAllCallba
                         statement.execute("create table groups.rollback_tx_probe ("
                             + "id integer primary key, label varchar(255) not null)");
                     }
-                    PostgresApplicationFixture.seedCommitted(database, connection -> {
+                    IntegrationTestContext.seedCommitted(database, connection -> {
                         try (PreparedStatement statement = connection.prepareStatement(
                                 "insert into groups.p13c_rollback_probe (id,label) values (1,'baseline')")) {
                             statement.executeUpdate();

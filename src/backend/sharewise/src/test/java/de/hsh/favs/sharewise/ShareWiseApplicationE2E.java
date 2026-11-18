@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.shared.infra.config.ShareWiseProperties;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresE2ETestCase;
+import de.hsh.favs.sharewise.testsupport.e2e.AbstractE2ETest;
 import org.junit.jupiter.api.BeforeEach;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
@@ -26,7 +26,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.boot.test.context.TestComponent;
 
 @org.junit.jupiter.api.Tag("e2e")
-class ShareWiseApplicationE2E extends PostgresE2ETestCase {
+class ShareWiseApplicationE2E extends AbstractE2ETest {
 
     @BeforeEach
     void initialize() {

@@ -1,6 +1,9 @@
-package de.hsh.favs.sharewise.testsupport.transactions;
+package de.hsh.favs.sharewise.testsupport.integration;
 
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
+import de.hsh.favs.sharewise.testsupport.transactions.PendingStateInspector;
+import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
+import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -12,7 +15,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** Test-side access to one operation scope within the harness-owned physical transaction. */
-public final class PostgresRollbackOperationScope {
+public final class IntegrationTestScope {
 
     private final OperationTestScope operation;
     private final DataSource dataSource;
@@ -21,7 +24,7 @@ public final class PostgresRollbackOperationScope {
     private final Thread owner;
     private boolean active = true;
 
-    PostgresRollbackOperationScope(OperationTestScope operation, DataSource dataSource,
+    IntegrationTestScope(OperationTestScope operation, DataSource dataSource,
             TransactionSynchronization witness, ConnectionHolder connectionHolder) {
         this.operation = Objects.requireNonNull(operation);
         this.dataSource = Objects.requireNonNull(dataSource);
