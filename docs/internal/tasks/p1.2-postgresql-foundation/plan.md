@@ -26,7 +26,7 @@
 ## Phase C – Baseline migration
 
 - [x] **Scope:** `db/migration/platform/V202611131000__platform_create_context_schemas.sql` (D8, D10): create schemas `identity`, `groups`, `finance`, `files`, `notifications`; grant `USAGE` on them to `sharewise_app`; default privileges for tables (`SELECT, INSERT, UPDATE, DELETE`) and sequences (`USAGE, SELECT`) created by `sharewise_migrator`; no grants on schema `flyway`.
-- **Tests:** TC-1 (manual: backend starts in the dev container, Flyway applies the baseline as migrator, greeting flow works), TC-9 (manual: edited committed migration fails checksum validation). Role permissions (TC-10, TC-11) were checked manually against PostgreSQL with `psql`; automated coverage follows with the PostgreSQL test provisioning.
+- **Tests:** TC-1 (manual: backend starts in the dev container, Flyway applies the baseline as migrator, system health request succeeds through the frontend development rewrite), TC-9 (manual: edited committed migration fails checksum validation). Role permissions (TC-10, TC-11) were checked manually against PostgreSQL with `psql`; automated coverage follows with the PostgreSQL test provisioning.
 - **Gate:** Application runs against PostgreSQL with the application role.
 
 ## Phase D – Integration-test provisioning and tests
