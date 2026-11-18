@@ -8,9 +8,9 @@ import org.jooq.Configuration;
 import org.jooq.ConnectionProvider;
 import org.jooq.DSLContext;
 import org.jooq.ExecuteContext;
+import org.jooq.ExecuteListener;
 import org.jooq.TransactionContext;
 import org.jooq.TransactionProvider;
-import org.jooq.impl.DefaultExecuteListener;
 import org.jooq.impl.DefaultExecuteListenerProvider;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
@@ -70,7 +70,7 @@ final class SpringJooqAccess implements JooqAccess {
         Configuration configuration = rootDsl.configuration()
             .derive(checked)
             .derive(REJECT_JOOQ_TRANSACTIONS)
-            .deriveAppending(new DefaultExecuteListenerProvider(new DefaultExecuteListener() {
+            .deriveAppending(new DefaultExecuteListenerProvider(new ExecuteListener() {
                 @Override
                 public void start(ExecuteContext context) {
                     lease.requireCurrent();
