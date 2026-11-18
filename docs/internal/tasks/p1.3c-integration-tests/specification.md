@@ -56,7 +56,7 @@ operation scope. `IntegrationTestScope` resolves operation-scoped services and e
 post-segment, read-only pending-state inspector. PostgreSQL bootstrap, roles and migrations
 remain implementation-specific, and PostgreSQL-named tests may use them directly.
 
-For **Integration** tests, extend `AbstractIntegrationTest`. Its inherited JUnit extension
+For **Integration** tests, extend `IntegrationTestBase`. Its inherited JUnit extension
 provides one shared migrated database/context for the suite; each
 `runIntegrationTest(scope -> ...)`, `runTransactionTest((transactions, scope) -> ...)`, or
 `runServiceTest(MyService.class, (service, scope) -> ...)` creates a **new rollback-only
@@ -64,7 +64,7 @@ physical transaction and operation scope**. The service owns its own logical
 `Transactions.execute(...)` segment, and the helper never opens one prematurely.
 Pending-state inspection remains possible only after that segment completes.
 
-For **E2E** tests, extend `AbstractE2ETest`. Use `runTest(context -> ...)` or
+For **E2E** tests, extend `E2ETestBase`. Use `runTest(context -> ...)` or
 `runServiceTest(MyService.class, (service, context) -> ...)` with optional explicitly
 selected configuration classes; use `runTestWithSchema(ddl, ...)` only when testing an
 infrastructure-specific schema. The helper creates and tears down a migrated database

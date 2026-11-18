@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.shared.infra.config.ShareWiseProperties;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
-import de.hsh.favs.sharewise.testsupport.e2e.AbstractE2ETest;
+import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import org.junit.jupiter.api.BeforeEach;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
@@ -26,13 +26,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.boot.test.context.TestComponent;
 
 @org.junit.jupiter.api.Tag("e2e")
-class ShareWiseApplicationE2E extends AbstractE2ETest {
+class ShareWiseApplicationE2E extends E2ETestBase {
 
     @BeforeEach
     void initialize() {
         start(ProductionEntityScanConfiguration.class);
         scopeFactory = context().getBean(ServiceScopeFactory.class);
-        beanFactory = context().getBean(ConfigurableListableBeanFactory.class);
+        beanFactory = context().getBeanFactory();
         properties = context().getBean(ShareWiseProperties.class);
         healthController = context().getBean(SystemHealthController.class);
     }

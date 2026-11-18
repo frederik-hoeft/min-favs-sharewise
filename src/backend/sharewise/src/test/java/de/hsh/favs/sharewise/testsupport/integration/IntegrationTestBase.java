@@ -14,7 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  */
 @Tag("integration")
 @ExtendWith(SharedIntegrationContextExtension.class)
-public abstract class AbstractIntegrationTest {
+public abstract class IntegrationTestBase {
 
     private IntegrationTestContext fixture;
 

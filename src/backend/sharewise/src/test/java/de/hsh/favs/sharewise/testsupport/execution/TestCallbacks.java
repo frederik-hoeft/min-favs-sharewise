@@ -2,7 +2,10 @@ package de.hsh.favs.sharewise.testsupport.execution;
 
 import java.util.Objects;
 
-/** Checked callbacks for test code without per-test {@code throws} declarations. */
+/**
+ * Checked callbacks for test code without per-test {@code throws} declarations.
+ * JDK {@code Consumer} and {@code BiConsumer} do not declare checked exceptions.
+ */
 public final class TestCallbacks {
 
     @FunctionalInterface

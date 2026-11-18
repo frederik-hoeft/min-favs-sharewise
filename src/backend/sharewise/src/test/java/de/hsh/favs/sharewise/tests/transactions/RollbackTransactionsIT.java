@@ -19,7 +19,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
 import de.hsh.favs.p13crollback.RollbackTestProbeRow;
-import de.hsh.favs.sharewise.testsupport.integration.AbstractIntegrationTest;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestBase;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackProbe;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
@@ -42,7 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** Logical lease/transaction checks sharing the PostgreSQL integration database and context. */
 @org.junit.jupiter.api.Tag("integration")
-class RollbackTransactionsIT extends AbstractIntegrationTest {
+class RollbackTransactionsIT extends IntegrationTestBase {
 
     ServiceScopeFactory scopes;
     PlatformTransactionManager physicalManager;
@@ -54,7 +54,7 @@ class RollbackTransactionsIT extends AbstractIntegrationTest {
         scopes = fixture().context().getBean(ServiceScopeFactory.class);
         physicalManager = fixture().context().getBean(PlatformTransactionManager.class);
         jdbc = fixture().context().getBean(JdbcTemplate.class);
-        beanFactory = fixture().context().getBean(ConfigurableListableBeanFactory.class);
+        beanFactory = fixture().context().getBeanFactory();
     }
 
     @Test

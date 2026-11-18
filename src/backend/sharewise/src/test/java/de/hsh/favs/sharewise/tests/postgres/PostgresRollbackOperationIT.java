@@ -17,7 +17,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.p13crollback.RollbackProbeRow;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.transactions.PendingStateInspector;
-import de.hsh.favs.sharewise.testsupport.integration.AbstractIntegrationTest;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestBase;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestRunner;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
@@ -37,14 +37,14 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** PostgreSQL-only acceptance for one logical segment inside a physically rolled-back transaction. */
 @Tag("integration")
-class PostgresRollbackOperationIT extends AbstractIntegrationTest {
+class PostgresRollbackOperationIT extends IntegrationTestBase {
 
     @Test
     void commitRollbackAndAbstainRemainPendingUntilHarnessRollback() throws SQLException {
@@ -201,8 +201,8 @@ class PostgresRollbackOperationIT extends AbstractIntegrationTest {
         IntegrationTestRunner harness = new IntegrationTestRunner(fixture);
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
-            org.jooq.exception.DataAccessException failure = assertThrows(
-                org.jooq.exception.DataAccessException.class, () -> manager.execute(() -> {
+            DuplicateKeyException failure = assertThrows(
+                DuplicateKeyException.class, () -> manager.execute(() -> {
                     insert(scope, 7, "first");
                     insert(scope, 7, "duplicate key");
                     return TransactionOutcome.commit(null);

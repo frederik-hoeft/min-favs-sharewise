@@ -7,14 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestRunner;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
-import de.hsh.favs.sharewise.testsupport.e2e.AbstractE2ETest;
+import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /** The real-commit application must never contain the test-only rollback transaction adapter. */
 @Tag("e2e")
-class PostgresProductionWiringE2E extends AbstractE2ETest {
+class PostgresProductionWiringE2E extends E2ETestBase {
 
     @Test
     void rollbackAdapterIsNotRegisteredInRealCommitFixture() {

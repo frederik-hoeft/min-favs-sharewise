@@ -9,7 +9,7 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
-import de.hsh.favs.sharewise.testsupport.e2e.AbstractE2ETest;
+import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
@@ -30,7 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** Real-commit JPA facade and persistence-context coverage against isolated PostgreSQL. */
 @org.junit.jupiter.api.Tag("e2e")
-class JpaAccessE2E extends AbstractE2ETest {
+class JpaAccessE2E extends E2ETestBase {
 
     OperationDispatcher dispatcher;
     EntityManagerFactory entityManagerFactory;

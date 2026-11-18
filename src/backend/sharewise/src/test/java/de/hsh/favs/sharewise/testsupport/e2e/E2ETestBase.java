@@ -15,7 +15,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 /** Per-test ownership of a disposable migrated database, production context, and committed writes. */
 @Tag("e2e")
-public abstract class AbstractE2ETest {
+public abstract class E2ETestBase {
 
     private IntegrationTestContext fixture;
 

@@ -11,7 +11,7 @@ import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
-import de.hsh.favs.sharewise.testsupport.e2e.AbstractE2ETest;
+import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -24,7 +24,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import javax.sql.DataSource;
 import org.jooq.DSLContext;
-import org.jooq.exception.DataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
@@ -39,7 +39,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 /** Real-commit mixed jOOQ/JPA transactions and failure handling against isolated PostgreSQL. */
 @org.junit.jupiter.api.Tag("e2e")
-class RelationalTransactionE2E extends AbstractE2ETest {
+class RelationalTransactionE2E extends E2ETestBase {
 
     OperationDispatcher dispatcher;
     DataSource dataSource;
@@ -214,7 +214,7 @@ class RelationalTransactionE2E extends AbstractE2ETest {
                 try {
                     db.execute("insert into groups.tx_joint_probe (id, label) values (70, 'duplicate')");
                     throw new AssertionError("Expected a unique-key constraint failure");
-                } catch (DataAccessException expectedConstraint) {
+                } catch (DuplicateKeyException expectedConstraint) {
                     probe.transactions().markRollbackOnly();
                 }
                 return TransactionOutcome.commit("translated failure");
@@ -225,7 +225,7 @@ class RelationalTransactionE2E extends AbstractE2ETest {
                 try {
                     db.execute("insert into groups.tx_joint_probe (id, label) values (71, 'duplicate')");
                     throw new AssertionError("Expected a unique-key constraint failure");
-                } catch (DataAccessException expectedConstraint) {
+                } catch (DuplicateKeyException expectedConstraint) {
                     probe.transactions().markRollbackOnly();
                     return TransactionOutcome.rollback("DUPLICATE");
                 }
