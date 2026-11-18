@@ -18,70 +18,59 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
-import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
-import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactionTestConfiguration;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresWorkflowFixture;
+import de.hsh.favs.p13crollback.RollbackTestProbeRow;
+import de.hsh.favs.sharewise.testsupport.postgres.SharedPostgresIntegrationExtension;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
+import de.hsh.favs.sharewise.testsupport.transactions.RollbackProbe;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.Id;
 import jakarta.persistence.Query;
-import jakarta.persistence.Table;
 import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import javax.sql.DataSource;
 import org.jooq.DSLContext;
-import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
-import org.springframework.context.annotation.Bean;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.TestComponent;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Scope;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy;
-import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Preliminary H2 evidence for logical leases and wiring; PostgreSQL acceptance is Phase D. */
-@SpringJUnitConfig({InfrastructureTestComponents.class, RollbackTransactionsIntegrationTests.Fixtures.class})
-class RollbackTransactionsIntegrationTests {
+/** Logical lease/transaction checks sharing the PostgreSQL integration database and context. */
+@org.junit.jupiter.api.Tag("integration")
+@org.junit.jupiter.api.TestInstance(org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS)
+@org.junit.jupiter.api.extension.ExtendWith(SharedPostgresIntegrationExtension.class)
+class RollbackTransactionsIT {
 
-    @Autowired ServiceScopeFactory scopes;
-    @Autowired PlatformTransactionManager physicalManager;
-    @Autowired JdbcTemplate jdbc;
-    @Autowired ConfigurableListableBeanFactory beanFactory;
+    ServiceScopeFactory scopes;
+    PlatformTransactionManager physicalManager;
+    JdbcTemplate jdbc;
+    ConfigurableListableBeanFactory beanFactory;
+
+    @org.junit.jupiter.api.BeforeAll
+    void initialize(PostgresWorkflowFixture fixture) {
+        scopes = fixture.context().getBean(ServiceScopeFactory.class);
+        physicalManager = fixture.context().getBean(PlatformTransactionManager.class);
+        jdbc = fixture.context().getBean(JdbcTemplate.class);
+        beanFactory = fixture.context().getBean(ConfigurableListableBeanFactory.class);
+    }
 
     @Test
     void onlyOptedInTestConfigurationsAreRegistered() {
-        Set<Class<?>> discovered = Arrays.stream(beanFactory.getBeanNamesForAnnotation(TestComponent.class))
+        assertEquals(1, beanFactory.getBeanNamesForType(RollbackTransactions.class).length);
+        assertEquals(0, Arrays.stream(beanFactory.getBeanNamesForAnnotation(TestComponent.class))
             .map(beanFactory::getType)
-            .collect(Collectors.toSet());
-        assertEquals(Set.of(InfrastructureTestComponents.class, Fixtures.class,
-            RollbackTransactionTestConfiguration.class), discovered);
-    }
-
-    @BeforeEach
-    void clearRows() {
-        jdbc.update("delete from rollback_tx_probe");
+            .filter(type -> type != null && type.getEnclosingClass() != null)
+            .filter(type -> {
+                String owner = type.getEnclosingClass().getSimpleName();
+                return owner.endsWith("Tests") || owner.endsWith("IT") || owner.endsWith("E2E");
+            })
+            .count());
     }
 
     private <T> T inPhysicalTestTransaction(Function<OperationTestScope, T> action) {
@@ -100,7 +89,7 @@ class RollbackTransactionsIntegrationTests {
     void rollbackConfigurationProvidesOneOperationScopedManagerThroughBothInterfaces() {
         inPhysicalTestTransaction(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
-            Probe probe = scope.resolve(Probe.class);
+            RollbackProbe probe = scope.resolve(RollbackProbe.class);
             assertSame(manager, scope.resolve(Transactions.class));
             assertSame(manager, scope.resolve(TransactionSegmentAccess.class));
             assertSame(manager, probe.transactions());
@@ -147,12 +136,12 @@ class RollbackTransactionsIntegrationTests {
         inPhysicalTestTransaction(scope -> {
             RollbackTransactions transactions = scope.resolve(RollbackTransactions.class);
             transactions.execute(() -> {
-                scope.resolve(JpaAccess.class).entityManager().persist(new ProbeRow(601, "unflushed"));
+                scope.resolve(JpaAccess.class).entityManager().persist(new RollbackTestProbeRow(601, "unflushed"));
                 return TransactionOutcome.rollback(null);
             });
             assertEquals(TransactionDecision.ROLLBACK, transactions.observation().requestedDecision());
             assertEquals(0, jdbc.queryForObject(
-                "select count(*) from rollback_tx_probe where id = 601", Integer.class));
+                "select count(*) from groups.rollback_tx_probe where id = 601", Integer.class));
             return null;
         });
     }
@@ -167,7 +156,7 @@ class RollbackTransactionsIntegrationTests {
                 RollbackTransactions transactions = scope.resolve(RollbackTransactions.class);
                 assertEquals(expected, transactions.execute(() -> {
                     scope.resolve(JooqAccess.class).dsl().execute(
-                        "insert into rollback_tx_probe (id, label) values (?, ?)", rowId, expected);
+                        "insert into groups.rollback_tx_probe (id, label) values (?, ?)", rowId, expected);
                     return new TransactionOutcome<>(expected, decision);
                 }));
                 TransactionObservation observed = transactions.observation();
@@ -179,11 +168,11 @@ class RollbackTransactionsIntegrationTests {
                 // This is an ordinary test-side JDBC read within the still-open physical
                 // transaction, not a new application segment or the Phase D inspector.
                 assertEquals(expected, jdbc.queryForObject(
-                    "select label from rollback_tx_probe where id = ?", String.class, rowId));
+                    "select label from groups.rollback_tx_probe where id = ?", String.class, rowId));
                 return null;
             });
             assertEquals(0, jdbc.queryForObject(
-                "select count(*) from rollback_tx_probe where id = ?", Integer.class, rowId));
+                "select count(*) from groups.rollback_tx_probe where id = ?", Integer.class, rowId));
         }
     }
 
@@ -287,7 +276,7 @@ class RollbackTransactionsIntegrationTests {
     void existingJpaAndJooqFacadesAndDeferredQueriesExpireWithLogicalCallback() {
         inPhysicalTestTransaction(scope -> {
             RollbackTransactions transactions = scope.resolve(RollbackTransactions.class);
-            Probe probe = scope.resolve(Probe.class);
+            RollbackProbe probe = scope.resolve(RollbackProbe.class);
             AtomicReference<DSLContext> dsl = new AtomicReference<>();
             AtomicReference<org.jooq.Query> deferredJooq = new AtomicReference<>();
             AtomicReference<EntityManager> entityManager = new AtomicReference<>();
@@ -297,10 +286,10 @@ class RollbackTransactionsIntegrationTests {
                 EntityManager em = probe.jpa().entityManager();
                 dsl.set(db);
                 entityManager.set(em);
-                deferredJooq.set(db.query("select count(*) from rollback_tx_probe"));
-                deferredJpa.set(em.createQuery("select count(p) from RollbackProbeRow p"));
-                db.execute("insert into rollback_tx_probe (id, label) values (501, 'pending')");
-                em.persist(new ProbeRow(502, "from JPA"));
+                deferredJooq.set(db.query("select count(*) from groups.rollback_tx_probe"));
+                deferredJpa.set(em.createQuery("select count(p) from RollbackTestProbeRow p"));
+                db.execute("insert into groups.rollback_tx_probe (id, label) values (501, 'pending')");
+                em.persist(new RollbackTestProbeRow(502, "from JPA"));
                 em.flush();
                 TransactionSegmentAccess.SegmentLease current = probe.segments().captureCurrentSegment();
                 current.requireCurrent();
@@ -311,12 +300,12 @@ class RollbackTransactionsIntegrationTests {
             assertThrows(IllegalStateException.class, () -> probe.jpa().entityManager());
             assertThrows(IllegalStateException.class, () -> dsl.get().fetch("select 1"));
             assertGuardRejected(() -> deferredJooq.get().execute());
-            assertGuardRejected(() -> entityManager.get().find(ProbeRow.class, 502));
+            assertGuardRejected(() -> entityManager.get().find(RollbackTestProbeRow.class, 502));
             assertGuardRejected(() -> deferredJpa.get().getResultList());
-            assertEquals(2, jdbc.queryForObject("select count(*) from rollback_tx_probe", Integer.class));
+            assertEquals(2, jdbc.queryForObject("select count(*) from groups.rollback_tx_probe", Integer.class));
             return null;
         });
-        assertEquals(0, jdbc.queryForObject("select count(*) from rollback_tx_probe", Integer.class));
+        assertEquals(0, jdbc.queryForObject("select count(*) from groups.rollback_tx_probe", Integer.class));
     }
 
     @Test
@@ -324,13 +313,13 @@ class RollbackTransactionsIntegrationTests {
         for (int propagation : new int[]{TransactionDefinition.PROPAGATION_REQUIRES_NEW,
                 TransactionDefinition.PROPAGATION_NOT_SUPPORTED}) {
             inPhysicalTestTransaction(scope -> {
-                Probe probe = scope.resolve(Probe.class);
+                RollbackProbe probe = scope.resolve(RollbackProbe.class);
                 RollbackTransactions transactions = scope.resolve(RollbackTransactions.class);
                 transactions.execute(() -> {
                     DSLContext db = probe.jooq().dsl();
                     EntityManager em = probe.jpa().entityManager();
                     TransactionSegmentAccess.SegmentLease lease = probe.segments().captureCurrentSegment();
-                    assertEquals(0, db.fetchCount(DSL.table("rollback_tx_probe")));
+                    assertEquals(0, db.fetchCount(DSL.table("groups.rollback_tx_probe")));
                     TransactionTemplate nested = new TransactionTemplate(physicalManager);
                     nested.setPropagationBehavior(propagation);
                     nested.execute(status -> {
@@ -340,11 +329,11 @@ class RollbackTransactionsIntegrationTests {
                         assertThrows(IllegalStateException.class, () -> probe.jooq().dsl());
                         assertThrows(IllegalStateException.class, () -> probe.jpa().entityManager());
                         assertGuardRejected(() -> db.fetch("select 1"));
-                        assertGuardRejected(() -> em.createQuery("select count(p) from RollbackProbeRow p").getResultList());
+                        assertGuardRejected(() -> em.createQuery("select count(p) from RollbackTestProbeRow p").getResultList());
                         return null;
                     });
                     lease.requireCurrent();
-                    assertEquals(0, db.fetchCount(DSL.table("rollback_tx_probe")));
+                    assertEquals(0, db.fetchCount(DSL.table("groups.rollback_tx_probe")));
                     return TransactionOutcome.rollback(null);
                 });
                 return null;
@@ -391,60 +380,4 @@ class RollbackTransactionsIntegrationTests {
             "Expected a segment-lifetime rejection, got: " + thrown);
     }
 
-    record Probe(Transactions transactions, TransactionSegmentAccess segments, JooqAccess jooq, JpaAccess jpa) { }
-
-    @Entity(name = "RollbackProbeRow")
-    @Table(name = "rollback_tx_probe")
-    public static class ProbeRow {
-        @Id
-        private Integer id;
-        @Column(nullable = false)
-        private String label;
-
-        protected ProbeRow() { }
-
-        ProbeRow(int id, String label) {
-            this.id = id;
-            this.label = label;
-        }
-    }
-
-    @TestConfiguration(proxyBeanMethods = false)
-    @Import(RollbackTransactionTestConfiguration.class)
-    static class Fixtures {
-        @Bean
-        DataSource dataSource() {
-            return new DriverManagerDataSource("jdbc:h2:mem:p13c_logical;DB_CLOSE_DELAY=-1", "sa", "");
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource) {
-            LocalContainerEntityManagerFactoryBean factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(dataSource);
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            factory.setPackagesToScan(ProbeRow.class.getPackageName());
-            factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop"));
-            return factory;
-        }
-
-        @Bean
-        PlatformTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {
-            return new JpaTransactionManager(entityManagerFactory);
-        }
-
-        @Bean
-        DSLContext dslContext(DataSource dataSource) {
-            return DSL.using(new TransactionAwareDataSourceProxy(dataSource), SQLDialect.H2);
-        }
-
-        @Bean
-        JdbcTemplate jdbcTemplate(DataSource dataSource) {
-            return new JdbcTemplate(dataSource);
-        }
-
-        @Bean @Scope("operation")
-        Probe probe(Transactions transactions, TransactionSegmentAccess segments, JooqAccess jooq, JpaAccess jpa) {
-            return new Probe(transactions, segments, jooq, jpa);
-        }
-    }
 }

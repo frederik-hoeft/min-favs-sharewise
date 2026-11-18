@@ -12,14 +12,27 @@ P1.2 supplies PostgreSQL 18 server provisioning (Testcontainers where a compatib
 
 ## Test categories and guarantees
 
-The categories describe **execution contracts**, not necessarily separate Maven modules or inheritance trees. Maven/JUnit test selection, annotation names and fixture package locations are implementation choices.
+The backend uses **Unit**, **Integration**, and **E2E** suites. These are independent Maven
+execution profiles and GitLab CI jobs, not separate application modules. All suites compile the
+same production code; their distinction is the external infrastructure and transaction boundary.
 
-| Category | Dependencies and isolation | What it can establish |
+| Suite | Dependencies and isolation | What it can establish |
 | --- | --- | --- |
-| **Unit tests** | Plain JUnit with directly constructed services and fake/mock ports; no Spring context or PostgreSQL | Domain logic, typed business results and application orchestration; parallel by default |
-| **Operation integration tests** | Real Spring operation scope, real persistence adapters, and PostgreSQL; one **test-owned physical transaction** rolled back at the end | DI scope identity/lifetime, normal single-transaction application operations, uncommitted database state and recorded application transaction decisions |
-| **Workflow integration tests** | Production dispatcher and `Transactions` implementation, **real physical commits**, isolated disposable PostgreSQL database/fixture | Multiple sequential transactions, committed-state visibility, persistence concurrency, Spring Modulith publication/delivery, idempotency, recovery and commit-time behavior |
-| **Cross-service E2E/smoke tests** | Future opt-in suite with isolated deployments and external infrastructure | Cross-process transport, real broker behavior and deployment wiring; not required for the initial modular monolith |
+| **Unit** (`*Tests`, `*Test`) | Offline JUnit tests, directly constructed fakes/mocks and optional lightweight in-process Spring contexts. No JDBC database, Docker, network or external service. | Pure logic, DI/scoping contracts with fakes, validation, API boundary behavior and architecture rules. |
+| **Integration** (`*IT`) | One migrated PostgreSQL database and one production Spring context **per JUnit launcher/fork**, owned by JUnit's root extension store. Each operation/test owns a fresh Spring physical transaction that is **always rolled back**. | Real persistence adapter collaboration, operation-scope wiring, pending-state inspection, PostgreSQL errors and transaction lease behavior. |
+| **E2E** (`*E2E`) | Each test owns its own freshly migrated disposable PostgreSQL database and production Spring context. Physical commits and committed-data observation are permitted. | Multi-segment transactions, committed-state visibility, migration/role contracts, database lifecycle, HTTP workflows and failure/recovery behavior. |
+
+The Integration suite's committed seed is immutable once the shared database is initialized.
+Tests may insert, update, delete and explicitly flush rows **within their rollback-owned
+transaction**; they must never commit setup/cleanup SQL, mutate global schema/role state, or
+rely on sequence values being rolled back. Parallel tests use disjoint keys and avoid
+conflicting row locks. One database does **not** mean one shared connection, transaction,
+operation scope, `EntityManager` or JDBC inspector. The fixture is shared only within its
+executing JVM; concurrent CI jobs do not share database state.
+
+E2E means an isolated, real-commit application workflow in this test suite. Deployed,
+cross-service browser/network tests may be added to that category later, but are not required
+by the initial modular monolith contract.
 
 An **operation** is a business entry operation whose behavior fits within one `Transactions.execute(...)` segment. It can compose arbitrarily many participating services and persistence ports inside that segment. A **workflow** depends on multiple independently finalized transaction segments or on asynchronous/externally observable commit boundaries. This distinction determines the **test mode** and does not require separate mandatory production service interfaces or limit an operation DI scope to one physical transaction in production.
 
@@ -153,7 +166,7 @@ Representative scenarios include committing business state with its durable regi
 
 Parallelism is permitted only after isolation of **all mutable resources**, including PostgreSQL rows/locks/sequences, application contexts, Spring test overrides, listener executors, file paths and external mocks. Rollback operation tests may share a database only with committed immutable seed data and disjoint writes; transactional isolation alone does not make conflicting concurrent tests independent. Real-commit tests use disposable databases and independently configured contexts or another mechanism shown to provide equivalent isolation. A deliberately shared external resource may require an explicitly serialized suite, but it does not justify globally serializing all integration tests.
 
-JUnit tags or Maven Surefire/Failsafe profiles distinguish unit, rollback-operation, real-commit-workflow and optional future deployed E2E tests; separate Maven projects are **not** required by this contract. The required GitLab PostgreSQL job invokes the database-dependent suites using its provisioned service, while ordinary unit/component checks remain runnable without a server or Docker runtime. Test-specific beans, profiles and fixture configuration cannot leak across test classes through cached Spring contexts. CI clearly reports which suites ran, which were skipped for environmental reasons, and which acceptance guarantees remain unverified. Unit tests remain entirely offline and database-independent; PostgreSQL integration tests require a provisioned compatible server/container and do not silently pass using H2.
+Maven Surefire selects the offline Unit suffixes (`*Tests`/`*Test`); Failsafe selects Integration (`*IT`) and E2E (`*E2E`) independently. `-Punit-tests`, `-Pintegration-tests`, and `-Pe2e-tests` are the three gate commands, each with its own GitLab CI job and JUnit reports. Ordinary `clean verify` exercises all suites when a PostgreSQL server is provisioned. Separate Maven projects are **not** required: the fixture separation is enforced by explicit test selection and lifecycle ownership. The Integration and E2E jobs use distinct PostgreSQL 18 service instances supplied by GitLab CI, without Docker-in-Docker or a Docker socket. Test-specific beans, profiles and fixture configuration cannot leak across test classes through cached Spring contexts. CI clearly reports which suites ran, which were skipped for environmental reasons, and which acceptance guarantees remain unverified. Unit tests remain entirely offline and database-independent; PostgreSQL Integration/E2E tests require a provisioned compatible server/container and do not silently pass using H2. The H2 dependency and global in-memory datasource configuration are absent.
 
 ## Acceptance criteria
 

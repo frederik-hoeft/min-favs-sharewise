@@ -1,5 +1,7 @@
 package de.hsh.favs.sharewise.tests.postgres;
 
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -30,7 +32,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 
 /** PostgreSQL-backed Phase C acceptance for owned databases and uncached application contexts. */
-class PostgresWorkflowFixtureIT {
+@org.junit.jupiter.api.Tag("e2e")
+class PostgresWorkflowFixtureE2E {
 
     @Test
     void independentContextsUseMigratedDatabasesAndCommittedSeedData() throws SQLException {

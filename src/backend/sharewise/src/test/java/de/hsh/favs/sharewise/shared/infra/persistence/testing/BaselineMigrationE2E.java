@@ -12,25 +12,26 @@ import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** P1.2 baseline schema and role contract against real PostgreSQL (TC-3, TC-5, TC-10, TC-11, TC-12). */
-class BaselineMigrationIT {
+@org.junit.jupiter.api.Tag("e2e")
+class BaselineMigrationE2E {
 
     private static final List<String> OWNED_SCHEMAS =
         List.of("identity", "groups", "finance", "files", "notifications", "flyway");
 
-    private static PostgresTestDatabase database;
+    private PostgresTestDatabase database;
 
-    @BeforeAll
-    static void migrate() {
+    @BeforeEach
+    void migrate() {
         database = PostgresTestDatabase.createMigrated();
     }
 
-    @AfterAll
-    static void drop() {
+    @AfterEach
+    void drop() {
         if (database != null) {
             database.close();
         }

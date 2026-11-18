@@ -23,7 +23,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-class OperationTestHarnessIntegrationTests {
+class OperationTestHarnessTests {
 
     @Test
     void resolvesSharedScopedCollaboratorsAndDestroysEachOwnedBeanOnce() {

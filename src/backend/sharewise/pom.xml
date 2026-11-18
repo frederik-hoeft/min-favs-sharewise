@@ -29,8 +29,10 @@
     <properties>
         <java.version>25</java.version>
         <spring-modulith.version>2.1.2</spring-modulith.version>
-        <groups/>
-        <excludedGroups>integration</excludedGroups>
+        <!-- Surefire owns offline Unit tests. Failsafe owns real PostgreSQL suites. -->
+        <skipUnitTests>false</skipUnitTests>
+        <skipDatabaseTests>false</skipDatabaseTests>
+        <databaseTestIncludes>**/*IT.java,**/*E2E.java</databaseTestIncludes>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -87,12 +89,6 @@
             <artifactId>spring-boot-starter-data-jpa-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- In-memory database for the database-free Spring tests (P1.3a/P1.3b) until P1.3c moves them to PostgreSQL. -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>test</scope>
-        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
@@ -117,6 +113,14 @@
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+                    <skipITs>${skipDatabaseTests}</skipITs>
+                    <!-- A single fork guarantees one JUnit-root-owned database per Integration execution. -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
+                    <includes>
+                        <include>${databaseTestIncludes}</include>
+                    </includes>
+                    <failIfNoTests>true</failIfNoTests>
                 </configuration>
                 <executions>
                     <execution>
@@ -131,12 +135,11 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <groups>${groups}</groups>
-                    <excludedGroups>${excludedGroups}</excludedGroups>
-                    <systemPropertyVariables>
-                        <sharewise.surefire.groups>${groups}</sharewise.surefire.groups>
-                        <sharewise.surefire.excludedGroups>${excludedGroups}</sharewise.surefire.excludedGroups>
-                    </systemPropertyVariables>
+                    <skipTests>${skipUnitTests}</skipTests>
+                    <includes>
+                        <include>**/*Tests.java</include>
+                        <include>**/*Test.java</include>
+                    </includes>
                 </configuration>
             </plugin>
         </plugins>
@@ -144,10 +147,23 @@
 
     <profiles>
         <profile>
+            <id>unit-tests</id>
+            <properties>
+                <skipDatabaseTests>true</skipDatabaseTests>
+            </properties>
+        </profile>
+        <profile>
             <id>integration-tests</id>
             <properties>
-                <groups>integration</groups>
-                <excludedGroups/>
+                <skipUnitTests>true</skipUnitTests>
+                <databaseTestIncludes>**/*IT.java</databaseTestIncludes>
+            </properties>
+        </profile>
+        <profile>
+            <id>e2e-tests</id>
+            <properties>
+                <skipUnitTests>true</skipUnitTests>
+                <databaseTestIncludes>**/*E2E.java</databaseTestIncludes>
             </properties>
         </profile>
     </profiles>

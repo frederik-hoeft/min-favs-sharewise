@@ -8,8 +8,7 @@ import java.lang.annotation.Target;
 import org.junit.jupiter.api.Tag;
 
 /**
- * Marks a database-backed integration test (P1.3c rollback-isolated operation test or real-commit
- * workflow test) requiring a provisioned PostgreSQL instance.
+ * Marks a rollback-isolated PostgreSQL integration test. Real-commit workflows are E2E tests.
  */
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)

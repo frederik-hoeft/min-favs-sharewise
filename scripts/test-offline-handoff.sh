@@ -14,6 +14,7 @@ mkdir -p "$source/scripts" "$source/src/backend/sharewise/.mvn/wrapper" "$source
     "$work/toolchain-content/jdk-test/bin" "$work/toolchain-content/node-test/bin" \
     "$work/toolchain-content/maven-test/bin" "$work/vendor"
 cp "$(dirname "${BASH_SOURCE[0]}")/create-offline-handoff.sh" "$source/scripts/"
+chmod +x "$source/scripts/create-offline-handoff.sh"
 printf 'backend descriptor\n' > "$source/src/backend/sharewise/pom.xml"
 printf 'wrapper descriptor\n' > "$source/src/backend/sharewise/.mvn/wrapper/maven-wrapper.properties"
 printf 'frontend descriptor\n' > "$source/src/frontend/package.json"

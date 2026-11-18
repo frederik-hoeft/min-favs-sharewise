@@ -28,7 +28,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.test.context.TestConfiguration;
 
-class OperationDispatcherIntegrationTests {
+class OperationDispatcherTests {
 
     @Test
     void dispatchCreatesOneSpringGraphPerOperationAndSharesOnlySingletons() {

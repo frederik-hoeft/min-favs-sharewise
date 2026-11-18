@@ -22,8 +22,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 
 /** Integration-style test callbacks use the same Spring operation scope as production dispatch. */
-@SpringJUnitConfig({ OperationScopeConfiguration.class, OperationScopeTestSeamIntegrationTests.Fixtures.class })
-class OperationScopeTestSeamIntegrationTests {
+@SpringJUnitConfig({ OperationScopeConfiguration.class, OperationScopeTestSeamTests.Fixtures.class })
+class OperationScopeTestSeamTests {
 
     @Autowired ServiceScopeFactory scopeFactory;
     @Autowired OperationDispatcher dispatcher;

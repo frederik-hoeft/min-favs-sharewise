@@ -1,11 +1,11 @@
-package de.hsh.favs.sharewise.tests.postgres;
+package de.hsh.favs.sharewise.testsupport.postgres;
 
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.TestConfiguration;
 
 /**
- * Limits PostgreSQL contexts to context-owned production entities. The test classpath also
- * contains H2-only probe entities under shared infrastructure and tests, which are excluded.
+ * Limits PostgreSQL contexts to context-owned production entities. Test-only JPA probe
+ * entities are opted in by the tests that need their mappings.
  */
 @TestConfiguration(proxyBeanMethods = false)
 @EntityScan(basePackages = {
@@ -15,4 +15,4 @@ import org.springframework.boot.test.context.TestConfiguration;
     "de.hsh.favs.sharewise.files",
     "de.hsh.favs.sharewise.notifications"
 })
-class ProductionEntityScanConfiguration { }
+public class ProductionEntityScanConfiguration { }

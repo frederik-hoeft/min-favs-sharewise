@@ -40,9 +40,9 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** Exercises the real DI scope and Spring TransactionTemplate against an instrumented physical manager. */
-@SpringJUnitConfig({InfrastructureTestComponents.class, TransactionsIntegrationTests.Fixtures.class})
-class TransactionsIntegrationTests {
+/** Offline contract tests with a fake physical manager and real in-process Spring DI. */
+@SpringJUnitConfig({InfrastructureTestComponents.class, TransactionsTests.Fixtures.class})
+class TransactionsTests {
 
     @Autowired OperationDispatcher dispatcher;
     @Autowired ServiceScopeFactory scopes;

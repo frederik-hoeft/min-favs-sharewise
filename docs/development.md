@@ -16,7 +16,7 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 ## Current toolchain
 
-The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, Lombok, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules); H2 is a test-only dependency. Spring Modulith event publication remains an architectural target rather than an installed backend feature.
+The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
 The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. During development, `next.config.ts` rewrites `/api/:path*` requests directly to the Spring Boot backend (`BACKEND_URL`), avoiding custom Next.js API route handlers. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding in production; that Nginx deployment is **not yet implemented**.
 
@@ -33,16 +33,25 @@ Flyway applies the migrations in `src/main/resources/db/migration/` at startup. 
 
 `application.properties` contains dev-only defaults for the dev-container database. Other environments override them with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
-`./mvnw test` does not need PostgreSQL: the existing Spring tests use in-memory H2 through `src/test/resources/config/application.properties` (Flyway disabled, Hibernate `create-drop`). `./mvnw verify` additionally runs the PostgreSQL integration tests (`*IT`, Maven Failsafe). They use `PostgresTestDatabase` from `src/test/java/.../shared/infra/persistence/testing/`, which connects to the dev-container `postgres` service as `postgres`, creates and drops a disposable `sharewise_it_*` database per test class and runs the bootstrap scripts and migrations in it. Another server can be selected with `SHAREWISE_TEST_DB_URL`, `SHAREWISE_TEST_DB_ADMIN_USER` and `SHAREWISE_TEST_DB_ADMIN_PASSWORD`; CI uses a `postgres:18` service this way. Without a reachable server the integration tests fail; they never fall back to H2. Rollback-isolated test harnesses follow with [P1.3c](internal/tasks/p1.3c-integration-tests/specification.md).
+The backend has three independent test gates: **Unit** (`*Tests`/`*Test`, no database),
+**Integration** (`*IT`, a single suite-owned migrated PostgreSQL fixture with per-test rollback
+transactions), and **E2E** (`*E2E`, a disposable migrated PostgreSQL database per test with real
+commits). They run in independent GitLab CI jobs. Integration and E2E connect via JDBC to the
+dev-container `postgres` service or to the external server selected by `SHAREWISE_TEST_DB_URL`,
+`SHAREWISE_TEST_DB_ADMIN_USER` and `SHAREWISE_TEST_DB_ADMIN_PASSWORD`. Missing PostgreSQL fails
+the database-dependent suites; H2 is not an alternative. The full fixture contract is maintained
+in the [P1.3c test specification](internal/tasks/p1.3c-integration-tests/specification.md).
 
 ## Build, test and run
 
-Backend, from the repository root (the default `test` run excludes `@Tag("integration")` database suites; pass `-Pintegration-tests` to run `@DatabaseIntegrationTest` suites explicitly):
+Backend, from the repository root. Run the Unit suite offline, or select either PostgreSQL
+suite when the dev-container service is available (`clean verify` without a profile runs all three):
 
 ```sh
 cd src/backend/sharewise
-./mvnw test
-./mvnw test -Pintegration-tests
+./mvnw -Punit-tests clean verify
+./mvnw -Pintegration-tests clean verify
+./mvnw -Pe2e-tests clean verify
 ./mvnw spring-boot:run
 ```
 
@@ -152,7 +161,7 @@ try (ServiceScope scope = scopeFactory.createScope()) {
 
 The factory may create independent nested DI scopes, but **nested `OperationDispatcher.dispatch(...)` calls are prohibited**. Do not use the outer scope's provider or already-created services from within a nested activation. Scopes and providers are confined to their creating thread; after closure, references must not be retained or used. Singleton-to-scoped dependency capture and escaped references are code-review concerns, not guarantees of automatic lifetime analysis.
 
-The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or all database-free tests with `mvn test` (`mvn clean verify` additionally runs the PostgreSQL integration tests and needs the database, see [Database](#database)). In an isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution.
+The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn -Punit-tests test -Dtest=ServiceScopeTests,OperationDispatcherTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamTests`) or all Unit tests with `mvn -Punit-tests clean verify` (the Integration and E2E jobs additionally require PostgreSQL, see [Database](#database)). In an isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution.
 
 ## Transaction and persistence adapter usage
 
@@ -191,7 +200,7 @@ public Optional<Thing> getThingById(UUID id) {
 
 The examples use illustrative domain types and a generated `THING` table, not existing business classes. An accessor can be retained by the operation-scoped repository; **the returned jOOQ/JPA facade, queries and managed entities cannot be retained across calls or transaction segments**. Once a segment ends, obtaining another facade through the accessor is valid in a subsequent segment, but previously issued facades remain invalid. See the [transaction architecture](architecture/transactions.md) for outcomes, lifecycle and failure semantics.
 
-From `src/backend/sharewise`, exercise Spring transaction coordination and both adapters using `mvn test -Dtest=TransactionsIntegrationTests,RelationalTransactionIntegrationTests` or `mvn test`. These checks use instrumented transaction managers and test-only H2 datasources, not PostgreSQL. Production datasource interoperability, database isolation and engine-specific failure behavior require separate PostgreSQL integration tests.
+From `src/backend/sharewise`, run fake-manager transaction contract tests with `mvn -Punit-tests test -Dtest=TransactionsTests`. Run rollback-isolated PostgreSQL operations with `mvn -Pintegration-tests verify`, or real-commit mixed-adapter workflows with `mvn -Pe2e-tests verify -Dit.test=RelationalTransactionE2E`. The PostgreSQL suites exercise physical SQL, isolation and commit/failure behavior; the Unit suite does not contact a database.
 
 ## Development conventions
 

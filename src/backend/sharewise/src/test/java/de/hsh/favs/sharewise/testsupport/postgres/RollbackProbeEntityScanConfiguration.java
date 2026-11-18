@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.tests.postgres;
+package de.hsh.favs.sharewise.testsupport.postgres;
 
 import de.hsh.favs.p13crollback.RollbackProbeRow;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -9,4 +9,4 @@ import org.springframework.context.annotation.Import;
 @TestConfiguration(proxyBeanMethods = false)
 @Import(ProductionEntityScanConfiguration.class)
 @EntityScan(basePackageClasses = RollbackProbeRow.class)
-class RollbackProbeEntityScanConfiguration { }
+public class RollbackProbeEntityScanConfiguration { }

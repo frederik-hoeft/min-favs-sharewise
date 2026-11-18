@@ -9,7 +9,8 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
-import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresE2ETestCase;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -21,32 +22,30 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Component-level H2 coverage; PostgreSQL interoperability remains in Phase D. */
-@SpringJUnitConfig({InfrastructureTestComponents.class, JpaAccessIntegrationTests.Fixtures.class})
-class JpaAccessIntegrationTests {
+/** Real-commit JPA facade and persistence-context coverage against isolated PostgreSQL. */
+@org.junit.jupiter.api.Tag("e2e")
+class JpaAccessE2E extends PostgresE2ETestCase {
 
-    @Autowired OperationDispatcher dispatcher;
-    @Autowired EntityManagerFactory entityManagerFactory;
-    @Autowired DataSource dataSource;
+    OperationDispatcher dispatcher;
+    EntityManagerFactory entityManagerFactory;
+    DataSource dataSource;
 
     @BeforeEach
     void resetRows() {
+        startWithSchema("create table groups.tx_jpa_probe (id integer primary key, name varchar(255))",
+            ProductionEntityScanConfiguration.class, Fixtures.class);
+        dispatcher = context().getBean(OperationDispatcher.class);
+        entityManagerFactory = context().getBean(EntityManagerFactory.class);
+        dataSource = context().getBean(DataSource.class);
         dispatcher.dispatch(Probe.class, probe -> {
             probe.transactions().execute(() -> {
-                probe.jpa().entityManager().createNativeQuery("delete from tx_jpa_probe").executeUpdate();
+                probe.jpa().entityManager().createNativeQuery("delete from groups.tx_jpa_probe").executeUpdate();
                 return TransactionOutcome.commit(null);
             });
             return null;
@@ -150,7 +149,7 @@ class JpaAccessIntegrationTests {
     record Probe(Transactions transactions, JpaAccess jpa) { }
 
     @Entity(name = "TxJpaProbe")
-    @Table(name = "tx_jpa_probe")
+    @Table(name = "tx_jpa_probe", schema = "groups")
     public static class ProbeRow {
         @Id
         private Integer id;
@@ -165,27 +164,9 @@ class JpaAccessIntegrationTests {
     }
 
     @TestConfiguration(proxyBeanMethods = false)
+    @org.springframework.boot.persistence.autoconfigure.EntityScan(
+        basePackages = "de.hsh.favs.sharewise.shared.infra.persistence.jpa.internal")
     static class Fixtures {
-        @Bean
-        DataSource dataSource() {
-            return new DriverManagerDataSource("jdbc:h2:mem:jpa_access_p13c;DB_CLOSE_DELAY=-1", "sa", "");
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource) {
-            LocalContainerEntityManagerFactoryBean factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(dataSource);
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            factory.setPackagesToScan(ProbeRow.class.getPackageName());
-            factory.setJpaPropertyMap(java.util.Map.of("hibernate.hbm2ddl.auto", "create-drop"));
-            return factory;
-        }
-
-        @Bean
-        PlatformTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {
-            return new JpaTransactionManager(entityManagerFactory);
-        }
-
         @Bean @Scope("operation")
         Probe probe(Transactions transactions, JpaAccess jpa) {
             return new Probe(transactions, jpa);
