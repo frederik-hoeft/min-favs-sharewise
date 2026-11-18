@@ -1,5 +1,6 @@
-package de.hsh.favs.sharewise.shared.infra.health;
+package de.hsh.favs.sharewise.shared.infra.health.internal;
 
+import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Objects;

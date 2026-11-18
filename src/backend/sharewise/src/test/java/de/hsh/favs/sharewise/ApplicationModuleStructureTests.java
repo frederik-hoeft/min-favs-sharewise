@@ -7,6 +7,7 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
+import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
@@ -30,6 +31,7 @@ class ApplicationModuleStructureTests {
 
     private static final String DI_INTERNAL_PACKAGE = "de.hsh.favs.sharewise.shared.infra.di.internal";
     private static final String WEB_INTERNAL_PACKAGE = "de.hsh.favs.sharewise.shared.infra.web.internal";
+    private static final String HEALTH_INTERNAL_PACKAGE = "de.hsh.favs.sharewise.shared.infra.health.internal";
 
     private final ApplicationModules modules = ApplicationModules.of(ShareWiseApplication.class);
 
@@ -57,17 +59,24 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
-    void sharedIsTheOnlyModuleAndIsClosedWithoutModuleDependencies() {
-        List<String> moduleNames = modules.stream()
+    void sharedAndSystemModulesHaveExplicitDependencies() {
+        Set<String> moduleNames = modules.stream()
                 .map(module -> module.getIdentifier().toString())
-                .toList();
-        assertEquals(List.of("shared"), moduleNames);
+                .collect(Collectors.toSet());
+        assertEquals(Set.of("shared", "system"), moduleNames);
 
         ApplicationModule shared = sharedModule();
         assertFalse(shared.isOpen(), "shared must be a closed module");
         assertEquals(List.of(),
                 ApplicationModuleInformation.of(shared.getBasePackage()).getDeclaredDependencies(),
                 "shared must declare an empty allowedDependencies whitelist");
+
+        ApplicationModule system = modules.getModuleByName("system")
+                .orElseThrow(() -> new AssertionError("module 'system' must exist"));
+        assertFalse(system.isOpen(), "system must be a closed module");
+        assertEquals(List.of("shared :: health"),
+                ApplicationModuleInformation.of(system.getBasePackage()).getDeclaredDependencies(),
+                "the system endpoint must depend only on the published readiness contract");
     }
 
     @Test
@@ -102,6 +111,17 @@ class ApplicationModuleStructureTests {
                 FieldErrorDetail.class.getName(),
                 RequestValidationException.class.getName());
         assertEquals(expectedTypes, publishedTypes);
+    }
+
+    @Test
+    void sharedHealthNamedInterfacePublishesOnlyTheReadinessContract() {
+        assertEquals(Set.of(ReadinessIndicator.class.getName()), publishedTypesOfSharedInterface("health"));
+    }
+
+    @Test
+    void noNamedInterfacePublishesHealthImplementationTypes() {
+        assertEquals(List.of(), ModulePublications.publishedTypesIn(modules, HEALTH_INTERNAL_PACKAGE),
+                "readiness-probe implementations must not be shared module APIs");
     }
 
     @Test

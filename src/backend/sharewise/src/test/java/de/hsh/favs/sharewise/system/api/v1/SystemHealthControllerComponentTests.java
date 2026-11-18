@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.shared.infra.health;
+package de.hsh.favs.sharewise.system.api.v1;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;

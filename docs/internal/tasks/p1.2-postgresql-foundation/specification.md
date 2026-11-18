@@ -91,7 +91,7 @@ ShareWise replaces the starter's H2 database with **PostgreSQL** as its authorit
 
 | ID | Type | Setup | Action | Expected result |
 | --- | --- | --- | --- | --- |
-| TC-1 | Manual E2E | Fresh dev container (rebuild) | Start backend and frontend, open `/greetings` | App starts against PostgreSQL with the application role, Flyway applies the baseline with the migration role, greeting flow works |
+| TC-1 | Manual E2E | Fresh dev container (rebuild) | Start backend and frontend, request `/api/system/v1/health` through the frontend origin | App starts against PostgreSQL with the application role, Flyway applies the baseline with the migration role, and the proxied health request returns `200` / `UP` |
 | TC-2 | Build | Machine without Docker / PostgreSQL | `./mvnw test` | Succeeds |
 | TC-3 | Integration | Empty PostgreSQL 18 | Run bootstrap and migrations through the fixture | Schemas `identity`, `groups`, `finance`, `files`, `notifications` and the Flyway history exist |
 | TC-4 | Integration | Bootstrapped empty database | Application context starts with Flyway enabled and `ddl-auto=validate`, scanning production entity packages only | Context loads; Flyway applied the baseline as migrator; runtime connection is `sharewise_app` |

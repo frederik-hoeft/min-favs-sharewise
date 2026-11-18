@@ -24,7 +24,7 @@ The repository contains the Java 25 / Spring Boot 4.1.2 Maven backend (`src/back
 
 - [x] Implement the shared API error contract (`ProblemDetail` builder utilities, stable `code` property, `FieldErrorDetail(String field, String code, String message)` list, and boundary validation exception types) published as `shared::web`, and an internal global `@RestControllerAdvice` in `shared.infra.web.internal` handling validation errors (`400`, `validation_failed`), unreadable/malformed payloads (`400`, `malformed_request`), method/media-type errors (`405`/`415`), and unexpected or return-value validation exceptions (`500`, `internal_error` without stack trace or class-name leakage).
 - [x] Enable and bind fail-fast immutable `@ConfigurationProperties` records for core application settings, validating required values at startup.
-- [x] Implement `GET /api/system/v1/health` (and align `/api/greetings` or greeting compatibility for the starter page) returning `200 OK` (`{"status":"UP"}`) when healthy and `503 Service Unavailable` (`{"status":"DOWN"}`) when a registered readiness probe fails.
+- [x] Implement `GET /api/system/v1/health` in `system.api.v1` using the published `shared::health` readiness contract returning `200 OK` (`{"status":"UP"}`) when healthy and `503 Service Unavailable` (`{"status":"DOWN"}`) when a registered readiness probe fails.
 - [x] Add MockMvc / component and Spring context tests covering `P1.4-T01` through `P1.4-T04` (invalid fields, malformed JSON, `Result.Err` mapping, `500` diagnostic suppression, fail-fast configuration properties, and health status transitions).
 
 **Gate B:** From `src/backend/sharewise`, `./mvnw test` passes all new component and context tests offline; `git diff --check` is clean.
@@ -35,7 +35,7 @@ The repository contains the Java 25 / Spring Boot 4.1.2 Maven backend (`src/back
 
 - [x] Configure the `/api/:path*` → `${BACKEND_URL}/api/:path*` rewrite in `src/frontend/next.config.ts` and remove `src/frontend/app/api/greetings/route.ts` so Next.js has no server-side API route handlers.
 - [x] Implement the typed frontend API client in `src/frontend/lib/api/` (`apiClient`, `ApiError`, `ProblemDetailPayload`, `FieldError`, `credentials: 'same-origin'`, JSON handling, and header/`401` extension hooks for P2.3).
-- [x] Update `src/frontend/app/greetings/page.tsx` to use the shared API client through the `/api/*` rewrite, and verify error/response handling.
+- [x] Verify the `/api/*` rewrite against the real system health endpoint and exercise the typed client through its mocked response/error tests without retaining the starter greeting page.
 
 **Gate C:** From `src/frontend`, `npm run lint` and `npm run build` succeed offline; no `src/frontend/app/api/` route files remain.
 

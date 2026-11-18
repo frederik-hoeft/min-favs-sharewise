@@ -1,5 +1,6 @@
-package de.hsh.favs.sharewise.shared.infra.health;
+package de.hsh.favs.sharewise.system.api.v1;
 
+import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
 import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;

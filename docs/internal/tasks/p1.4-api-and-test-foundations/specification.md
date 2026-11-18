@@ -18,7 +18,7 @@ P1.4 does **not** implement IAM authentication, JWT decoding, CSRF token issuanc
 
 ### 1. Backend API conventions, errors and validation (P1.4a)
 
-Inbound REST controllers are thin transport adapters under their owning module (or `shared` for system probes) and delegate business execution through `OperationDispatcher`. Versioned domain routes follow the P0.2 convention `/api/<context>/v<version>/<resource>`.
+Inbound REST controllers are thin transport adapters under their owning module (`system.api.v1` for the monolith system probe) and delegate business execution through `OperationDispatcher`. Versioned domain routes follow the P0.2 convention `/api/<context>/v<version>/<resource>`.
 
 **Typed error contract:** All `/api/**` error responses use Spring's RFC 9457 `ProblemDetail` (`application/problem+json`) handled by a centralized `@RestControllerAdvice` in `shared.infra.web.internal`. Reusable controller error and boundary-validation contracts (`ApiProblems`, `FieldErrorDetail`, and `RequestValidationException`) live in `de.hsh.favs.sharewise.shared.infra.web` and are published as the named interface `shared::web`. To allow programmatic client handling without parsing human-readable messages, every error response includes a stable machine-readable `code` property alongside the standard `status`, `title` and `detail` fields, plus an optional `fieldErrors` list for input validation failures:
 
@@ -114,6 +114,6 @@ This eliminates the starter's `src/frontend/app/api/` route handler directory en
 ## Open decisions and deferrals
 
 - **Dependency handoff vs. zero-dependency implementation:** The current `pom.xml` includes `spring-boot-starter-webmvc` (which provides `ProblemDetail`, `@RestControllerAdvice` and Jackson) but does not yet declare `spring-boot-starter-validation` or `spring-boot-starter-actuator`. During implementation planning, decide whether to add those starters and refresh the offline dependency archive or implement P1.4a using the already cached Spring MVC primitives first.
-- **Starter greeting endpoint path:** Align the starter backend `/greeting` endpoint under `/api/...` (or replace the starter fetch with `/api/system/v1/health`) when removing `src/frontend/app/api/greetings/route.ts` so the starter page continues to work through the `/api/:path*` rewrite until Phase 2 replaces it.
+- **Development rewrite smoke check:** Use `GET /api/system/v1/health` through the Next.js development server to exercise the same-origin `/api/:path*` rewrite without keeping a starter-only greeting API or page.
 - **Deferred to Phase 2 and Phase 8:** Spring Security filter chains, CSRF cookie issuance (`GET /api/iam/v1/csrf`), bearer token refresh, cross-tab Web Locks coordination (P2.1/P2.3), and the production Next.js static export (`output: 'export'`) with Nginx proxying (P8.1) remain out of scope for P1.4.
 
