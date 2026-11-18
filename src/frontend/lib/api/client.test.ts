@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ApiError, createApiClient } from './client.ts';
+import { ApiError } from './api-error.ts';
+import { createApiClient } from './client.ts';
 
 describe('createApiClient', () => {
     it('resolves typed JSON data on 200 OK', async () => {

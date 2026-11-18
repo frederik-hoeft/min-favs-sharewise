@@ -1,10 +1,9 @@
+export { ApiError, type FieldError, type ProblemDetailPayload } from './api-error.ts';
+
 export {
-    ApiError,
     apiClient,
     createApiClient,
     type ApiClient,
     type ApiClientHooks,
     type ApiRequestOptions,
-    type FieldError,
-    type ProblemDetailPayload,
-} from './client';
+} from './client.ts';
