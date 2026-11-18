@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
-import de.hsh.favs.sharewise.shared.infra.persistence.testing.PostgresTestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import java.sql.Connection;

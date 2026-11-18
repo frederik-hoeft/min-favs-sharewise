@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.shared.infra.persistence.testing;
+package de.hsh.favs.sharewise.testsupport.postgres;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -8,6 +8,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Objects;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 
@@ -28,36 +29,82 @@ public final class PostgresTestDatabase implements AutoCloseable {
     public static final String MIGRATOR_USER = "sharewise_migrator";
     public static final String MIGRATOR_PASSWORD = "sharewise_migrator_dev";
 
-    private static final String ADMIN_URL =
-        setting("SHAREWISE_TEST_DB_URL", "jdbc:postgresql://postgres:5432/postgres");
-    private static final String ADMIN_USER = setting("SHAREWISE_TEST_DB_ADMIN_USER", "postgres");
-    private static final String ADMIN_PASSWORD = setting("SHAREWISE_TEST_DB_ADMIN_PASSWORD", "postgres_dev");
+    /**
+     * Connection credentials for a PostgreSQL server and its ShareWise roles. Role names are
+     * fixed by P1.2's bootstrap SQL. Password overrides require matching pre-provisioned roles;
+     * the bootstrap SQL itself installs the default development passwords.
+     */
+    public record ConnectionSettings(
+        String adminUrl,
+        String adminUser,
+        String adminPassword,
+        String migratorPassword,
+        String applicationPassword
+    ) {
+        public ConnectionSettings {
+            Objects.requireNonNull(adminUrl, "adminUrl");
+            Objects.requireNonNull(adminUser, "adminUser");
+            Objects.requireNonNull(adminPassword, "adminPassword");
+            Objects.requireNonNull(migratorPassword, "migratorPassword");
+            Objects.requireNonNull(applicationPassword, "applicationPassword");
+            String prefix = "jdbc:postgresql://";
+            String endpoint = adminUrl.split("\\?", 2)[0];
+            int databaseSeparator = endpoint.lastIndexOf('/');
+            if (!endpoint.startsWith(prefix) || databaseSeparator <= prefix.length()
+                    || databaseSeparator == endpoint.length() - 1) {
+                throw new IllegalArgumentException("Expected a PostgreSQL JDBC URL with a database name");
+            }
+        }
+
+        public static ConnectionSettings fromEnvironment() {
+            return new ConnectionSettings(
+                setting("SHAREWISE_TEST_DB_URL", "jdbc:postgresql://postgres:5432/postgres"),
+                setting("SHAREWISE_TEST_DB_ADMIN_USER", "postgres"),
+                setting("SHAREWISE_TEST_DB_ADMIN_PASSWORD", "postgres_dev"),
+                setting("SHAREWISE_TEST_DB_MIGRATOR_PASSWORD", MIGRATOR_PASSWORD),
+                setting("SHAREWISE_TEST_DB_APPLICATION_PASSWORD", APPLICATION_PASSWORD));
+        }
+    }
 
     private final String name;
     private final String jdbcUrl;
+    private final ConnectionSettings connections;
 
-    private PostgresTestDatabase(String name, String jdbcUrl) {
+    private PostgresTestDatabase(String name, ConnectionSettings connections) {
         this.name = name;
-        this.jdbcUrl = jdbcUrl;
+        this.connections = connections;
+        this.jdbcUrl = withDatabaseName(connections.adminUrl(), name);
     }
 
     /** Creates a new database with the ShareWise roles and database grants, without migrations. */
     public static PostgresTestDatabase createBootstrapped() {
-        String name = "sharewise_it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        try (Connection admin = DriverManager.getConnection(ADMIN_URL, ADMIN_USER, ADMIN_PASSWORD);
+        return createBootstrapped(ConnectionSettings.fromEnvironment());
+    }
+
+    /** Uses explicit connection settings for a database owned exclusively by this fixture. */
+    public static PostgresTestDatabase createBootstrapped(ConnectionSettings connections) {
+        Objects.requireNonNull(connections, "connections");
+        String name = "sharewise_it_" + UUID.randomUUID().toString().replace("-", "");
+        try (Connection admin = DriverManager.getConnection(
+                 connections.adminUrl(), connections.adminUser(), connections.adminPassword());
              Statement statement = admin.createStatement()) {
+            // Serialize cluster-wide role bootstrap across parallel fixtures. Closing the
+            // administrative session releases the advisory lock, including on failure.
+            statement.execute("SELECT pg_advisory_lock(147818, 1303)");
             statement.execute(bootstrapScript("01-create-roles.sql"));
+            // PostgreSQL CREATE DATABASE cannot execute inside a transaction block.
             statement.execute("CREATE DATABASE " + name);
         } catch (SQLException e) {
             if (isConnectionFailure(e)) {
-                throw new IllegalStateException("PostgreSQL for integration tests is not reachable at " + ADMIN_URL
-                    + " (user " + ADMIN_USER + "). Start the dev-container database or set SHAREWISE_TEST_DB_URL, "
+                throw new IllegalStateException("PostgreSQL for integration tests is not reachable at "
+                    + connections.adminUrl() + " (user " + connections.adminUser()
+                    + "). Start the dev-container database or set SHAREWISE_TEST_DB_URL, "
                     + "SHAREWISE_TEST_DB_ADMIN_USER and SHAREWISE_TEST_DB_ADMIN_PASSWORD.", e);
             }
             throw new IllegalStateException("Could not bootstrap roles or create test database " + name
-                + " on " + ADMIN_URL, e);
+                + " on " + connections.adminUrl(), e);
         }
-        PostgresTestDatabase database = new PostgresTestDatabase(name, withDatabaseName(ADMIN_URL, name));
+        PostgresTestDatabase database = new PostgresTestDatabase(name, connections);
         try (Connection admin = database.connectAsAdmin(); Statement statement = admin.createStatement()) {
             statement.execute(bootstrapScript("02-grant-database-access.sql"));
         } catch (SQLException e) {
@@ -70,10 +117,15 @@ public final class PostgresTestDatabase implements AutoCloseable {
 
     /** Creates a new bootstrapped database and applies all Flyway migrations as the migration role. */
     public static PostgresTestDatabase createMigrated() {
-        PostgresTestDatabase database = createBootstrapped();
+        return createMigrated(ConnectionSettings.fromEnvironment());
+    }
+
+    /** Reuses P1.2's migration path with explicit connection settings. */
+    public static PostgresTestDatabase createMigrated(ConnectionSettings connections) {
+        PostgresTestDatabase database = createBootstrapped(connections);
         try {
             Flyway.configure()
-                .dataSource(database.jdbcUrl, MIGRATOR_USER, MIGRATOR_PASSWORD)
+                .dataSource(database.jdbcUrl, MIGRATOR_USER, connections.migratorPassword())
                 .locations("classpath:db/migration")
                 .defaultSchema("flyway")
                 .schemas("flyway")
@@ -86,25 +138,40 @@ public final class PostgresTestDatabase implements AutoCloseable {
         return database;
     }
 
+    /** The generated identifier of the database created and owned by this fixture. */
+    public String databaseName() {
+        return name;
+    }
+
+    public ConnectionSettings connectionSettings() {
+        return connections;
+    }
+
+    /** Administrative server connection, including after the fixture database has been dropped. */
+    public Connection connectToServerAsAdmin() throws SQLException {
+        return DriverManager.getConnection(
+            connections.adminUrl(), connections.adminUser(), connections.adminPassword());
+    }
+
     public String jdbcUrl() {
         return jdbcUrl;
     }
 
     public Connection connectAsApplication() throws SQLException {
-        return DriverManager.getConnection(jdbcUrl, APPLICATION_USER, APPLICATION_PASSWORD);
+        return DriverManager.getConnection(jdbcUrl, APPLICATION_USER, connections.applicationPassword());
     }
 
     public Connection connectAsMigrator() throws SQLException {
-        return DriverManager.getConnection(jdbcUrl, MIGRATOR_USER, MIGRATOR_PASSWORD);
+        return DriverManager.getConnection(jdbcUrl, MIGRATOR_USER, connections.migratorPassword());
     }
 
     public Connection connectAsAdmin() throws SQLException {
-        return DriverManager.getConnection(jdbcUrl, ADMIN_USER, ADMIN_PASSWORD);
+        return DriverManager.getConnection(jdbcUrl, connections.adminUser(), connections.adminPassword());
     }
 
     @Override
     public void close() {
-        try (Connection admin = DriverManager.getConnection(ADMIN_URL, ADMIN_USER, ADMIN_PASSWORD);
+        try (Connection admin = connectToServerAsAdmin();
              Statement statement = admin.createStatement()) {
             statement.execute("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)");
         } catch (SQLException e) {
