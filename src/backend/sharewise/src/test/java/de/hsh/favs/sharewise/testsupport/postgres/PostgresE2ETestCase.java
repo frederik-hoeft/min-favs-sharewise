@@ -9,7 +9,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 /** Per-test ownership of a disposable migrated database, production context, and committed writes. */
 public abstract class PostgresE2ETestCase {
 
-    private PostgresWorkflowFixture fixture;
+    private PostgresApplicationFixture fixture;
 
     protected final void start(Class<?>... configurations) {
         startWithSchema(new String[0], configurations);
@@ -26,7 +26,7 @@ public abstract class PostgresE2ETestCase {
         Class<?>[] applicationSources = new Class<?>[configurations.length + 1];
         applicationSources[0] = ShareWiseApplication.class;
         System.arraycopy(configurations, 0, applicationSources, 1, configurations.length);
-        fixture = PostgresWorkflowFixture.start(
+        fixture = PostgresApplicationFixture.start(
             PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> {
                 if (schemaStatements.length != 0) {
                     try (Connection migrator = database.connectAsMigrator();
@@ -46,7 +46,7 @@ public abstract class PostgresE2ETestCase {
         return fixture.context();
     }
 
-    protected final PostgresWorkflowFixture fixture() {
+    protected final PostgresApplicationFixture fixture() {
         if (fixture == null) {
             throw new IllegalStateException("E2E fixture not initialized");
         }

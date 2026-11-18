@@ -39,8 +39,10 @@ transactions), and **E2E** (`*E2E`, a disposable migrated PostgreSQL database pe
 commits). They run in independent GitLab CI jobs. Integration and E2E connect via JDBC to the
 dev-container `postgres` service or to the external server selected by `SHAREWISE_TEST_DB_URL`,
 `SHAREWISE_TEST_DB_ADMIN_USER` and `SHAREWISE_TEST_DB_ADMIN_PASSWORD`. Missing PostgreSQL fails
-the database-dependent suites; H2 is not an alternative. The full fixture contract is maintained
-in the [P1.3c test specification](internal/tasks/p1.3c-integration-tests/specification.md).
+the database-dependent suites; H2 is not an alternative. **Smoke / system-level E2E** is a
+deferred fourth category for deployed, cross-context messaging, replication and network checks;
+it has no Maven profile or CI job yet. The full fixture contract is maintained in the
+[P1.3c test specification](internal/tasks/p1.3c-integration-tests/specification.md).
 
 ## Build, test and run
 

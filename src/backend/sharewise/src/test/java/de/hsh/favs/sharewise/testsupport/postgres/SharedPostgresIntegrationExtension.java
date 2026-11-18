@@ -29,7 +29,7 @@ public final class SharedPostgresIntegrationExtension implements BeforeAllCallba
 
     @Override
     public boolean supportsParameter(ParameterContext parameter, ExtensionContext context) {
-        return parameter.getParameter().getType() == PostgresWorkflowFixture.class;
+        return parameter.getParameter().getType() == PostgresApplicationFixture.class;
     }
 
     @Override
@@ -43,10 +43,10 @@ public final class SharedPostgresIntegrationExtension implements BeforeAllCallba
     }
 
     private static final class SharedFixture implements AutoCloseable {
-        private final PostgresWorkflowFixture fixture;
+        private final PostgresApplicationFixture fixture;
 
         private SharedFixture() {
-            fixture = PostgresWorkflowFixture.start(
+            fixture = PostgresApplicationFixture.start(
                 PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> {
                     try (Connection migrator = database.connectAsMigrator();
                          Statement statement = migrator.createStatement()) {
@@ -55,7 +55,7 @@ public final class SharedPostgresIntegrationExtension implements BeforeAllCallba
                         statement.execute("create table groups.rollback_tx_probe ("
                             + "id integer primary key, label varchar(255) not null)");
                     }
-                    PostgresWorkflowFixture.seedCommitted(database, connection -> {
+                    PostgresApplicationFixture.seedCommitted(database, connection -> {
                         try (PreparedStatement statement = connection.prepareStatement(
                                 "insert into groups.p13c_rollback_probe (id,label) values (1,'baseline')")) {
                             statement.executeUpdate();

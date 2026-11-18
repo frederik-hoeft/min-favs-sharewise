@@ -18,7 +18,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresWorkflowFixture;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
 import de.hsh.favs.p13crollback.RollbackTestProbeRow;
 import de.hsh.favs.sharewise.testsupport.postgres.SharedPostgresIntegrationExtension;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
@@ -53,7 +53,7 @@ class RollbackTransactionsIT {
     ConfigurableListableBeanFactory beanFactory;
 
     @org.junit.jupiter.api.BeforeAll
-    void initialize(PostgresWorkflowFixture fixture) {
+    void initialize(PostgresApplicationFixture fixture) {
         scopes = fixture.context().getBean(ServiceScopeFactory.class);
         physicalManager = fixture.context().getBean(PlatformTransactionManager.class);
         jdbc = fixture.context().getBean(JdbcTemplate.class);

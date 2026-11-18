@@ -10,7 +10,7 @@ The current Java 25 / Spring Boot 4.1.2 baseline includes the accepted operation
 
 P1.2 owns **server provisioning and cluster-wide roles**. P1.3c consumes a PostgreSQL endpoint and administrative/migrator/application credentials, and owns **disposable fixture databases** and test-context lifetimes. Locally the endpoint may come from P1.2's Testcontainers setup or an external PostgreSQL server. In GitLab CI the runner supplies `postgres:18-trixie` through `services:`; job code uses JDBC over TCP without Docker-in-Docker, a Docker socket or a container API. A missing server or insufficient privileges fails a required PostgreSQL gate, without substituting H2. The suite's fixture provisioning is identical for both server sources.
 
-Keep all new test harness/fixture classes and rollback transaction implementations under test sources or an explicitly test-only module. Production wiring and real-commit fixtures must never activate the rollback substitute or expose its inspector. Add test dependencies or Maven profiles only when the corresponding implementation phase needs them; refresh the separately supplied offline dependency handoff and report unavailable PostgreSQL gates independently of unit/H2 results. The Unit suite remains runnable without Docker or PostgreSQL; database-backed tests run in the Integration or E2E suites.
+Keep all new test harness/fixture classes and rollback transaction implementations under test sources or an explicitly test-only module. Production wiring and real-commit fixtures must never activate the rollback substitute or expose its inspector. Add test dependencies or Maven profiles only when the corresponding implementation phase needs them; refresh the separately supplied offline dependency handoff and report unavailable PostgreSQL gates independently of Unit results. The Unit suite remains runnable without Docker or PostgreSQL; database-backed tests run in the Integration or E2E suites.
 
 Each phase is a small reviewable patch on the **approved previous phase**. Checkboxes are marked complete only after tests, review and approval. When a later phase depends on P1.2, pause that phase rather than weakening the specification or creating a second migration implementation.
 
@@ -37,7 +37,7 @@ Each phase is a small reviewable patch on the **approved previous phase**. Check
 
 ## Phase C - Disposable PostgreSQL database fixtures
 
-**Depends on:** P1.2's PostgreSQL 18 server/bootstrap and migrator-role Flyway routine. **Focus:** Production-compatible, real-commit isolation per independent E2E scenario. **Acceptance:** fixture portions of IT-10, IT-11 and IT-20.
+**Depends on:** P1.2's PostgreSQL 18 server/bootstrap and migrator-role Flyway routine. **Focus:** Production-compatible, disposable application-context and database isolation per independent E2E scenario. **Acceptance:** fixture portions of IT-10, IT-11 and IT-20.
 
 - [x] Introduce a server-agnostic fixture provisioner accepting explicit administrative, migrator and application connection settings. Generate strictly owned database identifiers; issue `CREATE DATABASE` outside a transaction; invoke P1.2's migrations as the migrator role, including database-local grants/default privileges; seed committed baseline data; start a fresh, database-specific Spring application context under the application role.
 - [x] Make fixture ownership explicit from successful creation to final teardown, including partial initialization failure. Stop asynchronous workers, close application contexts and connections, then drop only fixture-owned databases. Verify no contamination from Spring context caching or recycled datasource configuration; preserve cleanup errors without losing the initiating failure.
@@ -58,6 +58,10 @@ Each phase is a small reviewable patch on the **approved previous phase**. Check
 **Gate D:** PostgreSQL-backed rollback-mode tests show logical decision observation and SQL-visible pending state **without physical commit**, followed by confirmed harness rollback. H2-only preliminary tests cannot satisfy this gate.
 
 ## Phase E - Unit, Integration and E2E execution gates
+
+Smoke / system-level E2E checks are a deferred fourth category. They are not included in the
+three Phase E Maven/CI gates; their separate system-level infrastructure will be specified when
+cross-context messaging, replication and deployment are implemented.
 
 **Depends on:** Approved Phases C/D and P1.2's PostgreSQL 18 service/bootstrap.
 **Focus:** Give every backend test an explicit execution category, replace H2 with real PostgreSQL,
@@ -80,11 +84,11 @@ P1.5 remains a separate real-PostgreSQL transaction acceptance task.
 **Focus:** Reconcile user-facing test conventions and developer setup with the implemented infrastructure and record its verified guarantees.
 
 - [ ] Update developer/test guidance with the selected test entry points, modes, PostgreSQL endpoint configuration, local optional Testcontainers prerequisites, GitLab service setup, roles/privileges, deterministic fixture ownership, failure diagnostics and commands that were actually validated. Preserve `docs/architecture` as a steady-state description, updating it only for genuinely new architectural behavior.
-- [ ] Verify internal links, Markdown formatting and task/backlog references, and run focused tests plus the strongest available backend checks. Record actual unit/H2/PostgreSQL/CI execution separately, including any deferred P1.5 and messaging evidence.
+- [ ] Verify internal links, Markdown formatting and task/backlog references, and run focused tests plus the strongest available backend checks. Record actual Unit/Integration/E2E/CI execution separately, including any deferred P1.5 and messaging evidence.
 - [ ] Provide a focused operational acceptance procedure (provision server, initialize two independent databases, run rollback and real-commit suites, assert cleanup) for human review. Mark phases and P1.3c complete only after their tests, review and manual acceptance; do not silently declare blocked PostgreSQL work done.
 
 **Gate F:** Implementation, approved specification, test evidence and documentation agree. The human has reviewed the complete changes and executed or explicitly dispositioned the operational acceptance procedure; merge remains separately authorized.
 
 ## Out of scope and handoff ownership
 
-P1.2 owns PostgreSQL server bootstrap, production schema/migrations and shared role setup. P1.5 owns independent acceptance of P1.3b's real-PostgreSQL transaction contract, which may reuse these fixtures without being absorbed into P1.3c. The messaging feature tasks own durable publication, inbox, idempotency, delivery and recovery implementation and associated IT-13 through IT-15 evidence. P1.3c supplies infrastructure for those future tests, not their business or broker implementation. Cross-service E2E deployment, universal retry/savepoint emulation, mandatory Testcontainers in CI, template-cloning optimizations and a general-purpose mocking framework are not required.
+P1.2 owns PostgreSQL server bootstrap, production schema/migrations and shared role setup. P1.5 owns independent acceptance of P1.3b's real-PostgreSQL transaction contract, which may reuse these fixtures without being absorbed into P1.3c. The messaging feature tasks own durable publication, inbox, idempotency, delivery and recovery implementation and associated IT-13 through IT-15 evidence. P1.3c supplies infrastructure for those future tests, not their business or broker implementation. Smoke / system-level E2E deployment (cross-context messaging, replication and network checks), universal retry/savepoint emulation, mandatory Testcontainers in CI, template-cloning optimizations and a general-purpose mocking framework are not required.

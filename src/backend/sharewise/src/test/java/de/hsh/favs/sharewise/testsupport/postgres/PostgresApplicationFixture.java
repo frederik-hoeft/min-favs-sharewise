@@ -12,11 +12,11 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.MapPropertySource;
 
 /**
- * Owns a fresh, migrated PostgreSQL database and an uncached production Spring context for one
- * real-commit test scenario. Closing the context releases its connection pool before database drop.
+ * Owns a fresh, migrated PostgreSQL database and an uncached production Spring context.
+ * E2E tests own one instance per scenario; the Integration suite owns one shared instance. Closing the context releases its connection pool before database drop.
  * No Docker API or Spring TestContext caching participates in fixture creation.
  */
-public final class PostgresWorkflowFixture implements AutoCloseable {
+public final class PostgresApplicationFixture implements AutoCloseable {
 
     @FunctionalInterface
     public interface DatabasePreparation {
@@ -53,19 +53,19 @@ public final class PostgresWorkflowFixture implements AutoCloseable {
     private final ConfigurableApplicationContext context;
     private boolean closed;
 
-    private PostgresWorkflowFixture(PostgresTestDatabase database, ConfigurableApplicationContext context) {
+    private PostgresApplicationFixture(PostgresTestDatabase database, ConfigurableApplicationContext context) {
         this.database = database;
         this.context = context;
     }
 
     /** Starts an independent context with the supplied production application and test configurations. */
-    public static PostgresWorkflowFixture start(Class<?>... applicationSources) {
+    public static PostgresApplicationFixture start(Class<?>... applicationSources) {
         return start(PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> { },
             applicationSources);
     }
 
     /** Uses explicit PostgreSQL server/role credentials and an optional committed-data initializer. */
-    public static PostgresWorkflowFixture start(
+    public static PostgresApplicationFixture start(
         PostgresTestDatabase.ConnectionSettings connections,
         DatabasePreparation preparation,
         Class<?>... applicationSources
@@ -94,7 +94,7 @@ public final class PostgresWorkflowFixture implements AutoCloseable {
                 .initializers(application -> application.getEnvironment().getPropertySources()
                     .addFirst(new MapPropertySource("isolated-postgres-fixture", properties)))
                 .run();
-            return new PostgresWorkflowFixture(database, context);
+            return new PostgresApplicationFixture(database, context);
         } catch (Throwable failure) {
             try {
                 database.close();
@@ -107,7 +107,7 @@ public final class PostgresWorkflowFixture implements AutoCloseable {
             if (failure instanceof Error error) {
                 throw error;
             }
-            throw new IllegalStateException("Failed to prepare PostgreSQL workflow fixture", failure);
+            throw new IllegalStateException("Failed to prepare PostgreSQL application fixture", failure);
         }
     }
 
@@ -133,7 +133,7 @@ public final class PostgresWorkflowFixture implements AutoCloseable {
 
     private void requireOpen() {
         if (closed || !context.isActive()) {
-            throw new IllegalStateException("PostgreSQL workflow fixture is closed");
+            throw new IllegalStateException("PostgreSQL application fixture is closed");
         }
     }
 

@@ -2,7 +2,7 @@ package de.hsh.favs.sharewise.testsupport.transactions;
 
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresWorkflowFixture;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
 import java.util.Objects;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -23,7 +23,7 @@ public final class PostgresRollbackOperationHarness {
     private final PlatformTransactionManager physicalManager;
     private final DataSource dataSource;
 
-    public PostgresRollbackOperationHarness(PostgresWorkflowFixture fixture) {
+    public PostgresRollbackOperationHarness(PostgresApplicationFixture fixture) {
         Objects.requireNonNull(fixture, "fixture");
         scopes = fixture.context().getBean(ServiceScopeFactory.class);
         physicalManager = fixture.context().getBean(PlatformTransactionManager.class);

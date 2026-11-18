@@ -15,7 +15,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.p13crollback.RollbackProbeRow;
-import de.hsh.favs.sharewise.testsupport.postgres.PostgresWorkflowFixture;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresApplicationFixture;
 import de.hsh.favs.sharewise.testsupport.transactions.PendingStateInspector;
 import de.hsh.favs.sharewise.testsupport.transactions.PostgresRollbackOperationHarness;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
@@ -51,16 +51,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PostgresRollbackOperationIT {
 
-    private PostgresWorkflowFixture sharedFixture;
+    private PostgresApplicationFixture sharedFixture;
 
     @BeforeAll
-    void initialize(PostgresWorkflowFixture fixture) {
+    void initialize(PostgresApplicationFixture fixture) {
         this.sharedFixture = fixture;
     }
 
     @Test
     void commitRollbackAndAbstainRemainPendingUntilHarnessRollback() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         for (TransactionDecision decision : TransactionDecision.values()) {
             PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
             String result = harness.inRollbackOperation(scope -> {
@@ -95,7 +95,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void inspectorUsesOriginalPostgresSessionAndExpiresAfterCallback() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         AtomicReference<PendingStateInspector> retainedInspector = new AtomicReference<>();
         AtomicReference<RollbackTransactions> retainedManager = new AtomicReference<>();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
@@ -123,7 +123,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void pendingJpaChangesAreNotFlushedByInspector() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
         harness.inRollbackOperation(scope -> {
             scope.resolve(Transactions.class).execute(() -> {
@@ -153,7 +153,7 @@ class PostgresRollbackOperationIT {
     @Test
     void poisonedCommitAndTypedBusinessResultAreDistinguished() throws SQLException {
         record NotFound(int id) { }
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
@@ -180,7 +180,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void callbackExceptionsAndExceptionalAssertionsAlwaysRollback() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
         IllegalArgumentException expected = new IllegalArgumentException("application callback");
         harness.inRollbackOperation(scope -> {
@@ -212,7 +212,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void postgresConstraintErrorAbortsTransactionButTeardownRestoresDatabase() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
@@ -234,7 +234,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void inspectionNeedsACompletedSegmentAndTheOriginalActiveTransaction() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PlatformTransactionManager physical = fixture.context().getBean(PlatformTransactionManager.class);
         new PostgresRollbackOperationHarness(fixture).inRollbackOperation(scope -> {
             assertThrows(IllegalStateException.class, () -> scope.inspect(
@@ -255,7 +255,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void ambientPhysicalTransactionCannotBeReusedAsTheHarnessTransaction() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
         TransactionTemplate outer = new TransactionTemplate(
             fixture.context().getBean(PlatformTransactionManager.class));
@@ -269,7 +269,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void staleJooqAndJpaFacadesCannotBeReusedByInspection() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         new PostgresRollbackOperationHarness(fixture).inRollbackOperation(scope -> {
             AtomicReference<DSLContext> retainedDsl = new AtomicReference<>();
             AtomicReference<org.jooq.Query> retainedQuery = new AtomicReference<>();
@@ -301,7 +301,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void nestedAndRepeatedLogicalSegmentsAreRejected() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
         harness.inRollbackOperation(scope -> {
             RollbackTransactions manager = scope.resolve(RollbackTransactions.class);
@@ -320,7 +320,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void suspensionRejectsBothDatabaseAdaptersUntilOriginalTransactionResumes() throws SQLException {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PlatformTransactionManager physical = fixture.context().getBean(PlatformTransactionManager.class);
         for (int propagation : new int[]{TransactionDefinition.PROPAGATION_REQUIRES_NEW,
                 TransactionDefinition.PROPAGATION_NOT_SUPPORTED}) {
@@ -355,7 +355,7 @@ class PostgresRollbackOperationIT {
 
     @Test
     void concurrentRollbackOperationsNeverPublishPendingRows() throws Exception {
-        PostgresWorkflowFixture fixture = fixture();
+        PostgresApplicationFixture fixture = fixture();
         PostgresRollbackOperationHarness harness = new PostgresRollbackOperationHarness(fixture);
         CountDownLatch pendingBoth = new CountDownLatch(2);
         try (ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -368,7 +368,7 @@ class PostgresRollbackOperationIT {
         assertEquals(0, independentlyVisible(fixture, 21));
     }
 
-    private static Void concurrentOperation(PostgresWorkflowFixture fixture,
+    private static Void concurrentOperation(PostgresApplicationFixture fixture,
             PostgresRollbackOperationHarness harness, CountDownLatch pendingBoth, int id) throws Exception {
         harness.inRollbackOperation(scope -> {
             scope.resolve(Transactions.class).execute(() -> {
@@ -411,11 +411,11 @@ class PostgresRollbackOperationIT {
             "insert into groups.p13c_rollback_probe (id,label) values (?,?)", id, label);
     }
 
-    private PostgresWorkflowFixture fixture() {
+    private PostgresApplicationFixture fixture() {
         return sharedFixture;
     }
 
-    private static int independentlyVisible(PostgresWorkflowFixture fixture, int id) throws SQLException {
+    private static int independentlyVisible(PostgresApplicationFixture fixture, int id) throws SQLException {
         try (Connection connection = fixture.connectAsApplication();
              PreparedStatement statement = connection.prepareStatement(
                  "select count(*) from groups.p13c_rollback_probe where id = ?")) {
