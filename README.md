@@ -13,10 +13,12 @@ The repository is an **early implementation baseline**, not a finished product. 
 | `docs/stack/overview.md` | **Start here:** technical architecture, technology map and links to detailed stack decisions |
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
 | `docs/architecture.md` | Component-level hexagonal/modulith architecture and service conventions |
+| `docs/architecture/tests.md` | Backend Unit, Integration and E2E boundaries, isolation and evidence guarantees |
 | `docs/stack/persistence.md` | Preliminary database-first persistence and transaction design |
 | `docs/stack/messaging.md` | Preliminary cross-context event delivery, idempotency and recovery design |
 | `docs/stack/security.md` | Preliminary IAM, JWT/refresh, scoped attestation and authorization design |
 | `docs/development.md` | Local development, build and validation guidance |
+| `docs/development/tests.md` | Backend test suites, PostgreSQL fixtures, local commands and CI diagnostics |
 | `docs/development/ai-development-workflow.md` | AI-assisted task planning, requirements, test design, iterative QA and human review |
 | `docs/file-management-acl-proposal.md` | Optional **unaccepted generic file ACL** design building on the proposed domain-attestation trust model |
 | `.agents/skills/` | Repository-local agent skills |
@@ -31,7 +33,7 @@ Backend:
 
 ```sh
 cd src/backend/sharewise
-./mvnw test
+./mvnw -Punit-tests clean verify
 ./mvnw spring-boot:run
 ```
 
@@ -45,7 +47,7 @@ npm run dev
 
 The frontend runs on port 3000 and the backend on port 8080 in the provided starter setup. The backend exposes a readiness endpoint at `/api/system/v1/health`; the full financial APIs are not yet implemented.
 
-For setup, builds and tests, consult the [development guide](docs/development.md). The backend runs on PostgreSQL 18 with Flyway migrations; the dev container provides the database.
+For setup and application builds, consult the [development guide](docs/development.md). The backend [test guide](docs/development/tests.md) covers the separate PostgreSQL Integration and E2E gates. The backend runs on PostgreSQL 18 with Flyway migrations; the dev container provides the database.
 
 ## Architecture and contribution guidance
 

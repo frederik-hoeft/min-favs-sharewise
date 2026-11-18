@@ -81,7 +81,7 @@ The [technical stack overview](stack/overview.md) maps the selected frameworks a
 
 Backend services use Spring constructor injection. Stateless shared infrastructure normally remains singleton-scoped, while the [application-operation DI scope](architecture/dependency-injection.md) gives stateful entry services, participants and adapters one explicitly dispatched lifetime. Operation-scoped `Transactions` uses Spring's programmatic transaction manager (normally `TransactionTemplate`) to physically finalize each segment. The dispatcher, REST adapters, message listeners and application-core services need no `@Transactional` annotations; event publication records enlist in the business operation's physical Spring transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
 
-Application operations generally use straightforward imperative Java; virtual threads remain subject to connection-pool capacity and database locking. Architectural tests enforce allowed module dependencies, and PostgreSQL integration tests establish real persistence and concurrency semantics as these components are implemented.
+Application operations generally use straightforward imperative Java; virtual threads remain subject to connection-pool capacity and database locking. Architectural tests enforce allowed module dependencies; the [backend test architecture](architecture/tests.md) separates offline validation, rollback-isolated PostgreSQL checks and durable-commit scenarios.
 
 ## Architecture checks
 

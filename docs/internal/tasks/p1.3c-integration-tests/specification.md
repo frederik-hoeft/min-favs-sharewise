@@ -1,6 +1,6 @@
 # P1.3c - Integration-test execution and isolation
 
-**Status:** Approved specification; implementation proceeds through individually reviewed phases. **Parent backlog item:** [P1.3](../backlog.md#phase-1---modular-application-and-persistence-foundation). This task depends on the [operation-scope architecture](../../../architecture/dependency-injection.md), [P1.3 production transaction specification](../p1.3-transactions/specification.md), [persistence architecture](../../../stack/persistence.md), and [messaging architecture](../../../stack/messaging.md). The [development workflow](../../../development/ai-development-workflow.md) defines the specification, planning and review gates.
+**Status:** Approved task specification retained for requirements and acceptance traceability. The implemented steady-state test model is documented in [backend test architecture](../../../architecture/tests.md), with [developer guidance](../../../development/tests.md) for execution and fixture APIs. **Parent backlog item:** [P1.3](../backlog.md#phase-1---modular-application-and-persistence-foundation). This task depends on the [operation-scope architecture](../../../architecture/dependency-injection.md), [P1.3 production transaction specification](../p1.3-transactions/specification.md), [persistence architecture](../../../stack/persistence.md), and [messaging architecture](../../../stack/messaging.md). The [development workflow](../../../development/ai-development-workflow.md) defines the specification, planning and review gates.
 
 ## Goal and architectural boundary
 
@@ -46,7 +46,7 @@ An **operation** is a business entry operation whose behavior fits within one `T
 
 Operation integration tests do **not** establish physical commit, physical rollback, after-commit event delivery, cross-transaction visibility, savepoint or recovery guarantees. Those belong to E2E tests even when the tested application method happens to execute only one segment.
 
-## Test-authoring convenience APIs (before Phase F)
+## Test-authoring convenience APIs
 
 Test-support owns the **fixtures and the operation boundary**, not an alternative DI or
 transaction model. Shared helpers are in `testsupport`: `IntegrationTestContext` owns the

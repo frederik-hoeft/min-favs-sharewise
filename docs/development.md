@@ -33,21 +33,11 @@ Flyway applies the migrations in `src/main/resources/db/migration/` at startup. 
 
 `application.properties` contains dev-only defaults for the dev-container database. Other environments override them with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
-The backend has three independent test gates: **Unit** (`*Tests`/`*Test`, no database),
-**Integration** (`*IT`, a single suite-owned migrated PostgreSQL fixture with per-test rollback
-transactions), and **E2E** (`*E2E`, a disposable migrated PostgreSQL database per test with real
-commits). They run in independent GitLab CI jobs. Integration and E2E connect via JDBC to the
-dev-container `postgres` service or to the external server selected by `SHAREWISE_TEST_DB_URL`,
-`SHAREWISE_TEST_DB_ADMIN_USER` and `SHAREWISE_TEST_DB_ADMIN_PASSWORD`. Missing PostgreSQL fails
-the database-dependent suites; H2 is not an alternative. **Smoke / system-level E2E** is a
-deferred fourth category for deployed, cross-context messaging, replication and network checks;
-it has no Maven profile or CI job yet. The full fixture contract is maintained in the
-[P1.3c test specification](internal/tasks/p1.3c-integration-tests/specification.md).
+The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
 
 ## Build, test and run
 
-Backend, from the repository root. Run the Unit suite offline, or select either PostgreSQL
-suite when the dev-container service is available (`clean verify` without a profile runs all three):
+Backend, from the repository root (`clean verify` without a profile runs all three when PostgreSQL is available). See [Backend testing](development/tests.md) for prerequisites, focused execution and troubleshooting:
 
 ```sh
 cd src/backend/sharewise
@@ -163,7 +153,7 @@ try (ServiceScope scope = scopeFactory.createScope()) {
 
 The factory may create independent nested DI scopes, but **nested `OperationDispatcher.dispatch(...)` calls are prohibited**. Do not use the outer scope's provider or already-created services from within a nested activation. Scopes and providers are confined to their creating thread; after closure, references must not be retained or used. Singleton-to-scoped dependency capture and escaped references are code-review concerns, not guarantees of automatic lifetime analysis.
 
-The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn -Punit-tests test -Dtest=ServiceScopeTests,OperationDispatcherTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamTests`) or all Unit tests with `mvn -Punit-tests clean verify` (the Integration and E2E jobs additionally require PostgreSQL, see [Database](#database)). In an isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution.
+The Unit suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run `./mvnw -Punit-tests test -Dtest=ServiceScopeTests,OperationDispatcherTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamTests`, or run all Unit tests with `./mvnw -Punit-tests clean verify`. Offline cache settings and PostgreSQL-backed test commands are documented in [Backend testing](development/tests.md).
 
 ## Transaction and persistence adapter usage
 
