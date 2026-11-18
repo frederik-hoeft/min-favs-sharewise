@@ -7,6 +7,7 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
+import de.hsh.favs.sharewise.testsupport.configuration.OperationScopeTestComponents;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +52,8 @@ class TestComponentDiscoveryConventionTests {
                 violations.add(testClass.getName() + " declares @Bean methods outside @TestConfiguration");
             }
             if (testClass.isAnnotatedWith(ComponentScan.class)
-                    && !testClass.getName().equals(InfrastructureTestComponents.class.getName())) {
+                    && !testClass.getName().equals(InfrastructureTestComponents.class.getName())
+                    && !testClass.getName().equals(OperationScopeTestComponents.class.getName())) {
                 violations.add(testClass.getName() + " declares an independent @ComponentScan");
             }
         }
