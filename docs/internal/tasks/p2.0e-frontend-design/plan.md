@@ -1,10 +1,10 @@
 # P2.0e - Implementation plan: frontend foundation and landing page
 
-**Status:** Draft, pending human approval of the [P2.0e specification](specification.md) and this plan. Phases are proposals, not authorized or completed work. Follow the [AI development workflow](../../../development/ai-development-workflow.md): task artifacts are approved and committed to the authoritative task branch before implementation; each subsequent increment requires review before advancing.
+**Status:** Historical P2.0e planning draft. Its checkboxes record the proposed review stages, not the present implementation progress; consult the [backlog](../backlog.md) and [frontend architecture](../../../architecture/frontend.md) for current status. Follow the [AI development workflow](../../../development/ai-development-workflow.md): task artifacts are approved and committed to the authoritative task branch before implementation; each subsequent increment requires review before advancing.
 
 ## Baseline, dependencies and execution model
 
-The current source snapshot contains Next.js 16 / React 19 / TypeScript, npm, Mantine, Sass/SCSS Modules, a neutral starter homepage and a standalone Next.js server/greeting proxy. The P2.0e target is **Mantine + SCSS Modules**, with a coherent landing-page and product-preview design determined later through candidate comparison. The intended production static export is described in the [stack overview](../../../stack/overview.md), but P8.1/P8.2 own replacing the server/proxy deployment. Avoid touching P1.x backend work or designing P1.4's future HTTP-client conventions.
+The neutral homepage and standalone Next.js server mentioned in this plan describe the **original planning snapshot**. The implemented visual design and current P1.4 browser transport belong to the [frontend architecture](../../../architecture/frontend.md); P8.1/P8.2 still own static-export deployment. This plan preserves the original review stages rather than serving as a current implementation inventory.
 
 Use the existing approved Git baseline and a distinct branch/patch for each coherent reviewed increment. Keep prototype alternatives isolated; only the selected design is merged into the P2.0e implementation line. Progress checkboxes are checked **only after verification and human approval**. Architectural changes return to the specification gate before the plan is revised. Every phase records commands, observed results, unavailable tooling and the precise patch baseline.
 
