@@ -69,7 +69,7 @@ For local execution, start the dev container's PostgreSQL service and run the co
 
 Prefer ordinary JUnit tests with constructor-injected fakes or Mockito mocks at genuine outbound boundaries. Avoid a full production `@SpringBootTest` merely to exercise one business rule. For component wiring or MVC tests, a lightweight Spring context is acceptable if it remains fully offline. The existing `@ComponentTest` convention covers these cases.
 
-Production components use their ordinary Spring stereotypes. Test-only fixtures use `@TestConfiguration` or `@TestComponent` and must be explicitly imported by the test that owns them. Avoid `@Configuration`/`@Component` for test fixtures and avoid broad ad hoc `@ComponentScan`; the shared lightweight scan configurations provide the intended infrastructure boundaries. `TestComponentDiscoveryConventionTests` guards this rule.
+Production components use their ordinary Spring stereotypes. Test-only fixtures use `@TestConfiguration` or `@TestComponent` and must be explicitly imported by the test that owns them. Avoid `@Configuration`/`@Component` for test fixtures and avoid broad ad hoc `@ComponentScan`; the shared lightweight scan configurations provide the intended infrastructure boundaries. `TestComponentDiscoveryConventionTests` guards this rule. Because `@TestConfiguration` is meta-annotated with `@TestComponent`, it appears in bean-factory discovery queries when a test explicitly imports it. Discovery assertions must distinguish those expected fixtures from accidentally scanned components.
 
 ### Integration: one rollback-owned operation
 
