@@ -1,12 +1,15 @@
-package de.hsh.favs.sharewise;
+﻿package de.hsh.favs.sharewise;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.shared.infra.config.ShareWiseProperties;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
+import de.hsh.favs.sharewise.system.api.v1.SystemHealthController;
+import de.hsh.favs.sharewise.system.api.v1.SystemHealthController.HealthResponse;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -17,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.boot.test.context.TestComponent;
 
 @SpringBootTest
@@ -28,10 +33,23 @@ class ShareWiseApplicationTests {
     @Autowired
     ConfigurableListableBeanFactory beanFactory;
 
+    @Autowired
+    ShareWiseProperties properties;
+
+    @Autowired
+    SystemHealthController healthController;
+
     @Test
     void contextLoads() {
         assertNotNull(scopeFactory);
         assertNotNull(beanFactory.getRegisteredScope("operation"));
+        assertEquals("sharewise", properties.name());
+        assertEquals(50, properties.apiDefaultPageSize());
+
+        ResponseEntity<HealthResponse> health = healthController.health();
+        assertEquals(HttpStatus.OK, health.getStatusCode());
+        assertNotNull(health.getBody());
+        assertEquals("UP", health.getBody().status());
     }
 
     @Test
