@@ -37,23 +37,31 @@ An architecture test enforces the test-only stereotypes and centralized scan pol
 
 A reusable **operation test harness** exposes the real application's scope creation, Spring bean resolution and destruction semantics to test code. It uses the **same underlying Spring `Scope` and operation context** as `OperationDispatcher`. Tests can resolve the entry service and other scoped collaborators, invoke an operation, inspect scoped state, and make assertions before the scope closes. Scope resolution is intentionally test-facing; production application services continue to use constructor injection, not a general service locator.
 
-The conceptual test-facing API is illustrative, with final names chosen during implementation:
+The test-facing APIs are separated by ownership. `OperationTestHarness` provides scope-only
+execution; `PostgresRollbackOperationHarness` adds the owning physical transaction and delegates
+to that same scope harness. The rollback callback receives a `PostgresRollbackOperationScope`,
+which resolves application services, retrieves a completed `TransactionObservation`, and offers
+post-segment inspection. The inspector exposes only materialized JDBC query results, not
+connections or transaction control. The APIs are used as follows (illustrative):
 
 ```java
-interface OperationTestHarness {
-    <T> T inRollbackOperation(Function<OperationTestScope, T> test);
-    <T> T inOperationScope(Function<OperationTestScope, T> test);
-}
-
-interface OperationTestScope {
-    <S> S resolve(Class<S> serviceType);
-    TransactionObservation transactionObservation();
-    // Test-only database inspection capability, when a test transaction is active.
-    <T> T inspect(Function<TestDatabaseInspector, T> assertion);
-}
+new PostgresRollbackOperationHarness(fixture).inRollbackOperation(scope -> {
+    Transactions transactions = scope.resolve(Transactions.class);
+    transactions.execute(() -> TransactionOutcome.commit(operation.run()));
+    TransactionObservation observation = scope.observation();
+    String value = scope.inspect(inspector ->
+        inspector.queryForObject("SELECT label FROM groups.example WHERE id = ?", String.class, id));
+    return value;
+});
 ```
 
-`inOperationScope(...)` provides **only DI-scoped execution**; it does not implicitly begin a physical transaction and is useful for operation-local state and lifecycle tests. `inRollbackOperation(...)` additionally owns the enclosing PostgreSQL transaction and selects the rollback-test `Transactions` adapter. The standard dispatcher may still be exercised independently to verify real inbound dispatch; the test harness is an additional entry point to the same scope implementation, not a replacement for it.
+The PostgreSQL fixture explicitly selects `RollbackTransactionTestConfiguration` in addition to
+the production application source; real-commit contexts do not. The harness requires a fresh,
+Spring-managed physical transaction and its original bound JDBC connection. It rejects ambient
+transactions and suspensions, and its inspector expires after each inspection callback and at
+operation exit. The inspector does not expose updates or live JDBC resources and does not flush
+Hibernate. Query methods are test-facing read APIs, not a security sandbox for arbitrary SQL;
+tests supply their own inspection queries.
 
 The harness uses the same per-context `ServiceScopeFactory` as production, activating its own independent `ServiceScope` without going through the dispatcher; test-facing bean resolution uses the scope-bound `ServiceProvider`, not a separate DI container. It establishes a scope and, where requested, the test transaction **before** resolving any operation-scoped bean that requires those capabilities. It closes/invalidates the scope and releases any test-owned resources in `finally`-equivalent cleanup paths. The test's physical rollback completes before the enclosing harness reports successful teardown. A test may retain an object reference for a negative lifetime assertion, but cannot extend its validity by retaining it.
 
