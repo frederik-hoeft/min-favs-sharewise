@@ -17,9 +17,9 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
-import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
 import de.hsh.favs.p13crollback.RollbackTestProbeRow;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestBase;
+import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestScope;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackProbe;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
@@ -70,16 +70,9 @@ class RollbackTransactionsIT extends IntegrationTestBase {
             .count());
     }
 
-    private <T> T inPhysicalTestTransaction(Function<OperationTestScope, T> action) {
-        TransactionTemplate transaction = new TransactionTemplate(physicalManager);
-        return transaction.execute(status -> {
-            try {
-                // The physical transaction is established before any scoped bean is resolved.
-                return new OperationTestHarness(scopes).inOperationScope(action);
-            } finally {
-                status.setRollbackOnly();
-            }
-        });
+    private <T> T inPhysicalTestTransaction(Function<IntegrationTestScope, T> action) {
+        // The runner owns the physical-transaction witness as well as rollback teardown.
+        return runner().inRollbackOperation(action);
     }
 
     @Test

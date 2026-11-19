@@ -38,6 +38,8 @@ import org.jooq.DSLContext;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -301,6 +303,38 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
             return null;
         });
         assertEquals(1, independentlyVisible(fixture, 1));
+    }
+
+    @Test
+    void firstLogicalSegmentRejectsRequiresNewBeforeAnyCallbackOrCommit() throws SQLException {
+        IntegrationTestContext fixture = fixture();
+        PlatformTransactionManager physical = fixture.context().getBean(PlatformTransactionManager.class);
+        JdbcTemplate jdbc = fixture.context().getBean(JdbcTemplate.class);
+        AtomicBoolean callbackEntered = new AtomicBoolean();
+        int rowId = 33;
+
+        new IntegrationTestRunner(fixture).inRollbackOperation(scope -> {
+            RollbackTransactions transactions = scope.resolve(RollbackTransactions.class);
+            TransactionTemplate independentlyCommitting = new TransactionTemplate(physical);
+            independentlyCommitting.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            independentlyCommitting.execute(status -> {
+                IllegalStateException rejected = assertThrows(IllegalStateException.class,
+                    () -> transactions.execute(() -> {
+                        callbackEntered.set(true);
+                        // Direct JDBC deliberately bypasses IntegrationTestScope's own guard:
+                        // this must be rejected by RollbackTransactions before user code runs.
+                        jdbc.update("insert into groups.p13c_rollback_probe (id,label) values (?,?)",
+                            rowId, "escaped");
+                        return TransactionOutcome.commit(null);
+                    }));
+                assertTrue(rejected.getMessage().contains("harness-owned"));
+                return null;
+            });
+            assertFalse(callbackEntered.get(), "The first segment must not enter an unrelated transaction");
+            assertThrows(IllegalStateException.class, transactions::observation);
+            return null;
+        });
+        assertEquals(0, independentlyVisible(fixture, rowId));
     }
 
     @Test

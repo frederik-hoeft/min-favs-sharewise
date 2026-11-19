@@ -3,13 +3,12 @@ package de.hsh.favs.sharewise.testsupport.integration;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
-import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
+import de.hsh.favs.sharewise.testsupport.transactions.RollbackPhysicalTransactionOwner;
 import java.util.Objects;
 import java.util.function.Function;
 import javax.sql.DataSource;
 import org.springframework.jdbc.datasource.ConnectionHolder;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -49,12 +48,12 @@ public final class IntegrationTestRunner {
             if (!(resource instanceof ConnectionHolder holder)) {
                 throw new IllegalStateException("No Spring-bound JDBC connection for rollback inspection");
             }
-            TransactionSynchronization witness = new TransactionSynchronization() { };
-            TransactionSynchronizationManager.registerSynchronization(witness);
+            RollbackPhysicalTransactionOwner witness =
+                RollbackPhysicalTransactionOwner.register(dataSource, holder);
             try {
                 return new OperationTestHarness(scopes).inOperationScope(operation -> {
                     IntegrationTestScope scope =
-                        new IntegrationTestScope(operation, dataSource, witness, holder);
+                        new IntegrationTestScope(operation, dataSource, witness);
                     try {
                         return assertion.apply(scope);
                     } finally {

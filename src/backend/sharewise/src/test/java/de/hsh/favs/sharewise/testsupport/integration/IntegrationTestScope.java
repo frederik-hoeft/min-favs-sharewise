@@ -3,6 +3,7 @@ package de.hsh.favs.sharewise.testsupport.integration;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
 import de.hsh.favs.sharewise.testsupport.transactions.PendingStateInspector;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
+import de.hsh.favs.sharewise.testsupport.transactions.RollbackPhysicalTransactionOwner;
 import de.hsh.favs.sharewise.testsupport.transactions.TransactionObservation;
 import java.util.List;
 import java.util.Objects;
@@ -10,27 +11,20 @@ import java.util.function.Function;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.datasource.ConnectionHolder;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** Test-side access to one operation scope within the harness-owned physical transaction. */
 public final class IntegrationTestScope {
 
     private final OperationTestScope operation;
     private final DataSource dataSource;
-    private final TransactionSynchronization witness;
-    private final ConnectionHolder connectionHolder;
-    private final Thread owner;
+    private final RollbackPhysicalTransactionOwner witness;
     private boolean active = true;
 
     IntegrationTestScope(OperationTestScope operation, DataSource dataSource,
-            TransactionSynchronization witness, ConnectionHolder connectionHolder) {
+            RollbackPhysicalTransactionOwner witness) {
         this.operation = Objects.requireNonNull(operation);
         this.dataSource = Objects.requireNonNull(dataSource);
         this.witness = Objects.requireNonNull(witness);
-        this.connectionHolder = Objects.requireNonNull(connectionHolder);
-        owner = Thread.currentThread();
     }
 
     public <S> S resolve(Class<S> serviceType) {
@@ -63,13 +57,10 @@ public final class IntegrationTestScope {
     }
 
     private void requireCurrentTransaction() {
-        if (!active || Thread.currentThread() != owner
-                || !TransactionSynchronizationManager.isActualTransactionActive()
-                || !TransactionSynchronizationManager.isSynchronizationActive()
-                || !TransactionSynchronizationManager.getSynchronizations().contains(witness)
-                || TransactionSynchronizationManager.getResource(dataSource) != connectionHolder) {
+        if (!active) {
             throw new IllegalStateException("Rollback inspection requires its original active transaction");
         }
+        witness.requireCurrent();
     }
 
     private final class Inspector implements PendingStateInspector {

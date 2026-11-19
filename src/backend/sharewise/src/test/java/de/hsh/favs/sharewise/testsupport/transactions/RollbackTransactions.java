@@ -7,8 +7,6 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import java.util.Objects;
 import java.util.function.Supplier;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * One operation-scoped logical segment inside a test-owned physical Spring transaction.
@@ -22,7 +20,7 @@ public final class RollbackTransactions implements Transactions, TransactionSegm
     private final OperationScopeAccess.ScopeLease scopeLease;
     private State state = State.READY;
     private Object segmentIdentity;
-    private TransactionSynchronization physicalWitness;
+    private RollbackPhysicalTransactionOwner physicalOwner;
     private boolean rollbackOnly;
     private TransactionObservation observation;
 
@@ -41,16 +39,10 @@ public final class RollbackTransactions implements Transactions, TransactionSegm
             }
             throw new IllegalStateException("Rollback-mode tests permit exactly one logical transaction segment");
         }
-        if (!TransactionSynchronizationManager.isActualTransactionActive()
-                || !TransactionSynchronizationManager.isSynchronizationActive()) {
-            throw new IllegalStateException("Rollback mode requires a pre-existing test-owned Spring transaction");
-        }
-
-        // Spring suspends and restores registered synchronizations when changing physical
-        // transactions. Identity of this witness prevents leases from following a suspended
-        // test transaction into REQUIRES_NEW or NOT_SUPPORTED, even on the same thread.
-        physicalWitness = new TransactionSynchronization() { };
-        TransactionSynchronizationManager.registerSynchronization(physicalWitness);
+        // The owner was registered by IntegrationTestRunner before activating the scope.
+        // A newly started REQUIRES_NEW transaction has its own synchronizations and cannot
+        // be mistaken for the harness-owned transaction, even on the FIRST logical segment.
+        physicalOwner = RollbackPhysicalTransactionOwner.requireCurrentOwner();
         segmentIdentity = new Object();
         state = State.ACTIVE;
 
@@ -112,10 +104,6 @@ public final class RollbackTransactions implements Transactions, TransactionSegm
         if (state != State.ACTIVE) {
             throw new IllegalStateException("No active logical transaction segment");
         }
-        if (!TransactionSynchronizationManager.isActualTransactionActive()
-                || !TransactionSynchronizationManager.isSynchronizationActive()
-                || !TransactionSynchronizationManager.getSynchronizations().contains(physicalWitness)) {
-            throw new IllegalStateException("The owning test transaction is suspended or no longer active");
-        }
+        physicalOwner.requireCurrent();
     }
 }
