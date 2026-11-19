@@ -1,5 +1,5 @@
-# Full-stage quality gates: both builds must pass before any tests run.
-# Test jobs execute in parallel; PostgreSQL suites follow in order. No DinD.
+# Both builds gate the shared test stage. PostgreSQL suites then depend on
+# the preceding backend suite, not unrelated frontend checks. No DinD.
 stages:
   - build
   - test # Also used by GitLab's SAST and secret-detection templates.
@@ -24,7 +24,6 @@ workflow:
 .backend-maven:
   image: eclipse-temurin:25-jdk
   interruptible: true
-  dependencies: [] # Tests recompile; they do not consume the build artifact.
   cache: &backend_maven_cache
     key:
       files:
@@ -119,18 +118,25 @@ build-frontend:
 test-backend-unit:
   extends: [.backend-maven, .backend-test-reports]
   stage: test
+  dependencies: [] # No backend packaging artifact is needed.
   script:
     - ./mvnw -B -ntp -Punit-tests clean verify
 
 test-backend-integration:
   extends: [.postgres-tests, .backend-test-reports]
   stage: test-backend-integration
+  needs:
+    - job: test-backend-unit
+      artifacts: false
   script:
     - ./mvnw -B -ntp -Pintegration-tests clean verify
 
 test-backend-e2e:
   extends: [.postgres-tests, .backend-test-reports]
   stage: test-backend-e2e
+  needs:
+    - job: test-backend-integration
+      artifacts: false
   script:
     - ./mvnw -B -ntp -Pe2e-tests clean verify
 

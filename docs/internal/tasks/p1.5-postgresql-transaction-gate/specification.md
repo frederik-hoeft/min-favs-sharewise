@@ -39,17 +39,19 @@ A **real deferred PostgreSQL constraint** must reject at physical commit, rather
 
 CI uses **stage barriers as quality gates**, with separate artifact handling for jobs that consume no prior outputs. Maven still owns the three test selectors and developer commands; GitLab controls when each gate runs. The existing security-scanning templates and offline-handoff validation remain mandatory. The design targets the current GitLab shared Docker runner, Java 25, Node 24, and a runner-managed PostgreSQL 18 service reachable over TCP; no Docker socket or Docker-in-Docker is introduced.
 
-Both **backend packaging** and **frontend production build** must succeed in the `build` stage before test jobs begin. The shared `test` stage runs backend Unit, frontend lint, application/test typechecks, Vitest, isolated static-export verification, SAST, secret detection and offline-handoff checks in parallel. PostgreSQL **Integration** and **E2E** each occupy a subsequent stage, so Integration starts only after all earlier tests have passed and E2E only after Integration has passed. No project-defined `needs` bypasses these barriers. This deliberately makes a failed frontend or security/offline gate block later PostgreSQL tests, favoring clear fail-closed sequencing over maximum parallelism. Scanner failure behavior remains governed by GitLab's included security templates.
+Both **backend packaging** and **frontend production build** must succeed in the `build` stage before test jobs begin. The shared `test` stage runs backend Unit, frontend lint, application/test typechecks, Vitest, isolated static-export verification, SAST, secret detection and offline-handoff checks in parallel. PostgreSQL **Integration** and **E2E** occupy separate later stages, but declare narrow dependencies: Integration needs a successful backend Unit job, and E2E needs successful Integration. Thus PostgreSQL tests cannot start after a failed build or predecessor backend suite, but need not wait for unrelated frontend, security or offline-handoff jobs. Those other jobs still determine the **overall pipeline result**; a mandatory failure cannot yield a green pipeline. Scanner failure behavior remains governed by GitLab's included security templates.
 
 Frontend checks are individually identifiable rather than chained within `build-frontend`: ESLint, application TypeScript validation, test TypeScript validation, Vitest/component-accessibility tests, and static-export validation. The static-export probe **builds an isolated copy using installed dependencies**; it is not a passive inspection of the ordinary `next build` artifact. It runs after the successful production build, concurrently with the other checks in the test stage, and must still perform its own export and HTTP/asset assertions.
 
 ```mermaid
 flowchart TD
     B["Build: backend package + frontend production build"]
-    T["Test: Unit, frontend checks/export, security, offline handoff"]
+    U["Test: backend Unit"]
+    O["Test: frontend checks/export, security, offline handoff"]
     I["PostgreSQL Integration"]
     E["PostgreSQL E2E"]
-    B --> T --> I --> E
+    B --> U --> I --> E
+    B --> O
 ```
 
 The pipeline must not silently skip a required gate or report an overall green pipeline while a mandatory job failed. Pipeline-source rules, if introduced, must prevent duplicate branch/MR pipelines **without dropping manual, default-branch, security or required review checks**. Security templates must remain compatible with the `test` stage.
@@ -68,7 +70,7 @@ Dependencies are cached as **disposable caches**, not passed as build artifacts:
 | **PG-06** | Record executed evidence against P1.3b TX-03 through TX-11, identifying previous coverage, new tests and remaining limitations. |
 | **CI-01** | Run backend Unit in the shared `test` stage, followed by distinct PostgreSQL Integration and E2E stages, with independent JUnit results and fail-closed prerequisites. |
 | **CI-02** | Split frontend lint, typechecks, tests, build and isolated static-export acceptance into diagnostically distinct jobs, preserving all existing commands and assertions. |
-| **CI-03** | Gate test execution on both successful builds, then PostgreSQL Integration on the shared test stage and E2E on Integration. Avoid `needs` that bypass mandatory earlier gates; do not download build artifacts into jobs that rebuild independently. |
+| **CI-03** | Gate all test jobs on both successful builds. Use explicit `needs` only for backend Unit → PostgreSQL Integration → PostgreSQL E2E, allowing those suites to progress without waiting for independent frontend/security/offline checks. Preserve mandatory overall pipeline failure semantics; do not download build or test artifacts into jobs that rebuild independently. |
 | **CI-04** | Preserve SAST, secret detection, offline-handoff tests and secure runner constraints; validate merged YAML/template behavior through the actual GitLab pipeline. |
 | **CI-05** | Make dependency caches, pipeline-source rules, cancellation and artifact lifetimes deliberate, without sacrificing reliable reruns or adding a new build system. |
 
@@ -85,7 +87,7 @@ Dependencies are cached as **disposable caches**, not passed as build artifacts:
 | **P15-T07** | Insert a row violating a `DEFERRABLE INITIALLY DEFERRED` PostgreSQL constraint; return `COMMIT`. | Commit raises a database failure; no ordinary success, no violating rows and no unsafe reuse. | E2E (TX-07) |
 | **P15-T08** | Register a throwing Spring `afterCommit` callback after writing a row. | Operation fails; a fresh connection proves the row persisted; existing manager cannot be reused if completion cleanup was interrupted. | E2E (TX-07) |
 | **P15-T09** | Inject a fault before issuing physical commit, then a separate fault after physical PostgreSQL commit but before acknowledging it to the caller. | Caller sees failures and cannot reuse the manager; independent reads distinguish absent vs durable rows. The caller does not infer definite rollback from a failed commit response. | E2E, test-only fault seam (TX-07) |
-| **P15-T10** | Run GitLab's complete backend and frontend pipelines on the revised graph, including a rerun and representative failing job. | Both builds succeed before any test starts; a failed build/test prevents later stages; all required security/offline jobs are present, with JUnit and artifact behavior correct and no H2 fallback or missing tests. | GitLab CI (CI-01 through CI-05) |
+| **P15-T10** | Run GitLab's complete backend and frontend pipelines on the revised graph, including a rerun and representative failing job. | Both builds succeed before any test starts; a failed backend Unit/Integration gate blocks its PostgreSQL successors, while unrelated frontend/security/offline jobs may overlap and still fail the overall pipeline. All required security/offline jobs, JUnit reports and artifact controls remain correct; no H2 fallback or missing tests. | GitLab CI (CI-01 through CI-05) |
 
 The [P1.3b specification](../p1.3-transactions/specification.md#acceptance-criteria) remains authoritative for TX-03 through TX-11. These scenarios close database-specific gaps, not replace that contract or the existing regression suite. Each claimed criterion must link to a named executed test and corresponding CI evidence. A green Unit suite alone is insufficient.
 
