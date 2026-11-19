@@ -116,6 +116,43 @@ describe("Responsive breadcrumb trail", () => {
     expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent(longLabel);
   });
 
+  it("does not oscillate between truncated and full text during repeated resizes", () => {
+    available = 200;
+    required = 900;
+    const longLabel = "Shared Expenses And Settlement Revision History";
+    let labelWidth = 85;
+
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    // A regression guard for the original loop: moving the measured label
+    // into a button changes its available width and could flip truncation on
+    // every render. The measurement must stay independent of the disclosure.
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      if (this.getAttribute("aria-current") !== "page") return 0;
+      return this.closest("button") ? 500 : labelWidth;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("aria-current") === "page" ? 380 : 0;
+    });
+
+    render(<MantineProvider env="test" theme={theme} cssVariablesResolver={cssVariablesResolver}>
+      <ResponsiveBreadcrumbs crumbs={[...path.slice(0, 3), { href: `${path[2].href}/history`, label: longLabel }]} />
+    </MantineProvider>);
+
+    const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
+    const current = nav.querySelector('[aria-current="page"]');
+    const reveal = () => within(nav).queryByRole("button", { name: `Show full location: ${longLabel}` });
+    expect(reveal()).toBeInTheDocument();
+
+    // Repeated observer notifications (including unchanged widths) must not
+    // trigger a render loop or move the measured text into the control.
+    for (let index = 0; index < 24; index++) {
+      labelWidth = index % 3 === 0 ? 500 : 85;
+      act(() => observers.forEach((callback) => callback()));
+      expect(Boolean(reveal())).toBe(labelWidth < 380);
+      expect(nav.querySelector('[aria-current="page"]')).toBe(current);
+    }
+  });
+
   it("keeps an ordinary two-segment trail visible without a disclosure", () => {
     available = 100;
     required = 900;
