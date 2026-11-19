@@ -46,6 +46,54 @@ class TestSelectionConventionsTests {
     }
 
     @Test
+    void ciUsesIndependentFrontendChecksAndOrderedBackendStages() throws IOException {
+        String pipeline = Files.readString(Path.of("../../../.gitlab-ci.yml"));
+        for (String stage : new String[]{"test-backend-unit", "test-backend-integration",
+                "test-backend-e2e", "frontend-build", "frontend-static-export"}) {
+            assertTrue(pipeline.contains("  - " + stage + "\n"), "Missing CI stage: " + stage);
+        }
+        assertTrue(pipeline.contains("  - test # Retain the stage used by GitLab's SAST templates."));
+        assertTrue(pipeline.contains("Security/SAST.gitlab-ci.yml"));
+        assertTrue(pipeline.contains("Security/Secret-Detection.gitlab-ci.yml"));
+        assertTrue(pipeline.contains("AST_ENABLE_MR_PIPELINES: 'true'"));
+        assertTrue(pipeline.contains("test-offline-handoff:"));
+
+        assertTrue(ciJob(pipeline, "test-backend-unit").contains("  needs: []"));
+        assertTrue(ciJob(pipeline, "test-backend-unit").contains("  stage: test-backend-unit"));
+        assertTrue(ciJob(pipeline, "test-backend-integration").contains(
+            "    - job: test-backend-unit\n      artifacts: false"));
+        assertTrue(ciJob(pipeline, "test-backend-e2e").contains(
+            "    - job: test-backend-integration\n      artifacts: false"));
+        assertTrue(ciJob(pipeline, "test-backend-integration").contains("-Pintegration-tests clean verify"));
+        assertTrue(ciJob(pipeline, "test-backend-e2e").contains("-Pe2e-tests clean verify"));
+
+        for (String job : new String[]{"test-frontend-lint", "test-frontend-typecheck",
+                "test-frontend-test-typecheck", "test-frontend-vitest"}) {
+            assertTrue(ciJob(pipeline, job).contains("  needs: []"), job);
+            assertTrue(ciJob(pipeline, "build-frontend").contains("    - job: " + job), job);
+        }
+        assertTrue(ciJob(pipeline, "test-frontend-lint").contains("npm run lint"));
+        assertTrue(ciJob(pipeline, "test-frontend-typecheck").contains("npm run typecheck"));
+        assertTrue(ciJob(pipeline, "test-frontend-test-typecheck").contains("npm run test:typecheck"));
+        assertTrue(ciJob(pipeline, "test-frontend-vitest").contains("--reporter=junit"));
+        assertTrue(ciJob(pipeline, "test-frontend-vitest").contains("src/frontend/vitest-junit.xml"));
+        assertTrue(ciJob(pipeline, "build-frontend").contains("npm run build"));
+        assertTrue(ciJob(pipeline, "test-frontend-static-export").contains(
+            "    - job: build-frontend\n      artifacts: false"));
+        assertTrue(ciJob(pipeline, "test-frontend-static-export").contains("npm run test:static-export"));
+        assertTrue(pipeline.contains("src/frontend/.npm/"));
+        assertTrue(!pipeline.contains("src/frontend/node_modules/"));
+    }
+
+    private static String ciJob(String pipeline, String name) {
+        String marker = "\n" + name + ":\n";
+        int start = pipeline.indexOf(marker);
+        assertTrue(start >= 0, "Missing CI job: " + name);
+        int end = pipeline.indexOf("\n\n", start + marker.length());
+        return pipeline.substring(start, end < 0 ? pipeline.length() : end);
+    }
+
+    @Test
     void compiledTestClassesAgreeWithTheirExecutionCategories() throws ClassNotFoundException {
         JavaClasses testClasses = new ClassFileImporter()
             .withImportOption(new ImportOption.OnlyIncludeTests())

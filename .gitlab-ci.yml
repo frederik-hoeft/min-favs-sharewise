@@ -1,15 +1,42 @@
-# Backend tests are three independent gates. No job needs Docker-in-Docker or a Docker socket.
+# Suite gates are ordered through needs; independent frontend and security checks
+# can run concurrently with backend builds and tests. No Docker socket or DinD.
 stages:
   - build
-  - test
+  - test # Retain the stage used by GitLab's SAST templates.
+  - test-backend-unit
+  - test-backend-integration
+  - test-backend-e2e
+  - frontend-build
+  - frontend-static-export
   - secret-detection
+
+# Prefer merge request pipelines over duplicate push pipelines for the same branch.
+# Preserve tag, default-branch, scheduled, manually started and API pipelines.
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    # Do not cancel default/protected branch acceptance when newer commits arrive.
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+      auto_cancel:
+        on_new_commit: none
+    - when: always
 
 .backend-maven:
   image: eclipse-temurin:25-jdk
-  cache:
-    key: backend-maven
+  interruptible: true
+  cache: &backend_maven_cache
+    key:
+      files:
+        - src/backend/sharewise/pom.xml
+        - src/backend/sharewise/.mvn/wrapper/maven-wrapper.properties
+      prefix: backend-maven
     paths:
       - .m2/repository/
+    policy: pull
   before_script:
     - export MAVEN_OPTS="-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
     - cd src/backend/sharewise
@@ -31,7 +58,7 @@ stages:
     - export MAVEN_OPTS="-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
     - cd src/backend/sharewise
     - chmod +x mvnw
-    # Wait for the runner-provided TCP service without installing a Docker client.
+    # The runner provides a TCP service, not a Docker API.
     - |
       for attempt in $(seq 1 60); do
         if (echo > /dev/tcp/postgres/5432) 2>/dev/null; then
@@ -53,9 +80,29 @@ stages:
         - src/backend/sharewise/target/failsafe-reports/TEST-*.xml
     expire_in: 1 day
 
+.frontend-npm:
+  image: node:24-alpine
+  interruptible: true
+  cache: &frontend_npm_cache
+    key:
+      files:
+        - src/frontend/package-lock.json
+      prefix: frontend-npm
+    paths:
+      - src/frontend/.npm/
+    policy: pull
+  before_script:
+    - cd src/frontend
+    # Cache package downloads, never node_modules or compiled Next.js state.
+    - npm ci --no-audit --no-fund --cache .npm --prefer-offline
+
 build-backend:
   extends: .backend-maven
   stage: build
+  needs: []
+  cache:
+    <<: *backend_maven_cache
+    policy: pull-push
   script:
     - ./mvnw -B -ntp -Punit-tests -DskipUnitTests=true clean package
   artifacts:
@@ -63,53 +110,114 @@ build-backend:
       - src/backend/sharewise/target/*.jar
     expire_in: 1 hour
 
-build-frontend:
-  stage: build
-  image: node:24-alpine
-  script:
-    - cd src/frontend
-    - npm ci --no-audit --no-fund
-    - npm run lint
-    - npm run typecheck
-    - npm run test
-    - npm run test:typecheck
-    - npm run build
-    - npm run test:static-export
-
 test-backend-unit:
   extends: [.backend-maven, .backend-test-reports]
-  stage: test
+  stage: test-backend-unit
+  needs: []
   script:
     - ./mvnw -B -ntp -Punit-tests clean verify
 
 test-backend-integration:
   extends: [.postgres-tests, .backend-test-reports]
-  stage: test
+  stage: test-backend-integration
+  needs:
+    - job: test-backend-unit
+      artifacts: false
   script:
     - ./mvnw -B -ntp -Pintegration-tests clean verify
 
 test-backend-e2e:
   extends: [.postgres-tests, .backend-test-reports]
-  stage: test
+  stage: test-backend-e2e
+  needs:
+    - job: test-backend-integration
+      artifacts: false
   script:
     - ./mvnw -B -ntp -Pe2e-tests clean verify
+
+test-frontend-lint:
+  extends: .frontend-npm
+  stage: test
+  needs: []
+  cache:
+    <<: *frontend_npm_cache
+    policy: pull-push
+  script:
+    - npm run lint
+
+test-frontend-typecheck:
+  extends: .frontend-npm
+  stage: test
+  needs: []
+  script:
+    - npm run typecheck
+
+test-frontend-test-typecheck:
+  extends: .frontend-npm
+  stage: test
+  needs: []
+  script:
+    - npm run test:typecheck
+
+test-frontend-vitest:
+  extends: .frontend-npm
+  stage: test
+  needs: []
+  script:
+    - npm run test -- --reporter=default --reporter=junit --outputFile.junit=vitest-junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - src/frontend/vitest-junit.xml
+    expire_in: 1 day
+
+build-frontend:
+  extends: .frontend-npm
+  stage: frontend-build
+  needs:
+    - job: test-frontend-lint
+      artifacts: false
+    - job: test-frontend-typecheck
+      artifacts: false
+    - job: test-frontend-test-typecheck
+      artifacts: false
+    - job: test-frontend-vitest
+      artifacts: false
+  script:
+    - npm run build
+
+test-frontend-static-export:
+  extends: .frontend-npm
+  stage: frontend-static-export
+  needs:
+    - job: build-frontend
+      artifacts: false
+  script:
+    - npm run test:static-export
 
 # Validates the offline handoff without a language SDK or project dependency downloads.
 test-offline-handoff:
   stage: test
   image: python:3.12-trixie
+  interruptible: true
+  needs: []
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends xz-utils
   script:
     - bash scripts/test-offline-handoff.sh
 
+# Keep the security templates and their expected stage names available.
 sast:
   stage: test
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
 variables:
+  # Security analyzers must run in MR pipelines after workflow switches from push.
+  AST_ENABLE_MR_PIPELINES: 'true'
   SECRET_DETECTION_ENABLED: 'true'
 
 secret_detection:
   stage: secret-detection
+  needs: []
