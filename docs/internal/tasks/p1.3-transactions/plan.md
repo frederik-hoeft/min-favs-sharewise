@@ -1,6 +1,6 @@
 # P1.3b - Implementation plan: application-owned transactions
 
-**Status:** Phases A-E accepted; P1.3b implementation and architecture documentation complete. PostgreSQL acceptance remains assigned to P1.5. [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) governs review gates. P1.3a provides the [DI foundation](../../../architecture/dependency-injection.md). P1.3b verifies Spring/H2 integration independently; [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation) owns the mandatory PostgreSQL integration gate after P1.2.
+**Status:** Phases A–E accepted; P1.3b implementation and architecture documentation complete. PostgreSQL acceptance for TX-03 through TX-11 was subsequently verified under [P1.5](../p1.5-postgresql-transaction-gate/plan.md#tx-03-through-tx-11-evidence-matrix). [P1.3b specification](specification.md). The [development workflow](../../../development/ai-development-workflow.md) governs review gates. P1.3a provides the [DI foundation](../../../architecture/dependency-injection.md). P1.3b originally verified Spring/H2 integration independently; [P1.5](../p1.5-postgresql-transaction-gate/plan.md#tx-03-through-tx-11-evidence-matrix) records the later PostgreSQL integration acceptance against P1.2.
 
 ## Baseline, dependencies and ownership
 
@@ -55,7 +55,7 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 - [x] Exercise an `afterCommit()` callback failure after a completed commit, commit-time ORM/constraint failure, known SQL error translated into a rollback-only result, and incompatible ambient transactions. Retain deterministic fake-manager tests for uncertain commit/rollback outcomes that H2 cannot simulate reliably.
 - [x] Retain the Phase C regression coverage for stale/derived jOOQ and JPA handles, wrong-scope/thread access and missing physical context. Do not treat H2 isolation, transaction-manager compatibility, or constraints as PostgreSQL acceptance evidence.
 
-**Gate D:** The full backend offline build and focused H2 tests pass. Record H2/fake-manager versus PostgreSQL evidence separately. Human approval accepts P1.3b's Spring/adapter component integration only; **P1.5 remains a mandatory, separate Phase 1 gate against P1.2's actual PostgreSQL wiring**.
+**Gate D:** The full backend offline build and focused H2 tests pass. Record H2/fake-manager versus PostgreSQL evidence separately. Human approval accepts P1.3b's Spring/adapter component integration only; **P1.5 separately verifies the production contract against P1.2's PostgreSQL wiring**.
 
 ## Phase E - Steady-state documentation and acceptance
 
@@ -66,7 +66,7 @@ Each phase yields one independently reviewable patch on the approved baseline. C
 - [x] Run relevant focused tests, complete Maven offline verification, docs link/anchor validation and `git diff --check`. Record separately which tests use fake managers, H2 or real PostgreSQL, and which physical guarantees have been established.
 - [x] Provide reviewable final patch, explicit acceptance evidence, known limitations and an infrastructure-focused manual acceptance procedure. Obtain human final approval before marking P1.3b complete or merging into the authoritative baseline.
 
-**Gate E:** The implementation, tests, specification and authoritative steady-state architecture agree. Human review and operational acceptance have been recorded. P1.3b can be accepted with its H2/manager-level evidence, but PostgreSQL-backed transaction and cross-adapter guarantees **remain open until P1.5 passes**; messaging integration remains assigned to P2.4.
+**Gate E:** The implementation, tests, specification and authoritative steady-state architecture agree. Human review and operational acceptance have been recorded. P1.3b can be accepted with its H2/manager-level evidence, but PostgreSQL-backed transaction and cross-adapter guarantees **are accepted under P1.5**; messaging integration remains assigned to P2.4.
 
 ## Out of scope and follow-up ownership
 
