@@ -1,14 +1,10 @@
-# Suite gates are ordered through needs; independent frontend and security checks
-# can run concurrently with backend builds and tests. No Docker socket or DinD.
+# Full-stage quality gates: both builds must pass before any tests run.
+# Test jobs execute in parallel; PostgreSQL suites follow in order. No DinD.
 stages:
   - build
-  - test # Retain the stage used by GitLab's SAST templates.
-  - test-backend-unit
+  - test # Also used by GitLab's SAST and secret-detection templates.
   - test-backend-integration
   - test-backend-e2e
-  - frontend-build
-  - frontend-static-export
-  - secret-detection
 
 # Prefer merge request pipelines over duplicate push pipelines for the same branch.
 # Preserve tag, default-branch, scheduled, manually started and API pipelines.
@@ -28,6 +24,7 @@ workflow:
 .backend-maven:
   image: eclipse-temurin:25-jdk
   interruptible: true
+  dependencies: [] # Tests recompile; they do not consume the build artifact.
   cache: &backend_maven_cache
     key:
       files:
@@ -83,6 +80,7 @@ workflow:
 .frontend-npm:
   image: node:24-alpine
   interruptible: true
+  dependencies: [] # Each job installs from the lockfile, not prior outputs.
   cache: &frontend_npm_cache
     key:
       files:
@@ -99,7 +97,6 @@ workflow:
 build-backend:
   extends: .backend-maven
   stage: build
-  needs: []
   cache:
     <<: *backend_maven_cache
     policy: pull-push
@@ -110,59 +107,54 @@ build-backend:
       - src/backend/sharewise/target/*.jar
     expire_in: 1 hour
 
+build-frontend:
+  extends: .frontend-npm
+  stage: build
+  cache:
+    <<: *frontend_npm_cache
+    policy: pull-push
+  script:
+    - npm run build
+
 test-backend-unit:
   extends: [.backend-maven, .backend-test-reports]
-  stage: test-backend-unit
-  needs: []
+  stage: test
   script:
     - ./mvnw -B -ntp -Punit-tests clean verify
 
 test-backend-integration:
   extends: [.postgres-tests, .backend-test-reports]
   stage: test-backend-integration
-  needs:
-    - job: test-backend-unit
-      artifacts: false
   script:
     - ./mvnw -B -ntp -Pintegration-tests clean verify
 
 test-backend-e2e:
   extends: [.postgres-tests, .backend-test-reports]
   stage: test-backend-e2e
-  needs:
-    - job: test-backend-integration
-      artifacts: false
   script:
     - ./mvnw -B -ntp -Pe2e-tests clean verify
 
 test-frontend-lint:
   extends: .frontend-npm
   stage: test
-  needs: []
-  cache:
-    <<: *frontend_npm_cache
-    policy: pull-push
   script:
     - npm run lint
 
 test-frontend-typecheck:
   extends: .frontend-npm
   stage: test
-  needs: []
   script:
     - npm run typecheck
 
 test-frontend-test-typecheck:
   extends: .frontend-npm
   stage: test
-  needs: []
   script:
     - npm run test:typecheck
 
 test-frontend-vitest:
   extends: .frontend-npm
   stage: test
-  needs: []
   script:
     - npm run test -- --reporter=default --reporter=junit --outputFile.junit=vitest-junit.xml
   artifacts:
@@ -172,27 +164,9 @@ test-frontend-vitest:
         - src/frontend/vitest-junit.xml
     expire_in: 1 day
 
-build-frontend:
-  extends: .frontend-npm
-  stage: frontend-build
-  needs:
-    - job: test-frontend-lint
-      artifacts: false
-    - job: test-frontend-typecheck
-      artifacts: false
-    - job: test-frontend-test-typecheck
-      artifacts: false
-    - job: test-frontend-vitest
-      artifacts: false
-  script:
-    - npm run build
-
 test-frontend-static-export:
   extends: .frontend-npm
-  stage: frontend-static-export
-  needs:
-    - job: build-frontend
-      artifacts: false
+  stage: test
   script:
     - npm run test:static-export
 
@@ -201,13 +175,13 @@ test-offline-handoff:
   stage: test
   image: python:3.12-trixie
   interruptible: true
-  needs: []
+  dependencies: []
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends xz-utils
   script:
     - bash scripts/test-offline-handoff.sh
 
-# Keep the security templates and their expected stage names available.
+# Keep the security analyzers alongside the other checks after a successful build.
 sast:
   stage: test
 include:
@@ -219,5 +193,5 @@ variables:
   SECRET_DETECTION_ENABLED: 'true'
 
 secret_detection:
-  stage: secret-detection
-  needs: []
+  stage: test
+  dependencies: []
