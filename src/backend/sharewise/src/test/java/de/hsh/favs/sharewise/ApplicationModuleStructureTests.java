@@ -3,6 +3,8 @@ package de.hsh.favs.sharewise;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
@@ -59,11 +61,18 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
-    void sharedAndSystemModulesHaveExplicitDependencies() {
+    void identitySharedAndSystemModulesHaveExplicitDependencies() {
         Set<String> moduleNames = modules.stream()
                 .map(module -> module.getIdentifier().toString())
                 .collect(Collectors.toSet());
-        assertEquals(Set.of("shared", "system"), moduleNames);
+        assertEquals(Set.of("identity", "shared", "system"), moduleNames);
+
+        ApplicationModule identity = modules.getModuleByName("identity")
+                .orElseThrow(() -> new AssertionError("module 'identity' must exist"));
+        assertFalse(identity.isOpen(), "identity must be a closed module");
+        assertEquals(List.of(),
+                ApplicationModuleInformation.of(identity.getBasePackage()).getDeclaredDependencies(),
+                "identity must declare an empty allowedDependencies whitelist");
 
         ApplicationModule shared = sharedModule();
         assertFalse(shared.isOpen(), "shared must be a closed module");
@@ -77,6 +86,18 @@ class ApplicationModuleStructureTests {
         assertEquals(List.of("shared :: health"),
                 ApplicationModuleInformation.of(system.getBasePackage()).getDeclaredDependencies(),
                 "the system endpoint must depend only on the published readiness contract");
+    }
+
+    @Test
+    void identityTopLevelPublishesOnlyTheCurrentCallerContracts() {
+        ApplicationModule identity = modules.getModuleByName("identity")
+                .orElseThrow(() -> new AssertionError("module 'identity' must exist"));
+        Set<String> publishedTypes = identity.getNamedInterfaces().getUnnamedInterface().asJavaClasses()
+                .map(type -> type.getName())
+                .filter(name -> !name.endsWith(".package-info"))
+                .collect(Collectors.toSet());
+        assertEquals(Set.of(IdentityContext.class.getName(), UnauthenticatedCallerException.class.getName()),
+                publishedTypes);
     }
 
     @Test
