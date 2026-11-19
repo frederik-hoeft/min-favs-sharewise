@@ -1,20 +1,20 @@
 import { AppShell, AppShellMain } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Providers } from "@/app/providers";
 import { ShellHeader } from "@/components/navigation/ShellHeader";
+import { TestProviders } from "./support/TestProviders";
 
 describe("Shared shell header", () => {
   it("can host independent application navigation without public-page content", () => {
     render(
-      <Providers>
+      <TestProviders>
         <AppShell header={{ height: "6rem" }} padding={0}>
           <ShellHeader>
             <nav aria-label="Group navigation"><a href="#account">Account</a></nav>
           </ShellHeader>
           <AppShellMain id="account"><h1>Group overview</h1></AppShellMain>
         </AppShell>
-      </Providers>,
+      </TestProviders>,
     );
 
     const header = screen.getByRole("banner");

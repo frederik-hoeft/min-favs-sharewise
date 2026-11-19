@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { DEFAULT_THEME } from "@mantine/core";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Providers } from "@/app/providers";
 import { theme, cssVariablesResolver } from "@/lib/theme";
 import { ApplicationShell } from "@/app/(app)/app/_components/ApplicationShell";
 import { appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
 import DummyOnePage from "@/app/(app)/app/dummy1/page";
+import { TestProviders } from "./support/TestProviders";
 
 let pathname = "/app/dummy1";
 vi.mock("next/navigation", async (importOriginal) => ({
@@ -17,9 +17,9 @@ vi.mock("next/navigation", async (importOriginal) => ({
 
 function renderApp() {
   return render(
-    <Providers>
+    <TestProviders>
       <ApplicationShell><DummyOnePage /></ApplicationShell>
-    </Providers>,
+    </TestProviders>,
   );
 }
 

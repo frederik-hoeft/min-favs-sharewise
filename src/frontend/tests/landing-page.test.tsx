@@ -4,11 +4,11 @@ import axe from "axe-core";
 import { describe, expect, it, vi } from "vitest";
 import Home from "@/app/(public)/page";
 import PublicLayout from "@/app/(public)/layout";
-import { Providers } from "@/app/providers";
 import { displayMoney, previewGroup } from "@/app/(public)/_components/preview-data";
+import { TestProviders } from "./support/TestProviders";
 
 function renderHome() {
-  return render(<Providers><PublicLayout><Home /></PublicLayout></Providers>);
+  return render(<TestProviders><PublicLayout><Home /></PublicLayout></TestProviders>);
 }
 
 describe("ShareWise landing page", () => {

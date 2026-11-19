@@ -1,11 +1,9 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Providers } from "@/app/providers";
-import { MantineProvider } from "@mantine/core";
-import { theme, cssVariablesResolver } from "@/lib/theme";
 import { ResponsiveBreadcrumbs } from "@/app/(app)/app/_components/ResponsiveBreadcrumbs";
 import type { AppBreadcrumb } from "@/app/(app)/app/_components/app-routes";
+import { TestProviders } from "./support/TestProviders";
 
 const path: AppBreadcrumb[] = [
   { href: "/app", label: "Workspace" },
@@ -41,7 +39,7 @@ function renderWithMeasurements() {
     const width = this.getAttribute("aria-label") === "Breadcrumb" ? available : required;
     return { x: 0, y: 0, top: 0, left: 0, bottom: 24, right: width, width, height: 24, toJSON: () => ({}) };
   });
-  return render(<Providers><ResponsiveBreadcrumbs crumbs={path} /></Providers>);
+  return render(<TestProviders><ResponsiveBreadcrumbs crumbs={path} /></TestProviders>);
 }
 
 describe("Responsive breadcrumb trail", () => {
@@ -70,9 +68,9 @@ describe("Responsive breadcrumb trail", () => {
     available = 200;
     required = 900;
     const user = userEvent.setup();
-    render(<MantineProvider env="test" theme={theme} cssVariablesResolver={cssVariablesResolver}>
+    render(<TestProviders>
       <ResponsiveBreadcrumbs crumbs={path} />
-    </MantineProvider>);
+    </TestProviders>);
 
     const disclosure = screen.getByRole("button", { name: "Show 2 omitted breadcrumb locations" });
     await user.click(disclosure);
@@ -98,9 +96,9 @@ describe("Responsive breadcrumb trail", () => {
     });
 
     const user = userEvent.setup();
-    render(<MantineProvider env="test" theme={theme} cssVariablesResolver={cssVariablesResolver}>
+    render(<TestProviders>
       <ResponsiveBreadcrumbs crumbs={[...path.slice(0, 3), { href: `${path[2].href}/history`, label: longLabel }]} />
-    </MantineProvider>);
+    </TestProviders>);
 
     const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent(longLabel);
@@ -134,9 +132,9 @@ describe("Responsive breadcrumb trail", () => {
       return this.getAttribute("aria-current") === "page" ? 380 : 0;
     });
 
-    render(<MantineProvider env="test" theme={theme} cssVariablesResolver={cssVariablesResolver}>
+    render(<TestProviders>
       <ResponsiveBreadcrumbs crumbs={[...path.slice(0, 3), { href: `${path[2].href}/history`, label: longLabel }]} />
-    </MantineProvider>);
+    </TestProviders>);
 
     const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
     const current = nav.querySelector('[aria-current="page"]');
@@ -157,7 +155,7 @@ describe("Responsive breadcrumb trail", () => {
     available = 100;
     required = 900;
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
-    render(<Providers><ResponsiveBreadcrumbs crumbs={path.slice(0, 2)} /></Providers>);
+    render(<TestProviders><ResponsiveBreadcrumbs crumbs={path.slice(0, 2)} /></TestProviders>);
     const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(within(nav).getByRole("link", { name: "Workspace" })).toBeInTheDocument();
     expect(within(nav).getByText("Groups")).toHaveAttribute("aria-current", "page");
