@@ -1,6 +1,6 @@
 # Identity and authorization architecture
 
-**Status:** Preliminary security architecture, subject to implementation validation. The [application architecture](../architecture.md) defines context ownership; the [domain model](../data-model-design.md) defines business authorization constraints; the [persistence architecture](persistence.md) defines transactional storage. See [security alternatives](security-alternatives.md) for the selection rationale.
+**Status:** Preliminary security architecture, subject to implementation validation. The [application architecture](../architecture.md) defines context ownership; the [domain model](../data-model-design.md) defines business authorization constraints; the [persistence architecture](../architecture/persistence.md) defines transactional storage. See [security alternatives](security-alternatives.md) for the selection rationale.
 
 **Contents:**
 

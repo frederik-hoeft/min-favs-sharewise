@@ -80,4 +80,4 @@ The public contracts `OperationDispatcher`, `ServiceScopeFactory`, `ServiceScope
 
 For integration tests, the same `ServiceScopeFactory` and `ServiceScope.run(...)` contract allows a callback to resolve and inspect multiple collaborators before teardown. Tests use the normal Spring bean factory and lifecycle rather than a second DI container. Production entry points use `OperationDispatcher` as their composition boundary.
 
-For concrete usage examples and build commands, see the [developer guide](../development.md#operation-scope-usage).
+For the test-specific scope and fixture lifetime, see [Backend test architecture](tests.md). For production usage examples and build commands, see the [developer guide](../development.md#operation-scope-usage).

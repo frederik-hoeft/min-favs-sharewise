@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.shared.infra.config.ShareWiseProperties;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
+import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
+import org.junit.jupiter.api.BeforeEach;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.system.api.v1.SystemHealthController;
@@ -17,25 +20,29 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.boot.test.context.TestComponent;
 
-@SpringBootTest
-class ShareWiseApplicationTests {
+@org.junit.jupiter.api.Tag("e2e")
+class ShareWiseApplicationE2E extends E2ETestBase {
 
-    @Autowired
+    @BeforeEach
+    void initialize() {
+        start(ProductionEntityScanConfiguration.class);
+        scopeFactory = context().getBean(ServiceScopeFactory.class);
+        beanFactory = context().getBeanFactory();
+        properties = context().getBean(ShareWiseProperties.class);
+        healthController = context().getBean(SystemHealthController.class);
+    }
+
     ServiceScopeFactory scopeFactory;
 
-    @Autowired
     ConfigurableListableBeanFactory beanFactory;
 
-    @Autowired
     ShareWiseProperties properties;
 
-    @Autowired
     SystemHealthController healthController;
 
     @Test
@@ -49,6 +56,15 @@ class ShareWiseApplicationTests {
         assertEquals(HttpStatus.OK, health.getStatusCode());
         assertNotNull(health.getBody());
         assertEquals("UP", health.getBody().status());
+    }
+
+    @Test
+    void productionDiscoveryIncludesOnlyExplicitlyRegisteredTestComponents() {
+        String[] testComponents = beanFactory.getBeanNamesForAnnotation(TestComponent.class);
+        // @TestConfiguration is meta-annotated with @TestComponent. The entity-scan
+        // configuration is deliberately passed to start(...) rather than discovered.
+        assertEquals(1, testComponents.length);
+        assertEquals(ProductionEntityScanConfiguration.class, beanFactory.getType(testComponents[0]));
     }
 
     @Test

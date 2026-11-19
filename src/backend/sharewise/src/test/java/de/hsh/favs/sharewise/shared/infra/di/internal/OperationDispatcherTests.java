@@ -26,9 +26,9 @@ import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.config.Scope;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 
-class OperationDispatcherIntegrationTests {
+class OperationDispatcherTests {
 
     @Test
     void dispatchCreatesOneSpringGraphPerOperationAndSharesOnlySingletons() {
@@ -270,7 +270,7 @@ class OperationDispatcherIntegrationTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     static class Beans {
         @Bean SingletonMarker singletonMarker() { return new SingletonMarker(); }
         @Bean ConstructionCounter constructionCounter() { return new ConstructionCounter(); }

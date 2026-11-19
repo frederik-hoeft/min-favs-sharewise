@@ -6,7 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
-import de.hsh.favs.sharewise.shared.infra.persistence.testing.PostgresTestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import java.sql.Connection;
@@ -21,10 +22,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -35,8 +36,9 @@ import org.springframework.test.context.DynamicPropertySource;
  * runtime datasource connects as the application role.
  */
 @SpringBootTest
-@DirtiesContext
-class ShareWiseApplicationPostgresIT {
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@org.junit.jupiter.api.Tag("e2e")
+class ShareWiseApplicationPostgresE2E {
 
     private static PostgresTestDatabase database;
 
@@ -59,14 +61,12 @@ class ShareWiseApplicationPostgresIT {
     }
 
     /**
-     * The test classpath contains H2-only probe entities of the P1.3b tests inside production packages.
-     * They have no PostgreSQL tables, so this context scans only production entity packages. There are
-     * none yet. When the first production entity is added, move these probe entities to a test-only package and scan
-     * {@code de.hsh.favs.sharewise} here, so new entities are validated automatically.
+     * The test classpath also contains purpose-built probe entities that must not be registered
+     * in the ordinary production context. Production mappings are selected explicitly.
      */
     @TestConfiguration(proxyBeanMethods = false)
-    @EntityScan(basePackages = "de.hsh.favs.sharewise.persistence.production.entities")
-    static class ProductionEntitiesOnly {
+    @Import(ProductionEntityScanConfiguration.class)
+    static class Fixtures {
 
         /**
          * Drops the test database when the context closes ({@code @DirtiesContext}), after the connection

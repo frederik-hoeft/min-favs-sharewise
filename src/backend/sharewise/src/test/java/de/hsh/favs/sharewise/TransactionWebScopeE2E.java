@@ -5,6 +5,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
+import java.util.Arrays;
+import java.util.stream.Stream;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -14,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.context.TestComponent;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 import org.springframework.test.web.servlet.MockMvc;
@@ -22,9 +32,24 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Verifies that the actual MVC request pipeline does not retain a JPA context across segments. */
-@SpringBootTest(classes = {ShareWiseApplication.class, TransactionWebScopeIntegrationTests.Fixtures.class})
+@SpringBootTest(classes = {ShareWiseApplication.class, TransactionWebScopeE2E.Fixtures.class,
+    ProductionEntityScanConfiguration.class})
 @AutoConfigureMockMvc
-class TransactionWebScopeIntegrationTests {
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@org.junit.jupiter.api.Tag("e2e")
+class TransactionWebScopeE2E {
+
+    private static PostgresTestDatabase database;
+
+    @DynamicPropertySource
+    static void usePostgres(DynamicPropertyRegistry registry) {
+        database = PostgresTestDatabase.createMigrated();
+        registry.add("spring.datasource.url", database::jdbcUrl);
+        registry.add("spring.datasource.username", () -> PostgresTestDatabase.APPLICATION_USER);
+        registry.add("spring.datasource.password", () -> PostgresTestDatabase.APPLICATION_PASSWORD);
+        registry.add("spring.flyway.enabled", () -> "false");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+    }
 
     @Autowired MockMvc mvc;
 
@@ -44,6 +69,7 @@ class TransactionWebScopeIntegrationTests {
 
     record Probe(Transactions transactions, JpaAccess jpa) { }
 
+    @TestComponent
     @RestController
     static final class SegmentProbeController {
         private final OperationDispatcher dispatcher;
@@ -78,6 +104,25 @@ class TransactionWebScopeIntegrationTests {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
+        @Bean(destroyMethod = "close")
+        PostgresTestDatabase database() {
+            return TransactionWebScopeE2E.database;
+        }
+
+        @Bean
+        static BeanFactoryPostProcessor closeDataSourceBeforeDroppingDatabase() {
+            return beanFactory -> {
+                if (!beanFactory.containsBeanDefinition("dataSource")) {
+                    return;
+                }
+                BeanDefinition dataSource = beanFactory.getBeanDefinition("dataSource");
+                String[] dependencies = dataSource.getDependsOn() == null ? new String[0]
+                    : dataSource.getDependsOn();
+                dataSource.setDependsOn(Stream.concat(Arrays.stream(dependencies), Stream.of("database"))
+                    .toArray(String[]::new));
+            };
+        }
+
         @Bean
         @Scope("operation")
         Probe transactionWebProbe(Transactions transactions, JpaAccess jpa) {

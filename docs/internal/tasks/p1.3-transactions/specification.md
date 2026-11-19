@@ -1,6 +1,6 @@
 # P1.3b - Application-owned transaction management
 
-**Status:** Accepted production contract; P1.3b implementation and architecture documentation are complete with Spring/H2 and deterministic transaction-manager evidence. PostgreSQL-specific acceptance remains tracked under P1.5. **Backlog item:** [P1.3b](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md#transaction-aware-ports), [DI operation-scope architecture](../../../architecture/dependency-injection.md), [implemented transaction architecture](../../../architecture/transactions.md), [persistence architecture](../../../stack/persistence.md#transactions-and-failure-behavior), and [messaging architecture](../../../stack/messaging.md) establish the surrounding system contracts.
+**Status:** Accepted production contract; P1.3b implementation and architecture documentation are complete with Spring/H2 and deterministic transaction-manager evidence. PostgreSQL-specific acceptance remains tracked under P1.5. **Backlog item:** [P1.3b](../backlog.md#phase-1---modular-application-and-persistence-foundation). The [application architecture](../../../architecture.md#transaction-aware-ports), [DI operation-scope architecture](../../../architecture/dependency-injection.md), [implemented transaction architecture](../../../architecture/transactions.md), [persistence architecture](../../../architecture/persistence.md#transaction-bound-persistence-access), and [messaging architecture](../../../stack/messaging.md) establish the surrounding system contracts.
 
 ## Goal, dependencies and scope
 
@@ -8,7 +8,7 @@ The transaction-management work fits among three related responsibilities:
 
 1. **Operation-scope DI foundation (implemented):** Reuse the implemented Spring [operation-scope contract](../../../architecture/dependency-injection.md), including inbound-agnostic dispatch, scoped constructor injection, lifetime isolation and deterministic cleanup. The [alternatives](../../../stack/dependency-injection-alternatives.md) explain the selected model. P1.3b builds on that reusable DI foundation without adding a second scope or changing its lifetime semantics.
 2. **Production transaction management:** Implement an operation-scoped, technology-independent `Transactions` port backed by Spring's programmatic physical transaction management. The application can execute zero or more sequential transaction segments within an operation scope, with result-driven finalization and guarded resource participation. This document specifies the production contract.
-3. **Integration-test execution and isolation (separate task):** The companion [P1.3c specification](../p1.3c-integration-tests/specification.md) defines test-facing operation-scope access, rollback-isolated single-segment tests, and real-commit workflow fixtures. Physical commit-dependent messaging is verified only by the real-commit mode.
+3. **Integration-test execution and isolation (separate task):** The companion [P1.3c specification](../p1.3c-integration-tests/specification.md) defines test-facing operation-scope access, rollback-isolated Integration tests, and disposable-database real-commit E2E fixtures. Physical commit-dependent messaging is verified only by the real-commit mode.
 
 The transaction capability serves application entry services invoked from REST, event consumers, scheduled jobs and other inbound adapters. It does not own their dispatch or DI lifetime. It does not implement Finance revision/locking protocols, IAM token rotation, a Modulith registry/inbox, an external broker, database schema migrations, generic retry policy or distributed transactions.
 
@@ -128,7 +128,7 @@ Spring's underlying imperative transaction resources are thread-associated. The 
 
 ## Acceptance criteria
 
-Tests use fake ports for business orchestration and Spring's transaction API for infrastructure behavior. **Physical database, connection, concurrency and Spring Modulith publication guarantees require real PostgreSQL integration tests**; H2 and mocked transaction managers cannot establish those invariants. Independent PostgreSQL bootstrap is not a reason to silently mark those tests as passed.
+Tests use fake ports for business orchestration and Spring's transaction API for infrastructure behavior. **Physical database, connection, concurrency and Spring Modulith publication guarantees require real PostgreSQL Integration and E2E tests**; H2 and mocked transaction managers cannot establish those invariants. Independent PostgreSQL bootstrap is not a reason to silently mark those tests as passed.
 
 | ID | Scenario and expected evidence |
 | --- | --- |

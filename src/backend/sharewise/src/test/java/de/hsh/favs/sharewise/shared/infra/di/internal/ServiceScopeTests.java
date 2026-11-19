@@ -24,10 +24,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.Scope;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.stereotype.Component;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.context.TestComponent;
 
-class ServiceScopeIntegrationTests {
+class ServiceScopeTests {
 
     @Test
     void springConstructsOneScopedGraphAndSharesContextSingletons() {
@@ -290,7 +290,7 @@ class ServiceScopeIntegrationTests {
         return context;
     }
 
-    @Component
+    @TestComponent
     @org.springframework.context.annotation.Scope("operation")
     static final class ConstructorConsumerA {
         final ScopedState state;
@@ -300,7 +300,7 @@ class ServiceScopeIntegrationTests {
         }
     }
 
-    @Component
+    @TestComponent
     @org.springframework.context.annotation.Scope("operation")
     static final class ConstructorConsumerB {
         final ScopedState state;
@@ -351,7 +351,7 @@ class ServiceScopeIntegrationTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     static class TestBeans {
         @Bean SingletonToken singletonToken() { return new SingletonToken(); }
         @Bean DestructionCount destructionCount() { return new DestructionCount(); }
