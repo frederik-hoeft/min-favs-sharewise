@@ -19,8 +19,13 @@ let available = 240;
 let required = 720;
 
 class ResizeObserverStub {
-  constructor(private readonly callback: () => void) { observers.push(callback); }
-  observe() { /* Measurements are triggered explicitly by the test. */ }
+  constructor(private readonly callback: () => void) {}
+  observe(target: Element) {
+    // Only trigger the breadcrumb measurements, not Floating UI's observers.
+    if (target.getAttribute("aria-label") === "Breadcrumb" || target.hasAttribute("aria-current")) {
+      observers.push(this.callback);
+    }
+  }
   disconnect() { /* No live resize sources. */ }
 }
 
@@ -76,6 +81,39 @@ describe("Responsive breadcrumb trail", () => {
       .toHaveAttribute("href", "/app/groups/a-long-middle-segment");
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("keeps an overlong current label to one line and reveals its full text on activation", async () => {
+    available = 230;
+    required = 870;
+    const longLabel = "Shared Expenses And Settlement Revision History";
+    let labelWidth = 85;
+
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("aria-current") === "page" ? labelWidth : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("aria-current") === "page" ? 380 : 0;
+    });
+
+    const user = userEvent.setup();
+    render(<MantineProvider env="test" theme={theme} cssVariablesResolver={cssVariablesResolver}>
+      <ResponsiveBreadcrumbs crumbs={[...path.slice(0, 3), { href: `${path[2].href}/history`, label: longLabel }]} />
+    </MantineProvider>);
+
+    const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent(longLabel);
+    const reveal = within(nav).getByRole("button", { name: `Show full location: ${longLabel}` });
+    await user.click(reveal);
+    expect(within(await screen.findByRole("dialog")).getByText(longLabel)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    // When the label fits again, the plain current crumb has no extra control.
+    labelWidth = 500;
+    act(() => observers.forEach((callback) => callback()));
+    expect(within(nav).queryByRole("button", { name: /show full location/i })).not.toBeInTheDocument();
+    expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent(longLabel);
   });
 
   it("keeps an ordinary two-segment trail visible without a disclosure", () => {

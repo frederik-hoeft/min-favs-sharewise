@@ -11,6 +11,13 @@
   max-width: 100%;
 }
 
+.breadcrumb {
+  min-width: 0;
+
+  &:last-child {
+    flex: 1 1 auto;
+  }
+}
 
 .link {
   flex: 0 0 auto;
@@ -21,14 +28,6 @@
   &:hover {
     color: var(--sw-accent);
   }
-}
-
-.current {
-  flex: 0 1 auto;
-  min-width: 0;
-  color: var(--sw-ink);
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .disclosure {

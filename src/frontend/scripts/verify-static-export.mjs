@@ -1,19 +1,18 @@
 /**
  * P2.0e acceptance probe: compile the existing routes as static files and
  * serve them without a Next.js runtime. The ordinary build configuration is
- * unchanged; this script selects an isolated output mode with an environment
- * variable and removes only its own generated artifacts.
+ * unchanged. Next.js uses .next/ for intermediate files even when distDir
+ * selects an export destination, so the probe builds in a disposable copy.
  */
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
-import { readFile, readdir, rm } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { cp, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-// With a custom distDir, Next.js writes the export directly into that directory.
-const output = join(root, ".next-export-probe");
+const excluded = new Set(["node_modules", ".next", ".next-export-probe", "out", "coverage", ".git"]);
 const routes = [
   { path: "/", text: "Keep the plans." },
   { path: "/app", text: "Your workspace." },
@@ -25,10 +24,10 @@ const routes = [
   { path: "/app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview", text: "Nested navigation" },
 ];
 
-function runBuild() {
+function runBuild(workspace) {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(process.execPath, [join(root, "node_modules/next/dist/bin/next"), "build"], {
-      cwd: root,
+    const child = spawn(process.execPath, [join(workspace, "node_modules/next/dist/bin/next"), "build"], {
+      cwd: workspace,
       env: { ...process.env, SHAREWISE_STATIC_EXPORT_PROBE: "1", NEXT_TELEMETRY_DISABLED: "1" },
       stdio: "inherit",
     });
@@ -37,11 +36,19 @@ function runBuild() {
   });
 }
 
-async function firstAsset(path, extension) {
+function runCopy(source, destination) {
+  return new Promise((resolveCopy, reject) => {
+    const child = spawn("cp", ["-a", source, destination], { stdio: "inherit" });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolveCopy() : reject(new Error(`Dependency copy exited with ${code}`)));
+  });
+}
+
+async function firstAsset(output, path, extension) {
   for (const entry of await readdir(path, { withFileTypes: true })) {
     const item = join(path, entry.name);
     if (entry.isDirectory()) {
-      const found = await firstAsset(item, extension);
+      const found = await firstAsset(output, item, extension);
       if (found) return found;
     } else if (entry.name.endsWith(extension)) {
       return `/${relative(output, item).split("\\").join("/")}`;
@@ -50,7 +57,7 @@ async function firstAsset(path, extension) {
   return null;
 }
 
-function serveStaticFiles() {
+function serveStaticFiles(output) {
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
@@ -74,14 +81,29 @@ function serveStaticFiles() {
 }
 
 async function main() {
-  // Never remove pre-existing artifacts belonging to another build.
-  if (existsSync(output)) {
-    throw new Error("Move the existing .next-export-probe/ before running the disposable export probe");
-  }
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "sharewise-static-export-"));
+  const workspace = join(temporaryRoot, "frontend");
+  const output = join(workspace, ".next-export-probe");
 
   try {
-    await runBuild();
-    const server = serveStaticFiles();
+    // Copy source without generated outputs, then copy installed dependencies.
+    // A physical dependency copy is necessary: Turbopack does not consistently
+    // resolve Next.js through a node_modules symlink outside the build root.
+    await cp(root, workspace, {
+      recursive: true,
+      filter: (source) => {
+        const path = relative(root, source);
+        const first = path.split(sep)[0];
+        return !excluded.has(first) && !path.endsWith(".tsbuildinfo");
+      },
+    });
+    // The CI runner and offline tooling target Linux. Its cp implementation
+    // preserves relative npm symlinks and copies large dependency trees much
+    // faster than issuing a Node filesystem operation for every package file.
+    await runCopy(join(root, "node_modules"), join(workspace, "node_modules"));
+
+    await runBuild(workspace);
+    const server = serveStaticFiles(output);
     await new Promise((done) => server.listen(0, "127.0.0.1", done));
     try {
       const address = server.address();
@@ -96,7 +118,7 @@ async function main() {
         console.log(`Static page OK: ${route.path}`);
       }
       for (const extension of [".css", ".js"]) {
-        const path = await firstAsset(join(output, "_next/static"), extension);
+        const path = await firstAsset(output, join(output, "_next/static"), extension);
         if (!path) throw new Error(`Missing exported ${extension} asset`);
         const response = await fetch(`${base}${path}`);
         if (!response.ok || !(await response.arrayBuffer()).byteLength) {
@@ -108,7 +130,7 @@ async function main() {
       await new Promise((done, reject) => server.close((error) => error ? reject(error) : done()));
     }
   } finally {
-    await rm(output, { recursive: true, force: true });
+    await rm(temporaryRoot, { recursive: true, force: true });
   }
 }
 

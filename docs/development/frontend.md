@@ -24,7 +24,7 @@ npm run build
 npm run test:static-export
 ```
 
-The tests are a distinct Vitest/TypeScript project at `tests/`; the production TypeScript project excludes them. Both projects use the frontend root's npm dependencies, with no second lockfile. CI runs the same checks. `.npmrc` enforces the approved npm installation-script policy. The ordinary Next.js build produces standalone-server output. A separate `npm run test:static-export` probe compiles the same routes with static output, serves the resulting HTML and assets from a file-only HTTP server, and removes the generated `.next-export-probe/` directory. The probe omits the development-only `/api/*` rewrite without changing the normal build. It refuses to overwrite a pre-existing probe directory; a production export and Nginx delivery remain separate deployment work.
+The tests are a distinct Vitest/TypeScript project at `tests/`; the production TypeScript project excludes them. Both projects use the frontend root's npm dependencies, with no second lockfile. CI runs the same checks. `.npmrc` enforces the approved npm installation-script policy. The ordinary Next.js build produces standalone-server output. A separate `npm run test:static-export` probe creates a disposable frontend workspace using the installed dependencies, compiles the same routes with static output, serves the resulting HTML and assets from a file-only HTTP server, then removes that workspace. The probe omits the development-only `/api/*` rewrite. Its isolated build never replaces the normal `.next/` standalone output; production export and Nginx delivery remain separate deployment work.
 
 ## Implementation boundaries
 

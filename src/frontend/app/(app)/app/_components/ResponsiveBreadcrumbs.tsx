@@ -4,6 +4,7 @@ import { Anchor, Breadcrumbs, Menu, Text, UnstyledButton } from "@mantine/core";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { AppBreadcrumb } from "./app-routes";
+import { CurrentBreadcrumb } from "./CurrentBreadcrumb";
 import styles from "./ResponsiveBreadcrumbs.module.scss";
 
 type Props = { crumbs: AppBreadcrumb[] };
@@ -43,7 +44,7 @@ export function ResponsiveBreadcrumbs({ crumbs }: Props) {
 
   return (
     <nav className={styles.navigation} aria-label="Breadcrumb" ref={availableRef}>
-      <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.row }}>
+      <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.row, breadcrumb: styles.breadcrumb }}>
         {entries.map((crumb, index) => {
           if (crumb === null) {
             return (
@@ -65,9 +66,7 @@ export function ResponsiveBreadcrumbs({ crumbs }: Props) {
           }
 
           return index === entries.length - 1 ? (
-            <Text span size="sm" key={crumb.href} aria-current="page" className={styles.current} title={crumb.label}>
-              {crumb.label}
-            </Text>
+            <CurrentBreadcrumb key={crumb.href} label={crumb.label} />
           ) : (
             <Anchor component={Link} size="sm" key={crumb.href} href={crumb.href} className={styles.link}>
               {crumb.label}

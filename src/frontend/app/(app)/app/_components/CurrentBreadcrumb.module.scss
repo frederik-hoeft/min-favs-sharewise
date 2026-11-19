@@ -1,0 +1,35 @@
+.trigger {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  color: var(--sw-ink);
+
+  cursor: pointer;
+
+  &:hover {
+    color: var(--sw-accent);
+  }
+
+  &:focus-visible {
+    outline: 0.1875rem solid var(--sw-accent);
+    outline-offset: 0.125rem;
+    border-radius: var(--mantine-radius-sm);
+  }
+}
+
+.label {
+  display: block;
+  min-width: 0;
+  // Mantine Text.truncate supplies the single-line ellipsis for this label only.
+  line-height: 1.5;
+  padding-block: 0.125rem; // Keep descenders clear of the clipping boundary.
+}
+
+.dropdown {
+  max-width: min(24rem, calc(100vw - 2rem));
+}
+
+.fullLabel {
+  overflow-wrap: anywhere;
+}
