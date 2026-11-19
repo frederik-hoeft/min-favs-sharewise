@@ -48,6 +48,7 @@ src/frontend/coverage
 
 # next.js
 src/frontend/.next/
+src/frontend/.next-export-probe/
 src/frontend/out/
 
 # production

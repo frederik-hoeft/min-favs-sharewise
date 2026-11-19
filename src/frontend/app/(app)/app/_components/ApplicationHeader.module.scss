@@ -14,35 +14,6 @@
   flex-shrink: 0;
 }
 
-.breadcrumbs {
-  min-width: 0;
-  flex: 1;
-  font-size: var(--mantine-font-size-sm);
-  color: var(--sw-muted);
-}
-
-.crumbsRow {
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-
-.crumbLink {
-  color: var(--sw-muted);
-  text-decoration: none;
-  white-space: nowrap;
-
-  &:hover {
-    color: var(--sw-accent);
-  }
-}
-
-.currentCrumb {
-  display: block;
-  color: var(--sw-ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .account {
   margin-left: auto;
 }

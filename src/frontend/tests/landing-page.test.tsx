@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import Home from "@/app/(public)/page";
 import PublicLayout from "@/app/(public)/layout";
 import { Providers } from "@/app/providers";
@@ -62,6 +62,44 @@ describe("ShareWise landing page", () => {
         expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", scheme);
       }
       view.unmount();
+    }
+  });
+
+  it("falls back gracefully from an invalid saved appearance preference", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("mantine-color-scheme-value", "invalid-scheme");
+    const view = renderHome();
+    try {
+      expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Choose appearance" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Dark theme" }));
+      expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", "dark");
+      expect(window.localStorage.getItem("mantine-color-scheme-value")).toBe("dark");
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("keeps appearance controls usable when browser storage is denied", async () => {
+    const user = userEvent.setup();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new DOMException("Denied", "SecurityError"); });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Denied", "SecurityError"); });
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let view: ReturnType<typeof renderHome> | undefined;
+    try {
+      view = renderHome();
+      expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Choose appearance" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Dark theme" }));
+      expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", "dark");
+      expect(get).toHaveBeenCalled();
+      expect(set).toHaveBeenCalled();
+      expect(warning).toHaveBeenCalled();
+    } finally {
+      view?.unmount();
+      get.mockRestore();
+      set.mockRestore();
+      warning.mockRestore();
     }
   });
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { Anchor, Breadcrumbs, Burger, Text } from "@mantine/core";
-import Link from "next/link";
+import { Burger } from "@mantine/core";
 import { usePathname } from "next/navigation";
 import { AccountMenu } from "./AccountMenu";
 import { appBreadcrumbs } from "./app-routes";
 import styles from "./ApplicationHeader.module.scss";
+import { ResponsiveBreadcrumbs } from "./ResponsiveBreadcrumbs";
 
 export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolean; toggleNavigation: () => void }) {
   const pathname = usePathname();
@@ -23,15 +23,7 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
         aria-controls="mobile-app-navigation"
         title={opened ? "Close navigation" : "Open navigation"}
       />
-      <nav className={styles.breadcrumbs} aria-label="Breadcrumb">
-        <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.crumbsRow }}>
-          {crumbs.map(({ href, label }, index) => index === crumbs.length - 1 ? (
-            <Text span size="sm" key={href} aria-current="page" className={styles.currentCrumb}>{label}</Text>
-          ) : (
-            <Anchor component={Link} size="sm" key={href} href={href} className={styles.crumbLink}>{label}</Anchor>
-          ))}
-        </Breadcrumbs>
-      </nav>
+      <ResponsiveBreadcrumbs key={pathname} crumbs={crumbs} />
       <div className={styles.account}>
         <AccountMenu />
       </div>

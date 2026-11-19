@@ -48,6 +48,19 @@ describe("Application route shell", () => {
     expect(screen.getByRole("link", { name: "ShareWise workspace" })).toHaveAttribute("href", "/app");
   });
 
+  it("keeps deep routes navigable through collapsed breadcrumbs", async () => {
+    pathname = "/app/groups/a-very-long-group-name-with-several-words/expenses";
+    const user = userEvent.setup();
+    renderApp();
+
+    const breadcrumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(breadcrumbs).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/app");
+    expect(breadcrumbs.querySelector('[aria-current="page"]')).toHaveTextContent("Expenses");
+    const disclosure = within(breadcrumbs).getByRole("button", { name: "Show 2 omitted breadcrumb locations" });
+    await user.click(disclosure);
+    expect(await screen.findByRole("menuitem", { name: "Groups" })).toHaveAttribute("href", "/app/groups");
+  });
+
   it("uses a Mantine hamburger to open and close the accessible mobile flyout", async () => {
     const user = userEvent.setup();
     renderApp();

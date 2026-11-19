@@ -49,6 +49,7 @@ build-frontend:
     - npm run test
     - npm run test:typecheck
     - npm run build
+    - npm run test:static-export
 
 # Runs without downloading language SDKs or project dependencies. The Debian
 # Python image provides Bash, tar and checksum utilities; xz supports the

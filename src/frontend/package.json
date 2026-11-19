@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run --config tests/vitest.config.mts",
     "test:typecheck": "tsc --project tests/tsconfig.json --noEmit",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:static-export": "node scripts/verify-static-export.mjs"
   },
   "dependencies": {
     "@mantine/core": "9.8.0",
