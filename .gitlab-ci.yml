@@ -6,19 +6,21 @@ stages:
   - test-backend-integration
   - test-backend-e2e
 
-# Prefer merge request pipelines over duplicate push pipelines for the same branch.
-# Preserve tag, default-branch, scheduled, manually started and API pipelines.
+# Prefer MR pipelines over duplicate push pipelines for unprotected branches.
+# Keep protected-ref pipelines (including protected pushes with an open MR),
+# as well as tag, scheduled, manually started and API pipelines.
 workflow:
   auto_cancel:
     on_new_commit: interruptible
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
-      when: never
-    # Do not cancel default/protected branch acceptance when newer commits arrive.
+    # Protected refs keep their push pipelines and cannot be auto-canceled.
+    # This rule must precede both the MR and duplicate-push rules.
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       auto_cancel:
         on_new_commit: none
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
     - when: always
 
 .backend-maven:
@@ -190,6 +192,8 @@ test-offline-handoff:
 # Keep the security analyzers alongside the other checks after a successful build.
 sast:
   stage: test
+  # Template analyzer jobs extend sast and must not download backend build artifacts.
+  dependencies: []
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml

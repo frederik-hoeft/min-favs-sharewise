@@ -91,6 +91,8 @@ class TestSelectionConventionsTests {
         assertTrue(ciJob(pipeline, ".frontend-npm").contains("  dependencies: []"));
         assertTrue(ciJob(pipeline, "test-offline-handoff").contains("  dependencies: []"));
         assertTrue(ciJob(pipeline, "secret_detection").contains("  dependencies: []"));
+        assertTrue(ciJob(pipeline, "sast").contains("  dependencies: []"),
+            "All SAST analyzers inherit artifact isolation from the template's sast parent");
         assertTrue(ciJob(pipeline, "test-frontend-lint").contains("npm run lint"));
         assertTrue(ciJob(pipeline, "test-frontend-typecheck").contains("npm run typecheck"));
         assertTrue(ciJob(pipeline, "test-frontend-test-typecheck").contains("npm run test:typecheck"));
@@ -101,6 +103,24 @@ class TestSelectionConventionsTests {
         assertTrue(ciJob(pipeline, "build-frontend").contains("policy: pull-push"));
         assertTrue(pipeline.contains("src/frontend/.npm/"));
         assertTrue(!pipeline.contains("src/frontend/node_modules/"));
+    }
+
+    @Test
+    void ciWorkflowPreservesProtectedRefPipelinesAndCancellationPolicy() throws IOException {
+        String pipeline = Files.readString(Path.of("../../../.gitlab-ci.yml"));
+        String workflow = pipeline.split("workflow:\n", 2)[1].split("\n\n", 2)[0];
+        int protectedRefRule = workflow.indexOf("- if: '$CI_COMMIT_REF_PROTECTED == \"true\"'");
+        int mergeRequestRule = workflow.indexOf("- if: '$CI_PIPELINE_SOURCE == \"merge_request_event\"'");
+        int duplicatePushRule = workflow.indexOf(
+            "- if: '$CI_PIPELINE_SOURCE == \"push\" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'");
+
+        assertTrue(protectedRefRule >= 0, "Missing protected-ref exception");
+        assertTrue(mergeRequestRule > protectedRefRule,
+            "Protected MR pipelines must keep their cancellation override");
+        assertTrue(duplicatePushRule > protectedRefRule,
+            "Protected branch pushes must not be suppressed when an MR is open");
+        assertTrue(workflow.substring(protectedRefRule, mergeRequestRule).contains("on_new_commit: none"),
+            "Protected refs must not be automatically canceled");
     }
 
     private static String ciJob(String pipeline, String name) {
