@@ -8,8 +8,8 @@ import java.lang.annotation.Target;
 import org.junit.jupiter.api.Tag;
 
 /**
- * Marks a lightweight Spring component or MockMvc web-slice test that runs offline without
- * requiring a live PostgreSQL instance.
+ * Marks an offline Spring component or MockMvc web-slice test within the Unit suite.
+ * The component tag describes the test technique, not a fourth executable test tier.
  */
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)

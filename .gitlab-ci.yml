@@ -1,41 +1,66 @@
-# You can override the included template(s) by including variable overrides
-# SAST customization: https://docs.gitlab.com/user/application_security/sast/#available-cicd-variables
-# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure/
-# Dependency Scanning customization: https://docs.gitlab.com/user/application_security/dependency_scanning/dependency_scanning_sbom/#customizing-analyzer-behavior
-# Container Scanning customization: https://docs.gitlab.com/user/application_security/container_scanning/#customizing-analyzer-behavior
-# Note that environment variables can be set in several places
-# See https://docs.gitlab.com/ci/variables/#cicd-variable-precedence
+# Backend tests are three independent gates. No job needs Docker-in-Docker or a Docker socket.
 stages:
-- build
-- test
-- secret-detection
+  - build
+  - test
+  - secret-detection
 
-build-backend:
-  stage: build
+.backend-maven:
   image: eclipse-temurin:25-jdk
-  # PostgreSQL integration tests (*IT) run against this service; the GWDG runner offers no Docker-in-Docker.
+  cache:
+    key: backend-maven
+    paths:
+      - .m2/repository/
+  before_script:
+    - export MAVEN_OPTS="-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+    - cd src/backend/sharewise
+    - chmod +x mvnw
+
+.postgres-tests:
+  extends: .backend-maven
   services:
-    - name: postgres:18
+    - name: postgres:18-trixie
       alias: postgres
   variables:
-    POSTGRES_DB: sharewise
+    POSTGRES_DB: postgres
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres_dev
     SHAREWISE_TEST_DB_URL: jdbc:postgresql://postgres:5432/postgres
     SHAREWISE_TEST_DB_ADMIN_USER: postgres
     SHAREWISE_TEST_DB_ADMIN_PASSWORD: postgres_dev
-  script:
+  before_script:
+    - export MAVEN_OPTS="-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
     - cd src/backend/sharewise
     - chmod +x mvnw
-    - ./mvnw clean verify
+    # Wait for the runner-provided TCP service without installing a Docker client.
+    - |
+      for attempt in $(seq 1 60); do
+        if (echo > /dev/tcp/postgres/5432) 2>/dev/null; then
+          break
+        fi
+        if [ "$attempt" -eq 60 ]; then
+          echo "PostgreSQL service unavailable after 60 readiness attempts" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+
+.backend-test-reports:
   artifacts:
     when: always
-    paths:
-      - src/backend/sharewise/target/*.jar
     reports:
       junit:
         - src/backend/sharewise/target/surefire-reports/TEST-*.xml
         - src/backend/sharewise/target/failsafe-reports/TEST-*.xml
+    expire_in: 1 day
+
+build-backend:
+  extends: .backend-maven
+  stage: build
+  script:
+    - ./mvnw -B -ntp -Punit-tests -DskipUnitTests=true clean package
+  artifacts:
+    paths:
+      - src/backend/sharewise/target/*.jar
     expire_in: 1 hour
 
 build-frontend:
@@ -51,16 +76,32 @@ build-frontend:
     - npm run build
     - npm run test:static-export
 
-# Runs without downloading language SDKs or project dependencies. The Debian
-# Python image provides Bash, tar and checksum utilities; xz supports the
-# mock Node.js archive used by the integration harness.
+test-backend-unit:
+  extends: [.backend-maven, .backend-test-reports]
+  stage: test
+  script:
+    - ./mvnw -B -ntp -Punit-tests clean verify
+
+test-backend-integration:
+  extends: [.postgres-tests, .backend-test-reports]
+  stage: test
+  script:
+    - ./mvnw -B -ntp -Pintegration-tests clean verify
+
+test-backend-e2e:
+  extends: [.postgres-tests, .backend-test-reports]
+  stage: test
+  script:
+    - ./mvnw -B -ntp -Pe2e-tests clean verify
+
+# Validates the offline handoff without a language SDK or project dependency downloads.
 test-offline-handoff:
   stage: test
   image: python:3.12-trixie
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends xz-utils
   script:
-    - scripts/test-offline-handoff.sh
+    - bash scripts/test-offline-handoff.sh
 
 sast:
   stage: test

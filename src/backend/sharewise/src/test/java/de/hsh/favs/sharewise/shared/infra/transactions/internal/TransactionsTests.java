@@ -15,6 +15,8 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionSegmentAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
+import de.hsh.favs.sharewise.testsupport.configuration.InfrastructureTestComponents;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.Callable;
@@ -27,9 +29,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.TransactionDefinition;
@@ -38,13 +40,14 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** Exercises the real DI scope and Spring TransactionTemplate against an instrumented physical manager. */
-@SpringJUnitConfig(TransactionsIntegrationTests.Fixtures.class)
-class TransactionsIntegrationTests {
+/** Offline contract tests with a fake physical manager and real in-process Spring DI. */
+@SpringJUnitConfig({InfrastructureTestComponents.class, TransactionsTests.Fixtures.class})
+class TransactionsTests {
 
     @Autowired OperationDispatcher dispatcher;
     @Autowired ServiceScopeFactory scopes;
     @Autowired RecordingTransactionManager physical;
+    @Autowired ApplicationContext context;
 
     @BeforeEach
     void reset() {
@@ -60,6 +63,8 @@ class TransactionsIntegrationTests {
 
     @Test
     void dependencyInjectionSharesOneManagerWithoutStartingATransaction() {
+        // Only explicitly imported rollback-mode contexts may see the test substitute.
+        assertEquals(0, context.getBeanNamesForType(RollbackTransactions.class).length);
         Transactions first = dispatcher.dispatch(EntryService.class, entry -> {
             assertSame(entry.transactions(), entry.participant().transactions());
             assertEquals(0, physical.begins.get());
@@ -598,11 +603,7 @@ class TransactionsIntegrationTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = {
-        "de.hsh.favs.sharewise.shared.infra.di.internal",
-        "de.hsh.favs.sharewise.shared.infra.transactions.internal"
-    })
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean RecordingTransactionManager transactionManager() { return new RecordingTransactionManager(); }
 

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
 
 class MultipleApplicationContextIsolationTests {
@@ -80,7 +80,7 @@ class MultipleApplicationContextIsolationTests {
     record ContextMarker(String name) { }
     static final class ContextState { }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     static class SharedBeans {
         @Bean @Scope("operation")
         ContextState contextState() { return new ContextState(); }
@@ -90,12 +90,12 @@ class MultipleApplicationContextIsolationTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     static class FirstContext {
         @Bean ContextMarker contextMarker() { return new ContextMarker("first"); }
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     static class SecondContext {
         @Bean ContextMarker contextMarker() { return new ContextMarker("second"); }
     }

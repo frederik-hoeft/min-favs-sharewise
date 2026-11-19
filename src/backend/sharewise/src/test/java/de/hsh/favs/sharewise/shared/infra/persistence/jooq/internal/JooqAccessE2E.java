@@ -9,45 +9,36 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import javax.sql.DataSource;
 import org.jooq.DSLContext;
 import org.jooq.Query;
 import org.jooq.Record;
 import org.jooq.ResultQuery;
-import org.jooq.SQLDialect;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
-import org.springframework.transaction.PlatformTransactionManager;
 
-/**
- * Component-level SQL tests against H2. Real PostgreSQL integration is a
- * separate acceptance gate; H2 cannot establish its isolation semantics.
- */
-@SpringJUnitConfig(JooqAccessIntegrationTests.Fixtures.class)
-class JooqAccessIntegrationTests {
+/** Real-commit jOOQ and transaction lease coverage against an independently migrated database. */
+@org.junit.jupiter.api.Tag("e2e")
+class JooqAccessE2E extends E2ETestBase {
 
-    @Autowired OperationDispatcher dispatcher;
-    @Autowired JdbcTemplate jdbc;
+    OperationDispatcher dispatcher;
+    JdbcTemplate jdbc;
 
     @BeforeEach
     void resetTable() {
-        jdbc.execute("create table if not exists tx_access_probe (id integer primary key)");
-        jdbc.update("delete from tx_access_probe");
+        startWithSchema("create table groups.tx_access_probe (id integer primary key)",
+            ProductionEntityScanConfiguration.class, Fixtures.class);
+        dispatcher = context().getBean(OperationDispatcher.class);
+        jdbc = context().getBean(JdbcTemplate.class);
     }
 
     @Test
@@ -57,17 +48,17 @@ class JooqAccessIntegrationTests {
                 () -> probe.jooq().dsl().fetchOne("select 1"));
 
             probe.transactions().execute(() -> {
-                int rows = probe.jooq().dsl().execute("insert into tx_access_probe (id) values (1)");
+                int rows = probe.jooq().dsl().execute("insert into groups.tx_access_probe (id) values (1)");
                 assertEquals(1, rows);
                 return TransactionOutcome.commit(null);
             });
             probe.transactions().execute(() -> {
-                probe.jooq().dsl().execute("insert into tx_access_probe (id) values (2)");
+                probe.jooq().dsl().execute("insert into groups.tx_access_probe (id) values (2)");
                 return TransactionOutcome.rollback(null);
             });
             return null;
         });
-        assertEquals(Integer.valueOf(1), jdbc.queryForObject("select count(*) from tx_access_probe", Integer.class));
+        assertEquals(Integer.valueOf(1), jdbc.queryForObject("select count(*) from groups.tx_access_probe", Integer.class));
     }
 
     @Test
@@ -78,8 +69,8 @@ class JooqAccessIntegrationTests {
             AtomicReference<Query> escapedWrite = new AtomicReference<>();
             probe.transactions().execute(() -> {
                 escapedDsl.set(probe.jooq().dsl());
-                escapedRead.set(probe.jooq().dsl().resultQuery("select id from tx_access_probe"));
-                escapedWrite.set(probe.jooq().dsl().query("insert into tx_access_probe (id) values (99)"));
+                escapedRead.set(probe.jooq().dsl().resultQuery("select id from groups.tx_access_probe"));
+                escapedWrite.set(probe.jooq().dsl().query("insert into groups.tx_access_probe (id) values (99)"));
                 assertEquals(0, escapedRead.get().fetch().size());
                 return TransactionOutcome.commit(null);
             });
@@ -97,7 +88,7 @@ class JooqAccessIntegrationTests {
             });
             return null;
         });
-        assertEquals(Integer.valueOf(0), jdbc.queryForObject("select count(*) from tx_access_probe", Integer.class));
+        assertEquals(Integer.valueOf(0), jdbc.queryForObject("select count(*) from groups.tx_access_probe", Integer.class));
     }
 
     private static void assertRejectedBySegmentLease(Executable executable) {
@@ -130,7 +121,7 @@ class JooqAccessIntegrationTests {
             return null;
         });
         assertEquals(Integer.valueOf(0), jdbc.queryForObject(
-            "select count(*) from tx_access_probe", Integer.class));
+            "select count(*) from groups.tx_access_probe", Integer.class));
     }
 
     private static void assertJooqTransactionEntryRejected(DSLContext db) {
@@ -170,35 +161,8 @@ class JooqAccessIntegrationTests {
 
     record Probe(Transactions transactions, JooqAccess jooq) { }
 
-    @Configuration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = {
-        "de.hsh.favs.sharewise.shared.infra.di.internal",
-        "de.hsh.favs.sharewise.shared.infra.transactions.internal",
-        "de.hsh.favs.sharewise.shared.infra.persistence.jooq.internal"
-    })
+    @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
-        @Bean
-        DataSource dataSource() {
-            return new DriverManagerDataSource(
-                "jdbc:h2:mem:jooq_access_p13c;DB_CLOSE_DELAY=-1", "sa", "");
-        }
-
-        @Bean
-        PlatformTransactionManager transactionManager(DataSource dataSource) {
-            return new DataSourceTransactionManager(dataSource);
-        }
-
-        @Bean
-        DSLContext dslContext(DataSource dataSource) {
-            // Mirror Spring Boot's jOOQ transaction-aware connection provider.
-            return DSL.using(new TransactionAwareDataSourceProxy(dataSource), SQLDialect.H2);
-        }
-
-        @Bean
-        JdbcTemplate jdbcTemplate(DataSource dataSource) {
-            return new JdbcTemplate(dataSource);
-        }
-
         @Bean @Scope("operation")
         Probe probe(Transactions transactions, JooqAccess jooq) {
             return new Probe(transactions, jooq);

@@ -1,4 +1,4 @@
-﻿# Application transaction management
+# Application transaction management
 
 ShareWise separates an **application operation** from the database transactions it performs. An operation owns one [dependency-injection scope](dependency-injection.md) and may execute zero or more **sequential transaction segments** within its lifetime. The scope outlives any segment it contains, so its services remain available while each database transaction independently commits or rolls back.
 
@@ -125,3 +125,5 @@ Transactions guarantee **local database atomicity** subject to the backing datab
 Durable event-publication intent must participate in the same database transaction as the business change when atomic publication is required. An external action performed after commit is not part of that transaction.
 
 Participating JDBC, jOOQ and JPA adapters must use compatible Spring transaction infrastructure. The guards apply to ShareWise's persistence accessors, not arbitrary direct use of Spring transaction APIs or unguarded connections; application services must not bypass the supported access path. Database-specific isolation, locking, constraint and commit-failure semantics depend on the configured database engine; the abstraction does not supply guarantees that the physical infrastructure does not provide.
+
+The rollback-only Integration test mode records application transaction decisions without physical finalization. See [Backend test architecture](tests.md) for that testing boundary; production transaction semantics above are unchanged.
