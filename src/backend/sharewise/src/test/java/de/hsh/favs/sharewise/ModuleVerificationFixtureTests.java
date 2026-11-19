@@ -58,6 +58,17 @@ class ModuleVerificationFixtureTests {
     }
 
     @Test
+    void groupConsumerMayUsePublishedIamApiButNotIamImplementation() {
+        // The Group fixture declares an IAM dependency and references both its
+        // published API and an internal implementation. Only the latter violates the boundary.
+        Violations violations = fixture("identityboundary").detectViolations();
+
+        assertSingleViolation(violations,
+                FIXTURES + ".identityboundary.groups.GroupConsumer",
+                FIXTURES + ".identityboundary.identity.internal.IdentityImplementation");
+    }
+
+    @Test
     void accessToAnUnpublishedPackageOfADeclaredModuleIsRejected() {
         Violations violations = fixture("unpublishedinterface").detectViolations();
 
