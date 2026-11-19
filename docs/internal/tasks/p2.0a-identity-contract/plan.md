@@ -4,14 +4,14 @@
 
 ## Baseline and prerequisites
 
-- Start from the approved backlog baseline containing the P2.0a/P2.1 restructuring, not from the unmerged P1.2 diff. Keep this task on its own feature branch and return patches for review.
+- Start from the supplied approved baseline containing the P2.0a/P2.1 restructuring and merged P1.2 foundation. Do not apply the separate P1.2 WIP diff; keep this task on its own feature branch and return patches for review.
 - Confirm the existing P1.1 closed-module verification and P1.3a `OperationDispatcher`/Spring `operation` scope behavior. Reuse these; do not introduce another resolver, an HTTP request scope, or a new dispatcher overload.
 - Implement only the [P2.0a requirements](specification.md#requirements-and-invariants). Group business persistence, event integration and JWT/claims logic are owned by later tasks.
 - Before implementation, verify the supplied offline JDK/Maven/cache against the source revision. If the handoff is incompatible, report the exact dependency limitation and run all feasible static/document checks; do not adjust dependency versions to hide the issue.
 
 ## Phase A - Published identity contract and module boundary
 
-- [ ] Create the `identity` module top-level API with `CurrentIdentity` and the domain-neutral unauthenticated failure contract (ID-01, ID-02). Choose minimal public names/Javadoc; Java implementation and tests use explicit local variable types, not `var`.
+- [ ] Create the `identity` module top-level API with `IdentityContext` (`Optional<UUID> userId()` plus default `requireUserId()` and `isAuthenticated()`) and the domain-neutral unauthenticated failure contract (ID-01, ID-02). Choose minimal public names/Javadoc; Java implementation and tests use explicit local variable types, not `var`.
 - [ ] Declare `identity` as a closed module with an explicit `allowedDependencies` whitelist. Keep it free of `shared` implementation or Spring Security dependencies; avoid invented Group or IAM business APIs (ID-06, ID-09).
 - [ ] Add positive architectural verification for the actual module and a test fixture for a consumer using the published contract. Reuse P1.1 verification infrastructure rather than hand-rolling a parallel checker (ID-T06).
 
@@ -19,9 +19,9 @@
 
 ## Phase B - Operation-scoped test identity
 
-- [ ] Add an explicitly imported **test-only** Spring configuration defining an operation-scoped `CurrentIdentity` implementation. The deterministic identity input can use a test-only lexical binding around dispatch or another verified isolated fixture seam; no global mutable user and no production scope/dispatcher change (ID-03–ID-05).
-- [ ] Exercise a test-only Group-like consumer service with constructor injection through the existing `OperationDispatcher` and local fake membership policy. It consumes `requireUserId()` but no token, HTTP or claims dependencies (ID-07, ID-T01, ID-T02, ID-T09).
-- [ ] Test unauthenticated failure, separate sequential/concurrent principals and cleanup after failures, including a second dispatch after failed resolution (ID-T03–ID-T05).
+- [ ] Add an explicitly imported **test-only** Spring configuration defining an operation-scoped `IdentityContext` implementation. The deterministic identity input can use a test-only lexical binding around dispatch or another verified isolated fixture seam; no global mutable user and no production scope/dispatcher change (ID-03–ID-05).
+- [ ] Exercise a test-only Group-like consumer service with constructor injection through the existing `OperationDispatcher` and local fake membership policy. It consumes `requireUserId()` but no token, HTTP or claims dependencies (ID-07, ID-T01, ID-T02, ID-T09). Verify that all three context accessors agree for an authenticated fixture.
+- [ ] Test the unauthenticated triad (`userId()` empty, `isAuthenticated()` false, `requireUserId()` throwing), separate sequential/concurrent principals and cleanup after failures, including a second dispatch after failed resolution (ID-T03–ID-T05). Confirm provider faults do not silently become `Optional.empty()`.
 
 **Gate B:** Focused Spring integration tests pass using the actual operation-scope machinery; human reviews fixture isolation and confirms that no test identity leaks into main source or production wiring. No IAM persistence or Group database is required.
 
