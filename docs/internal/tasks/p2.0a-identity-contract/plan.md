@@ -1,6 +1,6 @@
 # P2.0a - Minimal published identity and module contracts: implementation plan
 
-**Status:** Proposed plan, pending human approval of the [specification](specification.md) and the implementation sequence. **No implementation phase has begun.** Follow the [AI development workflow](../../../development/ai-development-workflow.md): approve specification and plan before implementing; review each coherent patch before advancing.
+**Status:** Phases A–C implemented and approved in successive reviews; Phase D documentation changes are prepared for a separate human review. Follow the [AI development workflow](../../../development/ai-development-workflow.md) for final task acceptance and merge.
 
 ## Baseline and prerequisites
 
@@ -11,36 +11,42 @@
 
 ## Phase A - Published identity contract and module boundary
 
-- [ ] Create the `identity` module top-level API with `IdentityContext` (`Optional<UUID> userId()` plus default `requireUserId()` and `isAuthenticated()`) and the domain-neutral unauthenticated failure contract (ID-01, ID-02). Choose minimal public names/Javadoc; Java implementation and tests use explicit local variable types, not `var`.
-- [ ] Declare `identity` as a closed module with an explicit `allowedDependencies` whitelist. Keep it free of `shared` implementation or Spring Security dependencies; avoid invented Group or IAM business APIs (ID-06, ID-09).
-- [ ] Add positive architectural verification for the actual module and a test fixture for a consumer using the published contract. Reuse P1.1 verification infrastructure rather than hand-rolling a parallel checker (ID-T06).
+- [x] Create the `identity` module top-level API with `IdentityContext` (`Optional<UUID> userId()` plus default `requireUserId()` and `isAuthenticated()`) and the domain-neutral unauthenticated failure contract (ID-01, ID-02). Choose minimal public names/Javadoc; Java implementation and tests use explicit local variable types, not `var`.
+- [x] Declare `identity` as a closed module with an explicit `allowedDependencies` whitelist. Keep it free of `shared` implementation or Spring Security dependencies; avoid invented Group or IAM business APIs (ID-06, ID-09).
+- [x] Add positive architectural verification for the actual module and a test fixture for a consumer using the published contract. Reuse P1.1 verification infrastructure rather than hand-rolling a parallel checker (ID-T06).
 
 **Gate A:** Human reviews the exact public API and package/whitelist change. The module-boundary check and contract compilation succeed, or any offline dependency/tool limitation is documented precisely. No fake production authentication service exists.
 
 ## Phase B - Operation-scoped test identity
 
-- [ ] Add an explicitly imported **test-only** Spring configuration defining an operation-scoped `IdentityContext` implementation. The deterministic identity input can use a test-only lexical binding around dispatch or another verified isolated fixture seam; no global mutable user and no production scope/dispatcher change (ID-03–ID-05).
-- [ ] Exercise a test-only Group-like consumer service with constructor injection through the existing `OperationDispatcher` and local fake membership policy. It consumes `requireUserId()` but no token, HTTP or claims dependencies (ID-07, ID-T01, ID-T02, ID-T09). Verify that all three context accessors agree for an authenticated fixture.
-- [ ] Test the unauthenticated triad (`userId()` empty, `isAuthenticated()` false, `requireUserId()` throwing), separate sequential/concurrent principals and cleanup after failures, including a second dispatch after failed resolution (ID-T03–ID-T05). Confirm provider faults do not silently become `Optional.empty()`.
+- [x] Add an explicitly imported **test-only** Spring configuration defining an operation-scoped `IdentityContext` implementation. The deterministic identity input can use a test-only lexical binding around dispatch or another verified isolated fixture seam; no global mutable user and no production scope/dispatcher change (ID-03–ID-05).
+- [x] Exercise a test-only Group-like consumer service with constructor injection through the existing `OperationDispatcher` and local fake membership policy. It consumes `requireUserId()` but no token, HTTP or claims dependencies (ID-07, ID-T01, ID-T02, ID-T09). Verify that all three context accessors agree for an authenticated fixture.
+- [x] Test the unauthenticated triad (`userId()` empty, `isAuthenticated()` false, `requireUserId()` throwing), separate sequential/concurrent principals and cleanup after failures, including a second dispatch after failed resolution (ID-T03–ID-T05). Confirm provider faults do not silently become `Optional.empty()`.
 
 **Gate B:** Focused Spring integration tests pass using the actual operation-scope machinery; human reviews fixture isolation and confirms that no test identity leaks into main source or production wiring. No IAM persistence or Group database is required.
 
 ## Phase C - Architecture/security verification and handoff
 
-- [ ] Add or extend a negative module fixture for forbidden implementation-package access or missing dependency whitelist, reusing existing architecture-test helpers where possible (ID-T07).
-- [ ] Check the production component scan/main-source dependencies for test authentication fallbacks; verify that missing trusted authentication cannot silently produce an identity (ID-T08).
-- [ ] Run backend Maven checks in strict offline mode with the verified supplied toolchain/cache when available, at least the focused tests and module verification. Run `git diff --check` and check documentation links; report missing artifacts separately from source failures.
-- [ ] Review the full change for unintended module coupling and unnecessary new abstractions. Keep P2.1d's authoritative lookup **specification-only**; no implementation of current-state eligibility or ingress security in this patch.
+- [x] Add or extend a negative module fixture for forbidden implementation-package access or missing dependency whitelist, reusing existing architecture-test helpers where possible (ID-T07).
+- [x] Check the production component scan/main-source dependencies for test authentication fallbacks; verify that missing trusted authentication cannot silently produce an identity (ID-T08).
+- [x] Run backend Maven checks in strict offline mode with the verified supplied toolchain/cache when available, at least the focused tests and module verification. Run `git diff --check` and check documentation links; report missing artifacts separately from source failures.
+- [x] Review the full change for unintended module coupling and unnecessary new abstractions. Keep P2.1d's authoritative lookup **specification-only**; no implementation of current-state eligibility or ingress security in this patch.
 
 **Gate C:** Tests demonstrate acceptance ID-T01–T09 or explicitly identify blocked cases. The patch is limited to the identity contract, test fixtures/architecture tests and necessary documentation. Human approval is required before the next phase.
 
-## Phase D - Documentation reconciliation and review handoff
+## Phase D - Documentation handoff and review
 
-- [ ] Reconcile the steady-state module/API documentation in [architecture.md](../../../architecture.md) and relevant [DI/development documentation](../../../architecture/dependency-injection.md), describing only behavior actually implemented. Preserve the existing security spec as forward-looking for P2.1.0.
-- [ ] Keep this [specification](specification.md) and plan aligned with the approved implementation. Record test commands/results, known toolchain limitations and any deferred integration risks.
-- [ ] Produce a clean review patch against the approved baseline, leave the task branch unmerged, and obtain independent review and applicable human acceptance before updating the backlog checkbox/merging.
+- [ ] Publish the [Phase 2 IAM/Group handoff](../../../design/phase-2-foundation.md): bounded-context responsibilities, the implemented `IdentityContext`/test fixture seam, staged IAM-to-Group integration, and the reviewed P2.0c ER diagram with table/column provenance and operational constraints. Keep the document design-status explicit; do not duplicate the task backlog or claim business migrations exist.
+- [ ] Publish the [proposed claims/security context architecture](../../../stack/claims-context-proposal.md) as input to P2.1.0 and P2.5: the lean claims/provenance model, operation-scoped DI providers, semantic `<Concept>Context` facade, trust/correlation policy layers, and explicit design gates. Do not prematurely reconcile the full steady-state JWT implementation documentation.
+- [ ] Reconcile this specification/plan with the implemented A–C contract and the two design handoffs. Verify document links, diagram equivalence, provenance/terminology consistency and patch application; record test evidence and deferred decisions. Produce an incremental review patch on the approved Phase C baseline and leave it unmerged pending human acceptance.
 
-**Gate D:** The implementation diff, tested contract and documentation agree; the contributor approves the completed task before merge. Group Management can then begin P2.2a–c against fixture IDs, while IAM develops independently.
+### Validation evidence for Phase D review
+
+- **Backend baseline:** `JAVA_HOME=<supplied JDK 25> <supplied Maven 3.10.0> -B -ntp -o -Punit-tests -Dmaven.repo.local=<supplied cache> -f src/backend/sharewise/pom.xml clean verify` completed successfully: **124 Unit tests, zero failures/errors/skips**. This does not establish PostgreSQL Integration or E2E correctness, which is outside this documentation-only phase.
+- **Documentation:** the supplied ER PDF and `docs/assets/er-data-model.pdf` have identical SHA-256 hashes; checked relative links, the new references' source/implementation status and `git diff --check`.
+- **Deferred risks:** production provider/operation-scope input plumbing, attestation binding/exposure, session UUIDv7 wording, account deletion and out-of-order identity events, and final framework publication-registry DDL remain review gates with their owning tasks.
+
+**Gate D:** Phase 2 teams have cohesive, reviewable architecture/data references without mistaking proposed claims/event integrations or ER tables for implemented behavior. The implementation diff, tested `IdentityContext` and documents agree; the contributor approves the complete task before merge.
 
 ## Out of scope and future review gates
 

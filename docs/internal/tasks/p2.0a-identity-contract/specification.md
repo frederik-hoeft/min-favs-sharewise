@@ -1,6 +1,6 @@
 # P2.0a - Minimal published identity and module contracts
 
-**Status:** Proposed specification for human architecture/acceptance review. No application behavior in this document is implemented by P2.0a yet.
+**Status:** Phases A–C are implemented and approved for the local review baseline; Phase D documentation handoff remains under review. This task does not provide production authentication.
 
 ## Goal and scope
 
@@ -125,4 +125,4 @@ The human review/acceptance gate is a focused code/contract inspection plus runn
 
 ## Documentation reconciliation
 
-After the implementation is reviewed, update the authoritative [architecture](../../../architecture.md) to describe the actual IAM published contract and dependency, and the [operation-scope architecture](../../../architecture/dependency-injection.md) or [developer guide](../../../development.md) only where its use requires clarification. Task artifacts are review documents, not claims that the implementation already exists. Do not change the security architecture to describe unimplemented claims/ingress behavior as implemented.
+Phase D provides two explicitly **pre-implementation design references** for independent Phase 2 teams: the [IAM/Group Phase 2 foundation and column-level ER reference](../../../design/phase-2-foundation.md), and the [proposed claims and semantic security contexts](../../../stack/claims-context-proposal.md). These explain ownership, evidence provenance and future integration without presenting unimplemented behavior as steady state. The existing [architecture](../../../architecture.md), [operation-scope architecture](../../../architecture/dependency-injection.md) and [security architecture](../../../stack/security.md) remain the authorities for their respective implemented behavior or planned trust guarantees; full steady-state reconciliation follows the owning feature implementations.
