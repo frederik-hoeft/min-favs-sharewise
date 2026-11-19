@@ -1,6 +1,6 @@
 # P1.5 - PostgreSQL transaction acceptance and CI execution model
 
-**Status:** Proposed specification, pending human review. **Backlog:** [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation). **Implementation plan:** [P1.5 plan](plan.md). This task completes the remaining Phase 1 transaction acceptance gate and restructures the existing GitLab CI pipeline; it does not introduce a new production transaction model.
+**Status:** Specification approved; implementation acceptance pending. **Backlog:** [P1.5](../backlog.md#phase-1---modular-application-and-persistence-foundation). **Implementation plan:** [P1.5 plan](plan.md). This task completes the remaining Phase 1 transaction acceptance gate and restructures the existing GitLab CI pipeline; it does not introduce a new production transaction model.
 
 ## Goal and baseline
 

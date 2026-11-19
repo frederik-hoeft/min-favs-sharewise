@@ -1,6 +1,6 @@
 # P1.5 - Implementation plan: PostgreSQL transaction acceptance and CI restructuring
 
-**Status:** Proposed for review; all implementation gates pending. **Specification:** [P1.5](specification.md). Follow the [AI development workflow](../../../development/ai-development-workflow.md): agree on the specification and plan before implementation, then deliver one reviewed incremental patch per phase. Do not check off work until it is validated and human-approved.
+**Status:** Specification and plan accepted; Phase A implementation under review, with PostgreSQL CI acceptance pending. **Specification:** [P1.5](specification.md). Follow the [AI development workflow](../../../development/ai-development-workflow.md): agree on the specification and plan before implementation, then deliver one reviewed incremental patch per phase. Do not check off work until it is validated and human-approved.
 
 ## Starting point and evidence inventory
 
@@ -25,6 +25,24 @@ The [P1.3b acceptance table](../p1.3-transactions/specification.md#acceptance-cr
 - [ ] Keep schema probes fixture-local and migrations/roles production-compatible. Do not add a second transaction manager, duplicate fixture framework, or an enclosing rollback test transaction.
 
 **Gate A:** Focused PostgreSQL E2E tests and existing Unit/Integration suites pass in GitLab; the evidence matrix identifies covered TX requirements. Review and approve before Phase B.
+
+## TX-03 through TX-11 evidence matrix
+
+This matrix identifies **test implementations**, not independently verified P1.5 acceptance. Phase A adds the JDBC, PostgreSQL aborted-transaction and concurrent-operation coverage below; its PostgreSQL CI run and reviewer approval remain pending. Phase B owns commit-boundary failure injection, so TX-07 cannot be marked complete yet. All referenced `*E2E` methods use production `Transactions`, `OperationDispatcher` and independently migrated PostgreSQL databases rather than the P1.3c rollback substitute.
+
+| Contract | Named real-PostgreSQL test methods | Status / remaining evidence |
+| --- | --- | --- |
+| **TX-03**: atomic COMMIT and visibility | `RelationalTransactionE2E.jdbcJooqAndJpaWritesCommitOrRollBackAsOnePhysicalUnit`, `independentConnectionDoesNotSeeUncommittedJdbcJooqOrJpaWrites` | P15-T01 implemented; PostgreSQL CI pending. |
+| **TX-04**: ROLLBACK and ABSTAIN | `RelationalTransactionE2E.jdbcJooqAndJpaWritesCommitOrRollBackAsOnePhysicalUnit` | P15-T02 covers all three adapters; PostgreSQL CI pending. |
+| **TX-05**: typed result and deliberate COMMIT | `RelationalTransactionE2E.expectedBusinessFailureMayCommitAnIntentionalSideEffect` | P15-T04 uses typed `Result.Err` with a durable side effect; PostgreSQL CI pending. |
+| **TX-06**: veto and aborted transaction | `RelationalTransactionE2E.rollbackOnlyVetoPreventsMixedAdapterCommitAndNextSegmentIsHealthy`, `translatedDatabaseErrorMustExplicitlyPoisonItsSegment` | P15-T04 includes SQLSTATE `25P02` validation; PostgreSQL CI pending. |
+| **TX-07**: callback and physical finalization failures | `RelationalTransactionE2E.callbackFailureRollsBackBothAdaptersAndManagerRemainsUsable`, `commitTimeJpaConstraintFailureMustNotReportSuccessOrPermitReuse`, `afterCommitFailurePropagatesEvenThoughRowsAreDurable` | **Partial**: deferred constraint and controlled pre/post-commit-response faults are Phase B (P15-T07–T09). `TransactionsTests` fake-manager failure cases are supplemental only. |
+| **TX-08**: nested, ambient, scoped and concurrent operations | `RelationalTransactionE2E.nestedLogicalSegmentIsRejectedWithoutStartingItsCallback`, `anUnrelatedActiveSpringTransactionCannotOwnTheOperationCommit`, `requiresNewCannotUseResourcesBelongingToSuspendedSegment`, `notSupportedCannotUseResourcesBelongingToSuspendedSegment`, `concurrentProductionDispatchesOwnIndependentPhysicalTransactions`; `JooqAccessE2E.jooqAccessCannotBeUsedThroughAnotherScopeOrThread`; `JpaAccessE2E.wrongScopeWrongThreadAndPostCloseAccessFail` | P15-T06 adds simultaneous PostgreSQL sessions with a barrier; PostgreSQL CI pending. |
+| **TX-09**: sequential segment and stale resources | `RelationalTransactionE2E.rollbackOnlyVetoPreventsMixedAdapterCommitAndNextSegmentIsHealthy`; `JpaAccessE2E.usesCurrentJpaTransactionAndAllowsSequentialSegments`; `JooqAccessE2E.derivedQueriesFromAnEarlierSegmentCannotExecuteInLaterSegments` | Existing E2E coverage; retain under P1.5. |
+| **TX-10**: segment-bound persistence guards | `JooqAccessE2E.acceptsSqlOnlyWithinItsOwningSegmentAndHonorsCommitAndRollback`, `derivedQueriesFromAnEarlierSegmentCannotExecuteInLaterSegments`, `jooqTransactionEntryPointsCannotBypassOwningSegment`; `JpaAccessE2E.staleJpaFacadesAndFluentQueriesNeverRebindToLaterSegment`, `rejectsAnUnrelatedJdbcTransactionWithoutJpaPersistenceContext` | Existing E2E coverage; retain under P1.5. |
+| **TX-11**: transaction-compatible adapters / flush / refresh | `RelationalTransactionE2E.jpaFlushBecomesVisibleToJooqAndJooqMutationNeedsJpaRefresh`, `independentConnectionDoesNotSeeUncommittedJdbcJooqOrJpaWrites`, `jdbcJooqAndJpaWritesCommitOrRollBackAsOnePhysicalUnit` | P15-T01–T03 include JDBC session identity and visibility; PostgreSQL CI pending. |
+
+The final Phase D record will add actual CI pipeline/job references and executed results. The table intentionally does not count passing offline Unit tests as PostgreSQL acceptance.
 
 ## Phase B - Physical commit failure and uncertainty
 
