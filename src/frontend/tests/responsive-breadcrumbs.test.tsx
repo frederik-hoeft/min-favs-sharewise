@@ -57,6 +57,10 @@ describe("Responsive breadcrumb trail", () => {
     expect(within(nav).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/app");
     expect(within(nav).queryByRole("link", { name: "Groups" })).not.toBeInTheDocument();
     expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent("Expenses");
+    // Mantine Breadcrumbs clones its direct children and injects its layout
+    // class. The custom CurrentBreadcrumb must forward that class to its root.
+    expect(nav.querySelector('[aria-current="page"]')?.parentElement)
+      .toHaveClass("mantine-Breadcrumbs-breadcrumb");
     expect(within(nav).getByRole("button", { name: /2 omitted breadcrumb locations/i })).toBeInTheDocument();
 
     available = 1200;

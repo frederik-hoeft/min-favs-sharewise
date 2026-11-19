@@ -6,6 +6,7 @@ import styles from "./CurrentBreadcrumb.module.scss";
 
 type Props = {
   label: string;
+  className?: string;
 };
 
 /**
@@ -14,7 +15,7 @@ type Props = {
  * full-label disclosure is available, so opening the disclosure cannot change
  * the measurement that determines its visibility.
  */
-export function CurrentBreadcrumb({ label }: Props) {
+export function CurrentBreadcrumb({ label, className }: Props) {
   const textRef = useRef<HTMLParagraphElement>(null);
   const [truncated, setTruncated] = useState(false);
 
@@ -32,7 +33,7 @@ export function CurrentBreadcrumb({ label }: Props) {
   }, [label]);
 
   return (
-    <div className={`${styles.current} ${truncated ? styles.interactive : ""}`}>
+    <div className={[styles.current, className, truncated && styles.interactive].filter(Boolean).join(" ")}>
       <Text span size="sm" truncate="end" ref={textRef} aria-current="page" className={styles.label} title={label}>
         {label}
       </Text>
