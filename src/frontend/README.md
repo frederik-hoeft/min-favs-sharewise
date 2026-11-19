@@ -1,23 +1,35 @@
 # ShareWise frontend
 
-This directory contains the Next.js / React / TypeScript frontend for ShareWise. The UI is currently a starter page, not the implemented expense-sharing application. Next.js rewrites same-origin `/api/*` requests to the Spring backend during development; no server-side API route handlers are required.
+The ShareWise frontend is a Next.js App Router / React / TypeScript application using Mantine, SCSS Modules and Phosphor icons. The public landing page illustrates the product's shared-expense model; `/app` and its dummy routes demonstrate the future workspace navigation. These examples are static and do not provide authentication or business operations.
 
-## Develop and validate
+## Run locally
 
-From `src/frontend/`, install the locked dependencies and start the development server:
+From `src/frontend/`:
 
-```sh
+```bash
 npm ci
 npm run dev
 ```
 
-The frontend is available at [http://localhost:3000](http://localhost:3000). To verify the development API rewrite, start the backend and request `http://localhost:3000/api/system/v1/health`. The Next.js server forwards `/api/*` to `BACKEND_URL` (default: `http://localhost:8080`).
+Open `http://localhost:3000`. The development server forwards same-origin `/api/*` requests to Spring at `BACKEND_URL` (default `http://localhost:8080`). Start the backend separately to exercise its health endpoint at `/api/system/v1/health`.
 
-Run the frontend checks before submitting changes:
+Before submitting changes, run:
 
-```sh
+```bash
 npm run lint
+npm run typecheck
+npm run test
+npm run test:typecheck
 npm run build
 ```
 
-The application uses system fonts defined in `app/globals.css`, not `next/font/google`, so a production build does not fetch fonts from Google. For the supported toolchain, container networking, offline development and backend commands, see the [development guide](../../docs/development.md).
+Tests live in the separate `tests/` project and run through the root npm scripts. The shared browser API client is in `lib/api/`; it does not depend on the backend for its unit tests.
+
+## Where to go next
+
+- [Frontend architecture](../../docs/architecture/frontend.md): route ownership, shared UI, transport boundary and future domain modules.
+- [Frontend development guide](../../docs/development/frontend.md): component placement, styling, API use, testing and implementation caveats.
+- [Quiet clarity design](../../docs/design/sharewise-design-foundation.md): visual language and centralized Mantine theme.
+- [Repository development environment](../../docs/development.md): containers, toolchain, backend and offline handoff.
+
+The current Next.js build runs as a standalone server; static export behind Nginx remains a separate deployment task. For library-specific guidance, see [frontend agent notes](AGENTS.md) and the checked-in [Mantine reference](../../.agents/references/frontend-mantine-llms-full.txt).

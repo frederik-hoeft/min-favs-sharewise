@@ -1,6 +1,6 @@
 # Development environment
 
-**Status:** Setup guidance for the supplied starter. The repository contains a backend and frontend skeleton; architecture documents describe the intended system rather than features already implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
+**Status:** Development setup guidance for the current platform foundations and frontend demonstration. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
 ## VS Code Dev Containers
 
@@ -18,7 +18,7 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
-The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. During development, `next.config.ts` rewrites `/api/:path*` requests directly to the Spring Boot backend (`BACKEND_URL`), avoiding custom Next.js API route handlers. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding in production; that Nginx deployment is **not yet implemented**.
+The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. The current standalone-server build and container image are transitional; the production static-export deployment is a separate task. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below describe the current standalone-server development setup.
 
 ## Database
 
@@ -47,22 +47,15 @@ cd src/backend/sharewise
 ./mvnw spring-boot:run
 ```
 
-Frontend, in a separate terminal from the repository root:
+Frontend development, API-client tests, styling conventions and quality checks are documented together in the [frontend development guide](development/frontend.md). Its commands run from `src/frontend/` using the checked-in npm lockfile; the isolated Vitest project includes the API-client test suite.
 
-```sh
-cd src/frontend
-npm ci
-node --test lib/api/client.test.ts
-npm run lint
-npm run build
-npm run dev
-```
+The frontend `.npmrc` rejects unreviewed dependency lifecycle scripts. Keep the policy in place; see the [frontend guide](development/frontend.md) for the full validation workflow.
 
 The starter defaults to frontend port 3000 and backend port 8080. Consult the backend `pom.xml`, wrapper configuration, frontend `package-lock.json`, and frontend-specific `src/frontend/AGENTS.md` for authoritative build and dependency details. Use project-owned commands rather than modifying dependencies merely to work around a developer's environment.
 
 ## Current starter: separate-container execution
 
-The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`). `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
+The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`), tested through the frontend Vitest project. `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
 
 ```sh
 cd src/backend/sharewise

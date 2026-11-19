@@ -70,7 +70,11 @@ build-frontend:
     - cd src/frontend
     - npm ci --no-audit --no-fund
     - npm run lint
+    - npm run typecheck
+    - npm run test
+    - npm run test:typecheck
     - npm run build
+    - npm run test:static-export
 
 test-backend-unit:
   extends: [.backend-maven, .backend-test-reports]

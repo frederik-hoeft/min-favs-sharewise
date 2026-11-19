@@ -6,21 +6,37 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run --config tests/vitest.config.mts",
+    "test:typecheck": "tsc --project tests/tsconfig.json --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:static-export": "node scripts/verify-static-export.mjs"
   },
   "dependencies": {
-    "next": "16.4.1",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "@mantine/core": "9.8.0",
+    "@mantine/hooks": "9.8.0",
+    "@phosphor-icons/react": "2.1.10",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.10",
+    "@types/node": "24.19.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.1",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "axe-core": "4.14.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.6",
+    "jsdom": "31.0.1",
+    "sass": "1.108.2",
+    "typescript": "^5",
+    "vitest": "5.1.0"
+  },
+  "allowScripts": {
+    "unrs-resolver": false,
+    "@parcel/watcher": false
   }
 }

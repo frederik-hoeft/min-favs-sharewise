@@ -1,8 +1,8 @@
-# ShareWise
+﻿# ShareWise
 
 ShareWise is a group expense-sharing and bookkeeping application. Members record expenses and settlements of payments made outside the application, calculate their current balances, and inspect the group's financial position at earlier revisions. It does **not** move money, verify external payments, or enforce debts.
 
-The repository is an **early implementation baseline**, not a finished product. The backend and frontend currently provide starter/example functionality. The architecture and business contracts in `docs/` describe the intended implementation; they are not a claim that all those features already exist.
+The repository is an **early implementation baseline**, not a finished product. The backend contains platform foundations, while the frontend has a selected visual design, static demonstration routes and shared API transport. The architecture and business contracts in `docs/` also describe future capabilities; they are not a claim that those business workflows exist yet.
 
 ## Repository layout
 
@@ -13,12 +13,14 @@ The repository is an **early implementation baseline**, not a finished product. 
 | `docs/stack/overview.md` | **Start here:** technical architecture, technology map and links to detailed stack decisions |
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
 | `docs/architecture.md` | Component-level hexagonal/modulith architecture and service conventions |
+| `docs/architecture/frontend.md` | Frontend module ownership and browser API boundary |
 | `docs/architecture/tests.md` | Backend Unit, Integration and E2E boundaries, isolation and evidence guarantees |
 | `docs/architecture/persistence.md` | Implemented database ownership, migrations, privileges and persistence adapter boundaries |
 | `docs/stack/messaging.md` | Preliminary cross-context event delivery, idempotency and recovery design |
 | `docs/stack/security.md` | Preliminary IAM, JWT/refresh, scoped attestation and authorization design |
 | `docs/development.md` | Local development, build and validation guidance |
 | `docs/development/tests.md` | Backend test suites, PostgreSQL fixtures, local commands and CI diagnostics |
+| `docs/development/frontend.md` | Frontend implementation and validation guide |
 | `docs/development/ai-development-workflow.md` | AI-assisted task planning, requirements, test design, iterative QA and human review |
 | `docs/file-management-acl-proposal.md` | Optional **unaccepted generic file ACL** design building on the proposed domain-attestation trust model |
 | `.agents/skills/` | Repository-local agent skills |
