@@ -59,14 +59,14 @@ class IdentityContextScopeTests {
 
     @Test
     void separateSequentialOperationsDoNotShareIdentityOrBeans() {
-        IdentityContext first = withUser(ALLOWED_USER,
-            () -> dispatcher.dispatch(GroupEntry.class, GroupEntry::identity));
-        IdentityContext second = withUser(OTHER_USER,
-            () -> dispatcher.dispatch(GroupEntry.class, GroupEntry::identity));
-        IdentityContext anonymous = dispatcher.dispatch(GroupEntry.class, GroupEntry::identity);
+        CallerSnapshot first = withUser(ALLOWED_USER,
+            () -> dispatcher.dispatch(GroupEntry.class, entry -> snapshot(entry.identity())));
+        CallerSnapshot second = withUser(OTHER_USER,
+            () -> dispatcher.dispatch(GroupEntry.class, entry -> snapshot(entry.identity())));
+        CallerSnapshot anonymous = dispatcher.dispatch(GroupEntry.class, entry -> snapshot(entry.identity()));
 
-        assertNotSame(first, second);
-        assertNotSame(first, anonymous);
+        assertNotSame(first.context(), second.context());
+        assertNotSame(first.context(), anonymous.context());
         assertEquals(Optional.of(ALLOWED_USER), first.userId());
         assertEquals(Optional.of(OTHER_USER), second.userId());
         assertEquals(Optional.empty(), anonymous.userId());
@@ -86,8 +86,8 @@ class IdentityContextScopeTests {
             }
             CallerSnapshot firstResult = first.get(10, TimeUnit.SECONDS);
             CallerSnapshot secondResult = second.get(10, TimeUnit.SECONDS);
-            assertEquals(ALLOWED_USER, firstResult.userId());
-            assertEquals(OTHER_USER, secondResult.userId());
+            assertEquals(Optional.of(ALLOWED_USER), firstResult.userId());
+            assertEquals(Optional.of(OTHER_USER), secondResult.userId());
             assertNotSame(firstResult.context(), secondResult.context());
         }
     }
@@ -153,7 +153,7 @@ class IdentityContextScopeTests {
                 throw new IllegalStateException(interrupted);
             }
             assertSame(entry.identity(), entry.reader().identity());
-            return new CallerSnapshot(entry.identity().requireUserId(), entry.identity());
+            return snapshot(entry.identity());
         }));
     }
 
@@ -165,7 +165,12 @@ class IdentityContextScopeTests {
         return current;
     }
 
-    record CallerSnapshot(UUID userId, IdentityContext context) { }
+    private static CallerSnapshot snapshot(IdentityContext context) {
+        return new CallerSnapshot(context.userId(), context);
+    }
+
+    // The context reference is retained only for identity comparisons, never dereferenced after dispatch.
+    record CallerSnapshot(Optional<UUID> userId, IdentityContext context) { }
 
     record GroupReader(IdentityContext identity) {
         UUID caller() { return identity.requireUserId(); }
