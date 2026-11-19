@@ -1,0 +1,51 @@
+@use "@/styles/breakpoints";
+
+.footer {
+  max-width: var(--sw-content-width);
+  margin: 0 auto;
+  padding: 1.625rem 1.5rem 2.125rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5625rem;
+  border-top: 1px solid var(--sw-border);
+}
+
+.footer > span {
+  color: var(--sw-muted);
+  font-size: 0.75rem;
+}
+
+.footer a {
+  margin-left: auto;
+  color: var(--sw-muted);
+  text-decoration: none;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: color 0.15s ease;
+}
+
+.footer a:hover {
+  color: var(--sw-accent);
+}
+
+@include breakpoints.down(mobile) {
+  .footer {
+    padding: 1.5rem 1.25rem 2.125rem;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.625rem;
+  }
+
+  .footer > span {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer a {
+    transition: none;
+  }
+}

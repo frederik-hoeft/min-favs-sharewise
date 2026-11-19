@@ -1,0 +1,20 @@
+@use "@/styles/breakpoints";
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+@include breakpoints.down(details) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -9,7 +9,7 @@ import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 
 @ComponentTest
 class ShareWisePropertiesTests {
@@ -68,7 +68,7 @@ class ShareWisePropertiesTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     @EnableConfigurationProperties(ShareWiseProperties.class)
     static class TestPropertiesConfig {
     }

@@ -14,6 +14,7 @@ import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.configuration.OperationScopeTestComponents;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,8 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.context.TestComponent;
 import org.springframework.context.annotation.Scope;
 import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.core.MethodParameter;
@@ -52,7 +53,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 @ComponentTest
-@SpringJUnitConfig(ApiExceptionHandlerComponentTests.TestConfig.class)
+@SpringJUnitConfig({OperationScopeTestComponents.class, ApiExceptionHandlerComponentTests.TestConfig.class})
 class ApiExceptionHandlerComponentTests {
 
     @Autowired
@@ -258,6 +259,7 @@ class ApiExceptionHandlerComponentTests {
         }
     }
 
+    @TestComponent
     @RestController
     @RequestMapping("/api/sample/v1/items")
     static final class SampleController {
@@ -356,8 +358,7 @@ class ApiExceptionHandlerComponentTests {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
-    @ComponentScan(basePackages = "de.hsh.favs.sharewise.shared.infra.di")
+    @TestConfiguration(proxyBeanMethods = false)
     static class TestConfig {
         @Bean
         DispatchCounter dispatchCounter() {

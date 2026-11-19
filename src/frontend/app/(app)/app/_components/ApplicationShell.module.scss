@@ -1,0 +1,139 @@
+@use "@/styles/breakpoints";
+
+.header {
+  background: var(--sw-surface);
+  border-bottom: 1px solid var(--sw-border);
+}
+
+.navbar {
+  overflow: visible;
+  background: transparent;
+}
+
+.navSurface {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--sw-surface);
+  border-right: 1px solid var(--sw-border);
+}
+
+.navBrand {
+  display: flex;
+  flex: 0 0 var(--sw-app-header-height);
+  align-items: center;
+  padding-inline: 1.25rem;
+}
+
+.brandLink {
+  display: inline-flex;
+  align-items: center;
+  color: var(--sw-ink);
+  text-decoration: none;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.brandLink:focus-visible {
+  outline: 0.1875rem solid var(--sw-accent);
+  outline-offset: 0.25rem;
+}
+
+.railBrand {
+  display: none;
+}
+
+.navLinks {
+  padding: 1rem 0.75rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.navLabel {
+  padding: 0.5rem 0.75rem 1rem;
+  color: var(--sw-muted);
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.mainContent {
+  width: 100%;
+  margin-inline: auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.mobileDrawerContent {
+  background: var(--sw-surface);
+  border-right: 1px solid var(--sw-border);
+}
+
+.mobileDrawerHeader {
+  height: var(--sw-app-header-height);
+  min-height: var(--sw-app-header-height);
+  padding: 0 1.25rem;
+  background: var(--sw-surface);
+  border-bottom: 1px solid var(--sw-border);
+}
+
+.mobileDrawerBody {
+  padding: 1.25rem 0.75rem 2rem;
+}
+
+@include breakpoints.down(appNavigation) {
+  .mainContent {
+    padding: 1.5rem 1rem 3rem;
+  }
+}
+
+@include breakpoints.up(appRailStart) {
+  @include breakpoints.down(appRailEnd) {
+    .navSurface {
+      --sw-nav-label-opacity: 0;
+      --sw-rail-body-visibility: hidden;
+      --sw-rail-section-gap: 0;
+      transition: width 170ms ease, visibility 170ms ease;
+    }
+
+    .navSurface[data-expanded="true"] {
+      width: var(--sw-app-navbar-width);
+      --sw-nav-label-opacity: 1;
+      --sw-rail-body-visibility: visible;
+      --sw-rail-section-gap: var(--mantine-spacing-sm);
+    }
+
+    .navBrand {
+      padding-inline: 1.25rem;
+    }
+
+    .fullBrand {
+      display: none;
+    }
+
+    .railBrand {
+      display: inline;
+    }
+
+    .navSurface[data-expanded="true"] .fullBrand {
+      display: inline;
+    }
+
+    .navSurface[data-expanded="true"] .railBrand {
+      display: none;
+    }
+
+    .navLabel {
+      opacity: var(--sw-nav-label-opacity);
+      transition: opacity 120ms ease;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navSurface,
+  .navLabel {
+    transition: none;
+  }
+}

@@ -1,6 +1,6 @@
 # Development environment
 
-**Status:** Setup guidance for the supplied starter. The repository contains a backend and frontend skeleton; architecture documents describe the intended system rather than features already implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
+**Status:** Development setup guidance for the current platform foundations and frontend demonstration. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
 ## VS Code Dev Containers
 
@@ -16,13 +16,13 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 ## Current toolchain
 
-The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, Lombok, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules); H2 is a test-only dependency. Spring Modulith event publication remains an architectural target rather than an installed backend feature.
+The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
-The frontend under `src/frontend/` uses **Next.js 16.4.1**, React **19.3.0**, TypeScript, npm, and a checked-in `package-lock.json`. During development, `next.config.ts` rewrites `/api/:path*` requests directly to the Spring Boot backend (`BACKEND_URL`), avoiding custom Next.js API route handlers. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding in production; that Nginx deployment is **not yet implemented**.
+The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. The current standalone-server build and container image are transitional; the production static-export deployment is a separate task. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below describe the current standalone-server development setup.
 
 ## Database
 
-The application uses **PostgreSQL 18**. The dev container starts a `postgres` service next to the `dev` service (host `postgres`, port `5432`, database `sharewise`); it is reachable from the dev container and other compose services, not published on the host. On first start with an empty `postgres-data` volume, the scripts in `src/backend/sharewise/src/test/resources/db/bootstrap/` create two roles:
+The application uses **PostgreSQL 18**. The [persistence architecture](architecture/persistence.md) defines schema ownership, migration authority and adapter boundaries; this section covers local setup and commands. The dev container starts a `postgres` service next to the `dev` service (host `postgres`, port `5432`, database `sharewise`); it is reachable from the dev container and other compose services, not published on the host. On first start with an empty `postgres-data` volume, the scripts in `src/backend/sharewise/src/test/resources/db/bootstrap/` create two roles:
 
 | Role | Used by | Permissions |
 | --- | --- | --- |
@@ -33,35 +33,29 @@ Flyway applies the migrations in `src/main/resources/db/migration/` at startup. 
 
 `application.properties` contains dev-only defaults for the dev-container database. Other environments override them with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
-`./mvnw test` does not need PostgreSQL: the existing Spring tests use in-memory H2 through `src/test/resources/config/application.properties` (Flyway disabled, Hibernate `create-drop`). `./mvnw verify` additionally runs the PostgreSQL integration tests (`*IT`, Maven Failsafe). They use `PostgresTestDatabase` from `src/test/java/.../shared/infra/persistence/testing/`, which connects to the dev-container `postgres` service as `postgres`, creates and drops a disposable `sharewise_it_*` database per test class and runs the bootstrap scripts and migrations in it. Another server can be selected with `SHAREWISE_TEST_DB_URL`, `SHAREWISE_TEST_DB_ADMIN_USER` and `SHAREWISE_TEST_DB_ADMIN_PASSWORD`; CI uses a `postgres:18` service this way. Without a reachable server the integration tests fail; they never fall back to H2. Rollback-isolated test harnesses follow with [P1.3c](internal/tasks/p1.3c-integration-tests/specification.md).
+The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
 
 ## Build, test and run
 
-Backend, from the repository root (the default `test` run excludes `@Tag("integration")` database suites; pass `-Pintegration-tests` to run `@DatabaseIntegrationTest` suites explicitly):
+Backend, from the repository root (`clean verify` without a profile runs all three when PostgreSQL is available). See [Backend testing](development/tests.md) for prerequisites, focused execution and troubleshooting:
 
 ```sh
 cd src/backend/sharewise
-./mvnw test
-./mvnw test -Pintegration-tests
+./mvnw -Punit-tests clean verify
+./mvnw -Pintegration-tests clean verify
+./mvnw -Pe2e-tests clean verify
 ./mvnw spring-boot:run
 ```
 
-Frontend, in a separate terminal from the repository root:
+Frontend development, API-client tests, styling conventions and quality checks are documented together in the [frontend development guide](development/frontend.md). Its commands run from `src/frontend/` using the checked-in npm lockfile; the isolated Vitest project includes the API-client test suite.
 
-```sh
-cd src/frontend
-npm ci
-node --test lib/api/client.test.ts
-npm run lint
-npm run build
-npm run dev
-```
+The frontend `.npmrc` rejects unreviewed dependency lifecycle scripts. Keep the policy in place; see the [frontend guide](development/frontend.md) for the full validation workflow.
 
 The starter defaults to frontend port 3000 and backend port 8080. Consult the backend `pom.xml`, wrapper configuration, frontend `package-lock.json`, and frontend-specific `src/frontend/AGENTS.md` for authoritative build and dependency details. Use project-owned commands rather than modifying dependencies merely to work around a developer's environment.
 
 ## Current starter: separate-container execution
 
-The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`). `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
+The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`), tested through the frontend Vitest project. `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
 
 ```sh
 cd src/backend/sharewise
@@ -152,7 +146,7 @@ try (ServiceScope scope = scopeFactory.createScope()) {
 
 The factory may create independent nested DI scopes, but **nested `OperationDispatcher.dispatch(...)` calls are prohibited**. Do not use the outer scope's provider or already-created services from within a nested activation. Scopes and providers are confined to their creating thread; after closure, references must not be retained or used. Singleton-to-scoped dependency capture and escaped references are code-review concerns, not guarantees of automatic lifetime analysis.
 
-The test suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run the Spring-focused tests with Maven (`mvn test -Dtest=ServiceScopeIntegrationTests,OperationDispatcherIntegrationTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamIntegrationTests`) or all database-free tests with `mvn test` (`mvn clean verify` additionally runs the PostgreSQL integration tests and needs the database, see [Database](#database)). In an isolated environment, add `-o` and `-Dmaven.repo.local=<isolated-cache-path>` to force offline resolution.
+The Unit suite exercises these contracts without PostgreSQL. From `src/backend/sharewise`, run `./mvnw -Punit-tests test -Dtest=ServiceScopeTests,OperationDispatcherTests,MultipleApplicationContextIsolationTests,OperationScopeTestSeamTests`, or run all Unit tests with `./mvnw -Punit-tests clean verify`. Offline cache settings and PostgreSQL-backed test commands are documented in [Backend testing](development/tests.md).
 
 ## Transaction and persistence adapter usage
 
@@ -191,7 +185,7 @@ public Optional<Thing> getThingById(UUID id) {
 
 The examples use illustrative domain types and a generated `THING` table, not existing business classes. An accessor can be retained by the operation-scoped repository; **the returned jOOQ/JPA facade, queries and managed entities cannot be retained across calls or transaction segments**. Once a segment ends, obtaining another facade through the accessor is valid in a subsequent segment, but previously issued facades remain invalid. See the [transaction architecture](architecture/transactions.md) for outcomes, lifecycle and failure semantics.
 
-From `src/backend/sharewise`, exercise Spring transaction coordination and both adapters using `mvn test -Dtest=TransactionsIntegrationTests,RelationalTransactionIntegrationTests` or `mvn test`. These checks use instrumented transaction managers and test-only H2 datasources, not PostgreSQL. Production datasource interoperability, database isolation and engine-specific failure behavior require separate PostgreSQL integration tests.
+From `src/backend/sharewise`, run fake-manager transaction contract tests with `mvn -Punit-tests test -Dtest=TransactionsTests`. Run rollback-isolated PostgreSQL operations with `mvn -Pintegration-tests verify`, or real-commit mixed-adapter workflows with `mvn -Pe2e-tests verify -Dit.test=RelationalTransactionE2E`. The PostgreSQL suites exercise physical SQL, isolation and commit/failure behavior; the Unit suite does not contact a database.
 
 ## Development conventions
 

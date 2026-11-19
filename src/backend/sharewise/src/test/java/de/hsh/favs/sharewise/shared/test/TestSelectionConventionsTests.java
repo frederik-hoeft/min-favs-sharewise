@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,30 +28,55 @@ class TestSelectionConventionsTests {
     }
 
     @Test
-    void defaultMavenTestSelectionExcludesIntegrationTagAndDefinesIntegrationProfile() throws IOException {
-        String pomContent = Files.readString(Path.of("pom.xml"));
-        assertTrue(
-                pomContent.contains("<excludedGroups>integration</excludedGroups>"),
-                "pom.xml must exclude the 'integration' JUnit tag by default");
-        assertTrue(
-                pomContent.contains("<id>integration-tests</id>"),
-                "pom.xml must define the 'integration-tests' Maven profile");
-        assertTrue(
-                pomContent.contains("<groups>integration</groups>"),
-                "integration-tests profile must select the 'integration' JUnit tag");
+    void mavenAndCiExposeThreeIndependentlySelectedTestSuites() throws IOException {
+        String pom = Files.readString(Path.of("pom.xml"));
+        String pipeline = Files.readString(Path.of("../../../.gitlab-ci.yml"));
+        assertTrue(pom.contains("<id>unit-tests</id>"));
+        assertTrue(pom.contains("<id>integration-tests</id>"));
+        assertTrue(pom.contains("<id>e2e-tests</id>"));
+        assertTrue(pom.contains("<include>**/*Tests.java</include>"));
+        assertTrue(pom.contains("<include>**/*Test.java</include>"));
+        assertTrue(pom.contains("<databaseTestIncludes>**/*IT.java</databaseTestIncludes>"));
+        assertTrue(pom.contains("<databaseTestIncludes>**/*E2E.java</databaseTestIncludes>"));
+        assertTrue(pom.contains("<skipDatabaseTests>true</skipDatabaseTests>"));
+        assertTrue(pipeline.contains("test-backend-unit:"));
+        assertTrue(pipeline.contains("test-backend-integration:"));
+        assertTrue(pipeline.contains("test-backend-e2e:"));
+        assertTrue(pipeline.contains("postgres:18-trixie"));
+    }
 
-        String configuredExcludedGroups = System.getProperty("sharewise.surefire.excludedGroups");
-        if (configuredExcludedGroups != null) {
-            assertEquals("integration", configuredExcludedGroups);
+    @Test
+    void compiledTestClassesAgreeWithTheirExecutionCategories() throws ClassNotFoundException {
+        JavaClasses testClasses = new ClassFileImporter()
+            .withImportOption(new ImportOption.OnlyIncludeTests())
+            .importPackages("de.hsh.favs.sharewise");
+        for (JavaClass testClass : testClasses) {
+            String name = testClass.getSimpleName();
+            if (!name.endsWith("IT") && !name.endsWith("E2E") && !name.endsWith("Tests")) {
+                continue;
+            }
+            Class<?> compiled = Class.forName(testClass.getName(), false,
+                TestSelectionConventionsTests.class.getClassLoader());
+            Tag tag = compiled.getDeclaredAnnotation(Tag.class);
+            if (name.endsWith("IT")) {
+                assertNotNull(tag, "Integration test requires explicit @Tag: " + name);
+                assertEquals("integration", tag.value(), name);
+            } else if (name.endsWith("E2E")) {
+                assertNotNull(tag, "E2E test requires explicit @Tag: " + name);
+                assertEquals("e2e", tag.value(), name);
+            } else {
+                assertTrue(tag == null || (!tag.value().equals("integration") && !tag.value().equals("e2e")),
+                    "Database tests cannot use Unit-test filename: " + name);
+                assertTrue(!compiled.isAnnotationPresent(DatabaseIntegrationTest.class),
+                    "Database integration tests must use the *IT suffix: " + name);
+            }
         }
     }
 
-    @DatabaseIntegrationTest
     @Test
-    void integrationTaggedTestRunsOnlyWhenIntegrationGroupIsExplicitlySelected() {
-        String selectedGroups = System.getProperty("sharewise.surefire.groups", "");
-        assertTrue(
-                selectedGroups.contains("integration"),
-                "@DatabaseIntegrationTest must be excluded from the default test run and execute only when 'integration' group is selected");
+    void offlineTestClasspathHasNoH2DatabaseDependency() throws IOException {
+        String pom = Files.readString(Path.of("pom.xml"));
+        assertTrue(!pom.contains("<artifactId>h2</artifactId>"));
+        assertTrue(!Files.exists(Path.of("src/test/resources/config/application.properties")));
     }
 }

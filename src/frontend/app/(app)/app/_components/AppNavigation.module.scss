@@ -1,0 +1,19 @@
+@use "@/styles/breakpoints";
+
+@include breakpoints.up(appRailStart) {
+  @include breakpoints.down(appRailEnd) {
+    // Center the icon in the compact rail. The label must not reserve width or
+    // Mantine's default section margin shifts the icon to the left.
+    .railLink {
+      justify-content: center;
+    }
+
+    .railLink .railSection {
+      margin-inline-end: var(--sw-rail-section-gap, 0);
+    }
+
+    .railBody {
+      visibility: var(--sw-rail-body-visibility, hidden);
+    }
+  }
+}

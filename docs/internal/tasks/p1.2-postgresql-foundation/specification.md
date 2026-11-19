@@ -2,7 +2,7 @@
 
 **Status:** Specification for P1.2, revised after the first team review (MR !10) and aligned with P1.3b (MR !16). Covers the P0.3 database-contract decisions required by P1.2 and the P1.2 implementation scope. Implemented in MR !10; see the [implementation plan](plan.md) for phases and verification.
 
-**Related documents:** [persistence architecture](../../../stack/persistence.md), [application architecture](../../../architecture.md), [development guide](../../../development.md), [backlog](../backlog.md) (P0.3, P1.2).
+**Related documents:** [persistence architecture](../../../architecture/persistence.md), [application architecture](../../../architecture.md), [development guide](../../../development.md), [backlog](../backlog.md) (P0.3, P1.2).
 
 ## Goal
 
