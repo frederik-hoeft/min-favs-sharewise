@@ -1,7 +1,7 @@
 "use client";
 
 import { NavLink, Stack } from "@mantine/core";
-import { HouseIcon, SquaresFourIcon } from "@phosphor-icons/react";
+import { HouseIcon, SquaresFourIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { appRoutes } from "./app-routes";
@@ -10,6 +10,7 @@ import styles from "./AppNavigation.module.scss";
 const icons = {
   "/app/dummy1": HouseIcon,
   "/app/dummy2": SquaresFourIcon,
+  "/app/dummy3": TreeStructureIcon,
 } satisfies Record<(typeof appRoutes)[number]["href"], typeof HouseIcon>;
 
 /** Shared links for expanded nav, focus/hover rail and mobile drawer. */

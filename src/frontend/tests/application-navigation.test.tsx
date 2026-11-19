@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Providers } from "@/app/providers";
 import { theme, cssVariablesResolver } from "@/lib/theme";
 import { ApplicationShell } from "@/app/(app)/app/_components/ApplicationShell";
-import { appBreadcrumbs } from "@/app/(app)/app/_components/app-routes";
+import { appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
 import DummyOnePage from "@/app/(app)/app/dummy1/page";
 
 let pathname = "/app/dummy1";
@@ -37,6 +37,7 @@ describe("Application route shell", () => {
     const navigation = screen.getByRole("navigation", { name: "Workspace navigation" });
     expect(within(navigation).getByRole("link", { name: "Dummy 1" })).toHaveAttribute("aria-current", "page");
     expect(within(navigation).getByRole("link", { name: "Dummy 2" })).toHaveAttribute("href", "/app/dummy2");
+    expect(within(navigation).getByRole("link", { name: "Dummy 3" })).toHaveAttribute("href", "/app/dummy3");
 
     const breadcrumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
     const parentCrumb = within(breadcrumbs).getByRole("link", { name: "Workspace" });
@@ -49,16 +50,16 @@ describe("Application route shell", () => {
   });
 
   it("keeps deep routes navigable through collapsed breadcrumbs", async () => {
-    pathname = "/app/groups/a-very-long-group-name-with-several-words/expenses";
+    pathname = breadcrumbDemoRoutes.overview;
     const user = userEvent.setup();
     renderApp();
 
     const breadcrumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(within(breadcrumbs).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/app");
-    expect(breadcrumbs.querySelector('[aria-current="page"]')).toHaveTextContent("Expenses");
-    const disclosure = within(breadcrumbs).getByRole("button", { name: "Show 2 omitted breadcrumb locations" });
+    expect(breadcrumbs.querySelector('[aria-current="page"]')).toHaveTextContent("Overview");
+    const disclosure = within(breadcrumbs).getByRole("button", { name: "Show 3 omitted breadcrumb locations" });
     await user.click(disclosure);
-    expect(await screen.findByRole("menuitem", { name: "Groups" })).toHaveAttribute("href", "/app/groups");
+    expect(await screen.findByRole("menuitem", { name: "Dummy 3" })).toHaveAttribute("href", "/app/dummy3");
   });
 
   it("uses a Mantine hamburger to open and close the accessible mobile flyout", async () => {
@@ -202,6 +203,13 @@ describe("Application breadcrumbs", () => {
     expect(appBreadcrumbs("/app/dummy2")).toEqual([
       { href: "/app", label: "Workspace" },
       { href: "/app/dummy2", label: "Dummy 2" },
+    ]);
+    expect(appBreadcrumbs(breadcrumbDemoRoutes.overview)).toEqual([
+      { href: "/app", label: "Workspace" },
+      { href: "/app/dummy3", label: "Dummy 3" },
+      { href: breadcrumbDemoRoutes.group, label: "International Collaboration Project" },
+      { href: breadcrumbDemoRoutes.history, label: "Shared Expenses And Settlement Revision History" },
+      { href: breadcrumbDemoRoutes.overview, label: "Overview" },
     ]);
     expect(appBreadcrumbs("/app/groups/group-history")).toEqual([
       { href: "/app", label: "Workspace" },

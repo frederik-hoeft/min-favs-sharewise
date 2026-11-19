@@ -21,6 +21,7 @@ app/
         ├── page.tsx           /app
         ├── dummy1/page.tsx    /app/dummy1
         ├── dummy2/page.tsx    /app/dummy2
+        ├── dummy3/            Nested breadcrumb demo and ancestor routes
         └── _components/       Workspace navigation and shell behavior
 ```
 

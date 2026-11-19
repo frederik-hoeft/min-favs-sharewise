@@ -2,7 +2,15 @@
 export const appRoutes = [
   { href: "/app/dummy1", label: "Dummy 1" },
   { href: "/app/dummy2", label: "Dummy 2" },
+  { href: "/app/dummy3", label: "Dummy 3" },
 ] as const;
+
+/** Static, navigable ancestor routes for the long-path breadcrumb demo. */
+export const breadcrumbDemoRoutes = {
+  group: "/app/dummy3/international-collaboration-project",
+  history: "/app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history",
+  overview: "/app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview",
+} as const;
 
 export type AppBreadcrumb = { href: string; label: string };
 

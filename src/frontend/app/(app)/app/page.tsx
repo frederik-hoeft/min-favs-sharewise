@@ -1,6 +1,7 @@
 import { Button, Card, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
+import { breadcrumbDemoRoutes } from "./_components/app-routes";
 
 export default function WorkspacePage() {
   return (
@@ -29,6 +30,17 @@ export default function WorkspacePage() {
             <Link href="/app/dummy2">
               <Button component="span" variant="light" rightSection={<ArrowRightIcon aria-hidden="true" />}>
                 Open Dummy 2
+              </Button>
+            </Link>
+          </Stack>
+        </Card>
+        <Card padding="xl">
+          <Stack align="flex-start" gap="md">
+            <Title order={2} size="h3">Dummy 3</Title>
+            <Text c="dimmed">A deeply nested demo route for checking responsive breadcrumb collapse and ancestor navigation.</Text>
+            <Link href={breadcrumbDemoRoutes.overview}>
+              <Button component="span" variant="light" rightSection={<ArrowRightIcon aria-hidden="true" />}>
+                Open nested demo
               </Button>
             </Link>
           </Stack>
