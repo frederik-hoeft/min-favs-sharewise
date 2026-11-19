@@ -2,7 +2,7 @@
 
 **Status:** **Proposed design reference** for P2.1.0 and P2.5, not steady-state implementation documentation. Only the minimal published `IdentityContext` and its test-only operation-scoped fixture exist under P2.0a. Generic claims providers, production JWT processing, a scope-input bridge and Group attestations are not yet implemented.
 
-**Audience:** Engineers implementing the IAM security foundation, inbound adapters and future domain-attestation consumers. Group Management's initial P2.2 operations need only [the published identity contract](../design/phase-2-foundation.md#boundaries-and-the-first-usable-application-operation), not the components designed here.
+**Audience:** Engineers implementing the IAM security foundation, inbound adapters and future domain-attestation consumers. Group Management's initial P2.2 operations need only [the published identity contract](../internal/integration/phase-2-foundation.md#boundaries-and-the-first-usable-application-operation), not the components designed here.
 
 The [security architecture](security.md) owns the required issuer, credential/session, trust and attestation rules. This document proposes **how application code can consume evidence** without coupling to JWT, Spring Security, HTTP, or a specific authority. It is an implementation direction requiring the P2.1.0 specification/review gate before it becomes a public contract.
 

@@ -1,25 +1,14 @@
 # Phase 2 implementation foundation: IAM and Group Management
 
-**Status:** Phase 2 design handoff, based on the reviewed [technical ER diagram](../assets/er-data-model.pdf). This describes intended Phase 2 business tables and integration contracts, **not deployed DDL or completed IAM/Group features**. The PostgreSQL namespaces and transaction infrastructure exist; feature-owned migrations, durable event delivery, and production authentication are subsequent work.
+**Status:** Phase 2 design handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). This describes intended Phase 2 business tables and integration contracts, **not deployed DDL or completed IAM/Group features**. The PostgreSQL namespaces and transaction infrastructure exist; feature-owned migrations, durable event delivery, and production authentication are subsequent work.
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
-The [domain model](../data-model-design.md) owns business invariants, the [security design](../stack/security.md) owns the trust model, and the [messaging design](../stack/messaging.md) owns delivery guarantees. The [proposed claims architecture](../stack/claims-context-proposal.md) describes how later verified credentials can back semantic security APIs. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
+The [domain model](../../data-model-design.md) owns business invariants, the [security design](../../stack/security.md) owns the trust model, and the [messaging design](../../stack/messaging.md) owns delivery guarantees. The [proposed claims architecture](../../stack/claims-context-proposal.md) describes how later verified credentials can back semantic security APIs. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
 
 ## Boundaries and the first usable application operation
 
 IAM is authoritative for whether an account exists, its credentials and sessions, and the identity of an authenticated caller. Group Management is authoritative for groups, membership, roles, and invitation links. An IAM user ID is a stable opaque `UUID`, used consistently on both sides, but never joined or foreign-keyed across bounded-context schemas. The local `groups.users` table is a Group-owned projection of that identity, not an account or another authentication authority.
-
-```mermaid
-flowchart LR
-    Ingress["Inbound operation"] --> Id["identity.IdentityContext"]
-    Id --> Group["Group application operation"]
-    Group --> Local["groups.users + memberships + invitations"]
-    IAM["IAM accounts / sessions"] -.->|Identity events, later| Registry["Modulith publication registry"]
-    Registry -.->|P2.4a / P2.2d| Local
-    Group -.->|On local miss, P2.2e| Query["IAM current-state published query"]
-    Query -.->|P2.1d| IAM
-```
 
 The **only P2.0a runtime contract needed by Group Management** is `de.hsh.favs.sharewise.identity.IdentityContext`, published by IAM:
 
@@ -48,7 +37,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
 
 The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. P2.1.0 will replace its backing with verified IAM evidence, preserving the consumer interface and operation scope. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
-Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
+Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 
 ## Independent development and eventual integration
 
@@ -56,17 +45,29 @@ The initial local projection is deliberately minimal: `groups.users(id uuid PRIM
 
 After both sides have persistence, IAM user registration is the first real durable integration (P2.4a + P2.2d). IAM commits the account creation and Spring Modulith publication obligation in one local PostgreSQL transaction; the Group listener applies the event in a **separate** Group-owned transaction. At-least-once delivery means duplicates, lag and retries are normal. The `groups.users` PK can make simple registration insertion idempotent. A general-purpose Group inbox is not mandated unless the consumer performs effects that cannot be protected by such a business invariant.
 
-During the **event-only** stage, a legitimate recently registered user may be absent from the Group projection and receive a temporary denial (`403`, without automatic JWT refresh retry). P2.1d later provides a narrow **authoritative IAM current-account/session eligibility query** through a published Java capability; P2.2e calls it **only on a local user miss**. An eligible result permits local provisioning followed by the Group operation; deleted, disabled or invalid-session identities are rejected, and infrastructure failures fail closed. This is not merely offline JWT signature validation. Already-known local users retain the [security design's bounded token and event staleness](../stack/security.md#revocation-distributed-services-and-verification) unless a stronger policy is separately approved.
+The two integration paths have different timing and guarantees:
+
+```mermaid
+flowchart TD
+    IAM["IAM user registration"] -->|Same PostgreSQL transaction| Registry["Modulith publication registry"]
+    Registry -->|Asynchronous delivery| Projection["groups.users"]
+    Operation["Group operation"] -->|Local lookup| Projection
+    Operation -.->|Miss: authoritative query| IAMState["IAM current account/session state"]
+```
+
+Event delivery keeps the projection up to date; the published IAM query is a later fallback for users who have not yet appeared locally. The fallback does not run for already-known users.
+
+During the **event-only** stage, a legitimate recently registered user may be absent from the Group projection and receive a temporary denial (`403`, without automatic JWT refresh retry). P2.1d later provides a narrow **authoritative IAM current-account/session eligibility query** through a published Java capability; P2.2e calls it **only on a local user miss**. An eligible result permits local provisioning followed by the Group operation; deleted, disabled or invalid-session identities are rejected, and infrastructure failures fail closed. This is not merely offline JWT signature validation. Already-known local users retain the [security design's bounded token and event staleness](../../stack/security.md#revocation-distributed-services-and-verification) unless a stronger policy is separately approved.
 
 Account deletion is **not** a simple `DELETE` cascade from IAM into Group Management. Before a deletion event becomes active, the owning feature must decide how the final member/administrator invariants survive, whether members or history remain, and how out-of-order `UserRegistered`/`UserDeleted` deliveries cannot resurrect an identity. No `groups.users.deleted_at`, inbox or cascade is mandated by the current ER. This is an explicit P2.1e/P2.2d/P2.4a review gate, not a license to accept unsafe ordering.
 
-The publication registry is shared **delivery infrastructure** (the diagram intentionally shows only `event_publication ...`). Flyway will install the exact schema required by the selected Spring Modulith version under P2.4a. It is not an IAM or Group business table or a historical event journal. PostgreSQL **schemas** share one database and transaction manager in the modulith, so a producer can write its context table and the registry in the same physical transaction, while runtime code still cannot write another context's business tables. A future extracted service must carry its local publication intent with its authoritative store. See [messaging](../stack/messaging.md) for listener identity, completion, recovery and consumer idempotency.
+The publication registry is shared **delivery infrastructure** (the diagram intentionally shows only `event_publication ...`). Flyway will install the exact schema required by the selected Spring Modulith version under P2.4a. It is not an IAM or Group business table or a historical event journal. PostgreSQL **schemas** share one database and transaction manager in the modulith, so a producer can write its context table and the registry in the same physical transaction, while runtime code still cannot write another context's business tables. A future extracted service must carry its local publication intent with its authoritative store. See [messaging](../../stack/messaging.md) for listener identity, completion, recovery and consumer idempotency.
 
 ## Reading the technical ER
 
-The [ER PDF](../assets/er-data-model.pdf) and [SVG](../assets/er-data-model.svg) are the P2.0c design artifacts. Their notation uses `*` for PK, `+` for FK, `?` for nullable, `[idx]` for an index, `[unq]` for uniqueness, and `= ...` for a default. Untagged columns are intended as non-null. The diagram's `natural0` and `natural1` mean signed PostgreSQL `int4` constrained to `>= 0` and `> 0`, respectively; whether they become physical PostgreSQL domains or column-local `CHECK`s is an adapter/migration decision. The `group_role` type has `member` and `admin` values. Every `timestamptz` denotes an absolute instant, not a persisted local time-zone identifier.
+The [ER PDF](../../assets/er-data-model.pdf) and [SVG](../../assets/er-data-model.svg) are the P2.0c design artifacts. Their notation uses `*` for PK, `+` for FK, `?` for nullable, `[idx]` for an index, `[unq]` for uniqueness, and `= ...` for a default. Untagged columns are intended as non-null. The diagram's `natural0` and `natural1` mean signed PostgreSQL `int4` constrained to `>= 0` and `> 0`, respectively; whether they become physical PostgreSQL domains or column-local `CHECK`s is an adapter/migration decision. The `group_role` type has `member` and `admin` values. Every `timestamptz` denotes an absolute instant, not a persisted local time-zone identifier.
 
-**Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../data-model-design.md); **Security** comes from [security.md](../stack/security.md); **Messaging** comes from [messaging.md](../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../internal/tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
+**Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../../data-model-design.md); **Security** comes from [security.md](../../stack/security.md); **Messaging** comes from [messaging.md](../../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
 
 P1.2 has created the PostgreSQL 18 `identity` and `groups` namespaces, plus other context namespaces and Flyway history, with a migration role and restricted application role. **No IAM/Group business tables or framework publication registry are yet implemented.** The reference below is therefore the expected migration design, not a claim about deployed tables.
 
@@ -111,7 +112,7 @@ The ER includes `CHECK (absolute_expires_at > created_at)` and `CHECK (idle_expi
 
 ### IAM: `identity.refresh_tokens`
 
-Each session has zero or more **historical** refresh-token records and at most one **unconsumed** token. The selected cookie format is `<token-id>.<base64url(secret)>`; its UUID selects the row and a high-entropy secret proves possession. The secret is never stored in plaintext. This is an **ER/Phase 2 implementation choice** supporting the [security specification's rotating opaque credential](../stack/security.md#credentials-sessions-and-refresh).
+Each session has zero or more **historical** refresh-token records and at most one **unconsumed** token. The selected cookie format is `<token-id>.<base64url(secret)>`; its UUID selects the row and a high-entropy secret proves possession. The secret is never stored in plaintext. This is an **ER/Phase 2 implementation choice** supporting the [security specification's rotating opaque credential](../../stack/security.md#credentials-sessions-and-refresh).
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
@@ -187,4 +188,4 @@ The ER fixes useful local keys and checks, but does not substitute for business 
 | Local-miss identity validation | **P2.1d/P2.2e:** explicit current IAM account/session query, distinguish ineligible from unavailable, guard local provisioning and event races. |
 | Group attestation issuance and consumption | **P2.5:** issuer/subject/session correlation and scoped authorization; no additional attestation table is required by the current short-lived JWT model. |
 
-The first IAM/Group implementation migrations should follow this reference and their accepted task specifications. Tables, enum/domain DDL, FK delete actions and any account-deletion lifecycle additions receive review **before** independent feature branches rely on them. Finance's own replica and historical financial tables are deliberately outside this Phase 2 handoff; their correctness and retention contracts live with the [Finance domain model](../data-model-design.md#finance-consistency-boundary) and later feature tasks.
+The first IAM/Group implementation migrations should follow this reference and their accepted task specifications. Tables, enum/domain DDL, FK delete actions and any account-deletion lifecycle additions receive review **before** independent feature branches rely on them. Finance's own replica and historical financial tables are deliberately outside this Phase 2 handoff; their correctness and retention contracts live with the [Finance domain model](../../data-model-design.md#finance-consistency-boundary) and later feature tasks.

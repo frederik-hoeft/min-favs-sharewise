@@ -36,7 +36,7 @@
 
 ## Phase D - Documentation handoff and review
 
-- [ ] Publish the [Phase 2 IAM/Group handoff](../../../design/phase-2-foundation.md): bounded-context responsibilities, the implemented `IdentityContext`/test fixture seam, staged IAM-to-Group integration, and the reviewed P2.0c ER diagram with table/column provenance and operational constraints. Keep the document design-status explicit; do not duplicate the task backlog or claim business migrations exist.
+- [ ] Publish the [Phase 2 IAM/Group handoff](../../integration/phase-2-foundation.md): bounded-context responsibilities, the implemented `IdentityContext`/test fixture seam, staged IAM-to-Group integration, and the reviewed P2.0c ER diagram with table/column provenance and operational constraints. Keep the document design-status explicit; do not duplicate the task backlog or claim business migrations exist.
 - [ ] Publish the [proposed claims/security context architecture](../../../stack/claims-context-proposal.md) as input to P2.1.0 and P2.5: the lean claims/provenance model, operation-scoped DI providers, semantic `<Concept>Context` facade, trust/correlation policy layers, and explicit design gates. Do not prematurely reconcile the full steady-state JWT implementation documentation.
 - [ ] Reconcile this specification/plan with the implemented A–C contract and the two design handoffs. Verify document links, diagram equivalence, provenance/terminology consistency and patch application; record test evidence and deferred decisions. Produce an incremental review patch on the approved Phase C baseline and leave it unmerged pending human acceptance.
 
