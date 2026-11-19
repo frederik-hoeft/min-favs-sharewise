@@ -11,6 +11,7 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -43,6 +44,91 @@ class TestSelectionConventionsTests {
         assertTrue(pipeline.contains("test-backend-integration:"));
         assertTrue(pipeline.contains("test-backend-e2e:"));
         assertTrue(pipeline.contains("postgres:18-trixie"));
+    }
+
+    @Test
+    void ciRequiresSuccessfulBuildsAndOrdersBackendTestGates() throws IOException {
+        String pipeline = Files.readString(Path.of("../../../.gitlab-ci.yml"));
+        String stageBlock = pipeline.split("stages:\n", 2)[1].split("\n\n", 2)[0];
+        List<String> stages = stageBlock.lines()
+            .map(String::trim)
+            .filter(line -> line.startsWith("- "))
+            .map(line -> line.substring(2).split("\\s+#", 2)[0])
+            .toList();
+        assertEquals(List.of("build", "test", "test-backend-integration", "test-backend-e2e"), stages);
+        assertEquals(2L, pipeline.lines().filter(line -> line.equals("  needs:")).count(),
+            "Only the two PostgreSQL jobs may use needs");
+        assertTrue(pipeline.contains("Security/SAST.gitlab-ci.yml"));
+        assertTrue(pipeline.contains("Security/Secret-Detection.gitlab-ci.yml"));
+        assertTrue(pipeline.contains("AST_ENABLE_MR_PIPELINES: 'true'"));
+
+        for (String job : new String[]{"build-backend", "build-frontend"}) {
+            assertTrue(ciJob(pipeline, job).contains("  stage: build"), job);
+            assertTrue(!ciJob(pipeline, job).contains("  needs:"), job);
+        }
+        for (String job : new String[]{"test-backend-unit", "test-frontend-lint",
+                "test-frontend-typecheck", "test-frontend-test-typecheck", "test-frontend-vitest",
+                "test-frontend-static-export", "test-offline-handoff", "sast", "secret_detection"}) {
+            assertTrue(ciJob(pipeline, job).contains("  stage: test"), job);
+            assertTrue(!ciJob(pipeline, job).contains("  needs:"), job);
+        }
+        assertTrue(ciJob(pipeline, "test-backend-integration").contains("  stage: test-backend-integration"));
+        assertTrue(ciJob(pipeline, "test-backend-e2e").contains("  stage: test-backend-e2e"));
+        assertTrue(ciJob(pipeline, "test-backend-integration").contains(
+            "  needs:\n    - job: test-backend-unit\n      artifacts: false"));
+        assertTrue(ciJob(pipeline, "test-backend-e2e").contains(
+            "  needs:\n    - job: test-backend-integration\n      artifacts: false"));
+        assertTrue(!ciJob(pipeline, "test-backend-unit").contains("  needs:"));
+        assertTrue(ciJob(pipeline, "test-backend-integration").contains("-Pintegration-tests clean verify"));
+        assertTrue(ciJob(pipeline, "test-backend-e2e").contains("-Pe2e-tests clean verify"));
+        assertTrue(ciJob(pipeline, "test-backend-unit").contains("-Punit-tests clean verify"));
+
+        // Independent jobs must not fetch package artifacts from the earlier build stage.
+        assertTrue(!ciJob(pipeline, ".backend-maven").contains("  dependencies:"));
+        assertTrue(ciJob(pipeline, "test-backend-unit").contains("  dependencies: []"));
+        assertTrue(!ciJob(pipeline, "test-backend-integration").contains("  dependencies:"));
+        assertTrue(!ciJob(pipeline, "test-backend-e2e").contains("  dependencies:"));
+        assertTrue(ciJob(pipeline, ".frontend-npm").contains("  dependencies: []"));
+        assertTrue(ciJob(pipeline, "test-offline-handoff").contains("  dependencies: []"));
+        assertTrue(ciJob(pipeline, "secret_detection").contains("  dependencies: []"));
+        assertTrue(ciJob(pipeline, "sast").contains("  dependencies: []"),
+            "All SAST analyzers inherit artifact isolation from the template's sast parent");
+        assertTrue(ciJob(pipeline, "test-frontend-lint").contains("npm run lint"));
+        assertTrue(ciJob(pipeline, "test-frontend-typecheck").contains("npm run typecheck"));
+        assertTrue(ciJob(pipeline, "test-frontend-test-typecheck").contains("npm run test:typecheck"));
+        assertTrue(ciJob(pipeline, "test-frontend-vitest").contains("--reporter=junit"));
+        assertTrue(ciJob(pipeline, "test-frontend-vitest").contains("src/frontend/vitest-junit.xml"));
+        assertTrue(ciJob(pipeline, "build-frontend").contains("npm run build"));
+        assertTrue(ciJob(pipeline, "test-frontend-static-export").contains("npm run test:static-export"));
+        assertTrue(ciJob(pipeline, "build-frontend").contains("policy: pull-push"));
+        assertTrue(pipeline.contains("src/frontend/.npm/"));
+        assertTrue(!pipeline.contains("src/frontend/node_modules/"));
+    }
+
+    @Test
+    void ciWorkflowPreservesProtectedRefPipelinesAndCancellationPolicy() throws IOException {
+        String pipeline = Files.readString(Path.of("../../../.gitlab-ci.yml"));
+        String workflow = pipeline.split("workflow:\n", 2)[1].split("\n\n", 2)[0];
+        int protectedRefRule = workflow.indexOf("- if: '$CI_COMMIT_REF_PROTECTED == \"true\"'");
+        int mergeRequestRule = workflow.indexOf("- if: '$CI_PIPELINE_SOURCE == \"merge_request_event\"'");
+        int duplicatePushRule = workflow.indexOf(
+            "- if: '$CI_PIPELINE_SOURCE == \"push\" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'");
+
+        assertTrue(protectedRefRule >= 0, "Missing protected-ref exception");
+        assertTrue(mergeRequestRule > protectedRefRule,
+            "Protected MR pipelines must keep their cancellation override");
+        assertTrue(duplicatePushRule > protectedRefRule,
+            "Protected branch pushes must not be suppressed when an MR is open");
+        assertTrue(workflow.substring(protectedRefRule, mergeRequestRule).contains("on_new_commit: none"),
+            "Protected refs must not be automatically canceled");
+    }
+
+    private static String ciJob(String pipeline, String name) {
+        String marker = "\n" + name + ":\n";
+        int start = pipeline.indexOf(marker);
+        assertTrue(start >= 0, "Missing CI job: " + name);
+        int end = pipeline.indexOf("\n\n", start + marker.length());
+        return pipeline.substring(start, end < 0 ? pipeline.length() : end);
     }
 
     @Test

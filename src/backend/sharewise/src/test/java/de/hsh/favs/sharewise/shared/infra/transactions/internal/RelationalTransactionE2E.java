@@ -2,6 +2,8 @@ package de.hsh.favs.sharewise.shared.infra.transactions.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -11,6 +13,7 @@ import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.persistence.jpa.JpaAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import jakarta.persistence.Column;
@@ -22,8 +25,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import javax.sql.DataSource;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.jooq.DSLContext;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,12 +45,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** Real-commit mixed jOOQ/JPA transactions and failure handling against isolated PostgreSQL. */
+/** Real-commit JDBC/jOOQ/JPA transactions and failure handling against isolated PostgreSQL. */
 @org.junit.jupiter.api.Tag("e2e")
 class RelationalTransactionE2E extends E2ETestBase {
 
     OperationDispatcher dispatcher;
-    DataSource dataSource;
     JdbcTemplate jdbc;
     PlatformTransactionManager transactionManager;
 
@@ -51,7 +58,6 @@ class RelationalTransactionE2E extends E2ETestBase {
         startWithSchema("create table groups.tx_joint_probe (id integer primary key, label varchar(255) not null)",
             ProductionEntityScanConfiguration.class, Fixtures.class);
         dispatcher = context().getBean(OperationDispatcher.class);
-        dataSource = context().getBean(DataSource.class);
         jdbc = context().getBean(JdbcTemplate.class);
         transactionManager = context().getBean(PlatformTransactionManager.class);
     }
@@ -68,11 +74,15 @@ class RelationalTransactionE2E extends E2ETestBase {
                 DSLContext db = probe.jooq().dsl();
                 assertEquals("created by JPA", db.fetchValue(
                     "select label from groups.tx_joint_probe where id = ?", 1));
+                assertEquals("created by JPA", probe.jdbc().queryForObject(
+                    "select label from groups.tx_joint_probe where id = ?", String.class, 1));
                 assertEquals(1, db.execute(
                     "update groups.tx_joint_probe set label = ? where id = ?", "updated by jOOQ", 1));
 
                 // The first-level JPA cache does not magically observe a direct SQL update.
                 assertEquals("created by JPA", row.label);
+                assertEquals("updated by jOOQ", probe.jdbc().queryForObject(
+                    "select label from groups.tx_joint_probe where id = ?", String.class, 1));
                 entityManager.refresh(row);
                 assertEquals("updated by jOOQ", row.label);
                 return TransactionOutcome.commit(null);
@@ -84,55 +94,81 @@ class RelationalTransactionE2E extends E2ETestBase {
     }
 
     @Test
-    void jooqAndJpaWritesCommitOrRollBackAsOnePhysicalUnit() {
+    void jdbcJooqAndJpaWritesCommitOrRollBackAsOnePhysicalUnit() {
         dispatcher.dispatch(Probe.class, probe -> {
-            probe.transactions().execute(() -> {
-                probe.jpa().entityManager().persist(new Row(10, "JPA"));
+            assertEquals("committed", probe.transactions().execute(() -> {
+                EntityManager entityManager = probe.jpa().entityManager();
+                entityManager.persist(new Row(10, "JPA"));
+                entityManager.flush();
                 probe.jooq().dsl().execute("insert into groups.tx_joint_probe (id, label) values (11, 'jOOQ')");
-                return TransactionOutcome.commit(null);
-            });
-            probe.transactions().execute(() -> {
-                probe.jpa().entityManager().persist(new Row(12, "rolled back JPA"));
+                probe.jdbc().update("insert into groups.tx_joint_probe (id, label) values (?, ?)", 16, "JDBC");
+                return TransactionOutcome.commit("committed");
+            }));
+            assertEquals("rolled back", probe.transactions().execute(() -> {
+                EntityManager entityManager = probe.jpa().entityManager();
+                entityManager.persist(new Row(12, "rolled back JPA"));
+                entityManager.flush();
                 probe.jooq().dsl().execute("insert into groups.tx_joint_probe (id, label) values (13, 'rolled back jOOQ')");
-                return TransactionOutcome.rollback(null);
-            });
-            probe.transactions().execute(() -> {
-                probe.jpa().entityManager().persist(new Row(14, "abstained JPA"));
+                probe.jdbc().update("insert into groups.tx_joint_probe (id, label) values (?, ?)", 17, "rolled back JDBC");
+                return TransactionOutcome.rollback("rolled back");
+            }));
+            assertEquals("abstained", probe.transactions().execute(() -> {
+                EntityManager entityManager = probe.jpa().entityManager();
+                entityManager.persist(new Row(14, "abstained JPA"));
+                entityManager.flush();
                 probe.jooq().dsl().execute("insert into groups.tx_joint_probe (id, label) values (15, 'abstained jOOQ')");
-                return TransactionOutcome.abstain(null);
-            });
+                probe.jdbc().update("insert into groups.tx_joint_probe (id, label) values (?, ?)", 18, "abstained JDBC");
+                return TransactionOutcome.abstain("abstained");
+            }));
             return null;
         });
-        assertEquals(2, countRows());
+        assertEquals(3, countRows());
         assertTrue(exists(10));
         assertTrue(exists(11));
-        for (int absent : new int[]{12, 13, 14, 15}) {
+        assertTrue(exists(16));
+        for (int absent : new int[]{12, 13, 14, 15, 17, 18}) {
             assertFalse(exists(absent));
         }
     }
 
     @Test
-    void independentConnectionDoesNotSeeUncommittedJpaOrJooqWrites() {
+    void independentConnectionDoesNotSeeUncommittedJdbcJooqOrJpaWrites() {
         dispatcher.dispatch(Probe.class, probe -> {
             probe.transactions().execute(() -> {
                 probe.jpa().entityManager().persist(new Row(20, "not committed"));
                 probe.jpa().entityManager().flush();
                 probe.jooq().dsl().execute("insert into groups.tx_joint_probe (id, label) values (21, 'also pending')");
+                probe.jdbc().update("insert into groups.tx_joint_probe (id, label) values (?, ?)",
+                    22, "pending JDBC");
+                Integer jdbcPid = probe.jdbc().queryForObject("select pg_backend_pid()", Integer.class);
+                Integer jooqPid = probe.jooq().dsl().fetchOne("select pg_backend_pid()")
+                    .get(0, Integer.class);
+                Number jpaPid = (Number) probe.jpa().entityManager()
+                    .createNativeQuery("select pg_backend_pid()").getSingleResult();
+                assertEquals(jdbcPid, jooqPid);
+                assertEquals(jdbcPid.intValue(), jpaPid.intValue());
+                assertEquals(3, probe.jdbc().queryForObject(
+                    "select count(*) from groups.tx_joint_probe", Integer.class));
                 assertEquals(0, countFromIndependentConnection());
                 return TransactionOutcome.commit(null);
             });
-            assertEquals(2, countFromIndependentConnection());
+            assertEquals(3, countFromIndependentConnection());
             return null;
         });
     }
 
     @Test
     void expectedBusinessFailureMayCommitAnIntentionalSideEffect() {
-        String result = dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() -> {
-            probe.jooq().dsl().execute("insert into groups.tx_joint_probe (id, label) values (30, 'denied attempt')");
-            return TransactionOutcome.commit("DENIED");
-        }));
-        assertEquals("DENIED", result);
+        record Denied(String reason) { }
+        Result<String, Denied> rejected = Result.err(new Denied("policy rejected"));
+        Result<String, Denied> result = dispatcher.dispatch(Probe.class,
+            probe -> probe.transactions().execute(() -> {
+                probe.jooq().dsl().execute(
+                    "insert into groups.tx_joint_probe (id, label) values (30, 'denied attempt')");
+                return TransactionOutcome.commit(rejected);
+            }));
+        assertSame(rejected, result);
+        assertTrue(result.isFailure());
         assertTrue(exists(30));
     }
 
@@ -215,6 +251,11 @@ class RelationalTransactionE2E extends E2ETestBase {
                     db.execute("insert into groups.tx_joint_probe (id, label) values (70, 'duplicate')");
                     throw new AssertionError("Expected a unique-key constraint failure");
                 } catch (DuplicateKeyException expectedConstraint) {
+                    // PostgreSQL marks the whole physical transaction as aborted (SQLSTATE 25P02).
+                    // Translating the original constraint exception cannot make later SQL safe.
+                    DataAccessException aborted = assertThrows(DataAccessException.class,
+                        () -> probe.jdbc().queryForObject("select 1", Integer.class));
+                    assertEquals("25P02", sqlState(aborted));
                     probe.transactions().markRollbackOnly();
                 }
                 return TransactionOutcome.commit("translated failure");
@@ -234,6 +275,25 @@ class RelationalTransactionE2E extends E2ETestBase {
         });
         assertFalse(exists(70));
         assertFalse(exists(71));
+    }
+
+    @Test
+    void nestedLogicalSegmentIsRejectedWithoutStartingItsCallback() {
+        dispatcher.dispatch(Probe.class, probe -> {
+            probe.transactions().execute(() -> {
+                probe.jooq().dsl().execute(
+                    "insert into groups.tx_joint_probe (id, label) values (83, 'outer')");
+                assertThrows(IllegalStateException.class, () -> probe.transactions().execute(() -> {
+                    probe.jdbc().update(
+                        "insert into groups.tx_joint_probe (id, label) values (84, 'nested')");
+                    return TransactionOutcome.commit(null);
+                }));
+                return TransactionOutcome.rollback(null);
+            });
+            return null;
+        });
+        assertFalse(exists(83));
+        assertFalse(exists(84));
     }
 
     @Test
@@ -321,6 +381,70 @@ class RelationalTransactionE2E extends E2ETestBase {
         assertFalse(exists(90));
     }
 
+    @Test
+    void concurrentProductionDispatchesOwnIndependentPhysicalTransactions() throws Exception {
+        CountDownLatch bothPending = new CountDownLatch(2);
+        CountDownLatch releaseCommit = new CountDownLatch(1);
+        try (ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<ConcurrentResult> first = workers.submit(
+                () -> concurrentDispatch(100, bothPending, releaseCommit));
+            Future<ConcurrentResult> second = workers.submit(
+                () -> concurrentDispatch(110, bothPending, releaseCommit));
+            try {
+                assertTrue(bothPending.await(30, TimeUnit.SECONDS),
+                    "Both independent physical transactions must reach the pre-commit barrier");
+                assertEquals(0, countFromIndependentConnection(),
+                    "An independent PostgreSQL session must not see either uncommitted operation");
+            } finally {
+                releaseCommit.countDown();
+            }
+
+            ConcurrentResult firstResult = first.get(30, TimeUnit.SECONDS);
+            ConcurrentResult secondResult = second.get(30, TimeUnit.SECONDS);
+            assertNotSame(firstResult.transactions(), secondResult.transactions());
+            assertNotEquals(firstResult.backendPid(), secondResult.backendPid(),
+                "Concurrent segments must use different PostgreSQL sessions");
+        }
+        assertEquals(6, countFromIndependentConnection());
+        for (int id : new int[]{100, 101, 102, 110, 111, 112}) {
+            assertTrue(exists(id));
+        }
+    }
+
+    private ConcurrentResult concurrentDispatch(int firstId, CountDownLatch bothPending,
+            CountDownLatch releaseCommit) {
+        return dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() -> {
+            probe.jpa().entityManager().persist(new Row(firstId, "JPA"));
+            probe.jpa().entityManager().flush();
+            probe.jooq().dsl().execute(
+                "insert into groups.tx_joint_probe (id, label) values (?, ?)", firstId + 1, "jOOQ");
+            probe.jdbc().update(
+                "insert into groups.tx_joint_probe (id, label) values (?, ?)", firstId + 2, "JDBC");
+            Integer pid = probe.jdbc().queryForObject("select pg_backend_pid()", Integer.class);
+            bothPending.countDown();
+            try {
+                if (!releaseCommit.await(30, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Timed out waiting to complete concurrent segment");
+                }
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while waiting to complete segment", failure);
+            }
+            return TransactionOutcome.commit(new ConcurrentResult(pid, probe.transactions()));
+        }));
+    }
+
+    private record ConcurrentResult(int backendPid, Transactions transactions) { }
+
+    private static String sqlState(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql) {
+                return sql.getSQLState();
+            }
+        }
+        throw new AssertionError("Expected a PostgreSQL JDBC cause", failure);
+    }
+
     private int countRows() {
         return jdbc.queryForObject("select count(*) from groups.tx_joint_probe", Integer.class);
     }
@@ -330,7 +454,7 @@ class RelationalTransactionE2E extends E2ETestBase {
     }
 
     private int countFromIndependentConnection() {
-        try (Connection connection = dataSource.getConnection();
+        try (Connection connection = fixture().connectAsApplication();
              PreparedStatement statement = connection.prepareStatement("select count(*) from groups.tx_joint_probe");
              ResultSet rows = statement.executeQuery()) {
             rows.next();
@@ -340,7 +464,7 @@ class RelationalTransactionE2E extends E2ETestBase {
         }
     }
 
-    record Probe(Transactions transactions, JooqAccess jooq, JpaAccess jpa) { }
+    record Probe(Transactions transactions, JooqAccess jooq, JpaAccess jpa, JdbcTemplate jdbc) { }
 
     @Entity(name = "JointProbeRow")
     @Table(name = "tx_joint_probe", schema = "groups")
@@ -363,8 +487,8 @@ class RelationalTransactionE2E extends E2ETestBase {
         basePackages = "de.hsh.favs.sharewise.shared.infra.transactions.internal")
     static class Fixtures {
         @Bean @Scope("operation")
-        Probe probe(Transactions transactions, JooqAccess jooq, JpaAccess jpa) {
-            return new Probe(transactions, jooq, jpa);
+        Probe probe(Transactions transactions, JooqAccess jooq, JpaAccess jpa, JdbcTemplate jdbc) {
+            return new Probe(transactions, jooq, jpa, jdbc);
         }
     }
 }

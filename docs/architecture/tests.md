@@ -76,6 +76,6 @@ Database-backed suites must fail when the configured PostgreSQL server is missin
 
 The suites establish only the behavior they execute. Unit tests cannot establish SQL dialect or database isolation rules. Integration tests cannot establish physical commit, after-commit delivery, multi-segment persistence or crash recovery. Database-isolated E2E tests cannot establish behavior spanning separately deployed processes.
 
-The independent [P1.5 PostgreSQL transaction acceptance gate](../internal/tasks/backlog.md#phase-1---modular-application-and-persistence-foundation) and future messaging tests remain responsible for their own scenario-specific evidence. The existence of a suitable fixture does not imply that unimplemented messaging, replication or concurrency contracts have been verified.
+The [P1.5 PostgreSQL transaction acceptance record](../internal/tasks/p1.5-postgresql-transaction-gate/plan.md#tx-03-through-tx-11-evidence-matrix) covers the real-commit and database-specific production transaction scenarios. Future messaging, replication and domain-concurrency invariants require their own feature tests; reusable E2E fixtures alone do not establish them.
 
 For suite selection, fixture APIs, credentials, local execution and CI troubleshooting, see [Backend testing](../development/tests.md).

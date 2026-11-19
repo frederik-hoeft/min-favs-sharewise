@@ -45,6 +45,7 @@ src/frontend/.yarn/*
 
 # testing
 src/frontend/coverage
+src/frontend/vitest-junit.xml
 
 # next.js
 src/frontend/.next/
