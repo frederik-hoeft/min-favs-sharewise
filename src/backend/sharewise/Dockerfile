@@ -18,6 +18,8 @@ RUN apt-get update \
         ge '25.0.5.1+2-1~deb13u1' \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+# Fail closed when the image runs without the production secret-backed profile.
+ENV SPRING_PROFILES_ACTIVE=production
 ARG BUILD_VERSION=dev
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="ShareWise backend" \
