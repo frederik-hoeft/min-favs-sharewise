@@ -1,6 +1,9 @@
 package de.hsh.favs.sharewise.shared.infra.di.internal;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.shared.infra.di.ScopedServiceInitializer;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -14,7 +17,11 @@ class OperationScopeConfiguration {
     }
 
     @Bean
-    static OperationDispatcher operationDispatcher(SpringServiceScopeFactory serviceScopeFactory) {
-        return new SpringOperationDispatcher(serviceScopeFactory);
+    static OperationDispatcher operationDispatcher(
+        SpringServiceScopeFactory serviceScopeFactory,
+        ConfigurableListableBeanFactory beanFactory,
+        ObjectProvider<ScopedServiceInitializer<?, ?>> initializers
+    ) {
+        return new SpringOperationDispatcher(serviceScopeFactory, beanFactory, initializers);
     }
 }

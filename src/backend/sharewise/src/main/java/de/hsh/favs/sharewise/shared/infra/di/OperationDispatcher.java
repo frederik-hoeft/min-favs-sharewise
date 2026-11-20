@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.shared.infra.di;
 
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -9,4 +10,14 @@ import java.util.function.Function;
 public interface OperationDispatcher {
 
     <S, R> R dispatch(Class<S> entryType, Function<S, R> action);
+
+    /**
+     * Registers typed caller inputs before starting an operation. Initializers may
+     * consume them to configure operation-scoped state before entry-service resolution.
+     */
+    <S, R> R dispatch(
+        Consumer<OperationInputRegistry> registerInputs,
+        Class<S> entryType,
+        Function<S, R> action
+    );
 }

@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
+import de.hsh.favs.sharewise.shared.infra.di.OperationScopedConfiguration;
+import de.hsh.favs.sharewise.shared.infra.di.ScopedServiceInitializer;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
@@ -106,6 +109,9 @@ class ApplicationModuleStructureTests {
 
         Set<String> expectedTypes = Set.of(
                 OperationDispatcher.class.getName(),
+                OperationInputRegistry.class.getName(),
+                OperationScopedConfiguration.class.getName(),
+                ScopedServiceInitializer.class.getName(),
                 ServiceScopeFactory.class.getName(),
                 ServiceScope.class.getName(),
                 ServiceProvider.class.getName());

@@ -39,7 +39,15 @@ flowchart TB
     beanFactory -->|"construct and inject"| service["Entry service and collaborators"]
 ```
 
-`OperationDispatcher.dispatch(Class<S>, Function<S, R>)` creates a scope, activates it, resolves the requested entry service, executes the operation callback and closes the scope. The dispatcher does not create or finalize physical transactions. Ordinary calls between already-injected application services remain inside the same operation.
+`OperationDispatcher.dispatch(Class<S>, Function<S, R>)` creates a scope, activates it, resolves the requested entry service, executes the operation callback and closes the scope. The dispatcher also has an overload accepting a pre-dispatch input registration callback. In both cases, it does not create or finalize physical transactions. Ordinary calls between already-injected application services remain inside the same operation.
+
+### Pre-dispatch inputs and configuration initialization
+
+The registration overload accepts an `OperationInputRegistry` for the duration of its callback, **before any operation scope exists**. Inputs are registered under exact declared Java classes (including interface keys), with one non-null value per key. Registration closes before the scope is created; duplicate keys, invalid values, later mutations and wrong-thread registration are rejected. The registry is not a Spring bean, and caller-owned objects are neither injected directly as beans nor destroyed by the scope.
+
+Spring discovers `ScopedServiceInitializer` components in the active scope. Each declares a target configuration class, an input class and an integer priority. The dispatcher runs initializers in ascending priority (`Integer.MIN_VALUE` first); equal priorities do not specify an inter-initializer dependency order. Every initializer receives a non-null, Spring-resolved **operation-scoped** configuration and an `Optional` input, leaving absence policy to the initializer. The target must be a designated `OperationScopedConfiguration`, never a singleton, prototype or arbitrary application service. Multiple initializers targeting the same configuration share the scoped instance.
+
+After all initializers succeed, the dispatcher validates and finalizes each affected configuration **once**, then resolves the entry service. Configurations guard reads until finalized and reject mutation afterward; their implementations copy caller-mutable inputs into stable state where necessary. Initialization, finalization and entry-service execution share one `ServiceScope.run(...)` activation. Any registration error prevents scope creation; initialization/finalization failure prevents entry-service construction and still closes the activated scope. The registration mechanism is general-purpose but intended for narrow ingress state; ordinary business arguments and domain-context services use normal method calls and constructor injection.
 
 A scope's `ServiceProvider.getRequiredService(Class<T>)` delegates to Spring's `BeanFactory.getBean(...)`. Spring resolves the bean definition and recursively constructs its dependency graph, including configured qualifiers, factory methods and post-processors. When Spring encounters an operation-scoped bean, its registered custom `Scope` adapter delegates cache lookup and creation to the **currently bound** `ServiceScope` instance.
 
