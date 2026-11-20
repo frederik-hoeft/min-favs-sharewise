@@ -10,7 +10,7 @@ To get started:
 
 1. Install **Docker** and **VS Code** with Microsoft's **Dev Containers** extension, and start Docker.
 2. Open the repository root in VS Code. From the Command Palette (`Ctrl+Shift+P`), select **Dev Containers: Reopen in Container**. VS Code builds and starts the configured container and runs its initialization steps; the initial setup requires network access to obtain images and dependencies.
-3. Use VS Code's terminal inside the container to run the commands below. The backend and frontend ports (`8080` and `3000`) are forwarded to the host. After changing `.devcontainer/` configuration, run **Dev Containers: Rebuild Container**.
+3. Use VS Code's terminal inside the container to run the commands below. The backend and frontend ports (`8080` and `3000`) are explicitly forwarded to the host; automatic forwarding of other detected ports is disabled. After changing `.devcontainer/` configuration, run **Dev Containers: Rebuild Container**.
 
 The source checkout remains on the host and survives container rebuilds. Tools or files installed only inside an individual container should not be treated as persistent project state.
 
@@ -59,21 +59,7 @@ The backend and frontend Dockerfiles are buildable directly from a clean source 
 
 The frontend Dockerfile builds the Next.js static export using Node.js 24 and the checked-in npm lockfile, then packages the generated HTML/assets in an Nginx-only runtime. The edge serves HTTPS on container port 443 and redirects HTTP on port 80 to the configured public HTTPS address. It accepts one explicit `SHAREWISE_PUBLIC_HOST` (DNS name or IPv4 address), and `SHAREWISE_HTTPS_PORT` (default `443`) identifies the **externally published** TLS port for redirects and forwarding metadata. Unknown hostnames are rejected. It serves exported extensionless routes, never falls back to `/` for unknown paths, and applies `no-store` to HTML/API responses while caching fingerprinted Next.js assets immutably.
 
-Nginx expects an externally supplied certificate and key at `/etc/nginx/tls/fullchain.pem` and `/etc/nginx/tls/privkey.pem`; the image contains neither. Missing files or an invalid public hostname prevent startup. For an isolated local illustration on a machine with a Docker daemon, generate a disposable self-signed certificate under the ignored `.local/` directory:
-
-```bash
-mkdir -p .local/sharewise/tls
-openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-    -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' \
-    -keyout .local/sharewise/tls/privkey.pem -out .local/sharewise/tls/fullchain.pem
-chmod 600 .local/sharewise/tls/privkey.pem
-docker build -t sharewise-backend src/backend/sharewise
-docker build -t sharewise-frontend src/frontend
-docker run --rm -e SHAREWISE_PUBLIC_HOST=localhost -e SHAREWISE_HTTPS_PORT=8443 \
-    -v "$PWD/.local/sharewise/tls:/etc/nginx/tls:ro" \
-    -p 127.0.0.1:8080:80 -p 127.0.0.1:8443:443 sharewise-frontend
-# Browse https://localhost:8443/ after accepting the local test certificate.
-```
+Nginx expects an externally supplied certificate and key at `/etc/nginx/tls/fullchain.pem` and `/etc/nginx/tls/privkey.pem`; the image contains neither. Missing files or an invalid public hostname prevent startup. For local builds, HTTPS checks, and Docker-outside-of-Docker-compatible Compose deployment, use the [deployment guide](../deploy/README.md) and its scripts. Deployment HTTP/HTTPS host ports are separate from the explicitly forwarded development ports.
 
 The Nginx `/api/*` location forwards unchanged paths, queries, methods, bodies, authorization and cookies to the service named `backend` on port 8080. It ignores client-supplied forwarding headers and supplies trusted public origin/client values. When the backend is absent, only API requests fail; static content remains available. The Spring production profile (`SPRING_PROFILES_ACTIVE=production`) enables framework forwarded-header interpretation and is safe only behind the **private, trusted proxy network** established in Phase D. Development mode does not trust arbitrary forwarded headers. Nginx never rewrites application cookies. Production certificate issuance, trusted ingress provisioning and their lifecycle belong to P2.6c/d, not this image.
 

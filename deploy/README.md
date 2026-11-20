@@ -8,7 +8,7 @@ Nginx is the only publicly bound service. It serves the static Next.js export ov
 
 Use a trusted local Docker Engine with the Docker Compose plugin. The invoking shell needs Bash, OpenSSL, and `tar`; image builds run in containers and need no host Java, Maven, Node.js or npm installation. Docker access, including through a devcontainer-mounted socket, is equivalent to powerful access to the Docker host.
 
-The recommended workflow uses the Docker CLI inside the VS Code devcontainer (**Docker-outside-of-Docker**, or DooD), as in the related [GeoSearch deployment](https://github.com/frederik-hoeft/min-swa-geosearch/tree/main/deploy). Running the same commands on the Docker host is supported.
+The recommended workflow uses the Docker CLI inside the VS Code devcontainer (**Docker-outside-of-Docker**, or DooD). Running the same commands on the Docker host is supported.
 
 ```sh
 docker version
@@ -28,10 +28,12 @@ The first command creates ignored `deploy/.local/compose.env`, `secrets/`, and `
 
 The start script checks the Compose configuration, imports local secrets and certificates through the Docker API, then builds and starts PostgreSQL, Spring Boot and Nginx with health-based startup ordering. Subsequent `start.sh` invocations work with unchanged assets and existing data. See the [scripts](scripts/) for details.
 
-By default the browser endpoints are **http://sharewise.test:8080/** (redirects to HTTPS) and **https://sharewise.test:8443/**, published only on **127.0.0.1 of the Docker daemon host**. Map `sharewise.test` to that loopback address through a host file or local DNS when testing in a browser, and explicitly trust the local certificate if necessary. For quick host-side checks without DNS setup:
+Development forwards ports `3000` (Next.js) and `8080` (Spring Boot) through VS Code. The local deployment uses different host ports so it can coexist with those forwarded ports; VS Code automatic port discovery is disabled, while the explicit development forwards remain available.
+
+By default the browser endpoints are **http://sharewise.test:18080/** (redirects to HTTPS) and **https://sharewise.test:8443/**, published only on **127.0.0.1 of the Docker daemon host**. Map `sharewise.test` to that loopback address through a host file or local DNS when testing in a browser, and explicitly trust the local certificate if necessary. For quick host-side checks without DNS setup:
 
 ```sh
-curl -I --resolve sharewise.test:8080:127.0.0.1 http://sharewise.test:8080/
+curl -I --resolve sharewise.test:18080:127.0.0.1 http://sharewise.test:18080/
 curl -kfsS --resolve sharewise.test:8443:127.0.0.1 https://sharewise.test:8443/
 curl -kfsS --resolve sharewise.test:8443:127.0.0.1 \
   https://sharewise.test:8443/api/system/v1/health
@@ -61,7 +63,7 @@ The deployment test uses a *different*, disposable Compose project and a fresh P
 # For another fresh test: SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./deploy/scripts/test-compose.sh
 ```
 
-It uses distinct host ports by default (`18080`/`18443`, overridable through `SHAREWISE_SMOKE_HTTP_PORT` and `SHAREWISE_SMOKE_HTTPS_PORT`), so the normal local stack can remain running. It **refuses to reuse a pre-existing test database volume** and leaves test containers/volumes available for inspection. To remove only an intentionally disposable test stack:
+It uses distinct host ports by default (`28080`/`18443`, overridable through `SHAREWISE_SMOKE_HTTP_PORT` and `SHAREWISE_SMOKE_HTTPS_PORT`), so the normal local stack can remain running. It **refuses to reuse a pre-existing test database volume** and leaves test containers/volumes available for inspection. To remove only an intentionally disposable test stack:
 
 ```sh
 docker compose --env-file deploy/.local/compose.env -f deploy/compose.yaml \
@@ -82,7 +84,7 @@ docker compose --env-file deploy/.local/compose.env -f deploy/compose.yaml logs 
 docker compose --env-file deploy/.local/compose.env -f deploy/compose.yaml down
 ```
 
-Edit `deploy/.local/compose.env` to adjust the hostname, localhost port bindings or image tags. `SHAREWISE_BACKEND_IMAGE` and `SHAREWISE_FRONTEND_IMAGE` also accept registry image references for later stages. Use `SHAREWISE_COMPOSE_ENV_FILE` to select a different local config and `SHAREWISE_LOCAL_INPUT_DIR` to select an alternative source directory for import; the input paths are client-side only. `SHAREWISE_COMPOSE_PROJECT` overrides the project name for the import/start scripts. Prefer a separate project name and separate volumes for every destructive acceptance test.
+Edit `deploy/.local/compose.env` to adjust the hostname, localhost port bindings or image tags. The fixture generator never overwrites this file. If it was created with `SHAREWISE_HTTP_PORT=8080`, change that line to `SHAREWISE_HTTP_PORT=18080` before restarting. There is no need to regenerate credentials, certificates or the PostgreSQL volume. If a host port is already occupied, choose another free loopback port in this file; Compose cannot take an occupied port from another process. `SHAREWISE_BACKEND_IMAGE` and `SHAREWISE_FRONTEND_IMAGE` also accept registry image references for later stages. Use `SHAREWISE_COMPOSE_ENV_FILE` to select a different local config and `SHAREWISE_LOCAL_INPUT_DIR` to select an alternative source directory for import; the input paths are client-side only. `SHAREWISE_COMPOSE_PROJECT` overrides the project name for the import/start scripts. Prefer a separate project name and separate volumes for every destructive acceptance test.
 
 When using DooD, run browser or published-port smoke requests **on the Docker daemon host** rather than relying on `localhost` in the devcontainer. The automated acceptance test instead resolves `frontend` through Compose networking and preserves HTTPS SNI/Host semantics, avoiding that namespace mismatch.
 

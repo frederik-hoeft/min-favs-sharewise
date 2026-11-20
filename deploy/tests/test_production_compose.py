@@ -1,5 +1,6 @@
 """Static production packaging checks; real PostgreSQL acceptance is separate."""
 
+import json
 import os
 from pathlib import Path
 import re
@@ -48,6 +49,35 @@ class ProductionComposeContractTests(unittest.TestCase):
         self.assertNotIn("sharewise_app_dev", yaml)
         self.assertNotIn("sharewise_migrator_dev", yaml)
         self.assertNotIn("postgres_dev", yaml)
+
+    def test_local_deployment_ports_do_not_overlap_explicit_development_forwards(self):
+        devcontainer = json.loads((ROOT / ".devcontainer/devcontainer.json").read_text())
+        forwarded = set(devcontainer["forwardPorts"])
+        self.assertEqual(forwarded, {3000, 8080})
+        self.assertIs(
+            devcontainer["customizations"]["vscode"]["settings"]["remote.autoForwardPorts"],
+            False,
+        )
+
+        defaults = {
+            "SHAREWISE_HTTP_PORT": 18080,
+            "SHAREWISE_HTTPS_PORT": 8443,
+        }
+        example = (ROOT / "deploy/production.env.example").read_text()
+        fixture_script = (ROOT / "deploy/scripts/prepare-local.sh").read_text()
+        compose = COMPOSE.read_text()
+        for key, port in defaults.items():
+            with self.subTest(key=key):
+                self.assertNotIn(port, forwarded)
+                self.assertIn(f"{key}={port}", example)
+                self.assertIn(f"{key}={port}", fixture_script)
+                self.assertIn("${" + key + f":-{port}" + "}", compose)
+
+        acceptance_script = (ROOT / "deploy/scripts/test-compose.sh").read_text()
+        self.assertIn("SHAREWISE_SMOKE_HTTP_PORT:-28080", acceptance_script)
+        self.assertIn("SHAREWISE_SMOKE_HTTPS_PORT:-18443", acceptance_script)
+        self.assertTrue({18080, 8443}.isdisjoint({28080, 18443}))
+        self.assertTrue(forwarded.isdisjoint({28080, 18443}))
 
     def test_named_volumes_replace_daemon_side_bind_mounts(self):
         yaml = COMPOSE.read_text()
@@ -136,6 +166,7 @@ class ProductionComposeContractTests(unittest.TestCase):
             self.assertEqual(secret_dir.stat().st_mode & 0o777, 0o700)
             self.assertEqual((fixture / "tls/privkey.pem").stat().st_mode & 0o777, 0o600)
             self.assertEqual((fixture / "compose.env").stat().st_mode & 0o777, 0o600)
+            self.assertIn("SHAREWISE_HTTP_PORT=18080", (fixture / "compose.env").read_text())
             self.assertEqual((secret_dir / names[0]).stat().st_mode & 0o777, 0o600)
             second = subprocess.run(["bash", str(script)], capture_output=True, text=True)
             self.assertNotEqual(second.returncode, 0)

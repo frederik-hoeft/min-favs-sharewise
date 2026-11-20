@@ -57,7 +57,7 @@ services:
       SHAREWISE_PUBLIC_HOST: ${SHAREWISE_PUBLIC_HOST:?Set SHAREWISE_PUBLIC_HOST in the Compose environment file}
       SHAREWISE_HTTPS_PORT: ${SHAREWISE_HTTPS_PORT:-8443}
     ports:
-      - "${SHAREWISE_HTTP_BIND:-127.0.0.1}:${SHAREWISE_HTTP_PORT:-8080}:80"
+      - "${SHAREWISE_HTTP_BIND:-127.0.0.1}:${SHAREWISE_HTTP_PORT:-18080}:80"
       - "${SHAREWISE_HTTPS_BIND:-127.0.0.1}:${SHAREWISE_HTTPS_PORT:-8443}:443"
     volumes:
       - tls_certs:/etc/nginx/tls:ro

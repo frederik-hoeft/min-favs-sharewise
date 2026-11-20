@@ -14,7 +14,7 @@ default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$env_file" | tail -n 1)
 }
 # Avoid collisions with a running default local stack. The inside-container
 # HTTPS request tests use Compose DNS, not these daemon-host port bindings.
-export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-18080}"
+export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-28080}"
 export SHAREWISE_HTTPS_PORT="${SHAREWISE_SMOKE_HTTPS_PORT:-18443}"
 compose+=( -p "$project" )
 
