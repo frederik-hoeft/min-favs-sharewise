@@ -465,7 +465,7 @@ class PhaseDIamIngressTests {
         JwtCredentialCodec unrelatedCredentialCodec() {
             JwtCredentialProfile subordinate = new JwtCredentialProfile("group-attestation",
                 "https://groups.sharewise.test", "sw-group-attestation+jwt", Set.of("finance-api"),
-                JwtCredentialProfile.Kind.SUBORDINATE, Set.of(PROFILE.issuer()),
+                JwtCredentialProfile.Kind.SUBORDINATE, Set.of(PROFILE.id()),
                 Duration.ofMinutes(5), Duration.ofSeconds(30));
             return new JwtCredentialCodec(subordinate,
                 new Es256JwtSignatureService(List.of(JwtEcKey.signing("group", KEY)), Optional.of("group")), CLOCK);

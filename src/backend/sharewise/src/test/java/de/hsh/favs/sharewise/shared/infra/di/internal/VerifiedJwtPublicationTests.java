@@ -104,7 +104,7 @@ class VerifiedJwtPublicationTests {
                         List.of(JwtEcKey.signing("iam-key", iamKeys)), Optional.of("iam-key")), clock);
                 group = new JwtCredentialCodec(new JwtCredentialProfile("group-attestation",
                     "https://groups.sharewise.test", "sw-group+jwt", Set.of("api"),
-                    JwtCredentialProfile.Kind.SUBORDINATE, Set.of(IAM_ISSUER), Duration.ofMinutes(5), Duration.ofSeconds(30)),
+                    JwtCredentialProfile.Kind.SUBORDINATE, Set.of(iam.profile().id()), Duration.ofMinutes(5), Duration.ofSeconds(30)),
                     new de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService(
                         List.of(JwtEcKey.signing("group-key", groupKeys)), Optional.of("group-key")), clock);
                 primaryToken = iam.sign(new JwtIssueRequest(USER, SESSION, "primary-token",

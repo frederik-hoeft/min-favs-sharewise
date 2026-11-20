@@ -68,7 +68,8 @@ public final class JwtCredentialCodec {
     }
 
     /**
-     * Verifies subordinate evidence and its principal/session binding to a current primary.
+     * Verifies subordinate evidence against an accepted issuer-qualified primary
+     * credential profile and the current primary principal/session.
      *
      * @param token untrusted subordinate compact JWS
      * @param primary previously verified primary evidence
@@ -78,7 +79,8 @@ public final class JwtCredentialCodec {
     public VerifiedJwtCredential verifySubordinate(String token, VerifiedJwtCredential primary) {
         if (profile.kind() != JwtCredentialProfile.Kind.SUBORDINATE || primary == null
             || primary.kind() != JwtCredentialProfile.Kind.PRIMARY
-            || !profile.trustedPrimaryIssuers().contains(primary.credential().origin().issuer())
+            || !profile.trustedPrimaryProfiles().contains(new JwtCredentialProfile.Id(
+                primary.credential().origin().issuer(), primary.credential().origin().profile()))
             || !primary.validAt(clock.instant())) {
             throw new JwtCredentialException();
         }

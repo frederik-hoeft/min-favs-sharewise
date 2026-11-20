@@ -174,6 +174,7 @@ class ApplicationModuleStructureTests {
             JwtCredentialCodec.class.getName(),
             JwtCredentialException.class.getName(),
             JwtCredentialProfile.class.getName(),
+            JwtCredentialProfile.Id.class.getName(),
             JwtCredentialProfile.Kind.class.getName(),
             JwtIssueRequest.class.getName(),
             JwtEcKey.class.getName(),

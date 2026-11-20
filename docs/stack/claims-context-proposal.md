@@ -16,7 +16,7 @@ A domain context might expose membership or permission checks such as `isMember(
 
 The [implemented evidence model](../architecture/authorization.md#credential-evidence-model) is deliberately domain-agnostic. It can preserve claims from several sources without deciding whether any of them entitles the caller to act. The proposed Group integration adds **source-specific meaning** to that model: one attestation asserts a narrow fact about one resource and is correlated with the current primary IAM identity before domain policy interprets it.
 
-The table retains the credential information required by the [security design](security.md#issuing-and-using-domain-attestations) and distinguishes existing JWT primitive contracts from the still-proposed Group wire contract. The Group claim names are illustrative unless specifically identified as part of the shared codec's current binding mechanism.
+The table retains the credential information required by the [security design](security.md#issuing-and-using-domain-attestations) and distinguishes existing JWT primitive contracts from the still-proposed Group wire contract. The Group claim names are illustrative unless specifically identified as part of the shared codec's current binding mechanism. In particular, **`iam-access` and `group-attestation` are configuration-side profile names, not JWT fields**. Their issuer-qualified identities distinguish accepted credential categories, while signed `iss`/`aud` claims and the protected `typ` header determine whether a token satisfies the selected profile. A Group attestation's subordinate profile would explicitly trust the primary `(IAM issuer, iam-access)` profile, not every token profile issued by IAM.
 
 | JWT element | Primary IAM credential | Proposed Group attestation | Evidence and policy interpretation |
 | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ The table retains the credential information required by the [security design](s
 
 An IAM session ID may correspond to `identity.sessions.id` (UUIDv7), but remains a **non-secret binding identifier**, unlike the rotating refresh-token bearer secret. Domain attestations bind to the principal and session, not to one particular access JWT's token ID or issuance time. The security model therefore requires a valid primary JWT alongside every accepted subordinate credential, even when the attestation was issued while an earlier access JWT was current.
 
-The shared subordinate codec already enforces trusted primary-issuer membership, an unexpired primary credential and matching subject, `principal_iss` and `principal_sid`. The eventual Group provider must supply the right configured profile, token input and accepted evidence to the operation; it must not treat direct construction of an `AuthorizationCredential` as verification. Group-specific resource and permission checks remain separate from cryptographic and session binding.
+The shared subordinate codec requires an accepted issuer-qualified primary profile, a still-valid primary credential and matching subject, `principal_iss` and `principal_sid`. The profile name is checked against the locally verified primary evidence, not against another token-supplied field. The eventual Group provider must supply the right configured profile, token input and accepted evidence to the operation; it must not treat direct construction of an `AuthorizationCredential` as verification. Group-specific resource and permission checks remain separate from cryptographic and session binding.
 
 ## Proposed Group attestation integration
 

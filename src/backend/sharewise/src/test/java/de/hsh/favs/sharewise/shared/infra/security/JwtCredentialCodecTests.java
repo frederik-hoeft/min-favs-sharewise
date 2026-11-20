@@ -54,7 +54,7 @@ class JwtCredentialCodecTests {
         JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
     private static final JwtCredentialProfile GROUP = new JwtCredentialProfile(
         "group-attestation", GROUP_ISSUER, "sw-group-attestation+jwt", Set.of("sharewise-finance"),
-        JwtCredentialProfile.Kind.SUBORDINATE, Set.of(IAM_ISSUER), Duration.ofMinutes(5), Duration.ofSeconds(30));
+        JwtCredentialProfile.Kind.SUBORDINATE, Set.of(IAM.id()), Duration.ofMinutes(5), Duration.ofSeconds(30));
 
     @Test
     void signsAndVerifiesTypedPrimaryEvidenceWithOriginAndDirectClaimProvenance() {
@@ -124,11 +124,11 @@ class JwtCredentialCodecTests {
     void enforcesIssuerAudienceProtectedTypeAndExactProfileSelection() {
         JwtCredentialCodec verifier = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD))), null);
         JwtCredentialProfile wrongIssuer = new JwtCredentialProfile("iam-access", "https://other.test",
-            IAM.tokenType(), IAM.audiences(), IAM.kind(), IAM.trustedPrimaryIssuers(), IAM.maximumLifetime(), IAM.clockSkew());
+            IAM.tokenType(), IAM.audiences(), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew());
         JwtCredentialProfile wrongAudience = new JwtCredentialProfile("iam-access", IAM_ISSUER,
-            IAM.tokenType(), Set.of("other-service"), IAM.kind(), IAM.trustedPrimaryIssuers(), IAM.maximumLifetime(), IAM.clockSkew());
+            IAM.tokenType(), Set.of("other-service"), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew());
         JwtCredentialProfile wrongType = new JwtCredentialProfile("iam-access", IAM_ISSUER,
-            "sw-refresh+jwt", IAM.audiences(), IAM.kind(), IAM.trustedPrimaryIssuers(), IAM.maximumLifetime(), IAM.clockSkew());
+            "sw-refresh+jwt", IAM.audiences(), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew());
         for (JwtCredentialProfile profile : List.of(wrongIssuer, wrongAudience, wrongType)) {
             JwtCredentialCodec signer = new JwtCredentialCodec(profile,
                 new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
@@ -264,6 +264,54 @@ class JwtCredentialCodecTests {
         VerifiedJwtCredential externalPrimary = externalIam.verifyPrimary(externalIam.sign(issue(ALICE, SESSION)));
         String matchingForeignIssuer = group.sign(subordinateIssue(ALICE, SESSION, otherPrimary.issuer()));
         assertRejected(() -> group.verifySubordinate(matchingForeignIssuer, externalPrimary));
+    }
+
+    @Test
+    void subordinateRejectsOtherPrimaryProfileEvenFromTheSameTrustedIssuer() {
+        JwtCredentialProfile specialPurpose = new JwtCredentialProfile("iam-special-purpose",
+            IAM_ISSUER, "sw-iam-special+jwt", Set.of("sharewise-api"),
+            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+        JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
+        VerifiedJwtCredential otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
+        assertEquals(IAM_ISSUER, otherPrimary.credential().origin().issuer());
+        assertEquals("iam-special-purpose", otherPrimary.credential().origin().profile());
+
+        JwtCredentialCodec group = subordinate();
+        String attestation = group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER));
+        assertRejected(() -> group.verifySubordinate(attestation, otherPrimary));
+    }
+
+    @Test
+    void subordinateCanExplicitlyTrustMultipleQualifiedPrimaryProfiles() {
+        JwtCredentialProfile specialPurpose = new JwtCredentialProfile("iam-special-purpose",
+            IAM_ISSUER, "sw-iam-special+jwt", Set.of("sharewise-api"),
+            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+        JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
+        VerifiedJwtCredential otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
+
+        JwtCredentialProfile groupWithTwoPrimaries = new JwtCredentialProfile(
+            GROUP.name(), GROUP.issuer(), GROUP.tokenType(), GROUP.audiences(), GROUP.kind(),
+            Set.of(IAM.id(), specialPurpose.id()), GROUP.maximumLifetime(), GROUP.clockSkew());
+        JwtCredentialCodec group = new JwtCredentialCodec(groupWithTwoPrimaries,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("group-1", GROUP_KEY)),
+                Optional.of("group-1")), CLOCK);
+        String attestation = group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER));
+        assertEquals(ALICE, group.verifySubordinate(attestation, otherPrimary).userId());
+    }
+
+    @Test
+    void validatesIssuerQualifiedTrustedPrimaryProfileConfiguration() {
+        assertEquals(new JwtCredentialProfile.Id(IAM_ISSUER, "iam-access"), IAM.id());
+        assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile.Id(" ", "iam-access"));
+        assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile.Id(IAM_ISSUER, " "));
+        assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile(
+            GROUP.name(), GROUP.issuer(), GROUP.tokenType(), GROUP.audiences(), GROUP.kind(),
+            Set.of(), GROUP.maximumLifetime(), GROUP.clockSkew()));
+        assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile(
+            IAM.name(), IAM.issuer(), IAM.tokenType(), IAM.audiences(), IAM.kind(),
+            Set.of(IAM.id()), IAM.maximumLifetime(), IAM.clockSkew()));
     }
 
     @Test
