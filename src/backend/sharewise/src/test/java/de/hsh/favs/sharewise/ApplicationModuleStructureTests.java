@@ -21,6 +21,12 @@ import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
+import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
+import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
+import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
+import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
+import de.hsh.favs.sharewise.shared.infra.security.JwtRsaKey;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.List;
 import java.util.Set;
@@ -154,6 +160,18 @@ class ApplicationModuleStructureTests {
                 AuthorizationCredential.class.getName(),
                 AuthorizationCredentialProvider.class.getName(),
                 AuthorizationContext.class.getName()), publishedTypesOfSharedInterface("claims"));
+    }
+
+    @Test
+    void sharedSecurityNamedInterfacePublishesOnlyTrustedJwtContracts() {
+        assertEquals(Set.of(
+            JwtCredentialCodec.class.getName(),
+            JwtCredentialException.class.getName(),
+            JwtCredentialProfile.class.getName(),
+            JwtCredentialProfile.Kind.class.getName(),
+            JwtIssueRequest.class.getName(),
+            JwtRsaKey.class.getName(),
+            VerifiedJwtCredential.class.getName()), publishedTypesOfSharedInterface("security"));
     }
 
     @Test
