@@ -9,7 +9,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 output="$work/version.txt"
 
-# Parameters: branch, slug, IID, source, protected, tag, major, minor.
+# Parameters: branch, ref slug, IID, source, protected, tag, major, minor.
 run_case() {
     env -i PATH="$PATH" \
         CI_COMMIT_BRANCH="$1" CI_COMMIT_REF_SLUG="$2" \
@@ -49,38 +49,63 @@ expect_rejection() {
     count=$((count + 1))
 }
 
+# Stable images are built only from protected main pushes.
 expect_version '0.1.42' main main 42 push true '' 0 1
 expect_version '0.1.43' main main 43 push true '' 0 1
-expect_version '0.1.42-feature-ui' feature/ui feature-ui 42 push false '' 0 1
-expect_version '0.1.42-feature-foo-bar' feature/foo/bar feature-foo-bar 42 push false '' 0 1
-# Never decide main from the slug: a distinct branch may normalize to 'main'.
-expect_version '0.1.42-main' Main main 42 push false '' 0 1
-long_slug=$(printf '%063d' 0 | tr 0 a)
-expect_version "0.1.42-$long_slug" feature/very-long-branch "$long_slug" 42 push false '' 0 1
 
+# dev-<slug> is an opt-in Git tag, not a feature branch or part of the version.
+expect_version '0.1.42-demo' '' dev-demo 42 push true dev-demo 0 1
+expect_version '0.1.43-feature-foo' '' dev-feature-foo 43 push true dev-feature-foo 0 1
+expect_version '0.1.44-main' '' dev-main 44 push true dev-main 0 1
+expect_version '0.1.45-0' '' dev-0 45 push true dev-0 0 1
+# The suffix comes from the full tag, not CI_COMMIT_REF_SLUG.
+expect_version '0.1.46-tag-derived' '' unrelated-ref-slug 46 push true dev-tag-derived 0 1
+expect_version '0.1.47-01alpha' '' dev-01alpha 47 push true dev-01alpha 0 1
+long_slug=$(printf '%063d' 0 | tr 0 a)
+expect_version "0.1.42-$long_slug" '' "dev-$long_slug" 42 push true "dev-$long_slug" 0 1
+
+# Main must be an actual protected branch. Feature branches never publish.
+expect_rejection main main 42 push false '' 0 1
+expect_rejection feature/foo feature-foo 42 push false '' 0 1
+expect_rejection feature/foo feature-foo 42 push true '' 0 1
+expect_rejection Main main 42 push true '' 0 1
+expect_rejection '' main 42 push true '' 0 1
+expect_rejection main main 42 push true dev-demo 0 1
+expect_rejection feature/foo feature-foo 42 push true dev-demo 0 1
+
+# Preview tags must be explicitly named, protected, and originate from pushes.
+expect_rejection '' dev-demo 42 push false dev-demo 0 1
+expect_rejection '' dev-demo 42 web true dev-demo 0 1
+expect_rejection '' dev-demo 42 api true dev-demo 0 1
+expect_rejection '' dev-demo 42 schedule true dev-demo 0 1
+expect_rejection '' v1-0 42 push true v1-0 0 1
+expect_rejection '' dev- 42 push true dev- 0 1
+expect_rejection '' dev-Foo 42 push true dev-Foo 0 1
+expect_rejection '' dev-foo/bar 42 push true dev-foo/bar 0 1
+expect_rejection '' dev_foo 42 push true dev_foo 0 1
+expect_rejection '' dev-foo_bar 42 push true dev-foo_bar 0 1
+expect_rejection '' dev-foo.bar 42 push true dev-foo.bar 0 1
+expect_rejection '' dev--foo 42 push true dev--foo 0 1
+expect_rejection '' dev-foo- 42 push true dev-foo- 0 1
+expect_rejection '' dev-foo--bar 42 push true dev-foo--bar 0 1
+expect_rejection '' dev-01 42 push true dev-01 0 1
+expect_rejection '' "dev-${long_slug}a" 42 push true "dev-${long_slug}a" 0 1
+
+# Shared version-prefix and canonical IID enforcement applies to both refs.
 expect_rejection main main '' push true '' 0 1
 expect_rejection main main 0 push true '' 0 1
 expect_rejection main main 01 push true '' 0 1
 expect_rejection main main -1 push true '' 0 1
 expect_rejection main main 4x push true '' 0 1
 expect_rejection main main 1.2 push true '' 0 1
-expect_rejection main main 42 push false '' 0 1
 expect_rejection main main 42 push true '' 1 0
 expect_rejection main main 42 push true '' 0 2
 expect_rejection main main 42 push true '' 00 1
-expect_rejection '' main 42 push true main 0 1
-expect_rejection '' main 42 merge_request_event false '' 0 1
+expect_rejection '' dev-demo 42 push true dev-demo 0 2
 expect_rejection main main 42 web true '' 0 1
 expect_rejection main main 42 api true '' 0 1
 expect_rejection main main 42 schedule true '' 0 1
-expect_rejection main main 42 push true main 0 1
-expect_rejection feature/foo '' 42 push false '' 0 1
-expect_rejection feature/foo Feature-Foo 42 push false '' 0 1
-expect_rejection feature/foo feature/foo 42 push false '' 0 1
-expect_rejection feature/foo feature_foo 42 push false '' 0 1
-expect_rejection feature/foo -feature 42 push false '' 0 1
-expect_rejection feature/foo feature- 42 push false '' 0 1
-expect_rejection feature/foo "${long_slug}a" 42 push false '' 0 1
+expect_rejection '' dev-demo 42 merge_request_event true dev-demo 0 1
 huge_iid=$(printf '%0150d' 0 | tr 0 9)
 expect_rejection main main "$huge_iid" push true '' 0 1
 
