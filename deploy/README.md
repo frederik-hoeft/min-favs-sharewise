@@ -77,13 +77,21 @@ From `deploy/`, run:
 ./scripts/test-compose.sh
 ```
 
-The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security, and verifies data persistence after a database restart. It **leaves test resources running for inspection**.
+The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security, and verifies data persistence after a database restart. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
 
-For another run after cleanup, use the same command. To retain previous test resources and start an additional independent run:
+For inspection after a successful run, opt out of automatic cleanup:
 
 ```sh
-SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh
+./scripts/test-compose.sh --keep
 ```
+
+A retained test stack must be removed before rerunning with the same project name because the acceptance test requires an empty database. Remove it with `./scripts/cleanup.sh test` or run an independent project:
+
+```sh
+SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh --keep
+```
+
+If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
 
 For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
 

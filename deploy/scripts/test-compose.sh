@@ -1,13 +1,37 @@
 #!/usr/bin/env bash
 # Acceptance probe against an explicitly DISPOSABLE production-style Compose stack.
-# Does not remove Docker volumes. Use a unique project name for each fresh run.
+# Removes its disposable stack on success unless --keep is requested.
 set -euo pipefail
+usage() {
+    cat <<'USAGE'
+Usage: deploy/scripts/test-compose.sh [--keep]
+
+  (default)  Remove disposable test containers, networks, and volumes on success.
+  --keep     Preserve the test stack and volumes on success for inspection.
+
+A failed test always preserves its resources for troubleshooting.
+USAGE
+}
+keep=false
+case "${1:-}" in
+    '') ;;
+    --keep) keep=true; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+[[ $# -eq 0 ]] || { usage >&2; exit 2; }
+
 deploy_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$deploy_dir/scripts/lib-compose.sh"
 cli="$container_cli"
 # A separate project prevents this test from touching the normal local stack.
 project="${SHAREWISE_COMPOSE_TEST_PROJECT:-sharewise-p26ab-smoke}"
-[[ "$project" =~ ^[a-z][a-z0-9_-]+$ ]] || { echo 'Invalid test project name' >&2; exit 1; }
+# Match cleanup.sh's disposable-project allowlist so automatic teardown
+# never targets the normal deployment or an unrelated Compose project.
+[[ "$project" =~ ^sharewise-p26ab-smoke[a-z0-9_-]*$ ]] || {
+    echo 'Test project must use the reserved sharewise-p26ab-smoke prefix' >&2
+    exit 1
+}
 default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$deploy_dir/.env" | tail -n 1)"
 [[ "$project" != "${COMPOSE_PROJECT_NAME:-${default_project:-sharewise-p26ab-local}}" ]] || {
     echo 'Refusing to test against the configured default local stack' >&2; exit 1;
@@ -17,6 +41,21 @@ default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$deploy_dir/.env" | tai
 export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-28080}"
 export SHAREWISE_HTTPS_PORT="${SHAREWISE_SMOKE_HTTPS_PORT:-18443}"
 export COMPOSE_PROJECT_NAME="$project"
+
+cleanup_started=false
+report_failure() {
+    local status="$1"
+    if (( status != 0 )); then
+        if [[ "$cleanup_started" == true ]]; then
+            printf 'Acceptance passed but cleanup was incomplete; inspect remaining resources for %s.\n' "$project" >&2
+        else
+            printf 'Acceptance did not complete; test resources (if created) for %s are preserved for diagnosis.\n' "$project" >&2
+        fi
+        printf 'Inspect with: docker compose -p %s ps -a\n' "$project" >&2
+        printf 'Clean up with: ./scripts/cleanup.sh test %s\n' "$project" >&2
+    fi
+}
+trap 'report_failure "$?"' EXIT
 
 "$cli" version >/dev/null
 "${compose[@]}" config -q
@@ -100,7 +139,6 @@ marker='identity.p26ab_compose_smoke_marker'
 cleanup_marker() {
     query sharewise_migrator "$migrator_secret" "DROP TABLE IF EXISTS $marker" >/dev/null 2>&1 || true
 }
-trap cleanup_marker EXIT
 query sharewise_migrator "$migrator_secret" \
     "CREATE TABLE IF NOT EXISTS $marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL)" >/dev/null
 query sharewise_app "$app_secret" \
@@ -141,7 +179,20 @@ for attempt in $(seq 1 30); do
     sleep 2
 done
 
+# Remove the marker on success. On failure it is retained in the disposable
+# database, along with the rest of the stack, to aid inspection.
 cleanup_marker
-trap - EXIT
-printf 'Production Compose bootstrap, permissions, HTTPS API, and persistent restart checks passed.\n'
-printf 'Test project %s remains running with its persistent volume; clean it up explicitly when finished.\n' "$project"
+if [[ "$keep" == true ]]; then
+    printf 'Production Compose bootstrap, permissions, HTTPS API, and persistent restart checks passed.\n'
+    printf 'Test project %s retained (--keep). Remove it with ./scripts/cleanup.sh test %s.\n' "$project" "$project"
+else
+    # Reuse the explicitly scoped cleanup path, including orphaned Compose
+    # volumes. Failure to remove test resources must fail the smoke test.
+    cleanup_started=true
+    if ! "$deploy_dir/scripts/cleanup.sh" test "$project" --yes; then
+        printf 'Acceptance checks passed but test-resource cleanup failed for %s.\n' "$project" >&2
+        exit 1
+    fi
+    printf 'Production Compose bootstrap, permissions, HTTPS API, and persistent restart checks passed.\n'
+    printf 'Disposable test project %s and its volumes were removed.\n' "$project"
+fi
