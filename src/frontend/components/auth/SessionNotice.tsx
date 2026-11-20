@@ -21,7 +21,7 @@ export function SessionNotice() {
       : 'No active sign-in in this tab. You can explore this demonstration workspace without an account.';
   return (
     <Alert title="Demonstration workspace" color="gray">
-      <Text size="sm">{message} <Link href="/login">Sign in</Link> or <Link href="/register">create an account</Link>.</Text>
+      <Text size="sm">{message} <Link href="/auth/login">Sign in</Link> or <Link href="/auth/register">create an account</Link>.</Text>
     </Alert>
   );
 }

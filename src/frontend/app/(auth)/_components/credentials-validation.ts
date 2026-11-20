@@ -42,7 +42,7 @@ export function validateCredentials(mode: 'login' | 'register', emailInput: stri
     } else if (new TextEncoder().encode(password).length > 72) {
       errors.password = 'Password is too long. Try a shorter password.';
     } else if (mode === 'register' && Array.from(password).length < 12) {
-      errors.password = 'Use at least 12 characters.';
+      errors.password = 'Password is too short.';
     }
   }
 

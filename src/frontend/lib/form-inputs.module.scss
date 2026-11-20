@@ -1,0 +1,11 @@
+// Applied to every Mantine Input through the theme. Native browser controls may
+// otherwise render a stepper on email inputs in some engines/configurations.
+.input[type="email"] {
+  appearance: textfield;
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+}

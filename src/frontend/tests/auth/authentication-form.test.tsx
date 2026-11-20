@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 describe('registration and login presentation', () => {
-  it.each([['login', 'Sign in', '/register'], ['register', 'Create account', '/login']] as const)(
+  it.each([['login', 'Sign in', '/auth/register'], ['register', 'Create account', '/auth/login']] as const)(
     'renders the %s form with accessible links and a clickable home brand', (mode, formName, otherRoute) => {
       renderAuth(mode);
       const form = screen.getByRole('form', { name: formName });
@@ -77,7 +77,15 @@ describe('registration and login presentation', () => {
     await enterCredentials(user, 'short');
     await user.click(screen.getByRole('button', { name: 'Create account' }));
     expect(screen.getByLabelText(/^Password/)).toHaveFocus();
-    expect(screen.getByText('Use at least 12 characters.')).toBeVisible();
+    const passwordField = screen.getByLabelText(/^Password/);
+    const guidance = screen.getByText('Use at least 12 characters.');
+    const passwordError = screen.getByText('Password is too short.');
+    expect(guidance).toBeVisible();
+    expect(passwordError).toBeVisible();
+    // Guidance stays above the input on validation failure; only the separate
+    // error appears below it, so the input does not jump between positions.
+    expect(guidance.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(passwordField.compareDocumentPosition(passwordError) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -149,6 +157,7 @@ describe('registration and login presentation', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("We couldn't sign you in");
     expect(alert).not.toHaveTextContent(/locked|disabled|unknown/i);
+    expect(alert.getAttribute('style')).toContain('background-color: var(--sw-danger-surface)');
     expect(alert.closest('[tabindex="-1"]')).toHaveFocus();
     expect(replace).not.toHaveBeenCalled();
   });
@@ -202,7 +211,7 @@ describe('registration and login presentation', () => {
     activeRuntimes.push(runtime);
     const view = render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
     expect(screen.getByText(/no active sign-in in this tab/i)).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/auth/login');
     act(() => runtime.session.accept(authenticationResponse()));
     expect(screen.getByText(/temporary browser session is active/i)).toBeVisible();
     act(() => runtime.session.invalidate('expired'));

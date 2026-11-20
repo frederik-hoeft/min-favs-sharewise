@@ -16,9 +16,9 @@ export function PublicNavigation() {
       </nav>
       <div className={styles.actions}>
         <AppearanceMenu />
-        <Link href="/login" className={styles.login}>Sign in</Link>
-        <Link href="/register" className={styles.ctaLink}>
-          <Button component="span" size="sm" className={styles.cta}>Get started</Button>
+        <Link href="/auth/login" className={styles.login}>Sign in</Link>
+        <Link href="/auth/register" className={styles.ctaLink}>
+          <Button component="span" size="sm" className={styles.cta}>Create account</Button>
         </Link>
       </div>
     </>

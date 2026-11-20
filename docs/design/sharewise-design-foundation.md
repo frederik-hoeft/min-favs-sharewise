@@ -4,7 +4,7 @@
 
 ShareWise presents decisions about money shared among people. Its visual language puts the amount, the people involved and the history of a decision in a clear hierarchy. **Quiet clarity** combines direct typography and generous whitespace with structured, compact records. Neutral surfaces provide the canvas; restrained indigo identifies actions, selected navigation and important emphasis. The identity contains no green, teal or olive accents.
 
-The public and workspace experiences express the same design at different densities. The public site uses editorial scale and an inset floating header to introduce the product. The workspace uses an edge-attached sidebar, header and centered content area to keep navigation predictable while leaving room for data-rich views. The distinction is compositional: both shells resolve their colors, controls and typography from the same Mantine theme.
+The public and workspace experiences express the same design at different densities. The public site uses editorial scale and an inset floating header to introduce the product. The standalone authentication layout uses the same theme with a minimal linked brand and form, independent of landing-page navigation. The workspace uses an edge-attached sidebar, header and centered content area to keep navigation predictable while leaving room for data-rich views. The distinction is compositional: both shells resolve their colors, controls and typography from the same Mantine theme.
 
 ## Theme and color semantics
 
@@ -15,11 +15,12 @@ The public and workspace experiences express the same design at different densit
 | Canvas and surfaces | Page background, panels and subordinate regions | `--sw-page`, `--sw-surface`, `--sw-surface-subtle` |
 | Content and boundaries | Primary text, supporting text and subtle separators | `--sw-ink`, `--sw-muted`, `--sw-border` |
 | Interaction | Primary action, action foreground and understated hover | `--sw-accent`, `--sw-action-ink`, `--sw-interactive-hover` |
+| Feedback | Consistent, restrained validation/error foreground, border and surface | `--sw-danger-ink`, `--sw-danger-border`, `--sw-danger-surface` |
 | Inverse presentation | Closing and summary surfaces that remain dark in either scheme | `--sw-inverse`, `--sw-on-inverse` |
 
 The Mantine provider applies a light, dark or system-derived color scheme. `cssVariablesResolver` supplies scheme-specific semantic values and maps Mantine's common text and neutral interaction roles to them. `variantColorResolver` gives filled primary controls a legible foreground, including the different foreground needed by the lighter dark-mode indigo. As a result, a selected navigation link and a primary Button share a color contract rather than maintaining separate selection palettes.
 
-Standard components inherit the common foundation. Mantine component extensions establish application-wide defaults for Buttons, NavLinks, Menus, Cards, Paper and Burger controls. Component-specific customization remains where the component has a distinct semantic responsibility, such as a dropdown surface; the application does not restyle Mantine's internal markup independently on each page. Exact palette values and dimensions live in the theme or owning SCSS Module, where changes remain consistent across consumers.
+Standard components inherit the common foundation. Mantine component extensions establish application-wide defaults for inputs, Alerts, Buttons, NavLinks, Menus, Cards, Paper and Burger controls. Inputs share a smaller radius and native email-field presentation; field descriptions remain visible above the input while validation errors appear below it. Error alerts use restrained danger colors in both schemes; form fields use the same semantic error foreground instead of independently choosing reds. Component-specific customization remains where the component has a distinct semantic responsibility, such as a dropdown surface; the application does not restyle Mantine's internal markup independently on each page. Exact palette values and dimensions live in the theme or owning SCSS Module, where changes remain consistent across consumers.
 
 The font stack is local (`Inter`, `Segoe UI`, `Arial`, sans-serif), without remote font loading. Strong headings and aligned tabular numbers establish the hierarchy for financial information. Spacing and radii come from Mantine scales; SCSS Modules describe compositions that do not correspond to standard controls.
 

@@ -126,11 +126,9 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
                 ref={emailRef}
                 label="Email address"
                 type="email"
-                classNames={{ input: styles.emailInput }}
                 name="email"
                 autoComplete="email"
                 inputMode="email"
-                radius="sm"
                 required
                 value={email}
                 error={errors.email}
@@ -142,13 +140,12 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
                 label="Password"
                 name="password"
                 autoComplete={isRegistration ? 'new-password' : 'current-password'}
-                radius="sm"
                 required
                 value={password}
                 error={errors.password}
                 onChange={(event) => { setPassword(event.currentTarget.value); setErrors((current) => ({ ...current, password: undefined })); setMessage(undefined); }}
                 disabled={pending}
-                description={isRegistration && !errors.password ? 'Use at least 12 characters.' : undefined}
+                description={isRegistration ? 'Use at least 12 characters.' : undefined}
               />
               <Button type="submit" size="md" fullWidth loading={pending} disabled={pending} className={styles.submit}>
                 {isRegistration ? 'Create account' : 'Sign in'}
@@ -157,7 +154,7 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
           </form>
           <Text size="sm" ta="center" c="dimmed">
             {isRegistration ? 'Already have an account?' : 'New to ShareWise?'}{' '}
-            <Link href={isRegistration ? '/login' : '/register'} className={styles.textLink}>
+            <Link href={isRegistration ? '/auth/login' : '/auth/register'} className={styles.textLink}>
               {isRegistration ? 'Sign in' : 'Create an account'}
             </Link>
           </Text>

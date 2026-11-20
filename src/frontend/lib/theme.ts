@@ -1,15 +1,18 @@
 import {
+  Alert,
   Burger,
   Button,
   Card,
   createTheme,
   defaultVariantColorsResolver,
+  Input,
   type CSSVariablesResolver,
   type VariantColorsResolver,
   Menu,
   NavLink,
   Paper,
 } from "@mantine/core";
+import formInputStyles from "./form-inputs.module.scss";
 
 // Color variants are shared by all components (including the public CTA), not
 // defined per navigation link or menu instance.
@@ -59,6 +62,27 @@ export const theme = createTheme({
   radius: { xs: "0.3125rem", sm: "0.5625rem", md: "0.875rem", lg: "1.25rem", xl: "1.75rem" },
   spacing: { xs: "0.5rem", sm: "0.75rem", md: "1rem", lg: "1.5rem", xl: "2rem" },
   components: {
+    // Input defaults propagate to TextInput, PasswordInput and other Mantine
+    // input-based controls; local forms should not independently set radii.
+    Input: Input.extend({
+      defaultProps: { radius: "sm" },
+      classNames: { input: formInputStyles.input },
+    }),
+    InputWrapper: Input.Wrapper.extend({
+      // Keep static guidance above its control and validation feedback below it.
+      defaultProps: { inputWrapperOrder: ["label", "description", "input", "error"] },
+    }),
+    Alert: Alert.extend({
+      defaultProps: { variant: "light", radius: "md" },
+      // Apply shared semantic danger colors to all error alerts, leaving
+      // neutral/informational alerts on their corresponding Mantine palettes.
+      styles: (_theme, props) => props.color === "red" ? {
+        root: { backgroundColor: "var(--sw-danger-surface)", border: "1px solid var(--sw-danger-border)" },
+        icon: { color: "var(--sw-danger-ink)" },
+        title: { color: "var(--sw-danger-ink)" },
+        message: { color: "var(--sw-ink)" },
+      } : {},
+    }),
     Button: Button.extend({
       defaultProps: { radius: "xl" },
     }),
@@ -108,6 +132,7 @@ const semanticMantineSchemeColors = {
   "--mantine-color-default-hover": "var(--sw-interactive-hover)",
   "--mantine-color-default-color": "var(--sw-ink)",
   "--mantine-color-default-border": "var(--sw-border)",
+  "--mantine-color-error": "var(--sw-danger-ink)",
 };
 
 /** Scheme-specific semantic roles, shared by public and future application views. */
@@ -137,6 +162,9 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--sw-ink": "#191b2b",
     "--sw-muted": "#60657a",
     "--sw-border": "#e3e5ed",
+    "--sw-danger-surface": "#fff1f2",
+    "--sw-danger-border": "#eebcc4",
+    "--sw-danger-ink": "#9f243b",
     "--sw-shadow": "rgba(27, 31, 65, 0.085)",
     "--sw-hero-glow": "#e6e8ff",
     "--sw-inverse": "#1b1e33",
@@ -152,6 +180,9 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--sw-ink": "#f2f2fb",
     "--sw-muted": "#aeb3c9",
     "--sw-border": "#35394e",
+    "--sw-danger-surface": "#302127",
+    "--sw-danger-border": "#754450",
+    "--sw-danger-ink": "#ffb4c1",
     "--sw-shadow": "rgba(0, 0, 0, 0.26)",
     "--sw-hero-glow": "#22284c",
     "--sw-inverse": "#252945",

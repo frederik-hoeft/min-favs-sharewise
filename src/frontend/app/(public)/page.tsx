@@ -20,10 +20,10 @@ export default function Home() {
           <Title order={1} id="hero-title">Keep the plans.<br /><span>Lose the math.</span></Title>
           <Text component="p" className={styles.heroLead}>Shared expenses don’t have to be complicated. Keep everyone in sync, see where the money went, and know exactly where things stand.</Text>
           <div className={styles.heroActions}>
-            <Link href="/register" className={styles.heroActionLink}>
+            <Link href="/auth/register" className={styles.heroActionLink}>
               <Button component="span" size="lg" rightSection={<ArrowUpRightIcon size="1rem" aria-hidden="true" />}>Get started</Button>
             </Link>
-            <Button component="a" href="#how-it-works" size="lg" variant="subtle" color="gray" rightSection={<ArrowRightIcon size="1rem" aria-hidden="true" />}>See how it works</Button>
+            <Button component="a" href="#product" size="lg" variant="subtle" color="gray" rightSection={<ArrowRightIcon size="1rem" aria-hidden="true" />}>Explore the product</Button>
           </div>
           <div className={styles.heroFootnote}><SparkleIcon size="1.1875rem" aria-hidden="true" /> One place for groups, shared costs, and the story behind them.</div>
         </div>

@@ -15,7 +15,7 @@ describe('authentication form policy', () => {
   });
 
   it('enforces 12 Unicode code points on registration, including supplementary characters', () => {
-    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(11)).password).toMatch(/12/);
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(11)).password).toMatch(/too short/i);
     expect(validateCredentials('register', 'test@example.org', '😀'.repeat(12)).password).toBeUndefined();
     // Login must accept older credentials shorter than registration's current minimum.
     expect(validateCredentials('login', 'test@example.org', 'short').password).toBeUndefined();
