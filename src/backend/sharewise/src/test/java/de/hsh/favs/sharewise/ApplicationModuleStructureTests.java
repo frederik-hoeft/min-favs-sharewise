@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import de.hsh.favs.sharewise.identity.IdentityContext;
-import de.hsh.favs.sharewise.identity.IamOperationIngress;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
@@ -12,6 +11,9 @@ import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider
 import de.hsh.favs.sharewise.shared.infra.claims.Claim;
 import de.hsh.favs.sharewise.shared.infra.claims.ClaimOrigin;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.shared.infra.di.OperationInputContributor;
+import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
+import de.hsh.favs.sharewise.shared.infra.di.ContributingOperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
 import de.hsh.favs.sharewise.shared.infra.di.OperationScopedConfiguration;
 import de.hsh.favs.sharewise.shared.infra.di.ScopedServiceInitializer;
@@ -112,18 +114,8 @@ class ApplicationModuleStructureTests {
                 .map(type -> type.getName())
                 .filter(name -> !name.endsWith(".package-info"))
                 .collect(Collectors.toSet());
-        assertEquals(Set.of(IdentityContext.class.getName(), IamOperationIngress.class.getName(),
-                UnauthenticatedCallerException.class.getName()),
+        assertEquals(Set.of(IdentityContext.class.getName(), UnauthenticatedCallerException.class.getName()),
                 publishedTypes);
-    }
-
-    @Test
-    void identityWebInterfacePublishesOnlyItsHttpIngressContract() {
-        ApplicationModule identity = modules.getModuleByName("identity").orElseThrow();
-        NamedInterface web = identity.getNamedInterfaces().getByName("web").orElseThrow();
-        assertEquals(Set.of(de.hsh.favs.sharewise.identity.web.HttpIamOperationIngress.class.getName()),
-            web.asJavaClasses().map(type -> type.getName())
-                .filter(name -> !name.endsWith(".package-info")).collect(Collectors.toSet()));
     }
 
     @Test
@@ -132,6 +124,9 @@ class ApplicationModuleStructureTests {
 
         Set<String> expectedTypes = Set.of(
                 OperationDispatcher.class.getName(),
+                OperationIngressDispatcher.class.getName(),
+                OperationInputContributor.class.getName(),
+                ContributingOperationDispatcher.class.getName(),
                 OperationInputRegistry.class.getName(),
                 OperationScopedConfiguration.class.getName(),
                 ScopedServiceInitializer.class.getName(),

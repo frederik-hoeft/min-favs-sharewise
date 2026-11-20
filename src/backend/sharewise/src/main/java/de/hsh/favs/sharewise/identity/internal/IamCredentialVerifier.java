@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 /** Trusted IAM profile selection; production keys/codecs are provisioned by later IAM configuration. */
 @Component
-final class IamCredentialVerifier {
+public final class IamCredentialVerifier {
     private final ObjectProvider<JwtCredentialCodec> codecs;
     private final ConfigurableListableBeanFactory beans;
 
@@ -23,7 +23,7 @@ final class IamCredentialVerifier {
         this.beans = Objects.requireNonNull(beans);
     }
 
-    JwtCredentialCodec requireCodec() {
+    public JwtCredentialCodec requireCodec() {
         // Check presence without resolving operation-scoped beans outside their scope.
         if (beans.getBeanNamesForType(IamPrimaryCredentialProvider.class, true, false).length != 1) {
             throw new IllegalStateException("Exactly one IAM credential provider must be configured");
@@ -35,7 +35,7 @@ final class IamCredentialVerifier {
         return codec;
     }
 
-    VerifiedJwtCredential verify(String token) {
+    public VerifiedJwtCredential verify(String token) {
         return requireCodec().verifyPrimary(token);
     }
 }

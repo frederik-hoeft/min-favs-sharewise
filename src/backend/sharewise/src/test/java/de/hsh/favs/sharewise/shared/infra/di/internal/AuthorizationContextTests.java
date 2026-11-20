@@ -60,10 +60,32 @@ class AuthorizationContextTests {
                 assertEquals(3, context.find("issuer-a", "group-attestation", "role").size());
                 assertEquals(1, context.find("issuer-b", "group-attestation", "role").size());
                 assertTrue(context.find("issuer-b", "access", "role").isEmpty());
+                assertEquals(2, context.credentialsFrom("issuer-a", "group-attestation").size());
+                assertEquals(1, context.credentialsFrom(context.credentials().getFirst().origin()).size());
+                assertEquals(0, context.credentialsFrom("issuer-a", "access").size());
+                assertEquals(Optional.empty(), context.findCredential("issuer-a", "group-attestation", "missing"));
+                assertThrows(IllegalArgumentException.class, () -> context.credentialsFrom("", "access"));
+                assertThrows(NullPointerException.class, () -> context.credentialsFrom((ClaimOrigin) null));
                 assertThrows(UnsupportedOperationException.class,
                     () -> context.credentials().add(context.credentials().get(0)));
                 assertThrows(UnsupportedOperationException.class,
                     () -> context.find("role").clear());
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void lookupByCredentialIdIsQualifiedAndRefusesAmbiguousIdentifiers() {
+        try (AnnotationConfigApplicationContext spring = newContext(IdentifiedCredentials.class)) {
+            OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
+            dispatcher.dispatch(AuthorizationContext.class, context -> {
+                assertEquals("bob", context.findCredential("iam", "access", "unique")
+                    .orElseThrow().origin().subject().orElseThrow());
+                assertEquals(Optional.empty(), context.findCredential("other", "access", "unique"));
+                assertThrows(IllegalStateException.class,
+                    () -> context.findCredential("iam", "access", "duplicated"));
+                assertEquals(2, context.credentialsFrom(context.credentials().getFirst().origin()).size());
                 return null;
             });
         }
@@ -304,6 +326,22 @@ class AuthorizationContextTests {
         final AtomicInteger instances = new AtomicInteger();
         final AtomicInteger credentialsCalls = new AtomicInteger();
         final AtomicInteger published = new AtomicInteger();
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class IdentifiedCredentials {
+        @Bean @Scope("operation") AuthorizationCredentialProvider provider() {
+            ClaimOrigin duplicated = new ClaimOrigin("iam", "access", Set.of("api"),
+                Optional.of("alice"), Optional.of("duplicated"),
+                Optional.empty(), Optional.empty(), Optional.empty());
+            ClaimOrigin unique = new ClaimOrigin("iam", "access", Set.of("api"),
+                Optional.of("bob"), Optional.of("unique"),
+                Optional.empty(), Optional.empty(), Optional.empty());
+            return () -> List.of(
+                new AuthorizationCredential(duplicated, List.of(new Claim("role", "user", duplicated))),
+                new AuthorizationCredential(duplicated, List.of(new Claim("role", "member", duplicated))),
+                new AuthorizationCredential(unique, List.of(new Claim("role", "admin", unique))));
+        }
     }
 
     @TestConfiguration(proxyBeanMethods = false)

@@ -1,6 +1,9 @@
-package de.hsh.favs.sharewise.identity.internal;
+package de.hsh.favs.sharewise.identity.internal.web;
 
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.identity.internal.IamCredentialVerifier;
+import java.util.Optional;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,14 +21,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>This foundation does not define endpoint authorization policies or login routes.
  */
-final class IamBearerIngressFilter extends OncePerRequestFilter {
+public final class IamBearerIngressFilter extends OncePerRequestFilter {
 
-    static final String VERIFIED_INGRESS_ATTRIBUTE = IamBearerIngressFilter.class.getName() + ".verified";
+    public static final String VERIFIED_INGRESS_ATTRIBUTE = IamBearerIngressFilter.class.getName() + ".verified";
     private static final int MAX_TOKEN_LENGTH = 8192;
-    private final IamOperationIngressService ingress;
+    private final IamCredentialVerifier verifier;
 
-    IamBearerIngressFilter(IamOperationIngressService ingress) {
-        this.ingress = ingress;
+    public IamBearerIngressFilter(IamCredentialVerifier verifier) {
+        this.verifier = verifier;
     }
 
     @Override
@@ -37,13 +40,13 @@ final class IamBearerIngressFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
-        VerifiedIdentityIngress identity;
+        Optional<VerifiedJwtCredential> identity;
         try {
             // Even anonymous operations require trusted IAM profile configuration.
-            ingress.ensureConfigured();
+            verifier.requireCodec();
             List<String> headers = Collections.list(request.getHeaders(HttpHeaders.AUTHORIZATION));
             if (headers.isEmpty()) {
-                identity = VerifiedIdentityIngress.anonymous();
+                identity = Optional.empty();
             } else if (headers.size() != 1) {
                 throw new JwtCredentialException();
             } else {
@@ -56,7 +59,7 @@ final class IamBearerIngressFilter extends OncePerRequestFilter {
                     || token.indexOf(' ') >= 0 || token.indexOf('\t') >= 0 || token.indexOf(',') >= 0) {
                     throw new JwtCredentialException();
                 }
-                identity = ingress.verify(token);
+                identity = Optional.of(verifier.verify(token));
             }
         } catch (JwtCredentialException exception) {
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");

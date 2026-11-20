@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.identity.internal;
+package de.hsh.favs.sharewise.identity.internal.web;
 
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 /** Maps a missing required IAM principal to authentication, not business authorization, failure. */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
-final class IamIdentityExceptionHandler {
+final public class IamIdentityExceptionHandler {
 
     @ExceptionHandler(UnauthenticatedCallerException.class)
     ResponseEntity<ProblemDetail> handleUnauthenticated(UnauthenticatedCallerException ignored) {

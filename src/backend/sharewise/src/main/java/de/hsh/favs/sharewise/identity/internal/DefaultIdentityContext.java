@@ -24,11 +24,8 @@ final class DefaultIdentityContext implements IdentityContext {
         Objects.requireNonNull(authorization);
         JwtCredentialProfile profile = verifier.requireCodec().profile();
         Optional<UUID> selected = Optional.empty();
-        for (AuthorizationCredential credential : authorization.credentials()) {
+        for (AuthorizationCredential credential : authorization.credentialsFrom(profile.issuer(), profile.name())) {
             ClaimOrigin origin = credential.origin();
-            if (!origin.issuer().equals(profile.issuer()) || !origin.profile().equals(profile.name())) {
-                continue;
-            }
             if (selected.isPresent()) {
                 throw new IllegalStateException("Ambiguous primary IAM identity");
             }

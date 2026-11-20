@@ -1,12 +1,13 @@
 package de.hsh.favs.sharewise.identity.internal;
 
 import de.hsh.favs.sharewise.shared.infra.di.ScopedServiceInitializer;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
-/** Bridges verified ingress to the operation scope; missing input is never implicit anonymity. */
+/** Transfers verified primary evidence to the operation scope; absent evidence is anonymous. */
 @Component
-final class IamIngressInitializer implements ScopedServiceInitializer<IamOperationSecurityConfiguration, VerifiedIdentityIngress> {
+final class IamIngressInitializer implements ScopedServiceInitializer<IamOperationSecurityConfiguration, VerifiedJwtCredential> {
 
     @Override
     public Class<IamOperationSecurityConfiguration> configurationType() {
@@ -14,13 +15,12 @@ final class IamIngressInitializer implements ScopedServiceInitializer<IamOperati
     }
 
     @Override
-    public Class<VerifiedIdentityIngress> inputType() {
-        return VerifiedIdentityIngress.class;
+    public Class<VerifiedJwtCredential> inputType() {
+        return VerifiedJwtCredential.class;
     }
 
     @Override
-    public void initialize(IamOperationSecurityConfiguration configuration, Optional<VerifiedIdentityIngress> input) {
-        configuration.seed(input.orElseThrow(() ->
-            new IllegalStateException("An explicit trusted IAM ingress is required")));
+    public void initialize(IamOperationSecurityConfiguration configuration, Optional<VerifiedJwtCredential> input) {
+        configuration.seed(input);
     }
 }

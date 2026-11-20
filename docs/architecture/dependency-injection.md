@@ -15,7 +15,10 @@ The public contracts reside in `de.hsh.favs.sharewise.shared.infra.di`:
 | `ServiceScopeFactory` | Per-application-context singleton that creates independent, caller-owned scopes. |
 | `ServiceScope` | Owns one operation-scoped bean cache and its registered destruction callbacks; provides lexical activation and terminal closure. |
 | `ServiceProvider` | Scope-bound view over the owning context's Spring bean factory. |
-| `OperationDispatcher` | Production entry point that resolves and invokes one application entry service inside a fresh scope. |
+| `OperationDispatcher` | Core entry point that resolves and invokes one application entry service inside a fresh scope. |
+| `OperationInputContributor` | Outer-context DI component that registers optional, caller-owned inputs before scope creation. |
+| `OperationIngressDispatcher` | Caller-facing dispatcher that invokes the outer context's contributors before entering the inner operation. |
+| `ContributingOperationDispatcher` | Reusable composition of an `OperationDispatcher` and a caller-context list of contributors. |
 
 Spring-specific configuration and the custom Spring `Scope` adapter live under `shared.infra.di.internal`. These are implementation details rather than application-facing DI contracts.
 
@@ -42,6 +45,8 @@ flowchart TB
 `OperationDispatcher.dispatch(Class<S>, Function<S, R>)` creates a scope, activates it, resolves the requested entry service, executes the operation callback and closes the scope. The dispatcher also has an overload accepting a pre-dispatch input registration callback. In both cases, it does not create or finalize physical transactions. Ordinary calls between already-injected application services remain inside the same operation.
 
 ### Pre-dispatch inputs and configuration initialization
+
+Adapters with caller-side DI can create a `ContributingOperationDispatcher` from the core dispatcher and their own `OperationInputContributor` beans. Its dispatch operation invokes every contributor against the same per-dispatch registry; a contributor can omit optional inputs. The outer DI scope owns the contributors, while Spring owns the separate inner operation scope. For HTTP, the adapter is a request-scoped `OperationIngressDispatcher` with a request-scoped IAM contributor that reads only middleware-verified bearer evidence. Future ingress components can supply additional contributors without changing controllers or adding another domain-specific dispatcher wrapper. Non-HTTP adapters can assemble the same dispatcher from their own caller-side DI context. Invalid supplied credentials are rejected by source verification; an absent optional verified credential results in no registered input and is interpreted as anonymous by the IAM initializer.
 
 The registration overload accepts an `OperationInputRegistry` for the duration of its callback, **before any operation scope exists**. Inputs are registered under exact declared Java classes (including interface keys), with one non-null value per key. Registration closes before the scope is created; duplicate keys, invalid values, later mutations and wrong-thread registration are rejected. The registry is not a Spring bean, and caller-owned objects are neither injected directly as beans nor destroyed by the scope.
 

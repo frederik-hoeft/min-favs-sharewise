@@ -9,10 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import de.hsh.favs.sharewise.identity.IamOperationIngress;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
-import de.hsh.favs.sharewise.identity.web.HttpIamOperationIngress;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
 import de.hsh.favs.sharewise.shared.infra.claims.Claim;
@@ -22,6 +20,16 @@ import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import de.hsh.favs.sharewise.shared.infra.claims.internal.AuthorizationConfiguration;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
+import de.hsh.favs.sharewise.shared.infra.di.OperationInputContributor;
+import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
+import de.hsh.favs.sharewise.shared.infra.di.OperationScopedConfiguration;
+import de.hsh.favs.sharewise.shared.infra.di.ScopedServiceInitializer;
+import de.hsh.favs.sharewise.shared.infra.di.ContributingOperationDispatcher;
+import de.hsh.favs.sharewise.identity.internal.web.IamBearerIngressFilter;
+import de.hsh.favs.sharewise.identity.internal.web.IamHttpSecurityConfiguration;
+import de.hsh.favs.sharewise.identity.internal.web.IamIdentityExceptionHandler;
+import de.hsh.favs.sharewise.identity.internal.web.HttpIamInputContributor;
 import org.springframework.security.web.FilterChainProxy;
 import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
@@ -29,9 +37,9 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
 import de.hsh.favs.sharewise.testsupport.configuration.OperationScopeTestComponents;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.ServletException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -59,15 +67,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Scope;
 import org.springframework.http.HttpHeaders;
+import org.springframework.web.context.annotation.RequestScope;
+import org.springframework.context.annotation.ScopedProxyMode;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /** Production IAM/DI/claims components, with only trust keys and operation entry supplied by the fixture. */
 @ComponentTest
+@WebAppConfiguration
 @SpringJUnitConfig({OperationScopeTestComponents.class, AuthorizationConfiguration.class,
     PhaseDIamIngressTests.Fixture.class})
 class PhaseDIamIngressTests {
@@ -81,8 +93,7 @@ class PhaseDIamIngressTests {
         JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
     private static final KeyPair KEY = generateKey();
 
-    @Autowired IamOperationIngress ingress;
-    @Autowired HttpIamOperationIngress httpIngress;
+    @Autowired OperationIngressDispatcher httpIngress;
     @Autowired FilterChainProxy filter;
     @Autowired IamIdentityExceptionHandler advice;
     @Autowired OperationDispatcher dispatcher;
@@ -92,7 +103,7 @@ class PhaseDIamIngressTests {
     @Test
     void verifiedIdentityIsStableThroughIndependentConsumersAndStubbedTransactionSegments() {
         String token = token(ALICE, "session-alice");
-        Snapshot authenticated = ingress.dispatchBearer(token, Entry.class, Entry::snapshot);
+        Snapshot authenticated = bearer(token).dispatch(Entry.class, Entry::snapshot);
         assertEquals(Optional.of(ALICE), authenticated.userId());
         assertEquals(ALICE, authenticated.requiredUser());
         assertTrue(authenticated.authenticated());
@@ -102,28 +113,28 @@ class PhaseDIamIngressTests {
         assertTrue(authenticated.sameAuthorizationInstance());
         assertEquals(authenticated.segmentOne(), authenticated.segmentTwo());
 
-        Snapshot other = ingress.dispatchBearer(token(BOB, "session-bob"), Entry.class, Entry::snapshot);
-        Optional<UUID> anonymous = ingress.dispatchAnonymous(IdentityContext.class, IdentityContext::userId);
+        Snapshot other = bearer(token(BOB, "session-bob")).dispatch(Entry.class, Entry::snapshot);
+        Optional<UUID> anonymous = anonymous().dispatch(IdentityContext.class, IdentityContext::userId);
         assertEquals(Optional.of(BOB), other.userId());
         assertEquals("session-bob", other.session());
         assertEquals(Optional.empty(), anonymous);
-        int anonymousCredentialCount = ingress.dispatchAnonymous(AuthorizationContext.class, context -> context.credentials().size());
+        int anonymousCredentialCount = anonymous().dispatch(AuthorizationContext.class, context -> context.credentials().size());
         assertEquals(0, anonymousCredentialCount);
         assertNotSame(authenticated.identity(), other.identity());
-        assertNotSame(authenticated.authorization(), ingress.dispatchAnonymous(AuthorizationContext.class, context -> context));
-        assertEquals(Optional.empty(), ingress.dispatchAnonymous(IdentityContext.class, IdentityContext::userId));
+        assertNotSame(authenticated.authorization(), anonymous().dispatch(AuthorizationContext.class, context -> context));
+        assertEquals(Optional.empty(), anonymous().dispatch(IdentityContext.class, IdentityContext::userId));
     }
 
     @Test
     void failuresCannotTurnIntoAnonymousAndDirectDispatchWithoutIngressIsRejected() {
         String token = token(ALICE, "session-a");
-        assertThrows(JwtCredentialException.class, () -> ingress.dispatchBearer("not-a-jwt", Entry.class, Entry::snapshot));
-        assertThrows(JwtCredentialException.class, () -> ingress.dispatchBearer(token + "bad", Entry.class, Entry::snapshot));
-        assertThrows(JwtCredentialException.class, () -> ingress.dispatchBearer(null, Entry.class, Entry::snapshot));
-        assertThrows(IllegalStateException.class, () -> dispatcher.dispatch(Entry.class, Entry::snapshot));
-        assertEquals(Optional.empty(), ingress.dispatchAnonymous(IdentityContext.class, IdentityContext::userId));
+        assertThrows(JwtCredentialException.class, () -> bearer("not-a-jwt").dispatch(Entry.class, Entry::snapshot));
+        assertThrows(JwtCredentialException.class, () -> bearer(token + "bad").dispatch(Entry.class, Entry::snapshot));
+        assertThrows(JwtCredentialException.class, () -> bearer(null).dispatch(Entry.class, Entry::snapshot));
+        assertEquals(Optional.empty(), dispatcher.dispatch(IdentityContext.class, IdentityContext::userId));
+        assertEquals(Optional.empty(), anonymous().dispatch(IdentityContext.class, IdentityContext::userId));
         assertThrows(UnauthenticatedCallerException.class,
-            () -> ingress.dispatchAnonymous(IdentityContext.class, IdentityContext::requireUserId));
+            () -> anonymous().dispatch(IdentityContext.class, IdentityContext::requireUserId));
     }
 
     @Test
@@ -163,9 +174,8 @@ class PhaseDIamIngressTests {
             withoutCodec.getBeanProvider(JwtCredentialCodec.class), withoutCodec);
         assertThrows(IllegalStateException.class, verifierWithoutCodec::requireCodec);
 
-        IamOperationIngressService unconfigured = new IamOperationIngressService(dispatcher, verifierWithoutProvider);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new IdentityController(httpIngress))
-            .addFilters(new IamBearerIngressFilter(unconfigured)).build();
+            .addFilters(new IamBearerIngressFilter(verifierWithoutProvider)).build();
         mvc.perform(get("/api/test/protected"))
             .andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.code").value("security_unavailable"));
@@ -176,6 +186,17 @@ class PhaseDIamIngressTests {
     private static AuthorizationContext evidence(List<AuthorizationCredential> credentials) {
         return new AuthorizationContext() {
             @Override public List<AuthorizationCredential> credentials() { return List.copyOf(credentials); }
+            @Override public List<AuthorizationCredential> credentialsFrom(ClaimOrigin origin) {
+                return credentials.stream().filter(c -> c.origin().equals(origin)).toList();
+            }
+            @Override public List<AuthorizationCredential> credentialsFrom(String issuer, String profile) {
+                return credentials.stream().filter(c -> c.origin().issuer().equals(issuer)
+                    && c.origin().profile().equals(profile)).toList();
+            }
+            @Override public Optional<AuthorizationCredential> findCredential(String issuer, String profile, String id) {
+                return credentialsFrom(issuer, profile).stream()
+                    .filter(c -> c.origin().credentialId().filter(id::equals).isPresent()).findFirst();
+            }
             @Override public List<Claim> find(String type) { throw new UnsupportedOperationException(); }
             @Override public List<Claim> find(String issuer, String profile, String type) {
                 throw new UnsupportedOperationException();
@@ -235,6 +256,36 @@ class PhaseDIamIngressTests {
     }
 
     @Test
+    void callerSideRequestContributorsComposeWithoutControllerOrIamDispatcherChanges() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new IdentityController(httpIngress))
+            .setControllerAdvice(advice).addFilters(filter).build();
+        mvc.perform(get("/api/test/contributions").header(HttpHeaders.AUTHORIZATION,
+                "Bearer " + token(ALICE, "session-a")).header("X-Additional-Input", "first"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.userId").value(ALICE.toString()))
+            .andExpect(jsonPath("$.additional").value("first"));
+        mvc.perform(get("/api/test/contributions").header("X-Additional-Input", "second"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value("anonymous"))
+            .andExpect(jsonPath("$.additional").value("second"));
+        mvc.perform(get("/api/test/contributions"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.additional").value("absent"));
+    }
+
+    @Test
+    void nonHttpContributorsComposeAndRejectDuplicateRegistration() {
+        OperationInputContributor identity = inputs -> inputs.add(VerifiedJwtCredential.class,
+            verifier.verify(token(ALICE, "session-a")));
+        OperationInputContributor additional = inputs -> inputs.add(AdditionalInput.class, new AdditionalInput("job"));
+        OperationIngressDispatcher composed = new ContributingOperationDispatcher(dispatcher,
+            List.of(identity, additional));
+        assertEquals("job", composed.dispatch(AdditionalConfiguration.class, AdditionalConfiguration::value));
+        assertEquals(Optional.of(ALICE), composed.dispatch(IdentityContext.class, IdentityContext::userId));
+        OperationIngressDispatcher duplicate = new ContributingOperationDispatcher(dispatcher, List.of(additional, additional));
+        assertThrows(IllegalArgumentException.class,
+            () -> duplicate.dispatch(AdditionalConfiguration.class, AdditionalConfiguration::value));
+    }
+
+    @Test
     void httpOperationCannotBypassAbsentMiddleware() {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new IdentityController(httpIngress))
             .setControllerAdvice(advice).build();
@@ -243,8 +294,17 @@ class PhaseDIamIngressTests {
         assertTrue(failure.getCause() instanceof IllegalStateException);
     }
 
+    private OperationIngressDispatcher bearer(String token) {
+        OperationInputContributor contribution = inputs -> inputs.add(VerifiedJwtCredential.class, verifier.verify(token));
+        return new ContributingOperationDispatcher(dispatcher, List.of(contribution));
+    }
+
+    private OperationIngressDispatcher anonymous() {
+        return new ContributingOperationDispatcher(dispatcher, List.of());
+    }
+
     private Snapshot overlap(UUID who, String session, CountDownLatch entered, CountDownLatch release) {
-        return ingress.dispatchBearer(token(who, session), Entry.class, entry -> {
+        return bearer(token(who, session)).dispatch(Entry.class, entry -> {
             entered.countDown();
             try {
                 assertTrue(release.await(10, TimeUnit.SECONDS));
@@ -285,6 +345,33 @@ class PhaseDIamIngressTests {
         }
     }
 
+    record AdditionalInput(String value) { }
+
+    static final class AdditionalConfiguration extends OperationScopedConfiguration {
+        private String value;
+
+        void seed(Optional<AdditionalInput> input) {
+            requireInitializing();
+            if (value != null) {
+                throw new IllegalStateException("Additional input seeded twice");
+            }
+            value = input.map(AdditionalInput::value).orElse("absent");
+        }
+
+        String value() {
+            requireReady();
+            return value;
+        }
+    }
+
+    static final class AdditionalInitializer implements ScopedServiceInitializer<AdditionalConfiguration, AdditionalInput> {
+        @Override public Class<AdditionalConfiguration> configurationType() { return AdditionalConfiguration.class; }
+        @Override public Class<AdditionalInput> inputType() { return AdditionalInput.class; }
+        @Override public void initialize(AdditionalConfiguration config, Optional<AdditionalInput> input) {
+            config.seed(input);
+        }
+    }
+
     record ConsumerA(IdentityContext identity, AuthorizationContext authorization) { }
     record ConsumerB(IdentityContext identity, AuthorizationContext authorization) { }
 
@@ -307,6 +394,8 @@ class PhaseDIamIngressTests {
         }
     }
 
+    record ContributionEntry(IdentityContext identity, AdditionalConfiguration additional) { }
+
     record Snapshot(Optional<UUID> userId, UUID requiredUser, boolean authenticated, int credentialCount,
         String session, boolean sameIdentityInstance, boolean sameAuthorizationInstance,
         UUID segmentOne, UUID segmentTwo, IdentityContext identity, AuthorizationContext authorization) { }
@@ -314,18 +403,25 @@ class PhaseDIamIngressTests {
     @TestComponent
     @RestController
     static final class IdentityController {
-        private final HttpIamOperationIngress ingress;
-        IdentityController(HttpIamOperationIngress ingress) { this.ingress = ingress; }
+        private final OperationIngressDispatcher ingress;
+        IdentityController(OperationIngressDispatcher ingress) { this.ingress = ingress; }
 
         @GetMapping("/api/test/protected")
-        Map<String, String> protectedIdentity(HttpServletRequest request) {
-            return ingress.dispatch(request, IdentityContext.class,
+        Map<String, String> protectedIdentity() {
+            return ingress.dispatch(IdentityContext.class,
                 identity -> Map.of("userId", identity.requireUserId().toString()));
         }
 
+        @GetMapping("/api/test/contributions")
+        Map<String, String> contributions() {
+            return ingress.dispatch(ContributionEntry.class, entry -> Map.of(
+                "userId", entry.identity().userId().map(UUID::toString).orElse("anonymous"),
+                "additional", entry.additional().value()));
+        }
+
         @GetMapping("/api/test/public")
-        Map<String, String> publicIdentity(HttpServletRequest request) {
-            return ingress.dispatch(request, IdentityContext.class,
+        Map<String, String> publicIdentity() {
+            return ingress.dispatch(IdentityContext.class,
                 identity -> Map.of("userId", identity.userId().map(UUID::toString).orElse("anonymous")));
         }
 
@@ -336,10 +432,29 @@ class PhaseDIamIngressTests {
     @TestConfiguration(proxyBeanMethods = false)
     @Import({IamOperationSecurityConfiguration.class, IamIngressInitializer.class,
         IamPrimaryCredentialProvider.class, IamCredentialVerifier.class,
-        IamOperationIngressService.class, HttpIamOperationIngressService.class,
-        IamHttpSecurityConfiguration.class, IamIdentityExceptionHandler.class,
+        IamHttpSecurityConfiguration.class, HttpIamInputContributor.class, IamIdentityExceptionHandler.class,
         DefaultIdentityContext.class})
     static class Fixture {
+        @Bean @RequestScope(proxyMode = ScopedProxyMode.INTERFACES)
+        OperationInputContributor additionalRequestContributor(jakarta.servlet.http.HttpServletRequest request) {
+            return inputs -> {
+                String value = request.getHeader("X-Additional-Input");
+                if (value != null) {
+                    inputs.add(AdditionalInput.class, new AdditionalInput(value));
+                }
+            };
+        }
+        @Bean @Scope("operation")
+        AdditionalConfiguration additionalConfiguration() { return new AdditionalConfiguration(); }
+        @Bean
+        ScopedServiceInitializer<AdditionalConfiguration, AdditionalInput> additionalInitializer() {
+            return new AdditionalInitializer();
+        }
+        @Bean @Scope("operation")
+        ContributionEntry contributionEntry(IdentityContext identity, AdditionalConfiguration additional) {
+            return new ContributionEntry(identity, additional);
+        }
+
         @Bean
         JwtCredentialCodec iamPrimaryJwtCredentialCodec() {
             return new JwtCredentialCodec(PROFILE,
