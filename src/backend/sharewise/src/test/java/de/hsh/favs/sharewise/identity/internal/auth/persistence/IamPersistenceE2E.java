@@ -20,6 +20,7 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -110,7 +111,7 @@ class IamPersistenceE2E extends E2ETestBase {
                 assertEquals(32, rows.getInt(6));
                 assertFalse(rows.next());
             }
-        }, Fixtures.class);
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
     @Test
@@ -160,7 +161,7 @@ class IamPersistenceE2E extends E2ETestBase {
                     assertEquals(2, rows.getInt(1));
                 }
             }
-        });
+        }, ProductionEntityScanConfiguration.class);
     }
 
     @Test
@@ -193,7 +194,7 @@ class IamPersistenceE2E extends E2ETestBase {
                     assertEquals(1, rows.getInt(1));
                 }
             }
-        }, Fixtures.class);
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
     @Test
@@ -217,7 +218,7 @@ class IamPersistenceE2E extends E2ETestBase {
                     }
                 }
             }
-        }, Fixtures.class);
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
     @Test
@@ -242,7 +243,7 @@ class IamPersistenceE2E extends E2ETestBase {
                     }
                 }
             }
-        }, Fixtures.class);
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
     @Test
@@ -264,7 +265,7 @@ class IamPersistenceE2E extends E2ETestBase {
                 assertTrue(rows.next());
                 assertEquals(1, rows.getInt(1));
             }
-        }, Fixtures.class);
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
     @Test
@@ -291,7 +292,7 @@ class IamPersistenceE2E extends E2ETestBase {
             }
             assertEquals(1, first.get(10, TimeUnit.SECONDS));
             assertEquals(2, second.get(10, TimeUnit.SECONDS));
-        }, Fixtures.class);
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
     private static FutureTask<Optional<AccountSnapshot>> register(OperationDispatcher dispatcher,
