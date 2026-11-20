@@ -12,23 +12,64 @@ The proposed **domain-specific `<Concept>Context` pattern** gives application se
 
 A domain context might expose membership or permission checks such as `isMember(groupId)` or `requireAdmin(groupId)` after their policy and failure semantics have been reviewed. It must select claims belonging to an appropriate trusted issuer/profile and **the same authorization credential**, so unrelated credentials cannot contribute a group ID and an administrator role to one fabricated grant. Contextual authorization also interprets the resource and requested action; the generic evidence layer does not.
 
-```mermaid
-flowchart LR
-    Service["Application operation"] --> Semantic["Domain-specific authorization context"]
-    Semantic --> Evidence["AuthorizationContext: verified credentials"]
-    Semantic --> Policy["Resource and operation policy"]
-    Policy --> State["Authoritative owned state, when required"]
-```
+## JWT profiles and proposed Group claim mapping
+
+The [implemented evidence model](../architecture/authorization.md#credential-evidence-model) is deliberately domain-agnostic. It can preserve claims from several sources without deciding whether any of them entitles the caller to act. The proposed Group integration adds **source-specific meaning** to that model: one attestation asserts a narrow fact about one resource and is correlated with the current primary IAM identity before domain policy interprets it.
+
+The table retains the credential information required by the [security design](security.md#issuing-and-using-domain-attestations) and distinguishes existing JWT primitive contracts from the still-proposed Group wire contract. The Group claim names are illustrative unless specifically identified as part of the shared codec's current binding mechanism.
+
+| JWT element | Primary IAM credential | Proposed Group attestation | Evidence and policy interpretation |
+| --- | --- | --- | --- |
+| `iss` | Configured, trusted IAM issuer | Independently trusted Group issuer | Verified `ClaimOrigin.issuer`; trust derives from the selected issuer/profile and keys, not token text alone. |
+| `sub` | Canonical, stable IAM user UUID | Same IAM user UUID as the primary | Verified subject in `ClaimOrigin` and a claim; the primary yields `IdentityContext.userId()`. |
+| `sid` | Non-empty stable IAM login-session binding | Not a second primary login session | Present only in the primary profile; binding persists across access-JWT renewal and refresh-token rotation. |
+| `principal_iss` | Absent | Issuer of the primary IAM credential | The shared subordinate codec checks this field against the verified primary issuer; Group profile and transport still require review. |
+| `principal_sid` | Absent | Primary IAM session binding | The shared subordinate codec checks this field against the verified primary `sid`. |
+| `group_id` | Not an IAM membership claim | Explicit target group/resource identifier | Illustrative Group-specific claim; interpreted together with authorization facts **within the same credential**. |
+| Role or permission | No Group membership or Finance permission in the IAM token | Narrow Group-owned role/permission assertion | Claim name and encoding belong to the eventual Group contract; never combined into a global `isInRole` union. |
+| `aud` | Explicit intended API audience | Explicit downstream consumer/resource audience | Validated against the selected profile, preserved in `ClaimOrigin.audiences`. |
+| `typ` | Distinct primary access-token type | Distinct attestation type | Protected JOSE header validated before credential publication, not an ordinary application claim. |
+| `iat`, `nbf`, `exp` | Required issue, validity-start and expiry timestamps | Required independent short validity window | Shared JWT codec enforces timestamps, maximum profile lifetime and bounded skew; origins retain the times. |
+| `jti` | Required by the current JWT codec | Required unique attestation token ID | Recorded in origin metadata; the generic `ClaimOrigin` allows omission for other credential kinds. |
+| `alg`, `kid`, signature | Verified using the configured primary key set | Verified using the authority's separate trusted keys | JOSE verification inputs, not authorization claims; token-supplied key locations never expand trust. |
+
+An IAM session ID may correspond to `identity.sessions.id` (UUIDv7), but remains a **non-secret binding identifier**, unlike the rotating refresh-token bearer secret. Domain attestations bind to the principal and session, not to one particular access JWT's token ID or issuance time. The security model therefore requires a valid primary JWT alongside every accepted subordinate credential, even when the attestation was issued while an earlier access JWT was current.
+
+The shared subordinate codec already enforces trusted primary-issuer membership, an unexpired primary credential and matching subject, `principal_iss` and `principal_sid`. The eventual Group provider must supply the right configured profile, token input and accepted evidence to the operation; it must not treat direct construction of an `AuthorizationCredential` as verification. Group-specific resource and permission checks remain separate from cryptographic and session binding.
 
 ## Proposed Group attestation integration
 
-Group Management owns its current membership and roles. For its **own mutations**, those facts must be checked against its authoritative state inside the relevant operation; a previously issued attestation is not authoritative for a membership change. For downstream consumers such as Finance, the intended design allows Group Management to issue short-lived, resource-qualified attestations from current state, subject to [the security trust hierarchy](security.md#trust-and-responsibility-boundaries).
+In the proposed issuance flow, Group Management would issue short-lived, resource-qualified attestations from its **current owned membership and role state**. It must validate the primary IAM credential and the requester's eligibility before issuance. An attestation cannot authorize issuing another attestation. Attestation issuance, transport and the final Group claim contract belong to the Group vertical, not to the shared credential model.
 
-The eventual Group credential source must verify the attestation's signature, allowed algorithm and local key, protected type, issuer, audience, lifetime and unique token ID. It must also correlate its primary IAM issuer, subject and session binding with a still-valid verified primary credential **before publishing** the subordinate credential through an `AuthorizationCredentialProvider`. The shared JOSE foundation already provides a generic subordinate verification/binding capability; the real Group provider, wire profile, transport and issuance rules remain unimplemented.
+The eventual Group credential provider independently verifies the attestation against its configured authority, audience, protected type, validity and unique token ID. Its source-specific binding checks match the subject, primary issuer and session to still-valid primary evidence **before returning the credential for publication**. Invalid evidence fails; a genuinely absent optional attestation contributes no credential. The operation snapshot is then available to the semantic domain context for its own decisions, without per-query JWT decoding or implicit Group database access.
 
-The proposed Group claims include an explicit group/resource identifier, a narrowly defined role or permission, and primary-identity/session binding information (illustratively `principal_iss` and `principal_sid`). The final names and values require the Group attestation contract to be approved. Domain policy then evaluates the role, group and requested operation **within one credential**; a credential for group A never grants permission to group B. A subordinate token does not authenticate the caller alone and cannot issue another subordinate token.
+Resource consumers may require additional authoritative checks when the permitted staleness of short-lived attestations is insufficient. That choice belongs to the resource operation, with the availability and latency tradeoffs described in [revocation and distributed verification](security.md#revocation-distributed-services-and-verification).
 
-A resource consumer may need additional authoritative checks where the permitted staleness of a signed attestation is insufficient. That is an explicit domain integration decision, not a hidden database lookup in `AuthorizationContext` or in generic claim providers. Group state changes can make an already issued attestation stale until it expires; the intended [revocation model](security.md#revocation-distributed-services-and-verification) describes this tradeoff.
+## Correlating evidence into domain decisions
+
+A domain policy answers a question about **one requested operation and its target resource**, not whether an arbitrary claim of the right name exists. The general `AuthorizationContext.find(...)` methods are useful for inspection, but a Group authorization policy must select the appropriate issuer/profile and then correlate claims belonging to one `AuthorizationCredential`.
+
+For example, consider two individually valid attestations carried in one operation:
+
+| Attestation | Group claim | Role claim |
+| --- | --- | --- |
+| Credential A | Group A | `admin` |
+| Credential B | Group B | `member` |
+
+A request to administer Group B must not combine the `admin` claim from A with the group identifier from B. The policy examines a single credential containing both the requested group and qualifying role, applies the resource/operation rules, and checks any current authority-owned state required for the decision. A valid attestation bound to a **different IAM session** is rejected even earlier, during source verification, and never reaches the domain context.
+
+```mermaid
+flowchart LR
+    Service["Domain application service"] --> Semantic["GroupAuthorizationContext · proposed"]
+    Semantic --> Identity["IAM IdentityContext"]
+    Semantic --> Policy["Group resource/operation policy"]
+    Policy --> Evidence["AuthorizationContext"]
+    Evidence --> A["Credential A · group A"]
+    Evidence --> B["Credential B · group B"]
+    Policy --> Owned["Current Group-owned state when authoritative"]
+```
+
+The proposed `<Concept>Context` convention is deliberately **semantic, not an inheritance hierarchy**. `IdentityContext` exposes primary caller identity; a Group-owned `GroupAuthorizationContext` would offer reviewed domain-specific operations rather than a generic role-check API. Group Management authorizes its own membership mutations against current owned state. A downstream consumer such as Finance may use a short-lived attestation as evidence while separately enforcing its financial invariants.
 
 ## Ownership and extension boundaries
 
