@@ -10,10 +10,11 @@ export interface ApiClientHooks {
      */
     readonly onRequest?: (path: string, headers: Headers) => Promise<void> | void;
     /**
-     * Optional hook for Phase 2 to handle bounded 401 token renewal and single-retry.
+     * Observe unauthorized responses, clear a rejected bearer, or later perform bounded renewal.
+     * Sent headers identify the credential actually used, avoiding stale-401 races.
      * Return {@code true} to retry the request once with updated credentials.
      */
-    readonly onUnauthorized?: (path: string, response: Response) => Promise<boolean>;
+    readonly onUnauthorized?: (path: string, response: Response, sentHeaders: Readonly<Headers>) => Promise<boolean>;
 }
 
 export interface ApiClient {
@@ -90,7 +91,7 @@ export function createApiClient(
         }
 
         if (response.status === 401 && allowUnauthorizedRetry && hooks.onUnauthorized) {
-            const shouldRetry = await hooks.onUnauthorized(targetPath, response);
+            const shouldRetry = await hooks.onUnauthorized(targetPath, response, headers);
             if (shouldRetry) {
                 return executeRequest<T>(path, options, false);
             }
