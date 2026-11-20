@@ -1,6 +1,6 @@
-# Identity and authorization architecture
+# Identity and authorization design
 
-**Status:** Preliminary security architecture, subject to implementation validation. The [application architecture](../architecture.md) defines context ownership; the [domain model](../data-model-design.md) defines business authorization constraints; the [persistence architecture](../architecture/persistence.md) defines transactional storage. See [security alternatives](security-alternatives.md) for the selection rationale.
+**Status:** Preliminary end-to-end security design. The implemented JWT/JOSE, evidence, HTTP bearer ingress and IAM identity foundation is documented in [verified credentials and operation identity](../architecture/authorization.md); account/session workflows and domain attestation integration remain proposed. The [application architecture](../architecture.md) defines context ownership; the [domain model](../data-model-design.md) defines business authorization constraints; the [persistence architecture](../architecture/persistence.md) defines transactional storage. See [security alternatives](security-alternatives.md) for the selection rationale.
 
 **Contents:**
 
@@ -77,7 +77,7 @@ Group attestations establish **caller authorization**. Finance independently val
 
 The browser loads **static Next.js-generated assets from Nginx** and calls the Spring Boot API through the same origin at `/api/*`. Nginx terminates TLS and routes API requests either directly or through an API gateway. The browser sends bearer credentials to the API and uses IAM’s refresh-cookie endpoint to renew access tokens. Browser requests reach Spring Boot through Nginx without an application-server BFF. Same-origin routing lets IAM scope refresh and CSRF cookies to the API origin without requiring cross-origin browser credentials. A minimal same-origin development proxy supports the initial authenticated browser slice; production static export and Nginx deployment follow later. See the [stack overview](overview.md) for the runtime topology and the [development guide](../development.md) for the currently runnable starter.
 
-Spring Security is the enforcement framework; IAM application services orchestrate its primitives and own account/session workflows. The implementation mapping is:
+Spring Security is the selected enforcement framework; IAM application services will own account/session workflows. The following table describes the proposed end-to-end integration, including components that are not yet implemented:
 
 | Concern | Spring / Java mechanism | Application-owned work |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ Spring Security is the enforcement framework; IAM application services orchestra
 
 IAM owns account and refresh-session orchestration behind Spring Security adapters. `JdbcUserDetailsManager` supports simple JDBC user storage; registration, account recovery and rotating refresh sessions are application-owned. Credential hashing uses Spring Security password encoders, and JWT signing and validation use its JOSE components. Method-security annotations protect Spring-intercepted entry points; application services enforce resource policies and business invariants. Proxy-based method interception does not apply to self-invocation.
 
-The shared security library is a small stateless infrastructure module providing token profiles, issuer-specific decoders/encoders, trusted-authority metadata, session-binding validation, typed verified claims and Spring integration. Domain authorization policies and refresh-token state remain with their owning contexts. Verified claims retain issuer and resource provenance instead of being collected in a mutable global claims bag. The modulith shares this code in-process; extracted services use the same library with independently configured trust keys.
+The implemented shared JWT/JOSE and evidence primitives provide trusted token profiles, signing and verification, session binding, and immutable provenance-preserving claims. The [architecture chapter](../architecture/authorization.md) describes their current runtime integration. Domain authorization policies and refresh-token state remain with their owning contexts. Verified claims retain issuer and resource provenance instead of being collected in a mutable global claims bag. The modulith shares this code in-process; extracted services use the same library with independently configured trust keys.
 
 ### API boundaries and client behavior
 
