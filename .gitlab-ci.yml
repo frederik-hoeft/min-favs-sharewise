@@ -229,3 +229,26 @@ probe-rootless-buildkit:
     paths:
       - buildkit-probe-results/
     expire_in: 7 days
+
+# P2.6ab Phase A fallback: maintained Kaniko fork, not archived Google executor.
+# Opt in from the GitLab UI with P26AB_KANIKO_PROBE=1 on a trusted unprotected ref.
+# Root *inside* the ordinary Docker executor container is not privileged mode.
+probe-kaniko:
+  stage: build
+  image:
+    name: ghcr.io/osscontainertools/kaniko:v1.28.6-debug@sha256:7ab44d0131c3051b6dea128067e258c7afb5c4815082a93b9cf6c624f2140bf0
+    entrypoint: [""]
+  interruptible: true
+  dependencies: []
+  needs: []
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $P26AB_KANIKO_PROBE == "1" && $CI_COMMIT_REF_PROTECTED == "false"'
+      when: on_success
+    - when: never
+  script:
+    - sh scripts/ci/probe-kaniko.sh
+  artifacts:
+    when: always
+    paths:
+      - kaniko-probe-results/
+    expire_in: 7 days

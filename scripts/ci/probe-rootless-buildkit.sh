@@ -4,7 +4,7 @@ set -eu
 
 : "${CI_PROJECT_DIR:?GitLab checkout required}"
 RESULT_DIR="$CI_PROJECT_DIR/buildkit-probe-results"
-CONTEXT="$CI_PROJECT_DIR/scripts/ci/buildkit-probe"
+CONTEXT="$CI_PROJECT_DIR/scripts/ci/container-build-probe"
 ARCHIVE="$RESULT_DIR/probe.oci.tar"
 REPORT="$RESULT_DIR/runner.txt"
 mkdir -p "$RESULT_DIR"

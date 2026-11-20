@@ -36,6 +36,24 @@ The supplied November 20 source snapshot has already passed a clean, strict-offl
 
 `--oci-worker-no-process-sandbox` weakens process isolation *inside* the builder, so run this probe only for trusted source. A passing probe proves a trivial OCI build on that runner, **not** B-02 completion: Phase F must also build both application Dockerfiles there.
 
+### Rootless BuildKit failure and Kaniko fallback probe
+
+The first actual university runner probe, [job 2691850](https://gitlab.gwdg.de/min-favs/sharewise/-/jobs/2691850) at commit `44202d19`, ran with GitLab Runner 19.5.3 and the Docker executor on Linux/amd64. The job ran as UID 1000, with no effective capabilities; the rootless BuildKit daemon could not start:
+
+```text
+[rootlesskit:parent] error: failed to start the child: fork/exec /proc/self/exe: operation not permitted
+```
+
+This shows that **rootless BuildKit is blocked by the current runner policy**, before executing the test Dockerfile. The log alone does not identify which precise security mechanism rejected the call. Do not alter university runner security settings or assume rootless Buildah will work with the same namespace restrictions.
+
+To test the maintained Kaniko alternative on the same runner:
+
+1. Push the separately reviewed Phase A fallback patch to a **trusted, isolated, unprotected ref**. Start a web pipeline with `P26AB_KANIKO_PROBE=1`; the opt-in `probe-kaniko` job must not run in ordinary pipelines.
+2. The job uses the digest-pinned [`osscontainertools/kaniko` debug executor](https://github.com/osscontainertools/kaniko/pkgs/container/kaniko) from a maintained community fork, not the archived `gcr.io/kaniko-project/executor`. The v1.28.6 choice includes the fix for the ACR credential-helper issue affecting releases before v1.28.3 (CVE-2026-105769); verify the exact pull digest from the GitLab runner trace. It builds the same `RUN`+`COPY` fixture without a Docker socket, Docker daemon, `privileged` mode, registry credentials or a registry push; it writes a local Docker image tarball and SHA-256 digest.
+3. Inspect the job log and `kaniko-probe-results/` artifacts for the resolved executor image digest, Docker executor security profile (confirm with the administrator), build result and tarball. Inspect the resulting image's `/probe-run.txt` and `/probe-copy.txt` contents using a trusted local image tool, where available. Record the exact GitLab job URL and any failures. The Kaniko image normally runs as root **inside the unprivileged job container**; this is not rootless execution and does not mean a privileged Docker executor.
+
+Kaniko executes Dockerfile commands in the job container's own security boundary rather than a nested sandbox. Restrict Dockerfile control and registry credentials to trusted refs when later implementing Phase F. A passing fallback probe establishes runner feasibility only; both actual application Dockerfiles still require runner testing in Phase F.
+
 **Gate A:** The human reviews actual runner evidence and approves one daemonless builder. If access or compatibility is unavailable, record **blocked**; P2.6a may proceed independently, but P2.6b publication cannot be accepted. An unverified fallback must not silently replace BuildKit.
 
 ## Phase B - Reproducible backend and static frontend images (P2.6a)
