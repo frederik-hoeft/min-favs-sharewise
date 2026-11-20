@@ -12,6 +12,14 @@ stages:
   - image-release # Phase F: validate paired digests and write release artifact
   - image-promote # Phase F: main-only latest promotion
 
+variables:
+  # Initial image version; changes require explicit release-policy review.
+  MAJOR_VERSION: '0'
+  MINOR_VERSION: '1'
+  # Security analyzers must also run in merge-request pipelines.
+  AST_ENABLE_MR_PIPELINES: 'true'
+  SECRET_DETECTION_ENABLED: 'true'
+
 # Prefer MR pipelines over duplicate push pipelines for unprotected branches.
 # Keep protected-ref pipelines (including protected pushes with an open MR),
 # as well as tag, scheduled, manually started and API pipelines.
@@ -234,12 +242,6 @@ sast:
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
-variables:
-  # Security analyzers must run in MR pipelines after workflow switches from push.
-  MAJOR_VERSION: '0'
-  MINOR_VERSION: '1'
-  AST_ENABLE_MR_PIPELINES: 'true'
-  SECRET_DETECTION_ENABLED: 'true'
 
 secret_detection:
   stage: test
