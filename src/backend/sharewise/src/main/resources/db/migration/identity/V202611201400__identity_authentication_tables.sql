@@ -1,17 +1,23 @@
 -- IAM owns account credentials and the initial login/refresh-token history.
 -- No cross-context foreign keys or event-delivery tables belong to this slice.
+-- Keep the ER's bounded nonnegative counter type in IAM's owning schema.
+-- jOOQ generates PostgreSQL domain metadata while exposing its int4 Java value.
+CREATE DOMAIN identity.natural0 AS integer
+    CONSTRAINT identity_natural0_nonnegative CHECK (VALUE >= 0);
+REVOKE USAGE ON DOMAIN identity.natural0 FROM PUBLIC;
+GRANT USAGE ON DOMAIN identity.natural0 TO sharewise_app;
+
 CREATE TABLE identity.users (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
     email varchar(256) NOT NULL,
     normalized_email varchar(256) NOT NULL,
     password_hash text NOT NULL,
     disabled_at timestamptz,
-    failed_login_attempts integer NOT NULL DEFAULT 0,
+    failed_login_attempts identity.natural0 NOT NULL DEFAULT 0,
     locked_until timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT identity_users_normalized_email_unique UNIQUE (normalized_email),
-    CONSTRAINT identity_users_password_hash_nonempty CHECK (length(password_hash) > 0),
-    CONSTRAINT identity_users_login_attempts_nonnegative CHECK (failed_login_attempts >= 0)
+    CONSTRAINT identity_users_password_hash_nonempty CHECK (length(password_hash) > 0)
 );
 
 CREATE TABLE identity.sessions (

@@ -56,6 +56,25 @@ class IamPersistenceE2E extends E2ETestBase {
                         assertEquals(0, rows.getInt(1));
                     }
                 }
+                // Verify the *physical* domain (not merely an equivalent column CHECK).
+                try (ResultSet columns = sql.executeQuery("""
+                        select domain_schema, domain_name
+                          from information_schema.columns
+                         where table_schema = 'identity'
+                           and table_name = 'users'
+                           and column_name = 'failed_login_attempts'
+                        """)) {
+                    assertTrue(columns.next());
+                    assertEquals("identity", columns.getString("domain_schema"));
+                    assertEquals("natural0", columns.getString("domain_name"));
+                    assertFalse(columns.next());
+                }
+                try (ResultSet grants = sql.executeQuery("""
+                        select has_type_privilege(current_user, 'identity.natural0', 'USAGE')
+                        """)) {
+                    assertTrue(grants.next());
+                    assertTrue(grants.getBoolean(1));
+                }
                 assertThrows(SQLException.class,
                         () -> sql.execute("alter table identity.users add column forbidden text"));
                 assertThrows(SQLException.class, () -> sql.execute("select * from flyway.flyway_schema_history"));

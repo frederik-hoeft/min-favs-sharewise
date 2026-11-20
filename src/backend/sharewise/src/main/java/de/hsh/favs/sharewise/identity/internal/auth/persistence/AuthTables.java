@@ -8,7 +8,7 @@ import org.jooq.Field;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 
-/** Typed jOOQ descriptors for the IAM-owned Flyway tables (no generated schema classes). */
+/** Temporary descriptors; replaced by PostgreSQL-generated jOOQ schema types before Gate B. */
 final class AuthTables {
 
     static final Table<org.jooq.Record> USERS = DSL.table(DSL.name("identity", "users"));
