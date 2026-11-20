@@ -1,10 +1,10 @@
 # P2.6a/b: Production packaging and registry publishing implementation plan
 
-**Status:** Proposed for human review; no implementation phase approved or started. **Contract:** [Approved P2.6a/b specification](specification.md) and [P2.6 backlog](../backlog.md#p26---production-packaging-deployment-and-cicd). **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
+**Status:** Human-approved implementation sequence (November 20, 2026); Phase A authorized, runner evidence pending. **Contract:** [Approved P2.6a/b specification](specification.md) and [P2.6 backlog](../backlog.md#p26---production-packaging-deployment-and-cicd). **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
 
 ## Baseline, scope and sequencing
 
-- [ ] Confirm the approved specification and plan are committed to the authoritative task branch before dependent implementation. The local development baseline is the approved source snapshot plus the specification; the plan is a separate, unmerged review increment.
+- [ ] Confirm the approved specification and plan are committed to the authoritative task branch before dependent implementation. For local review, reconstruct the approved source snapshot plus both approved task documents; commit/push those documents to the authoritative GitLab task branch before dependent implementation is accepted.
 - [ ] At the start of each implementation increment, verify the exact source revision, inspect affected repository guidelines, establish a clean branch from the **last human-approved baseline**, and run relevant unchanged checks. Do not combine unreviewed phases in one patch.
 - [ ] Limit this work to **P2.6a** (backend/frontend images, Nginx and production-style Compose) and **P2.6b** (CI builder, registry publication and versioning). P2.6c host provisioning, secrets/cert issuance and P2.6d deployment orchestration, rollout and rollback are not implementation tasks here.
 - [ ] Keep application code, backend module boundaries, existing Maven/npm dependency descriptors, database migrations, and GitLab test/security coverage stable unless a reviewed requirement forces a narrowly scoped change. P2.6 does not implement pending business features.
@@ -27,6 +27,14 @@ The supplied November 20 source snapshot has already passed a clean, strict-offl
 - [ ] Add a **separately reviewable, non-publishing** BuildKit probe job or temporary pipeline on an isolated ref. Build a trivial Dockerfile to an OCI/tar output or equivalent, not to the release registry. Capture the image digest/version, runner job URL, command, image pin and unprivileged execution evidence (B-02 feasibility).
 - [ ] If rootless BuildKit is blocked, retain the error evidence (including seccomp/user-namespace failures) and test a maintained, pinned daemonless alternative, beginning with rootless Buildah or the maintained Kaniko fork identified in the specification. Do **not** fix compatibility by relaxing runner isolation to `seccomp:unconfined` or introducing a privileged service. Escalate if no compliant builder works.
 - [ ] Remove or explicitly isolate temporary probe configuration after the experiment; record the chosen executor, image pin, required flags, supported platform(s) and any reproducibility limits for Phase F.
+
+### Running the Phase A probe
+
+1. Commit/push the reviewed patch on an **unprotected, isolated GitLab ref**. In **Build > Pipelines > New pipeline**, select that ref and set `P26AB_BUILDKIT_PROBE=1`. The `probe-rootless-buildkit` job runs only in a manually started web pipeline with that variable and an unprotected ref; ordinary CI is unchanged.
+2. The job uses the version-pinned `moby/buildkit:v0.35.1-rootless` image, a non-root user and `BUILDKITD_FLAGS=--oci-worker-no-process-sandbox`. There is no Docker service/socket, registry authentication or image push. A small Dockerfile with **both `RUN` and `COPY`** produces a local OCI archive. Pulling its Alpine base requires **read** access to an image registry.
+3. Review the job trace and seven-day artifacts (`runner.txt`, `build.log`, `index.json`, `probe.oci.tar`). Record the job URL, runner executor/security policy, resolved builder image digest from the runner trace, UID/privileges, OCI image manifest digest and any error. Distinguish namespace or mount failures from registry-read and checkout-permission problems. Confirm the runner's configuration with its administrator before approving Gate A.
+
+`--oci-worker-no-process-sandbox` weakens process isolation *inside* the builder, so run this probe only for trusted source. A passing probe proves a trivial OCI build on that runner, **not** B-02 completion: Phase F must also build both application Dockerfiles there.
 
 **Gate A:** The human reviews actual runner evidence and approves one daemonless builder. If access or compatibility is unavailable, record **blocked**; P2.6a may proceed independently, but P2.6b publication cannot be accepted. An unverified fallback must not silently replace BuildKit.
 

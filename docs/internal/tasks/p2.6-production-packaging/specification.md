@@ -1,6 +1,6 @@
 # P2.6a/b: Production packaging and registry publishing specification
 
-**Status:** Architecture/specification approved for implementation planning on November 20, 2026; implementation plan and execution gates still require separate approval. **Scope:** [P2.6a and P2.6b](../backlog.md#p26---production-packaging-deployment-and-cicd). **Implementation plan:** [Proposed plan](plan.md), following the [AI development workflow](../../../development/ai-development-workflow.md).
+**Status:** Architecture and implementation sequence approved November 20, 2026; each phase requires separate acceptance. **Scope:** [P2.6a and P2.6b](../backlog.md#p26---production-packaging-deployment-and-cicd). **Implementation plan:** [Approved plan](plan.md), following the [AI development workflow](../../../development/ai-development-workflow.md).
 
 ## Starting point and objective
 
@@ -95,7 +95,7 @@ This outline records the approved architectural sequencing. The separately revie
 3. **P2.6a production-style stack:** Add Nginx, production PostgreSQL secret-based bootstrap, TLS/config templates, network isolation, health ordering and failure-mode smoke tests. Reconcile `docs/development.md`, stack overview and frontend architecture with the actually implemented state. Obtain human review and manual local Compose acceptance before updating the approved baseline.
 4. **P2.6b publishing:** Add tested version logic, CI image stages, scoped registry auth and digest artifacts while preserving current tests and security checks. Verify from the real GitLab runner, then obtain human review and manual registry/pull acceptance; do not merge without approval.
 
-The [implementation plan](plan.md) breaks this work into independently reviewable changes, verification gates and final documentation reconciliation. Its human approval remains a separate gate before application changes begin.
+The [implementation plan](plan.md) breaks this work into independently reviewable changes, verification gates and final documentation reconciliation. Its human-approved sequencing governs the separate implementation review gates.
 
 ## Operational risks and decisions to verify
 

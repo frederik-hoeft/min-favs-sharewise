@@ -81,3 +81,6 @@ next-env.d.ts
 
 # Downloaded toolchain archives for the offline handoff generator.
 /.offline-handoff-cache/
+
+# Disposable GitLab rootless BuildKit probe artifacts.
+/buildkit-probe-results/

@@ -205,3 +205,27 @@ variables:
 secret_detection:
   stage: test
   dependencies: []
+
+# P2.6ab Phase A: explicit, non-publishing compatibility probe on an unprotected ref.
+# Start a pipeline from GitLab's UI with P26AB_BUILDKIT_PROBE=1; never runs by default.
+probe-rootless-buildkit:
+  stage: build
+  image:
+    name: moby/buildkit:v0.35.1-rootless
+    entrypoint: [""]
+  variables:
+    BUILDKITD_FLAGS: "--oci-worker-no-process-sandbox"
+  interruptible: true
+  dependencies: []
+  needs: []
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $P26AB_BUILDKIT_PROBE == "1" && $CI_COMMIT_REF_PROTECTED == "false"'
+      when: on_success
+    - when: never
+  script:
+    - sh scripts/ci/probe-rootless-buildkit.sh
+  artifacts:
+    when: always
+    paths:
+      - buildkit-probe-results/
+    expire_in: 7 days
