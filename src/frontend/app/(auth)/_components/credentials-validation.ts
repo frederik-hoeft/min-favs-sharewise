@@ -40,7 +40,7 @@ export function validateCredentials(mode: 'login' | 'register', emailInput: stri
     if (!validUnicode) {
       errors.password = 'Password contains invalid characters.';
     } else if (new TextEncoder().encode(password).length > 72) {
-      errors.password = 'Password must not exceed 72 bytes in UTF-8.';
+      errors.password = 'Password is too long. Try a shorter password.';
     } else if (mode === 'register' && Array.from(password).length < 12) {
       errors.password = 'Use at least 12 characters.';
     }

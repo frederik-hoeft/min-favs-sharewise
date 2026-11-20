@@ -23,6 +23,18 @@
   letter-spacing: 0.08em;
 }
 
+// Suppress browser-native spinner adornments if a browser/theme engine
+// exposes them on the email field. Keep the email input type and keyboard hints.
+.emailInput {
+  appearance: textfield;
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+}
+
 .submit { margin-top: 0.5rem; }
 
 .errorFocus:focus { outline: none; }

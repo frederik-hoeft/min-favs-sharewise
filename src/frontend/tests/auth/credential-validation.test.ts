@@ -23,9 +23,9 @@ describe('authentication form policy', () => {
 
   it('enforces a 72 UTF-8 byte ceiling rather than JavaScript string length', () => {
     expect(validateCredentials('register', 'test@example.org', 'a'.repeat(72)).password).toBeUndefined();
-    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(73)).password).toMatch(/72/);
+    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(73)).password).toMatch(/too long/i);
     expect(validateCredentials('login', 'test@example.org', '😀'.repeat(18)).password).toBeUndefined();
-    expect(validateCredentials('login', 'test@example.org', '😀'.repeat(19)).password).toMatch(/72/);
+    expect(validateCredentials('login', 'test@example.org', '😀'.repeat(19)).password).toMatch(/too long/i);
   });
 
   it('rejects malformed surrogate pairs and never trims passwords', () => {

@@ -126,9 +126,11 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
                 ref={emailRef}
                 label="Email address"
                 type="email"
+                classNames={{ input: styles.emailInput }}
                 name="email"
                 autoComplete="email"
                 inputMode="email"
+                radius="sm"
                 required
                 value={email}
                 error={errors.email}
@@ -140,12 +142,13 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
                 label="Password"
                 name="password"
                 autoComplete={isRegistration ? 'new-password' : 'current-password'}
+                radius="sm"
                 required
                 value={password}
                 error={errors.password}
                 onChange={(event) => { setPassword(event.currentTarget.value); setErrors((current) => ({ ...current, password: undefined })); setMessage(undefined); }}
                 disabled={pending}
-                description={isRegistration ? 'At least 12 characters, up to 72 UTF-8 bytes.' : undefined}
+                description={isRegistration && !errors.password ? 'Use at least 12 characters.' : undefined}
               />
               <Button type="submit" size="md" fullWidth loading={pending} disabled={pending} className={styles.submit}>
                 {isRegistration ? 'Create account' : 'Sign in'}

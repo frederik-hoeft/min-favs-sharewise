@@ -47,6 +47,12 @@ describe('registration and login presentation', () => {
       renderAuth(mode);
       const form = screen.getByRole('form', { name: formName });
       expect(within(form).getByRole('textbox', { name: /email address/i })).toHaveAttribute('autocomplete', 'email');
+      expect(within(form).getByRole('textbox', { name: /email address/i })).toHaveAttribute('type', 'email');
+      expect(within(form).getByRole('textbox', { name: /email address/i })).toHaveAttribute('inputmode', 'email');
+      if (mode === 'register') {
+        expect(screen.getByText('Use at least 12 characters.')).toBeVisible();
+      }
+      expect(screen.queryByText(/UTF-8 bytes/i)).not.toBeInTheDocument();
       expect(within(form).getByLabelText(/^Password/)).toHaveAttribute(
         'autocomplete', mode === 'register' ? 'new-password' : 'current-password',
       );
