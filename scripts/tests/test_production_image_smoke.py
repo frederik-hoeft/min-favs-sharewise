@@ -59,6 +59,10 @@ case "$1" in
             fi
             exit 1
         fi
+        if [[ "$FAKE_SCENARIO" == bad-https && "$*" == *'https://sharewise-smoke.test/app'* ]]; then
+            printf 'wget: cannot connect to remote host\n' >&2
+            exit 1
+        fi
         if [[ "$FAKE_SCENARIO" == not-ready && "$*" == *'http://127.0.0.1:8081/health' ]]; then
             printf 'wget: cannot connect to remote host\n' >&2
             exit 1
@@ -118,12 +122,15 @@ class ProductionImageSmokeTests(unittest.TestCase):
     def test_http_checks_run_in_container_without_published_ports(self) -> None:
         result, calls = self.run_smoke("ok")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("create -e SHAREWISE_PUBLIC_HOST=localhost sharewise-frontend:", calls)
+        self.assertIn(
+            "create --add-host sharewise-smoke.test:127.0.0.1 "
+            "-e SHAREWISE_PUBLIC_HOST=sharewise-smoke.test sharewise-frontend:", calls
+        )
         self.assertIn("start smoke-frontend", calls)
         self.assertIn("cp ", calls)
         self.assertIn("exec smoke-frontend wget -q -O /dev/null http://127.0.0.1:8081/health", calls)
-        self.assertIn("exec smoke-frontend wget -S -O /dev/null --no-check-certificate https://localhost/no-such-route", calls)
-        self.assertIn("exec smoke-frontend wget -q --no-check-certificate -O /dev/null https://localhost/_next/static/chunk.js", calls)
+        self.assertIn("exec smoke-frontend wget -S -O /dev/null --no-check-certificate https://sharewise-smoke.test/no-such-route", calls)
+        self.assertIn("exec smoke-frontend wget -q --no-check-certificate -O /dev/null https://sharewise-smoke.test/_next/static/chunk.js", calls)
         self.assertNotIn(" -p ", calls)
         self.assertNotIn("port smoke-frontend", calls)
         self.assertIn("rm -f smoke-frontend", calls)
@@ -160,6 +167,14 @@ class ProductionImageSmokeTests(unittest.TestCase):
         result, calls = self.run_smoke("start-error")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unable to start frontend container", result.stderr)
+        self.assertIn("nginx startup failed: fixture diagnostic", result.stderr)
+        self.assertIn("logs smoke-frontend", calls)
+        self.assertIn("rm -f smoke-frontend", calls)
+
+    def test_https_route_failure_reports_target_and_container_diagnostics(self) -> None:
+        result, calls = self.run_smoke("bad-https")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Frontend HTTPS request failed: https://sharewise-smoke.test/app", result.stderr)
         self.assertIn("nginx startup failed: fixture diagnostic", result.stderr)
         self.assertIn("logs smoke-frontend", calls)
         self.assertIn("rm -f smoke-frontend", calls)

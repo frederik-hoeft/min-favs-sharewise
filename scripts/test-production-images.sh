@@ -11,6 +11,11 @@ backend_image="sharewise-backend:${version}"
 frontend_image="sharewise-frontend:${version}"
 container_id=""
 tls_fixture="$(mktemp -d)"
+# Use a dedicated test hostname pinned to IPv4. `localhost` may resolve to
+# ::1 first inside Alpine, while the production HTTPS listener is IPv4-only.
+# Preserve hostname-based TLS/SNI and Host checks without changing production
+# listeners or weakening the default TLS handshake rejection.
+smoke_host="sharewise-smoke.test"
 cleanup() {
     rm -rf "$tls_fixture"
     if [[ -n "$container_id" ]]; then
@@ -62,10 +67,11 @@ done
 # `docker cp` transfers files through the Docker API, so the self-signed test
 # certificate also works with Docker-outside-of-Docker and remote daemons.
 # The production image contains no certificate or private key.
-openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
-    -addext 'subjectAltName=DNS:localhost' \
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=$smoke_host" \
+    -addext "subjectAltName=DNS:$smoke_host" \
     -keyout "$tls_fixture/privkey.pem" -out "$tls_fixture/fullchain.pem" >/dev/null 2>&1
-container_id="$("$container_cli" create -e SHAREWISE_PUBLIC_HOST=localhost "$frontend_image")"
+container_id="$("$container_cli" create --add-host "$smoke_host:127.0.0.1" \
+    -e "SHAREWISE_PUBLIC_HOST=$smoke_host" "$frontend_image")"
 "$container_cli" cp "$tls_fixture/privkey.pem" "$container_id:/etc/nginx/tls/privkey.pem"
 "$container_cli" cp "$tls_fixture/fullchain.pem" "$container_id:/etc/nginx/tls/fullchain.pem"
 report_frontend_failure() {
@@ -104,12 +110,20 @@ if ! "$container_cli" exec "$container_id" nginx -t; then
     report_frontend_failure
     exit 1
 fi
+check_https_route() {
+    local url="https://${smoke_host}$1"
+    if ! "$container_cli" exec "$container_id" wget -q --no-check-certificate -O /dev/null "$url"; then
+        printf 'Frontend HTTPS request failed: %s\n' "$url" >&2
+        report_frontend_failure
+        return 1
+    fi
+}
 for path in / /app /app/dummy1 /app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview; do
-    "$container_cli" exec "$container_id" wget -q --no-check-certificate -O /dev/null "https://localhost$path"
+    check_https_route "$path"
 done
 # BusyBox wget returns nonzero for 404. Check the response status as well,
 # otherwise a connection or server error could masquerade as the expected 404.
-if not_found_response="$("$container_cli" exec "$container_id" wget -S -O /dev/null --no-check-certificate https://localhost/no-such-route 2>&1)"; then
+if not_found_response="$("$container_cli" exec "$container_id" wget -S -O /dev/null --no-check-certificate "https://${smoke_host}/no-such-route" 2>&1)"; then
     echo 'Expected HTTP 404 for /no-such-route, but the request succeeded' >&2
     exit 1
 fi
@@ -120,6 +134,6 @@ fi
 asset="$("$container_cli" run --rm --entrypoint sh "$frontend_image" -c \
     'find /usr/share/nginx/html/_next/static -type f -name "*.js" -print -quit')"
 [[ "$asset" == /usr/share/nginx/html/_next/static/* ]]
-"$container_cli" exec "$container_id" wget -q --no-check-certificate -O /dev/null "https://localhost${asset#/usr/share/nginx/html}"
+check_https_route "${asset#/usr/share/nginx/html}"
 # API transport/trust behavior is tested separately with a controlled backend.
 echo 'Production image composition and HTTPS static route smoke checks passed.'
