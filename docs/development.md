@@ -66,7 +66,7 @@ docker run --rm -p 127.0.0.1:8081:80 sharewise-frontend
 # Browse http://127.0.0.1:8081/ and http://127.0.0.1:8081/app
 ```
 
-For a more thorough check on a container-capable host with Docker, Git and curl installed, run `bash scripts/test-production-images.sh` from the repository root. It rebuilds both images without layer cache, inspects the runtime image contents/labels, and checks static page routes and 404 handling. The frontend image contains neither Node.js nor a Next.js server. Local development still uses `npm run dev` (port 3000), and its `BACKEND_URL` rewrite is evaluated by the development server, not by the static image.
+For a more thorough check on a container-capable host with Docker and Git installed, run `bash scripts/test-production-images.sh` from the repository root. It rebuilds both images without layer cache, inspects the runtime image contents/labels, and checks static page routes and 404 handling from within the frontend container. The HTTP checks also work when the Docker daemon is remote or accessed through Docker-outside-of-Docker. The frontend image contains neither Node.js nor a Next.js server. Local development still uses `npm run dev` (port 3000), and its `BACKEND_URL` rewrite is evaluated by the development server, not by the static image.
 
 ## Application modules
 

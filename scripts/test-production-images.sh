@@ -53,26 +53,40 @@ done
     nginx -t
 '
 
-container_id="$("$container_cli" run --rm -d -p 127.0.0.1::80 "$frontend_image")"
-port="$("$container_cli" port "$container_id" 80/tcp | sed -n 's/.*://p' | head -n 1)"
-[[ "$port" =~ ^[0-9]+$ ]]
-base="http://127.0.0.1:$port"
+# Probe from within the container: Docker-outside-of-Docker and remote Docker
+# contexts do not necessarily expose host-published ports to this CLI process.
+# Keep stopped containers until cleanup so their startup logs can be inspected.
+container_id="$("$container_cli" run -d "$frontend_image")"
 ready=0
 for attempt in $(seq 1 20); do
-    if curl --fail --silent --output /dev/null "$base/"; then
+    if "$container_cli" exec "$container_id" wget -q -O /dev/null http://127.0.0.1/; then
         ready=1
         break
     fi
     sleep 1
 done
-[[ "$ready" -eq 1 ]] || { echo 'Frontend did not become ready' >&2; exit 1; }
+if [[ "$ready" -ne 1 ]]; then
+    echo 'Frontend did not become ready; container state and logs:' >&2
+    "$container_cli" inspect --format '{{.State.Status}} (exit code {{.State.ExitCode}})' "$container_id" >&2 || true
+    "$container_cli" logs "$container_id" >&2 || true
+    exit 1
+fi
 for path in / /app /app/dummy1 /app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview; do
-    curl --fail --silent --output /dev/null "$base$path"
+    "$container_cli" exec "$container_id" wget -q -O /dev/null "http://127.0.0.1$path"
 done
-[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$base/no-such-route")" == 404 ]]
+# BusyBox wget returns nonzero for 404. Check the response status as well,
+# otherwise a connection or server error could masquerade as the expected 404.
+if not_found_response="$("$container_cli" exec "$container_id" wget -S -O /dev/null http://127.0.0.1/no-such-route 2>&1)"; then
+    echo 'Expected HTTP 404 for /no-such-route, but the request succeeded' >&2
+    exit 1
+fi
+if ! grep -Eq 'HTTP/[0-9.]+ 404([[:space:]]|$)' <<<"$not_found_response"; then
+    printf 'Expected HTTP 404 for /no-such-route; received:\n%s\n' "$not_found_response" >&2
+    exit 1
+fi
 asset="$("$container_cli" run --rm --entrypoint sh "$frontend_image" -c \
     'find /usr/share/nginx/html/_next/static -type f -name "*.js" -print -quit')"
 [[ "$asset" == /usr/share/nginx/html/_next/static/* ]]
-curl --fail --silent --output /dev/null "$base${asset#/usr/share/nginx/html}"
+"$container_cli" exec "$container_id" wget -q -O /dev/null "http://127.0.0.1${asset#/usr/share/nginx/html}"
 # Phase C will add the /api reverse proxy and TLS; Phase B tests static routes only.
 echo 'Phase B image composition and static route smoke checks passed.'
