@@ -1,6 +1,6 @@
 # P2.1a - Registration and initial authentication: implementation plan
 
-**Status:** Revised draft derived from the [P2.1a specification](specification.md), reconciled against the supplied **draft** P2.1.0 specification/plan. **Neither this specification nor this plan is approved for implementation.** The [AI development workflow](../../../development/ai-development-workflow.md) requires separate human specification and plan gates, followed by reviewed implementation increments. Once approved and committed to the authoritative task branch, **Phases A–D may start on the November 20 baseline before P2.1.0 finishes**; production security integration is gated separately.
+**Status:** Approved P2.1a specification and implementation sequence (November 20, 2026); individual implementation increments still require human review. Reconciled against the supplied **draft** P2.1.0 specification/plan. **Phases A–D may start on the November 20 baseline before P2.1.0 finishes**; production security integration is gated separately.
 
 ## Baseline, ownership and available validation
 
@@ -32,9 +32,9 @@ flowchart TD
 
 ## Review and integration gates
 
-- [ ] **G0, architectural decisions:** Approve registration and duplicate-email disclosure, validation and password encoding/limits, lockout, access/session TTL, cookie+CSRF/Origin policy, and initial re-login/no-refresh UX. Agree that P2.1a's login/registration Web Lock implementation is extended, not duplicated, by P2.1b.
-- [ ] **G1, specification:** Approve [the specification](specification.md), IAM-A01–A14 and IAM-AT01–AT17. Material changes to trust or ownership return here.
-- [ ] **G2, sequence:** Approve this plan **separately after G1**, then commit and push both reviewed artifacts to the authoritative task branch before implementing dependent work. At this point A–D are authorized; **G3 is not a prerequisite for starting them**.
+- [x] **G0, architectural decisions:** Approve registration and duplicate-email disclosure, validation and password encoding/limits, lockout, access/session TTL, cookie+CSRF/Origin policy, and initial re-login/no-refresh UX. Agree that P2.1a's login/registration Web Lock implementation is extended, not duplicated, by P2.1b.
+- [x] **G1, specification:** Approve [the specification](specification.md), IAM-A01–A14 and IAM-AT01–AT17. Material changes to trust or ownership return here.
+- [x] **G2, sequence:** Approve this plan **separately after G1**, then commit and push both reviewed artifacts to the authoritative task branch before implementing dependent work. At this point A–D are authorized; **G3 is not a prerequisite for starting them**.
 - [ ] **G3, production integration baseline (after P2.1.0):** Receive the updated **approved** snapshot and final P2.1.0 code/spec/tests. Replay/rebase the reviewed independent P2.1a increments onto it without absorbing or overwriting in-progress P2.1.0 work. Inspect actual `shared::di`/JOSE/claims exports, IAM's production `IdentityContext`, credential/HTTP boundary, module whitelists and new dependency descriptors. Validate the **unchanged new baseline** with a verified refreshed offline Maven cache before E/F edits. Confirm the selected token profile and fail-closed configuration. If contracts differ materially, revise G1/G2 first.
 - [ ] **G4, infrastructure gates:** Obtain a real PostgreSQL 18 test fixture for B/C/F database acceptance and a compatible Node 24/npm cache for D/G frontend acceptance. These are **separate** from G3. If unavailable, report which evidence is outstanding; do not mark those phases fully accepted or substitute mocks for database/browser guarantees.
 
