@@ -96,7 +96,14 @@ class ImageRegistryTests(unittest.TestCase):
             path.chmod(0o755)
         self.db = self.work / "registry.json"
         self.db.write_text("{}")
-        self.env = {**os.environ, "PATH": str(self.work / "bin") + ":" + os.environ["PATH"],
+        # Tests simulate their own trusted GitLab context. In particular, a
+        # real dev-* tag pipeline must not leak CI_COMMIT_TAG into the mocked
+        # protected-main scenario (nor other CI or mock failure controls).
+        host_env = {
+            name: value for name, value in os.environ.items()
+            if not name.startswith(("CI_", "FAKE_", "FAIL_", "MOCK_", "KANIKO_"))
+        }
+        self.env = {**host_env, "PATH": str(self.work / "bin") + ":" + os.environ["PATH"],
             "FAKE_REGISTRY_DB": str(self.db), "FAKE_BUILD_ARGS": str(self.work / "build-args.txt"),
             "CI_REGISTRY": "registry.example.test", "CI_REGISTRY_IMAGE": REGISTRY,
             "CI_REGISTRY_USER": "gitlab-ci-token", "CI_REGISTRY_PASSWORD": "hidden-password",
@@ -109,6 +116,12 @@ class ImageRegistryTests(unittest.TestCase):
         }
         for role in DIGESTS:
             (self.work / "src" / ("backend/sharewise" if role == "backend" else "frontend")).mkdir(parents=True)
+
+    def test_fixture_isolated_from_invoking_pipeline(self):
+        self.assertEqual(self.env["CI_COMMIT_BRANCH"], "main")
+        self.assertNotIn("CI_COMMIT_TAG", self.env)
+        self.assertNotIn("CI_COMMIT_REF_NAME", self.env)
+        self.assertNotIn("CI_JOB_ID", self.env)
 
     def run_script(self, name, *args, env=None, success=True):
         result = subprocess.run(["sh", "scripts/ci/" + name, *args], cwd=self.work,
