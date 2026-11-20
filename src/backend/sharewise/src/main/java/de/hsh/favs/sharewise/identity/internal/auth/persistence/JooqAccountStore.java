@@ -46,6 +46,14 @@ class JooqAccountStore implements AccountStore {
     }
 
     @Override
+    public Optional<AccountSnapshot> findByEmail(EmailAddress email) {
+        Objects.requireNonNull(email, "email");
+        return database.dsl().selectFrom(USERS)
+                .where(USERS.NORMALIZED_EMAIL.eq(email.normalized()))
+                .fetchOptional(JooqAccountStore::account);
+    }
+
+    @Override
     public Optional<AccountSnapshot> findByEmailForUpdate(EmailAddress email) {
         Objects.requireNonNull(email, "email");
         DSLContext db = database.dsl();

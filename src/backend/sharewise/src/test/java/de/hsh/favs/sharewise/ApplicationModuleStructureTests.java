@@ -71,9 +71,9 @@ class ApplicationModuleStructureTests {
         ApplicationModule identity = modules.getModuleByName("identity")
                 .orElseThrow(() -> new AssertionError("module 'identity' must exist"));
         assertFalse(identity.isOpen(), "identity must be a closed module");
-        assertEquals(List.of("shared :: jooq"),
+        assertEquals(List.of("shared :: jooq", "shared :: transactions", "shared :: result"),
                 ApplicationModuleInformation.of(identity.getBasePackage()).getDeclaredDependencies(),
-                "identity must use only the published shared jOOQ interface");
+                "IAM must declare only published shared jOOQ, transaction, and result contracts");
 
         ApplicationModule shared = sharedModule();
         assertFalse(shared.isOpen(), "shared must be a closed module");

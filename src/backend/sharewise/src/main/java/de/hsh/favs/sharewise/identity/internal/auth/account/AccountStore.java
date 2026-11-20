@@ -9,6 +9,9 @@ public interface AccountStore {
     /** Insert a new account, or return empty when the canonical email already exists. */
     Optional<AccountSnapshot> insert(EmailAddress email, String encodedPassword);
 
+    /** Snapshot credentials for verification outside a row-locking transaction. */
+    Optional<AccountSnapshot> findByEmail(EmailAddress email);
+
     /** Serialize credential decisions and lockout updates on this account row. */
     Optional<AccountSnapshot> findByEmailForUpdate(EmailAddress email);
 
