@@ -8,7 +8,7 @@ cli="$container_cli"
 # A separate project prevents this test from touching the normal local stack.
 project="${SHAREWISE_COMPOSE_TEST_PROJECT:-sharewise-p26ab-smoke}"
 [[ "$project" =~ ^[a-z][a-z0-9_-]+$ ]] || { echo 'Invalid test project name' >&2; exit 1; }
-default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$env_file" | tail -n 1)"
+default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$deploy_dir/.env" | tail -n 1)"
 [[ "$project" != "${COMPOSE_PROJECT_NAME:-${default_project:-sharewise-p26ab-local}}" ]] || {
     echo 'Refusing to test against the configured default local stack' >&2; exit 1;
 }
@@ -16,7 +16,7 @@ default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$env_file" | tail -n 1)
 # HTTPS request tests use Compose DNS, not these daemon-host port bindings.
 export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-28080}"
 export SHAREWISE_HTTPS_PORT="${SHAREWISE_SMOKE_HTTPS_PORT:-18443}"
-compose+=( -p "$project" )
+export COMPOSE_PROJECT_NAME="$project"
 
 "$cli" version >/dev/null
 "${compose[@]}" config -q
@@ -27,8 +27,7 @@ if "$cli" volume inspect "$volume" >/dev/null 2>&1; then
     printf 'Refusing to reuse populated test volume %s. Choose a fresh test project or explicitly remove the disposable stack and its volume.\n' "$volume" >&2
     exit 1
 fi
-SHAREWISE_COMPOSE_PROJECT="$project" SHAREWISE_COMPOSE_ENV_FILE="$env_file" \
-    bash "$deploy_dir/scripts/import-assets.sh"
+"$deploy_dir/scripts/import-assets.sh"
 "${compose[@]}" up --build --wait -d
 "${compose[@]}" ps
 

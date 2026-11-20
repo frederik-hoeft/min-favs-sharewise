@@ -14,11 +14,16 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "deploy"
 
-MOCK_DOCKER = '''#!/usr/bin/env python3
+MOCK_DOCKER = r'''#!/usr/bin/env python3
 import os
 from pathlib import Path
 import sys
 args = sys.argv[1:]
+if os.environ.get("MOCK_DOCKER_CALLS"):
+    with open(os.environ["MOCK_DOCKER_CALLS"], "a", encoding="utf-8") as log:
+        log.write(" ".join(args) + "\n")
+if "build" in args:
+    sys.exit(0)
 if "config" in args:
     sys.exit(0)
 if "run" not in args or args[-2] != "-ec":
@@ -40,7 +45,8 @@ class AssetImportTests(unittest.TestCase):
             root = Path(directory)
             deploy = root / "deploy"
             (deploy / "scripts").mkdir(parents=True)
-            for name in ("lib-compose.sh", "import-assets.sh", "prepare-local.sh"):
+            shutil.copy2(DEPLOY / ".env.example", deploy / ".env.example")
+            for name in ("lib-compose.sh", "import-assets.sh", "prepare-local.sh", "bootstrap.sh"):
                 shutil.copy2(DEPLOY / "scripts" / name, deploy / "scripts" / name)
             docker = root / "mock-docker"
             docker.write_text(MOCK_DOCKER)
@@ -80,6 +86,33 @@ class AssetImportTests(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("refusing implicit rotation", rejected.stderr)
             self.assertEqual((volumes / "backend" / secret_names[0]).read_bytes(), previous)
+
+    def test_bootstrap_is_repeatable_and_builds_without_starting_services(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            deploy = root / "deploy"
+            (deploy / "scripts").mkdir(parents=True)
+            shutil.copy2(DEPLOY / ".env.example", deploy / ".env.example")
+            for name in ("lib-compose.sh", "prepare-local.sh", "import-assets.sh", "bootstrap.sh"):
+                shutil.copy2(DEPLOY / "scripts" / name, deploy / "scripts" / name)
+            docker = root / "mock-docker"
+            docker.write_text(MOCK_DOCKER)
+            docker.chmod(0o700)
+            calls = root / "calls"
+            calls.write_text("")
+            env = os.environ | {
+                "CONTAINER_CLI": str(docker),
+                "MOCK_DOCKER_ASSETS": str(root / "volumes"),
+                "MOCK_DOCKER_CALLS": str(calls),
+            }
+            script = deploy / "scripts/bootstrap.sh"
+            for i in range(2):
+                result = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue((deploy / ".env").exists())
+                self.assertTrue((deploy / ".local/tls/fullchain.pem").exists())
+            self.assertEqual(calls.read_text().count("compose build\n"), 2)
+            self.assertNotIn(" up ", calls.read_text())
 
     def test_local_deployment_does_not_require_daemon_host_paths(self):
         compose = (DEPLOY / "compose.yaml").read_text()

@@ -63,14 +63,13 @@ class ProductionComposeContractTests(unittest.TestCase):
             "SHAREWISE_HTTP_PORT": 18080,
             "SHAREWISE_HTTPS_PORT": 8443,
         }
-        example = (ROOT / "deploy/production.env.example").read_text()
-        fixture_script = (ROOT / "deploy/scripts/prepare-local.sh").read_text()
+        example = (ROOT / "deploy/.env.example").read_text()
         compose = COMPOSE.read_text()
         for key, port in defaults.items():
             with self.subTest(key=key):
                 self.assertNotIn(port, forwarded)
                 self.assertIn(f"{key}={port}", example)
-                self.assertIn(f"{key}={port}", fixture_script)
+                self.assertIn(f"{key}={port}", example)
                 self.assertIn("${" + key + f":-{port}" + "}", compose)
 
         acceptance_script = (ROOT / "deploy/scripts/test-compose.sh").read_text()
@@ -148,6 +147,7 @@ class ProductionComposeContractTests(unittest.TestCase):
             root = Path(dirname)
             scripts = root / "deploy/scripts"
             scripts.mkdir(parents=True)
+            shutil.copy2(ROOT / "deploy/.env.example", root / "deploy/.env.example")
             shutil.copy2(ROOT / "deploy/scripts/prepare-local.sh", scripts / "prepare-local.sh")
             script = scripts / "prepare-local.sh"
             completed = subprocess.run(["bash", str(script)], capture_output=True, text=True)
@@ -165,12 +165,46 @@ class ProductionComposeContractTests(unittest.TestCase):
             self.assertEqual(len(set(values)), len(values))
             self.assertEqual(secret_dir.stat().st_mode & 0o777, 0o700)
             self.assertEqual((fixture / "tls/privkey.pem").stat().st_mode & 0o777, 0o600)
-            self.assertEqual((fixture / "compose.env").stat().st_mode & 0o777, 0o600)
-            self.assertIn("SHAREWISE_HTTP_PORT=18080", (fixture / "compose.env").read_text())
+            self.assertEqual((root / "deploy/.env").stat().st_mode & 0o777, 0o600)
+            self.assertIn("SHAREWISE_HTTP_PORT=18080", (root / "deploy/.env").read_text())
+            self.assertIn("SHAREWISE_PUBLIC_HOST=localhost", (root / "deploy/.env").read_text())
+            cert = fixture / "tls/fullchain.pem"
+            self.assertIn("DNS:localhost", subprocess.check_output(
+                ["openssl", "x509", "-in", str(cert), "-noout", "-ext", "subjectAltName"],
+                text=True))
+            self.assertIn("IP Address:127.0.0.1", subprocess.check_output(
+                ["openssl", "x509", "-in", str(cert), "-noout", "-ext", "subjectAltName"],
+                text=True))
+            self.assertEqual(subprocess.run(
+                ["openssl", "x509", "-in", str(cert), "-checkend", str(300 * 86400), "-noout"],
+                capture_output=True).returncode, 0)
             self.assertEqual((secret_dir / names[0]).stat().st_mode & 0o777, 0o600)
             second = subprocess.run(["bash", str(script)], capture_output=True, text=True)
-            self.assertNotEqual(second.returncode, 0)
+            self.assertEqual(second.returncode, 0, second.stderr)
             self.assertEqual((secret_dir / names[0]).read_bytes(), values[0])
+
+            # An old cert does not silently authorize a changed public hostname.
+            new_env = root / "deploy/.env"
+            new_env.write_text(new_env.read_text().replace(
+                "SHAREWISE_PUBLIC_HOST=localhost", "SHAREWISE_PUBLIC_HOST=sharewise.test"))
+            before = cert.read_bytes()
+            mismatched = subprocess.run(
+                ["bash", str(script)], capture_output=True, text=True)
+            self.assertNotEqual(mismatched.returncode, 0)
+            self.assertIn("certificate does not cover", mismatched.stderr)
+            self.assertEqual(cert.read_bytes(), before)
+            self.assertEqual((secret_dir / names[0]).read_bytes(), values[0])
+
+            # A targeted TLS reset can issue a new cert without password rotation.
+            (fixture / "tls/fullchain.pem").unlink()
+            (fixture / "tls/privkey.pem").unlink()
+            regenerated = subprocess.run(
+                ["bash", str(script)], capture_output=True, text=True)
+            self.assertEqual(regenerated.returncode, 0, regenerated.stderr)
+            self.assertEqual((secret_dir / names[0]).read_bytes(), values[0])
+            self.assertEqual(subprocess.run([
+                "openssl", "x509", "-in", str(cert), "-checkhost", "sharewise.test", "-noout"
+            ], capture_output=True).returncode, 0)
 
 
 if __name__ == "__main__":

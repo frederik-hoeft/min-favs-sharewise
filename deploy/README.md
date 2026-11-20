@@ -1,93 +1,104 @@
-# Local production-style deployment
+# Local Docker deployment
 
-This Compose stack builds and runs the production backend and static frontend images with PostgreSQL 18 for **single-host acceptance testing**. It is separate from the development database and does not provision a public server, arrange certificate issuance, perform database backups, or implement CI deployment/rollbacks (P2.6c/d).
+This directory contains the single-host production-style ShareWise stack for local acceptance: static Next.js via HTTPS Nginx, Spring Boot, and PostgreSQL 18. Only Nginx publishes host ports. This is **not** public-host provisioning, production certificate management, backups, or automated rollout (P2.6c/d).
 
-Nginx is the only publicly bound service. It serves the static Next.js export over HTTPS and forwards `/api/*` to Spring Boot, which connects to PostgreSQL through the isolated `data` network. Flyway runs as `sharewise_migrator`; the runtime application connects as `sharewise_app`. See [persistence ownership](../docs/architecture/persistence.md) and [production packaging](../docs/internal/tasks/p2.6-production-packaging/specification.md).
+## First-time setup
 
-## Prerequisites
-
-Use a trusted local Docker Engine with the Docker Compose plugin. The invoking shell needs Bash, OpenSSL, and `tar`; image builds run in containers and need no host Java, Maven, Node.js or npm installation. Docker access, including through a devcontainer-mounted socket, is equivalent to powerful access to the Docker host.
-
-The recommended workflow uses the Docker CLI inside the VS Code devcontainer (**Docker-outside-of-Docker**, or DooD). Running the same commands on the Docker host is supported.
-
-```sh
-docker version
-docker compose version
-```
-
-## Prepare and start
-
-Run commands from the repository root:
-
-```sh
-./deploy/scripts/prepare-local.sh
-./deploy/scripts/start.sh
-```
-
-The first command creates ignored `deploy/.local/compose.env`, `secrets/`, and `tls/` directories containing three distinct random 64-hex-character passwords and a **self-signed, two-day** certificate for `sharewise.test`. It refuses to overwrite existing files. The host-side passwords and private key are mode `0600`, inside private `0700` directories; the public certificate is mode `0644`. You can instead provide your own files matching this structure; use `deploy/production.env.example` as the environment template and keep credentials out of it.
-
-The start script checks the Compose configuration, imports local secrets and certificates through the Docker API, then builds and starts PostgreSQL, Spring Boot and Nginx with health-based startup ordering. Subsequent `start.sh` invocations work with unchanged assets and existing data. See the [scripts](scripts/) for details.
-
-Development forwards ports `3000` (Next.js) and `8080` (Spring Boot) through VS Code. The local deployment uses different host ports so it can coexist with those forwarded ports; VS Code automatic port discovery is disabled, while the explicit development forwards remain available.
-
-By default the browser endpoints are **http://sharewise.test:18080/** (redirects to HTTPS) and **https://sharewise.test:8443/**, published only on **127.0.0.1 of the Docker daemon host**. Map `sharewise.test` to that loopback address through a host file or local DNS when testing in a browser, and explicitly trust the local certificate if necessary. For quick host-side checks without DNS setup:
-
-```sh
-curl -I --resolve sharewise.test:18080:127.0.0.1 http://sharewise.test:18080/
-curl -kfsS --resolve sharewise.test:8443:127.0.0.1 https://sharewise.test:8443/
-curl -kfsS --resolve sharewise.test:8443:127.0.0.1 \
-  https://sharewise.test:8443/api/system/v1/health
-```
-
-`-k` skips verification **only for these disposable command-line checks**. A passing health response should include `"status":"UP"`. The browser, curl, and Docker CLI must not be assumed to share the same network namespace.
-
-## Why assets are imported instead of bind-mounted
-
-With DooD, the Docker CLI transfers image build contexts to the daemon, but Docker **bind mounts are interpreted by the daemon host**. A file under `/workspace` in the devcontainer therefore is not necessarily visible on the host at the same path. Named Docker volumes and stdin transfer avoid that problem:
-
-- `postgres_data`: persistent PostgreSQL 18 data (never removed by ordinary `down`).
-- `postgres_secrets`: administrator, migration, and application passwords, readable only in PostgreSQL's volume mount.
-- `backend_secrets`: migration and application passwords, mounted to Spring's required config-tree `/run/secrets/` path; **not** the administrator password.
-- `tls_certs`: certificate and key mounted read-only into Nginx.
-
-`deploy/scripts/import-assets.sh` streams the local assets into a one-off, network-isolated `asset-loader` service through Docker stdin. Only that loader has write access to the three credential/certificate volumes. Files inside the separate Docker-private volumes must be readable by the respective unprivileged application processes, so password file mode is `0444` there; the original host-side files remain `0600`. Access to Docker-managed volumes must be restricted to trusted operators, and no secret is baked into an image or passed as a Compose environment variable. The PostgreSQL initialization script is public, credential-free code copied into a derived `postgres:18-trixie` image, not a daemon-side bind mount. Its Dockerfile-specific ignore file excludes the local secret/certificate directory from the build context entirely.
-
-The importer is idempotent for identical files, but rejects a mismatch **before replacing anything**. It deliberately cannot rotate live database credentials or certificates. Database roles are created only on the **first start with an empty PostgreSQL volume**. For a persistent stack, password rotation requires coordinated PostgreSQL `ALTER ROLE`, updated application credentials, and a separately reviewed rotation procedure; changing local files is insufficient. This local acceptance harness does not implement that operation.
-
-## Acceptance test
-
-The deployment test uses a *different*, disposable Compose project and a fresh PostgreSQL volume. It streams the same local fixture into that project's independent volumes, builds the application images, then checks PostgreSQL initialization, Flyway ownership, role permissions, HTTPS forwarding, exposure, database persistence across restart, and application readiness recovery:
-
-```sh
-./deploy/scripts/test-compose.sh
-# For another fresh test: SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./deploy/scripts/test-compose.sh
-```
-
-It uses distinct host ports by default (`28080`/`18443`, overridable through `SHAREWISE_SMOKE_HTTP_PORT` and `SHAREWISE_SMOKE_HTTPS_PORT`), so the normal local stack can remain running. It **refuses to reuse a pre-existing test database volume** and leaves test containers/volumes available for inspection. To remove only an intentionally disposable test stack:
-
-```sh
-docker compose --env-file deploy/.local/compose.env -f deploy/compose.yaml \
-  -p sharewise-p26ab-smoke down --volumes
-```
-
-`down --volumes` **deletes the selected stack's database and imported secrets**. Never invoke it for a persistent project without explicitly deciding to discard the data. Ordinary `down` retains all volumes.
-
-For independent production-image build and HTTPS static-route checks, run `./deploy/scripts/test-images.sh`. The local Nginx proxy and startup integration tests can be run with `python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v` (some tests require Nginx, OpenSSL and `envsubst`). Neither test suite replaces the full Compose/PostgreSQL acceptance workflow.
-
-## Operate and troubleshoot
+You need a trusted Docker Engine with Compose, plus Bash, OpenSSL and `tar` in the shell running the scripts. Build tools run inside the image build stages, not on your host. Commands work from the VS Code devcontainer through Docker-outside-of-Docker or directly on the Docker host.
 
 From the repository root:
 
 ```sh
-docker compose --env-file deploy/.local/compose.env -f deploy/compose.yaml ps
-docker compose --env-file deploy/.local/compose.env -f deploy/compose.yaml logs -f frontend backend postgres
-docker compose --env-file deploy/.local/compose.env -f deploy/compose.yaml down
+./deploy/scripts/bootstrap.sh
 ```
 
-Edit `deploy/.local/compose.env` to adjust the hostname, localhost port bindings or image tags. The fixture generator never overwrites this file. If it was created with `SHAREWISE_HTTP_PORT=8080`, change that line to `SHAREWISE_HTTP_PORT=18080` before restarting. There is no need to regenerate credentials, certificates or the PostgreSQL volume. If a host port is already occupied, choose another free loopback port in this file; Compose cannot take an occupied port from another process. `SHAREWISE_BACKEND_IMAGE` and `SHAREWISE_FRONTEND_IMAGE` also accept registry image references for later stages. Use `SHAREWISE_COMPOSE_ENV_FILE` to select a different local config and `SHAREWISE_LOCAL_INPUT_DIR` to select an alternative source directory for import; the input paths are client-side only. `SHAREWISE_COMPOSE_PROJECT` overrides the project name for the import/start scripts. Prefer a separate project name and separate volumes for every destructive acceptance test.
+This **idempotent** one-time bootstrap creates `deploy/.env` and protected, ignored `deploy/.local/` credentials/certificates if absent, then imports them into service-specific Docker-managed volumes and builds the three images. It does **not** start the application. It preserves existing passwords, configuration, certificates, and database volumes. It rejects incomplete fixtures, certificate-hostname mismatches, or attempts to silently change stored volume credentials. New test certificates are self-signed, valid for **365 days**, and cover `localhost` and `127.0.0.1` (DNS and IP subject alternative names respectively).
 
-When using DooD, run browser or published-port smoke requests **on the Docker daemon host** rather than relying on `localhost` in the devcontainer. The automated acceptance test instead resolves `frontend` through Compose networking and preserves HTTPS SNI/Host semantics, avoiding that namespace mismatch.
+Then operate directly from `deploy/`, with no extra Compose file, environment file, or project arguments:
 
-A missing secret or invalid certificate prevents normal service startup. Examine `docker compose logs` and `ps`; importing or starting with missing inputs should fail rather than fall back to development passwords. If first-time PostgreSQL initialization fails, use a **new disposable project with an empty volume** to retest: initialization scripts are not replayed on an already-populated volume. A database outage should make the Spring readiness endpoint unhealthy; `depends_on` does not guarantee automatic restart of running dependents after every outage.
+```sh
+cd deploy
+docker compose up -d       # Images have been built by bootstrap.sh
+docker compose ps
+docker compose logs -f frontend backend postgres
+docker compose down        # Stops containers, preserves the database and volumes
+```
 
-The importer deliberately rejects replacing an existing volume credential or certificate without coordinated operational action. For certificate renewal in this disposable setup, recreate the separate TLS volume under a verified Compose project and import the new certificate while frontend is stopped; do not remove the database volume as part of certificate maintenance. There is no automated certificate renewal, off-host backup, or public-deployment hardening in this phase.
+Use `docker compose up -d --build` after changing application source or image build definitions. The optional `--build` forces a rebuild; it is not required for ordinary stop/start. Do not run `docker compose down -v` unless you intend to delete the database and every local secret/certificate volume.
+
+## Local browser URLs and TLS
+
+By default, open **https://localhost:8443/** in a browser on the **Docker daemon host**. The HTTP URL, http://localhost:18080/, redirects to HTTPS. Both host ports bind to `127.0.0.1`; neither Spring nor PostgreSQL is published. These distinct ports avoid conflict with the devcontainer's `3000`/`8080` development forwards.
+
+The TLS certificate is self-signed and **not automatically trusted** by Chrome or your operating system. Trust it explicitly for browser acceptance, or use a certificate already trusted by your machine. Chrome's `ERR_SSL_UNRECOGNIZED_NAME_ALERT` means Nginx rejected the TLS SNI hostname, which can happen when `SHAREWISE_PUBLIC_HOST` does not match the URL you opened. It is different from a certificate-authority warning. Use the hostname configured in `deploy/.env`; for the default setup that is `localhost`.
+
+For CLI smoke checks on the Docker host (skipping certificate trust only for these checks):
+
+```sh
+curl -kfsS https://localhost:8443/
+curl -kfsS https://localhost:8443/api/system/v1/health
+```
+
+If an existing fixture was originally generated for `sharewise.test`, migrate its TLS material **without deleting database data or passwords**:
+
+```sh
+cd deploy
+./scripts/bootstrap.sh                  # Also migrates legacy .local/compose.env to .env
+./scripts/cleanup.sh tls                # Stops the stack and removes only TLS material
+# Set SHAREWISE_PUBLIC_HOST=localhost in .env (leave other values unchanged).
+./scripts/bootstrap.sh                  # Generates/imports a new localhost certificate
+docker compose up -d
+```
+
+`cleanup.sh tls` requires confirmation (or explicit `--yes`). Certificates are scoped to the public hostname; merely changing `.env` cannot update an existing certificate or the TLS Docker volume. When using a custom hostname, set `SHAREWISE_PUBLIC_HOST` in `.env` and supply a matching certificate. Nginx rejects unknown TLS hostnames, including mismatched SNI, rather than falling back to an unrelated certificate.
+
+## Configuration, secrets and Docker-outside-of-Docker
+
+The local `deploy/.env` is based on [`.env.example`](.env.example) and is loaded automatically by Docker Compose when invoked in `deploy/`. It contains public hostname, loopback bind addresses, host ports, project name and optional image overrides; **no passwords**. Exported shell variables take precedence over `.env`, so avoid conflicting `SHAREWISE_PUBLIC_HOST`, `SHAREWISE_HTTPS_PORT`, or `COMPOSE_PROJECT_NAME` overrides. The bootstrap script preserves any existing `.env` rather than changing user-selected ports or hostnames.
+
+Private input files live under ignored `deploy/.local/secrets/` and `deploy/.local/tls/`, with restrictive file modes. The import helper streams them over the Docker API into named volumes, rather than using bind mounts that require the same source paths on the Docker daemon host. The PostgreSQL initialization script is copied into the database image, not mounted from the developer's workspace.
+
+| Volume | Purpose |
+| --- | --- |
+| `postgres_data` | PostgreSQL data, preserved by normal `down` |
+| `postgres_secrets` | PostgreSQL admin, migrator and application passwords |
+| `backend_secrets` | Application/migrator passwords, but **not** administrator password |
+| `tls_certs` | Nginx certificate and private key |
+
+The importer is idempotent when files are unchanged; it rejects changed passwords in existing volumes. Password rotation on persistent PostgreSQL data requires separate, coordinated database and application changes. Local generated passwords and private keys must never be committed. The Docker socket confers extensive control of the host and is appropriate only for trusted local development and acceptance.
+
+A devcontainer and the Docker host share the daemon, **not** a network namespace. Open the published HTTPS URL from the daemon host browser/terminal. The acceptance script communicates through Compose service DNS inside the deployment networks, so it does not depend on `localhost` from the devcontainer.
+
+## Disposable end-to-end acceptance
+
+From `deploy/`, run:
+
+```sh
+./scripts/test-compose.sh
+```
+
+The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security, and verifies data persistence after a database restart. It **leaves test resources running for inspection**.
+
+For another run after cleanup, use the same command. To retain previous test resources and start an additional independent run:
+
+```sh
+SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh
+```
+
+For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
+
+## Cleanup and resetting local state
+
+**Ordinary shutdown is just `docker compose down`.** Cleanup is deliberately separate and always requires interactive confirmation or an explicit `--yes`. From `deploy/`:
+
+```sh
+./scripts/cleanup.sh test                # Destroy default disposable test project + volumes
+./scripts/cleanup.sh test sharewise-p26ab-smoke2
+./scripts/cleanup.sh tests               # Discover and destroy ALL disposable test projects
+./scripts/cleanup.sh tls                 # Replace TLS only; preserve database/passwords
+./scripts/cleanup.sh local               # DANGER: delete local database + ALL local configuration
+```
+
+`local` removes the normal Compose project's data/credential/certificate volumes and ignored `deploy/.env`/`.local` state, so the next bootstrap starts completely fresh. `tests` discovers projects by Docker's Compose project labels and the reserved test prefix, including orphaned test volumes. It does not target the normal local project. The `tls` mode stops the normal stack and removes just its TLS volume and local certificate files, preserving PostgreSQL data, database passwords and `.env`. Bootstrap and start again afterward.
+
+If `docker compose up` fails due to a host-port conflict, choose free loopback ports in `.env`; this does not require regenerating secrets or rebuilding images. Inspect `docker compose ps` and `docker compose logs` for startup failures. Database role initialization happens **only on an empty database volume**; do not delete that volume to retry a persistent installation. A backend readiness failure may indicate unavailable PostgreSQL, migration failure or a missing required secret.

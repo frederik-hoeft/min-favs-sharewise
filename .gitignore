@@ -69,6 +69,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Safe, password-free Compose defaults are intentionally versioned.
+!deploy/.env.example
 
 # vercel
 .vercel
