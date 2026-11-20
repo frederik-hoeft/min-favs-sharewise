@@ -20,7 +20,7 @@ import org.springframework.stereotype.Repository;
 /** SQL ownership stays inside IAM; jOOQ facades never escape the active segment. */
 @Repository
 @Scope("operation")
-final class JooqAccountStore implements AccountStore {
+class JooqAccountStore implements AccountStore {
 
     private final JooqAccess database;
 

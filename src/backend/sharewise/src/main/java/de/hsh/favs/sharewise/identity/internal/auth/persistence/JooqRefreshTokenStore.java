@@ -15,7 +15,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 @Scope("operation")
-final class JooqRefreshTokenStore implements RefreshTokenStore {
+class JooqRefreshTokenStore implements RefreshTokenStore {
 
     private final JooqAccess database;
 

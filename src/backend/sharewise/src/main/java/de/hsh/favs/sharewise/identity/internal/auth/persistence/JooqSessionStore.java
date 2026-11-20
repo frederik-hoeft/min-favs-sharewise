@@ -17,7 +17,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 @Scope("operation")
-final class JooqSessionStore implements SessionStore {
+class JooqSessionStore implements SessionStore {
 
     private final JooqAccess database;
 
