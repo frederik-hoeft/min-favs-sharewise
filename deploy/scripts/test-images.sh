@@ -2,7 +2,7 @@
 # Run on a container-capable host to verify Phase B image composition and routes.
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 container_cli="${CONTAINER_CLI:-docker}"
 "$container_cli" version >/dev/null
 revision="$(git -C "$repo_root" rev-parse HEAD)"

@@ -1,24 +1,20 @@
-# Local production-style packaging, not host provisioning or automated deployment.
-# Use with the ignored .local/production/compose.env created by the operator.
+# Local single-host acceptance stack. Setup and DooD asset import: deploy/README.md.
 name: ${COMPOSE_PROJECT_NAME:-sharewise-p26ab-local}
 
 services:
   postgres:
-    image: postgres:18-trixie
+    image: sharewise-postgres:local
+    build:
+      context: ..
+      dockerfile: deploy/postgres/Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_DB: sharewise
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
-    secrets:
-      - postgres_admin_password
-      - source: sharewise_app_password
-        target: sharewise.database.app-password
-      - source: sharewise_migrator_password
-        target: sharewise.database.migrator-password
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./deploy/postgres/10-create-roles.sh:/docker-entrypoint-initdb.d/10-create-roles.sh:ro
+      - postgres_secrets:/run/secrets:ro
     networks:
       - data
     healthcheck:
@@ -32,15 +28,12 @@ services:
   backend:
     image: ${SHAREWISE_BACKEND_IMAGE:-sharewise-backend:local}
     build:
-      context: ./src/backend/sharewise
+      context: ../src/backend/sharewise
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: production
-    secrets:
-      - source: sharewise_app_password
-        target: sharewise.database.app-password
-      - source: sharewise_migrator_password
-        target: sharewise.database.migrator-password
+    volumes:
+      - backend_secrets:/run/secrets:ro
     networks:
       - edge
       - data
@@ -58,7 +51,7 @@ services:
   frontend:
     image: ${SHAREWISE_FRONTEND_IMAGE:-sharewise-frontend:local}
     build:
-      context: ./src/frontend
+      context: ../src/frontend
     restart: unless-stopped
     environment:
       SHAREWISE_PUBLIC_HOST: ${SHAREWISE_PUBLIC_HOST:?Set SHAREWISE_PUBLIC_HOST in the Compose environment file}
@@ -67,7 +60,7 @@ services:
       - "${SHAREWISE_HTTP_BIND:-127.0.0.1}:${SHAREWISE_HTTP_PORT:-8080}:80"
       - "${SHAREWISE_HTTPS_BIND:-127.0.0.1}:${SHAREWISE_HTTPS_PORT:-8443}:443"
     volumes:
-      - ${SHAREWISE_TLS_DIR:-./.local/production/tls}:/etc/nginx/tls:ro
+      - tls_certs:/etc/nginx/tls:ro
     networks:
       - edge
     depends_on:
@@ -81,13 +74,22 @@ services:
       retries: 5
       start_period: 10s
 
-secrets:
-  postgres_admin_password:
-    file: ${SHAREWISE_SECRETS_DIR:-./.local/production/secrets}/postgres_admin_password
-  sharewise_app_password:
-    file: ${SHAREWISE_SECRETS_DIR:-./.local/production/secrets}/sharewise.database.app-password
-  sharewise_migrator_password:
-    file: ${SHAREWISE_SECRETS_DIR:-./.local/production/secrets}/sharewise.database.migrator-password
+  # One-off Docker-API stdin importer; the source checkout is never bind-mounted.
+  # Each service receives only the credentials needed by its role.
+  asset-loader:
+    profiles: [setup]
+    image: alpine:3.24
+    network_mode: none
+    volumes:
+      - postgres_secrets:/assets/postgres
+      - backend_secrets:/assets/backend
+      - tls_certs:/assets/tls
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=1m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   edge: {}
@@ -96,3 +98,6 @@ networks:
 
 volumes:
   postgres_data: {}
+  postgres_secrets: {}
+  backend_secrets: {}
+  tls_certs: {}

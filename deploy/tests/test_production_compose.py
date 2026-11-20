@@ -10,7 +10,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-COMPOSE = ROOT / "compose.production.yaml"
+COMPOSE = ROOT / "deploy/compose.yaml"
 PRODUCTION = (
     ROOT / "src/backend/sharewise/src/main/resources/application-production.properties"
 )
@@ -37,7 +37,7 @@ class ProductionComposeContractTests(unittest.TestCase):
             self.assertRegex(yaml, rf"(?m)^  {name}:$")
         postgres = yaml.split("\n  postgres:\n", 1)[1].split("\n  backend:\n", 1)[0]
         backend = yaml.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
-        frontend = yaml.split("\n  frontend:\n", 1)[1].split("\nsecrets:\n", 1)[0]
+        frontend = yaml.split("\n  frontend:\n", 1)[1].split("\n  asset-loader:\n", 1)[0]
         self.assertNotIn("    ports:", postgres)
         self.assertNotIn("    ports:", backend)
         self.assertIn("    ports:", frontend)
@@ -49,15 +49,26 @@ class ProductionComposeContractTests(unittest.TestCase):
         self.assertNotIn("sharewise_migrator_dev", yaml)
         self.assertNotIn("postgres_dev", yaml)
 
-    def test_migrator_and_application_secret_targets_match_config_tree(self):
+    def test_named_volumes_replace_daemon_side_bind_mounts(self):
         yaml = COMPOSE.read_text()
-        for target in (
-            "sharewise.database.app-password",
-            "sharewise.database.migrator-password",
-        ):
-            self.assertEqual(yaml.count(f"target: {target}"), 2)
+        self.assertNotIn("\nsecrets:", yaml)
+        self.assertNotIn("SHAREWISE_SECRETS_DIR", yaml)
+        self.assertNotIn("SHAREWISE_TLS_DIR", yaml)
+        self.assertIn("postgres_secrets:/run/secrets:ro", yaml)
+        self.assertIn("backend_secrets:/run/secrets:ro", yaml)
+        self.assertIn("tls_certs:/etc/nginx/tls:ro", yaml)
+        self.assertIn("postgres_secrets:/assets/postgres", yaml)
+        self.assertIn("backend_secrets:/assets/backend", yaml)
+        self.assertIn("tls_certs:/assets/tls", yaml)
+        self.assertIn("network_mode: none", yaml)
+        self.assertNotIn("/docker-entrypoint-initdb.d/10-create-roles.sh:ro", yaml)
+        self.assertIn("COPY deploy/postgres/10-create-roles.sh", (ROOT / "deploy/postgres/Dockerfile").read_text())
+        dockerignore = (ROOT / "deploy/postgres/Dockerfile.dockerignore").read_text()
+        self.assertIn("\n**\n", dockerignore)
+        self.assertIn("!deploy/postgres/10-create-roles.sh", dockerignore)
+        self.assertNotIn("!deploy/.local", dockerignore)
         script = BOOTSTRAP.read_text()
-        self.assertIn("--dbname \"$POSTGRES_DB\"", script)
+        self.assertIn('--dbname "$POSTGRES_DB"', script)
         self.assertIn("CREATE ROLE sharewise_migrator", script)
         self.assertIn("CREATE ROLE sharewise_app", script)
         self.assertIn("GRANT CONNECT, CREATE", script)
@@ -105,13 +116,13 @@ class ProductionComposeContractTests(unittest.TestCase):
     def test_local_fixture_uses_distinct_untracked_secrets_without_newlines(self):
         with tempfile.TemporaryDirectory() as dirname:
             root = Path(dirname)
-            scripts = root / "scripts"
-            scripts.mkdir()
-            shutil.copy2(ROOT / "scripts/prepare-production-local.sh", scripts)
-            script = scripts / "prepare-production-local.sh"
+            scripts = root / "deploy/scripts"
+            scripts.mkdir(parents=True)
+            shutil.copy2(ROOT / "deploy/scripts/prepare-local.sh", scripts / "prepare-local.sh")
+            script = scripts / "prepare-local.sh"
             completed = subprocess.run(["bash", str(script)], capture_output=True, text=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            fixture = root / ".local/production"
+            fixture = root / "deploy/.local"
             secret_dir = fixture / "secrets"
             names = (
                 "postgres_admin_password",
@@ -125,6 +136,7 @@ class ProductionComposeContractTests(unittest.TestCase):
             self.assertEqual(secret_dir.stat().st_mode & 0o777, 0o700)
             self.assertEqual((fixture / "tls/privkey.pem").stat().st_mode & 0o777, 0o600)
             self.assertEqual((fixture / "compose.env").stat().st_mode & 0o777, 0o600)
+            self.assertEqual((secret_dir / names[0]).stat().st_mode & 0o777, 0o600)
             second = subprocess.run(["bash", str(script)], capture_output=True, text=True)
             self.assertNotEqual(second.returncode, 0)
             self.assertEqual((secret_dir / names[0]).read_bytes(), values[0])

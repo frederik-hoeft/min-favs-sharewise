@@ -2,8 +2,8 @@
 # Create a disposable production-style Compose fixture. Never overwrite secrets.
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-local_dir="$root/.local/production"
+deploy_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+local_dir="$deploy_dir/.local"
 secrets="$local_dir/secrets"
 tls="$local_dir/tls"
 host="${SHAREWISE_LOCAL_HOST:-sharewise.test}"
@@ -25,10 +25,9 @@ chmod 700 "$local_dir" "$secrets" "$tls"
 for name in postgres_admin_password sharewise.database.app-password sharewise.database.migrator-password; do
     # No trailing newline: Spring config-tree values are exact password strings.
     openssl rand -hex 32 | tr -d '\n' > "$secrets/$name"
-    # File-backed Compose secrets are bind mounts, whose uid/gid/mode options
-    # are not consistently applied. The private 0700 parent directory protects
-    # these readable files on the host, while non-root PostgreSQL can read them.
-    chmod 0444 "$secrets/$name"
+    # Keep original local files private. The importer copies them into separate
+    # Docker-managed named volumes with service-specific access.
+    chmod 0600 "$secrets/$name"
 done
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
     -subj "/CN=$host" -addext "subjectAltName=DNS:$host" \

@@ -1,0 +1,8 @@
+# Only the static PostgreSQL bootstrap and its Dockerfile may enter the builder.
+# Local deploy/.local/ secrets and certificates must never reach the daemon as
+# part of the image build context, even when running Docker-outside-of-Docker.
+**
+!deploy/
+!deploy/postgres/
+!deploy/postgres/Dockerfile
+!deploy/postgres/10-create-roles.sh

@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SMOKE = ROOT / "scripts/test-production-images.sh"
+SMOKE = ROOT / "deploy/scripts/test-images.sh"
 
 MOCK_DOCKER = r"""#!/usr/bin/env bash
 set -euo pipefail

@@ -2,15 +2,21 @@
 # Acceptance probe against an explicitly DISPOSABLE production-style Compose stack.
 # Does not remove Docker volumes. Use a unique project name for each fresh run.
 set -euo pipefail
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cli="${CONTAINER_CLI:-docker}"
-env_file="${SHAREWISE_COMPOSE_ENV_FILE:-$root/.local/production/compose.env}"
-[[ -f "$env_file" ]] || { echo "Missing Compose environment file: $env_file" >&2; exit 1; }
+deploy_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$deploy_dir/scripts/lib-compose.sh"
+cli="$container_cli"
 # A separate project prevents this test from touching the normal local stack.
 project="${SHAREWISE_COMPOSE_TEST_PROJECT:-sharewise-p26ab-smoke}"
 [[ "$project" =~ ^[a-z][a-z0-9_-]+$ ]] || { echo 'Invalid test project name' >&2; exit 1; }
-[[ "$project" != sharewise-p26ab-local ]] || { echo 'Refusing to test against the default local stack' >&2; exit 1; }
-compose=("$cli" compose --env-file "$env_file" -f "$root/compose.production.yaml" -p "$project")
+default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$env_file" | tail -n 1)"
+[[ "$project" != "${COMPOSE_PROJECT_NAME:-${default_project:-sharewise-p26ab-local}}" ]] || {
+    echo 'Refusing to test against the configured default local stack' >&2; exit 1;
+}
+# Avoid collisions with a running default local stack. The inside-container
+# HTTPS request tests use Compose DNS, not these daemon-host port bindings.
+export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-18080}"
+export SHAREWISE_HTTPS_PORT="${SHAREWISE_SMOKE_HTTPS_PORT:-18443}"
+compose+=( -p "$project" )
 
 "$cli" version >/dev/null
 "${compose[@]}" config -q
@@ -21,6 +27,8 @@ if "$cli" volume inspect "$volume" >/dev/null 2>&1; then
     printf 'Refusing to reuse populated test volume %s. Choose a fresh test project or explicitly remove the disposable stack and its volume.\n' "$volume" >&2
     exit 1
 fi
+SHAREWISE_COMPOSE_PROJECT="$project" SHAREWISE_COMPOSE_ENV_FILE="$env_file" \
+    bash "$deploy_dir/scripts/import-assets.sh"
 "${compose[@]}" up --build --wait -d
 "${compose[@]}" ps
 
