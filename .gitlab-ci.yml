@@ -4,8 +4,8 @@ stages:
   - pre-build # Lint, type checks, source security scans and CI contract tests.
   - build
   - test # Unit, component and static-export integration tests.
-  - test-backend-integration
-  - test-backend-e2e
+  - integration-tests
+  - e2e-tests
   # No `needs` on version or image jobs: all prior gates
   # (including the security templates) must finish first.
   - image-version
@@ -151,7 +151,7 @@ test-backend-unit:
 
 test-backend-integration:
   extends: [.postgres-tests, .backend-test-reports]
-  stage: test-backend-integration
+  stage: integration-tests
   needs:
     - job: test-backend-unit
       artifacts: false
@@ -160,7 +160,7 @@ test-backend-integration:
 
 test-backend-e2e:
   extends: [.postgres-tests, .backend-test-reports]
-  stage: test-backend-e2e
+  stage: e2e-tests
   needs:
     - job: test-backend-integration
       artifacts: false
