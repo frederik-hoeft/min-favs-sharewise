@@ -1,6 +1,6 @@
 # P2.6a/b: Production packaging and registry publishing specification
 
-**Status:** Draft for architectural review; not approved for implementation. **Scope:** [P2.6a and P2.6b](../backlog.md#p26---production-packaging-deployment-and-cicd). **Implementation plan:** Written only after specification approval, following the [AI development workflow](../../../development/ai-development-workflow.md).
+**Status:** Architecture/specification approved for implementation planning on November 20, 2026; implementation plan and execution gates still require separate approval. **Scope:** [P2.6a and P2.6b](../backlog.md#p26---production-packaging-deployment-and-cicd). **Implementation plan:** [Proposed plan](plan.md), following the [AI development workflow](../../../development/ai-development-workflow.md).
 
 ## Starting point and objective
 
@@ -12,7 +12,7 @@ The package boundary does **not** include IAM/Group business functionality, impl
 
 ## Proposed architectural decisions
 
-The following decisions are proposed for human approval. The runner-dependent choice in D9 remains conditional until an actual GitLab runner proof; it must not be assumed compatible solely because it is daemonless.
+The following decisions form the approved planning baseline. The runner-dependent choice in D9 remains conditional until an actual GitLab runner proof; it must not be assumed compatible solely because it is daemonless.
 
 | ID | Proposal | Rationale and consequences |
 | --- | --- | --- |
@@ -25,7 +25,7 @@ The following decisions are proposed for human approval. The runner-dependent ch
 | D7 | Compose injects configuration and secrets at runtime. Use Compose secrets or protected file mounts for the PostgreSQL administrator password, application-role password, migration-role password and Nginx TLS key; keep only a template and instructions in Git. Add a production-specific PostgreSQL first-initialization script, **not** the existing test bootstrap scripts with `_dev` passwords. | Avoids committing passwords or passing them as Docker build arguments. Use PostgreSQL's `POSTGRES_PASSWORD_FILE` and make Spring read its password values from mounted files (for example via Spring config tree). Required production values fail closed if absent. |
 | D8 | PostgreSQL's one-time initialization creates the two logical roles and database grants on an empty volume. PostgreSQL readiness precedes backend startup; Flyway runs as migrator before the backend is ready; runtime SQL uses `sharewise_app`. The frontend may start after backend readiness. | Preserves schema authority, Flyway history and Hibernate validation. Restarting a populated volume does not rerun init scripts; role-password rotation therefore needs separate documented operations later. |
 | D9 | Try GitLab's **rootless BuildKit** (`buildctl-daemonless.sh`) first. Prove namespace/mount support on the actual university runner before committing to it; if blocked, evaluate a maintained daemonless Kaniko fork (for example `osscontainertools/kaniko`) and/or rootless Buildah on the same runner. Never use the archived upstream `gcr.io/kaniko-project/executor` image or require Docker socket/privileged mode. | Rootless BuildKit is GitLab's recommended path, but an unprivileged self-managed Docker executor can reject its required system calls. Builder choice is an operational compatibility decision, not a change to image semantics. Pin selected CI builder images to reviewed versions/digests. |
-| D10 | Adopt a shared `MAJOR_VERSION.MINOR_VERSION.CI_PIPELINE_IID` version, with `-CI_COMMIT_REF_SLUG` on non-main refs. Propose initial `MAJOR_VERSION=0`, `MINOR_VERSION=1` pending approval. Publish a versioned tag for **both** application images; update `latest` only from the main branch. | Pipeline-local version is consistent across the two deliverables and unique per pipeline. Branch labels convey pre-release origin. A `latest` tag is a convenience alias, not a deployment lock. |
+| D10 | Adopt a shared `MAJOR_VERSION.MINOR_VERSION.CI_PIPELINE_IID` version, with `-CI_COMMIT_REF_SLUG` on non-main refs. Use initial `MAJOR_VERSION=0`, `MINOR_VERSION=1` as the approved planning default. Publish a versioned tag for **both** application images; update `latest` only from the main branch. | Pipeline-local version is consistent across the two deliverables and unique per pipeline. Branch labels convey pre-release origin. A `latest` tag is a convenience alias, not a deployment lock. |
 | D11 | Record the resulting **registry image digests** in CI artifacts alongside the version, commit and image names. P2.6d can later deploy a matching, immutable-by-content pair using digest-qualified image references; retries must not silently replace an accepted release without scrutiny. | A registry tag can be overwritten even when its name looks immutable. Digest references and retention policy protect rollback and auditability. |
 | D12 | Keep CI image publication downstream of the current backend Unit, PostgreSQL Integration/E2E, frontend lint/typecheck/Vitest/static-export, offline-handoff and security gates. Use GitLab stage dependencies or explicit, complete `needs` dependencies; do not accidentally make publishing run before a gate by adding a narrow `needs` list. | Images are published only from validated revisions; existing SAST, secret detection and reports remain intact. |
 
@@ -86,20 +86,20 @@ Each test is an implementation acceptance obligation, not evidence that it alrea
 | B-06 | Rollback reference and retention | Record both full digest-qualified image references and ensure they remain resolvable after a later main pipeline updates `latest`. Document/enforce the GitLab retention/immutability policy or use immutable digest references. | Two pipeline runs + registry inspection |
 | B-07 | Fork MR security | An untrusted fork MR cannot publish images or obtain registry-write credentials. Its relevant non-publishing quality gates still execute. | GitLab pipeline rule inspection and safe test |
 
-## Provisional implementation sequence and review boundaries
+## Implementation sequence and review boundaries
 
-This is a phase outline for discussing the design, **not** the workflow's approved `plan.md`.
+This outline records the approved architectural sequencing. The separately reviewed [implementation plan](plan.md) supplies the actionable phases, tests and gates.
 
 1. **Runner feasibility and contract spike:** Verify rootless builder constraints on the university runner independently of image functionality; select and record a maintained, pinned builder. If the runner cannot execute BuildKit, prove the chosen fallback rather than silently enabling privileged mode. The full Compose design can proceed independently.
 2. **P2.6a production images:** Introduce static-export production mode and two lean images. Validate routes, backend JAR boot and image composition, retaining existing developer workflow; review this increment before stacking networking changes.
 3. **P2.6a production-style stack:** Add Nginx, production PostgreSQL secret-based bootstrap, TLS/config templates, network isolation, health ordering and failure-mode smoke tests. Reconcile `docs/development.md`, stack overview and frontend architecture with the actually implemented state. Obtain human review and manual local Compose acceptance before updating the approved baseline.
 4. **P2.6b publishing:** Add tested version logic, CI image stages, scoped registry auth and digest artifacts while preserving current tests and security checks. Verify from the real GitLab runner, then obtain human review and manual registry/pull acceptance; do not merge without approval.
 
-The approved `plan.md` should break these into independently reviewable changes/patches, list verification commands and required fixtures per increment, record actual runner experiments, and include the final steady-state documentation reconciliation. No application change is authorized by this draft alone.
+The [implementation plan](plan.md) breaks this work into independently reviewable changes, verification gates and final documentation reconciliation. Its human approval remains a separate gate before application changes begin.
 
-## Risks and decisions requiring review
+## Operational risks and decisions to verify
 
-- **Q1: Initial version prefix.** Confirm `0.1` for a pre-MVP application or select another `MAJOR.MINOR` pair (the unrelated reference project uses `1.0`). The structural versioning scheme is otherwise proposed as requested.
+- **Q1: Initial version prefix.** Use `0.1` for the pre-MVP application; the unrelated reference project uses `1.0`. Changing the accepted versioning strategy requires review.
 - **Q2: Runner builder.** What executor/security policy does the university GitLab runner use, and will unprivileged user namespaces/mount operations work? Rootless BuildKit needs an actual compatibility check; default to a maintained daemonless fallback when blocked. Do not introduce a private privileged runner as a hidden prerequisite.
 - **Q3: Release scope.** Which non-main refs are trusted to publish pre-release images, and should external/fork MRs remain build/test-only? Proposed default: only trusted same-project refs publish, protected main owns `latest`.
 - **Q4: Local certificate interface.** Proposed default is HTTPS even for local Compose acceptance, using generated untracked test certificates. P2.6c later supplies trusted certificates and production ports.
