@@ -1,8 +1,9 @@
-# Both builds gate the shared test stage. PostgreSQL suites then depend on
-# the preceding backend suite, not unrelated frontend checks. No DinD.
+# Source-only checks precede builds. PostgreSQL suites depend on their
+# preceding backend suite, not unrelated frontend checks. No DinD.
 stages:
+  - pre-build # Lint, type checks, source security scans and CI contract tests.
   - build
-  - test # Also used by GitLab's SAST and secret-detection templates.
+  - test # Unit, component and static-export integration tests.
   - test-backend-integration
   - test-backend-e2e
   # No `needs` on version or image jobs: all prior gates
@@ -168,19 +169,19 @@ test-backend-e2e:
 
 test-frontend-lint:
   extends: .frontend-npm
-  stage: test
+  stage: pre-build
   script:
     - npm run lint
 
 test-frontend-typecheck:
   extends: .frontend-npm
-  stage: test
+  stage: pre-build
   script:
     - npm run typecheck
 
 test-frontend-test-typecheck:
   extends: .frontend-npm
-  stage: test
+  stage: pre-build
   script:
     - npm run test:typecheck
 
@@ -202,9 +203,10 @@ test-frontend-static-export:
   script:
     - npm run test:static-export
 
-# Validates the offline handoff without a language SDK or project dependency downloads.
+# Validate offline-handoff tooling using isolated fixtures, before image builds.
+# This test does not depend on packaged application artifacts.
 test-offline-handoff:
-  stage: test
+  stage: pre-build
   image: python:3.12-trixie
   interruptible: true
   dependencies: []
@@ -213,20 +215,20 @@ test-offline-handoff:
   script:
     - bash scripts/test-offline-handoff.sh
 
-# Check version construction on every pipeline, including non-publishing MRs.
+# Check version construction before building, including non-publishing MRs.
 test-image-version:
   image: alpine:3.24
-  stage: test
+  stage: pre-build
   interruptible: true
   dependencies: []
   script:
     - sh scripts/ci/test-construct-image-version.sh
 
-# Run local registry invariants in every pipeline, without registry credentials
+# Check local registry invariants before building, without registry credentials
 # or a container runtime. The real-registry acceptance is separate in Gate F.
 test-image-registry-contract:
   image: python:3.12-alpine
-  stage: test
+  stage: pre-build
   interruptible: true
   dependencies: []
   before_script:
@@ -250,8 +252,9 @@ construct-version:
 
 
 # No `needs`: each stage remains downstream of every earlier quality gate.
-# A registry-side immutable tag rule is REQUIRED to prevent job retries from
-# changing an accepted version (the preflight alone cannot prevent races).
+# Preflight rejects known version-tag collisions; it cannot prevent a concurrent
+# writer or job retry from replacing a tag without registry-side enforcement.
+# Digest-qualified release references are authoritative, not mutable tags.
 .registry-tools:
   image: alpine:3.24
   before_script:
@@ -316,9 +319,11 @@ promote-latest:
   script:
     - sh scripts/ci/promote-images.sh
 
-# Keep the security analyzers alongside the other checks after a successful build.
+# Current GitLab Semgrep and secret-detection jobs need source, not build output.
+# The template's analyzer jobs extend `sast`, retaining their existing rules
+# and failure policies. Override the stage without replacing those rules.
 sast:
-  stage: test
+  stage: pre-build
   # Template analyzer jobs extend sast and must not download backend build artifacts.
   dependencies: []
 include:
@@ -326,5 +331,5 @@ include:
   - template: Security/Secret-Detection.gitlab-ci.yml
 
 secret_detection:
-  stage: test
+  stage: pre-build
   dependencies: []
