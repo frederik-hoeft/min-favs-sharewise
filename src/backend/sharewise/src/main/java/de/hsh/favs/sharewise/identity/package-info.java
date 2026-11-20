@@ -4,7 +4,7 @@
  * <p>Application services consume this API without depending on credential
  * transports, persistence, or IAM implementations.
  */
-@ApplicationModule(allowedDependencies = {})
+@ApplicationModule(allowedDependencies = {"shared :: jooq"})
 package de.hsh.favs.sharewise.identity;
 
 import org.springframework.modulith.ApplicationModule;

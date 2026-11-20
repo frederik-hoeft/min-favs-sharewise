@@ -10,6 +10,7 @@ import de.hsh.favs.sharewise.shared.infra.di.ServiceProvider;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
+import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
@@ -70,9 +71,9 @@ class ApplicationModuleStructureTests {
         ApplicationModule identity = modules.getModuleByName("identity")
                 .orElseThrow(() -> new AssertionError("module 'identity' must exist"));
         assertFalse(identity.isOpen(), "identity must be a closed module");
-        assertEquals(List.of(),
+        assertEquals(List.of("shared :: jooq"),
                 ApplicationModuleInformation.of(identity.getBasePackage()).getDeclaredDependencies(),
-                "identity must declare an empty allowedDependencies whitelist");
+                "identity must use only the published shared jOOQ interface");
 
         ApplicationModule shared = sharedModule();
         assertFalse(shared.isOpen(), "shared must be a closed module");
@@ -110,6 +111,11 @@ class ApplicationModuleStructureTests {
                 ServiceScope.class.getName(),
                 ServiceProvider.class.getName());
         assertEquals(expectedTypes, publishedTypes);
+    }
+
+    @Test
+    void sharedJooqNamedInterfacePublishesOnlyTheOperationBoundAccessor() {
+        assertEquals(Set.of(JooqAccess.class.getName()), publishedTypesOfSharedInterface("jooq"));
     }
 
     @Test
