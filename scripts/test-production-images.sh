@@ -10,7 +10,9 @@ version="p26ab-b-smoke"
 backend_image="sharewise-backend:${version}"
 frontend_image="sharewise-frontend:${version}"
 container_id=""
+tls_fixture="$(mktemp -d)"
 cleanup() {
+    rm -rf "$tls_fixture"
     if [[ -n "$container_id" ]]; then
         "$container_cli" rm -f "$container_id" >/dev/null || true
     fi
@@ -50,16 +52,27 @@ done
     ! test -d /app/node_modules
     ! test -e /app/server.js
     ! test -d /app/.next
-    nginx -t
+    test -s /etc/nginx/templates/default.conf.template
+    test -x /docker-entrypoint.d/15-configure-sharewise.sh
 '
 
 # Probe from within the container: Docker-outside-of-Docker and remote Docker
 # contexts do not necessarily expose host-published ports to this CLI process.
 # Keep stopped containers until cleanup so their startup logs can be inspected.
-container_id="$("$container_cli" run -d "$frontend_image")"
+# `docker cp` transfers files through the Docker API, so the self-signed test
+# certificate also works with Docker-outside-of-Docker and remote daemons.
+# The production image contains no certificate or private key.
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+    -addext 'subjectAltName=DNS:localhost' \
+    -keyout "$tls_fixture/privkey.pem" -out "$tls_fixture/fullchain.pem" >/dev/null 2>&1
+container_id="$("$container_cli" create -e SHAREWISE_PUBLIC_HOST=localhost "$frontend_image")"
+"$container_cli" cp "$tls_fixture/privkey.pem" "$container_id:/etc/nginx/tls/privkey.pem"
+"$container_cli" cp "$tls_fixture/fullchain.pem" "$container_id:/etc/nginx/tls/fullchain.pem"
+"$container_cli" start "$container_id" >/dev/null
+"$container_cli" exec "$container_id" nginx -t
 ready=0
 for attempt in $(seq 1 20); do
-    if "$container_cli" exec "$container_id" wget -q -O /dev/null http://127.0.0.1/; then
+    if "$container_cli" exec "$container_id" wget -q -O /dev/null http://127.0.0.1:8081/health; then
         ready=1
         break
     fi
@@ -72,11 +85,11 @@ if [[ "$ready" -ne 1 ]]; then
     exit 1
 fi
 for path in / /app /app/dummy1 /app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview; do
-    "$container_cli" exec "$container_id" wget -q -O /dev/null "http://127.0.0.1$path"
+    "$container_cli" exec "$container_id" wget -q --no-check-certificate -O /dev/null "https://localhost$path"
 done
 # BusyBox wget returns nonzero for 404. Check the response status as well,
 # otherwise a connection or server error could masquerade as the expected 404.
-if not_found_response="$("$container_cli" exec "$container_id" wget -S -O /dev/null http://127.0.0.1/no-such-route 2>&1)"; then
+if not_found_response="$("$container_cli" exec "$container_id" wget -S -O /dev/null --no-check-certificate https://localhost/no-such-route 2>&1)"; then
     echo 'Expected HTTP 404 for /no-such-route, but the request succeeded' >&2
     exit 1
 fi
@@ -87,6 +100,6 @@ fi
 asset="$("$container_cli" run --rm --entrypoint sh "$frontend_image" -c \
     'find /usr/share/nginx/html/_next/static -type f -name "*.js" -print -quit')"
 [[ "$asset" == /usr/share/nginx/html/_next/static/* ]]
-"$container_cli" exec "$container_id" wget -q -O /dev/null "http://127.0.0.1${asset#/usr/share/nginx/html}"
-# Phase C will add the /api reverse proxy and TLS; Phase B tests static routes only.
-echo 'Phase B image composition and static route smoke checks passed.'
+"$container_cli" exec "$container_id" wget -q --no-check-certificate -O /dev/null "https://localhost${asset#/usr/share/nginx/html}"
+# API transport/trust behavior is tested separately with a controlled backend.
+echo 'Production image composition and HTTPS static route smoke checks passed.'

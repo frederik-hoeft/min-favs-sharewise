@@ -18,7 +18,7 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
-The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. Ordinary Next.js development/build commands produce the standalone-server output; the frontend production image builds a static export and serves it with Nginx. The [security architecture](stack/security.md) specifies same-origin `/api/*` forwarding; TLS, reverse-proxy wiring and production Compose remain future P2.6a phases.
+The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. Ordinary Next.js development/build commands produce the standalone-server output; the frontend production image builds a static export and serves it with Nginx. The production Nginx image serves the exported assets with TLS and forwards same-origin `/api/*` requests to the backend. Production Compose, database bootstrap and secret management remain subsequent P2.6a work.
 
 ## Database
 
@@ -57,16 +57,27 @@ The starter defaults to frontend port 3000 and backend port 8080. Consult the ba
 
 The backend and frontend Dockerfiles are buildable directly from a clean source checkout. The backend Dockerfile uses Maven 3.10.0/JDK 25 in its build stage, then a Java 25 JRE runtime with a non-root UID and a `curl` HTTP readiness check at `/api/system/v1/health`. That endpoint requires a working PostgreSQL connection; running the backend image without correctly provisioned database roles will not result in a ready service. Maven test gates run separately in CI.
 
-The frontend Dockerfile builds the Next.js static export using Node.js 24 and the checked-in npm lockfile, then packages the generated HTML/assets in an Nginx-only image. Nginx serves HTTP on port 80 for this image phase; `/api/*` routing, TLS and production Compose will be configured in the subsequent phases. Static pages and assets can already be smoke-tested in isolation:
+The frontend Dockerfile builds the Next.js static export using Node.js 24 and the checked-in npm lockfile, then packages the generated HTML/assets in an Nginx-only runtime. The edge serves HTTPS on container port 443 and redirects HTTP on port 80 to the configured public HTTPS address. It accepts one explicit `SHAREWISE_PUBLIC_HOST` (DNS name or IPv4 address), and `SHAREWISE_HTTPS_PORT` (default `443`) identifies the **externally published** TLS port for redirects and forwarding metadata. Unknown hostnames are rejected. It serves exported extensionless routes, never falls back to `/` for unknown paths, and applies `no-store` to HTML/API responses while caching fingerprinted Next.js assets immutably.
+
+Nginx expects an externally supplied certificate and key at `/etc/nginx/tls/fullchain.pem` and `/etc/nginx/tls/privkey.pem`; the image contains neither. Missing files or an invalid public hostname prevent startup. For an isolated local illustration on a machine with a Docker daemon, generate a disposable self-signed certificate under the ignored `.local/` directory:
 
 ```bash
+mkdir -p .local/sharewise/tls
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+    -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' \
+    -keyout .local/sharewise/tls/privkey.pem -out .local/sharewise/tls/fullchain.pem
+chmod 600 .local/sharewise/tls/privkey.pem
 docker build -t sharewise-backend src/backend/sharewise
 docker build -t sharewise-frontend src/frontend
-docker run --rm -p 127.0.0.1:8081:80 sharewise-frontend
-# Browse http://127.0.0.1:8081/ and http://127.0.0.1:8081/app
+docker run --rm -e SHAREWISE_PUBLIC_HOST=localhost -e SHAREWISE_HTTPS_PORT=8443 \
+    -v "$PWD/.local/sharewise/tls:/etc/nginx/tls:ro" \
+    -p 127.0.0.1:8080:80 -p 127.0.0.1:8443:443 sharewise-frontend
+# Browse https://localhost:8443/ after accepting the local test certificate.
 ```
 
-For a more thorough check on a container-capable host with Docker and Git installed, run `bash scripts/test-production-images.sh` from the repository root. It rebuilds both images without layer cache, inspects the runtime image contents/labels, and checks static page routes and 404 handling from within the frontend container. The HTTP checks also work when the Docker daemon is remote or accessed through Docker-outside-of-Docker. The frontend image contains neither Node.js nor a Next.js server. Local development still uses `npm run dev` (port 3000), and its `BACKEND_URL` rewrite is evaluated by the development server, not by the static image.
+The Nginx `/api/*` location forwards unchanged paths, queries, methods, bodies, authorization and cookies to the service named `backend` on port 8080. It ignores client-supplied forwarding headers and supplies trusted public origin/client values. When the backend is absent, only API requests fail; static content remains available. The Spring production profile (`SPRING_PROFILES_ACTIVE=production`) enables framework forwarded-header interpretation and is safe only behind the **private, trusted proxy network** established in Phase D. Development mode does not trust arbitrary forwarded headers. Nginx never rewrites application cookies. Production certificate issuance, trusted ingress provisioning and their lifecycle belong to P2.6c/d, not this image.
+
+For a full image check on a Docker-capable host with Docker, Git and OpenSSL installed, run `bash scripts/test-production-images.sh`. It builds both images without layer cache, inspects runtime contents and labels, creates a disposable TLS certificate, and checks the static HTTPS routes and 404 handling from *within* the frontend container. It transfers the certificate via the Docker API and therefore works with Docker-outside-of-Docker/remote Docker without needing a shared temporary host path. For proxy/TLS/forwarding tests using a controlled local backend, run `python3 -m unittest scripts/tests/test_static_nginx.py` (requires Nginx, OpenSSL and `envsubst`). A real PostgreSQL-backed `/api/system/v1/health` and end-to-end Compose startup remain Phase D acceptance items. Local development still uses `npm run dev` (port 3000) with the `BACKEND_URL` rewrite.
 
 ## Application modules
 

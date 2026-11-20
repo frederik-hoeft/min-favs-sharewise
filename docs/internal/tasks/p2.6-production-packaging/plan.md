@@ -1,6 +1,6 @@
 # P2.6a/b: Production packaging and registry publishing implementation plan
 
-**Status:** Human-approved implementation sequence (November 20, 2026); Phase A approved (maintained Kaniko fork), Phase B under review. **Contract:** [Approved P2.6a/b specification](specification.md) and [P2.6 backlog](../backlog.md#p26---production-packaging-deployment-and-cicd). **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
+**Status:** Human-approved implementation sequence (November 20, 2026); Phase A approved (maintained Kaniko fork), Phase B approved (local production image smoke pass reported by the human), Phase C under review. **Contract:** [Approved P2.6a/b specification](specification.md) and [P2.6 backlog](../backlog.md#p26---production-packaging-deployment-and-cicd). **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
 
 ## Baseline, scope and sequencing
 
@@ -26,7 +26,7 @@ The supplied November 20 source snapshot has already passed a clean, strict-offl
 - [ ] Inspect runner executor/architecture, image execution restrictions, user namespaces, mount behavior and allowed CI variables. Use a pinned `moby/buildkit:rootless` candidate with `buildctl-daemonless.sh` and `BUILDKITD_FLAGS=--oci-worker-no-process-sandbox`; do not require Docker socket, DinD, elevated privileges or a privileged runner.
 - [x] Add a **separately reviewable, non-publishing** BuildKit probe job or temporary pipeline on an isolated ref. Build a trivial Dockerfile to an OCI/tar output or equivalent, not to the release registry. Capture the image digest/version, runner job URL, command, image pin and unprivileged execution evidence (B-02 feasibility).
 - [x] If rootless BuildKit is blocked, retain the error evidence (including seccomp/user-namespace failures) and test a maintained, pinned daemonless alternative, beginning with rootless Buildah or the maintained Kaniko fork identified in the specification. Do **not** fix compatibility by relaxing runner isolation to `seccomp:unconfined` or introducing a privileged service. Escalate if no compliant builder works.
-- [ ] Remove or explicitly isolate temporary probe configuration after the experiment; record the chosen executor, image pin, required flags, supported platform(s) and any reproducibility limits for Phase F.
+- [x] Remove or explicitly isolate temporary probe configuration after the experiment; record the chosen executor, image pin, required flags, supported platform(s) and any reproducibility limits for Phase F.
 
 ### Phase A result and accepted builder
 
@@ -40,11 +40,11 @@ The maintained Kaniko fork passed the same `RUN`+`COPY` fixture in [job 2691989]
 
 **Dependency:** Approved image contracts D1–D3; no deployment host, live registry or production database is required to implement the build definitions. Build execution needs a container-capable machine.
 
-- [ ] Remove both temporary Phase A runner probe jobs, scripts and fixture as the first Phase B change, retaining Gate A evidence in this plan.
-- [ ] Refactor the frontend build-mode selection in `src/frontend/next.config.ts` and npm scripts to provide an explicit production **static export** without changing `next dev`, its `/api` rewrite, the normal build/test workflow or the existing disposable `test:static-export` probe. Prefer reusing one export configuration, not duplicating route definitions or acceptance logic (A-01, A-02).
-- [ ] Replace the Node runtime frontend Dockerfile with a multi-stage Node 24/npm-lockfile export build and a lean **Nginx-only** runtime. Add a suitable `.dockerignore`. Ensure the final image has no Next.js standalone server, npm dependencies, Node interpreter, build-cache output or source-only development configuration. Retain source revision/version metadata as nonsecret OCI labels.
-- [ ] Make the Spring image buildable from a clean checkout with a reproducible Maven/JDK 25 build stage (or a reviewed artifact-input alternative with a documented clean-build path). Use a Java 25 JRE-only runtime, fixed executable JAR, non-root UID and an HTTP readiness probe whose executable is genuinely present in the image. Add a focused `.dockerignore`; keep credentials, Maven cache, compiler and tests out of the runtime layers.
-- [ ] Add tests/checks for export mode selection and generation of existing routes and assets, ordinary dev/standalone compatibility, Dockerfile build context and runtime image composition. Validate the existing static-export test and inspect final images. Avoid introducing new dependencies unless their offline-handoff implications are separately approved.
+- [x] Remove both temporary Phase A runner probe jobs, scripts and fixture as the first Phase B change, retaining Gate A evidence in this plan.
+- [x] Refactor the frontend build-mode selection in `src/frontend/next.config.ts` and npm scripts to provide an explicit production **static export** without changing `next dev`, its `/api` rewrite, the normal build/test workflow or the existing disposable `test:static-export` probe. Prefer reusing one export configuration, not duplicating route definitions or acceptance logic (A-01, A-02).
+- [x] Replace the Node runtime frontend Dockerfile with a multi-stage Node 24/npm-lockfile export build and a lean **Nginx-only** runtime. Add a suitable `.dockerignore`. Ensure the final image has no Next.js standalone server, npm dependencies, Node interpreter, build-cache output or source-only development configuration. Retain source revision/version metadata as nonsecret OCI labels.
+- [x] Make the Spring image buildable from a clean checkout with a reproducible Maven/JDK 25 build stage (or a reviewed artifact-input alternative with a documented clean-build path). Use a Java 25 JRE-only runtime, fixed executable JAR, non-root UID and an HTTP readiness probe whose executable is genuinely present in the image. Add a focused `.dockerignore`; keep credentials, Maven cache, compiler and tests out of the runtime layers.
+- [x] Add tests/checks for export mode selection and generation of existing routes and assets, ordinary dev/standalone compatibility, Dockerfile build context and runtime image composition. Validate the existing static-export test and inspect final images. Avoid introducing new dependencies unless their offline-handoff implications are separately approved.
 
 **Image security selection:** The frontend runtime uses Nginx 1.30.7, the first fixed stable release for CVE-2026-123007 and CVE-2026-123633. The backend runtime uses Debian 13 (Trixie) `openjdk-25-jre-headless` from the Debian security repository, with a build-time minimum of `25.0.5.1+2-1~deb13u1` for CVE-2026-114938. The Maven build stage remains an Ubuntu-based Temurin image; only the shipped runtime is Debian-based. Both actual image builds and runtime package inspection remain required for Gate B.
 
@@ -53,6 +53,8 @@ The maintained Kaniko fork passed the same `RUN`+`COPY` fixture in [job 2691989]
 **Gate B:** Human reviews a focused production-image patch, export-mode tests and image inspection evidence (A-01 and image aspects of A-02). No requirement for prebuilt `target/` or Node at runtime; development behavior remains intact. Merge only after approval.
 
 **Phase B initial review evidence (November 20, 2026):** The two non-publishing probe jobs and their scripts/fixture are removed; the accepted runner result remains recorded above. The Maven-only offline handoff SHA-256 and supplied JDK/Maven toolchain archive hashes passed, and isolated Maven 3.10.0/Temurin 25 `-o -Punit-tests clean verify` passed all 122 Unit tests on the unchanged backend source. The supplied dependency bundle records a different POM hash (`bb6baa6a...`) than the source snapshot (`5b01ef2d...`), although this cache successfully resolved every dependency required for the Unit build; the verifier's exact source-descriptor compatibility criterion has **not** passed. Local Nginx configuration and static HTTP route/404 smoke checks passed with substitute HTML fixtures, but full Next.js export/Node 24 checks, real container image builds and runtime inspection remain **unverified** because the selected Node handoff and container runtime are unavailable. The included `scripts/test-production-images.sh` provides the manual clean-image acceptance command for a Docker-capable host. Do not mark Gate B complete based solely on the partial local evidence.
+
+**Gate B user acceptance (November 20, 2026):** The contributor confirmed that clean production image builds and `scripts/test-production-images.sh` now pass on their Docker-capable machine, after the Docker-outside-of-Docker smoke-test correction. The Phase B code review was accepted and the approved local baseline was advanced to `8c25e86`. This is user-reported acceptance, not a claim that the offline workspace ran Docker or Node/npm; full CI frontend checks remain separate pipeline gates.
 
 
 ## Phase C - Static routing, HTTPS and trusted reverse proxy (P2.6a)
@@ -92,7 +94,7 @@ The maintained Kaniko fork passed the same `RUN`+`COPY` fixture in [job 2691989]
 
 **Gate E:** Human approves version semantics, exact CI ref/rule policy, and failing-input tests (B-01, B-03, B-07). Any deviation from the approved `0.1` initial version or publishing trust policy returns to specification review.
 
-## Phase F - BuildKit registry publishing and immutable image evidence (P2.6b)
+## Phase F - Daemonless registry publishing and immutable image evidence (P2.6b)
 
 **Dependency:** Approved Phases A, D and E. Requires the actual GitLab runner, its registry and permission settings; do not claim acceptance from local YAML lint alone.
 

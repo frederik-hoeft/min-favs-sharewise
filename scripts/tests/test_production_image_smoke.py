@@ -17,7 +17,7 @@ MOCK_DOCKER = r"""#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
 case "$1" in
-    version|build|rm) ;;
+    version|build|rm|cp|start) ;;
     image)
         if [[ "$*" == *'org.opencontainers.image.version'* ]]; then
             printf '%s\n' p26ab-b-smoke
@@ -27,10 +27,11 @@ case "$1" in
             exit 2
         fi
         ;;
+    create)
+        printf '%s\n' smoke-frontend
+        ;;
     run)
-        if [[ "$*" == *' -d sharewise-frontend:'* || "$*" == 'run -d sharewise-frontend:'* ]]; then
-            printf '%s\n' smoke-frontend
-        elif [[ "$*" == *'find /usr/share/nginx/html/_next/static'* ]]; then
+        if [[ "$*" == *'find /usr/share/nginx/html/_next/static'* ]]; then
             printf '%s\n' /usr/share/nginx/html/_next/static/chunk.js
         fi
         ;;
@@ -43,7 +44,7 @@ case "$1" in
             fi
             exit 1
         fi
-        if [[ "$FAKE_SCENARIO" == not-ready && "$*" == *'http://127.0.0.1/' ]]; then
+        if [[ "$FAKE_SCENARIO" == not-ready && "$*" == *'http://127.0.0.1:8081/health' ]]; then
             printf 'wget: cannot connect to remote host\n' >&2
             exit 1
         fi
@@ -93,10 +94,12 @@ class ProductionImageSmokeTests(unittest.TestCase):
     def test_http_checks_run_in_container_without_published_ports(self) -> None:
         result, calls = self.run_smoke("ok")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("run -d sharewise-frontend:", calls)
-        self.assertIn("exec smoke-frontend wget -q -O /dev/null http://127.0.0.1/", calls)
-        self.assertIn("exec smoke-frontend wget -S -O /dev/null http://127.0.0.1/no-such-route", calls)
-        self.assertIn("exec smoke-frontend wget -q -O /dev/null http://127.0.0.1/_next/static/chunk.js", calls)
+        self.assertIn("create -e SHAREWISE_PUBLIC_HOST=localhost sharewise-frontend:", calls)
+        self.assertIn("start smoke-frontend", calls)
+        self.assertIn("cp ", calls)
+        self.assertIn("exec smoke-frontend wget -q -O /dev/null http://127.0.0.1:8081/health", calls)
+        self.assertIn("exec smoke-frontend wget -S -O /dev/null --no-check-certificate https://localhost/no-such-route", calls)
+        self.assertIn("exec smoke-frontend wget -q --no-check-certificate -O /dev/null https://localhost/_next/static/chunk.js", calls)
         self.assertNotIn(" -p ", calls)
         self.assertNotIn("port smoke-frontend", calls)
         self.assertIn("rm -f smoke-frontend", calls)

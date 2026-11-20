@@ -54,6 +54,8 @@ src/frontend/out/
 
 # production
 src/frontend/build
+# Untracked local TLS certificates and disposable deployment inputs.
+.local/
 
 # misc
 .DS_Store
