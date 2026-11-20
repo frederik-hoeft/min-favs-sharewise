@@ -12,13 +12,13 @@ On November 20, 2026, the approved Phase D source with the Phase E documentation
 mvn -B -ntp -o -Punit-tests -Dmaven.repo.local=<isolated-maven-repository> clean verify
 ```
 
-**Result:** `BUILD SUCCESS`; **176 tests run, 0 failures, 0 errors, 0 skipped**. The suite includes Spring Modulith published-interface verification and the existing DI, claims, JOSE and IAM ingress security tests. The security fixtures exercise verified and absent primary credentials, rejected or ambiguous credentials, scoped provider isolation, signing-key overlap/removal, subordinate binding, and HTTP/non-HTTP ingress composition. Transaction-segment identity continuity is exercised with stubs, not physical PostgreSQL segments.
+**Result:** `BUILD SUCCESS`; **178 tests run, 0 failures, 0 errors, 0 skipped**. The suite includes Spring Modulith published-interface verification and the existing DI, claims, JOSE and IAM ingress security tests. The security fixtures exercise verified and absent primary credentials, rejected or ambiguous credentials, scoped provider isolation, signing-key overlap/removal, subordinate binding, and HTTP/non-HTTP ingress composition. A full-application-context MockMvc fixture also verifies the Boot-registered HTTP security chain, valid IAM bearer dispatch, anonymous behavior, protected-operation rejection, and invalid, expired or wrong-profile bearer rejection. It supplies test signing keys and excludes database auto-configuration; transaction-segment identity continuity is exercised with stubs, not physical PostgreSQL segments.
 
 The documentation review also verified 455 local Markdown links across 50 documents, with no broken local links or heading references. Changed Markdown files use UTF-8, LF and a final newline with no trailing whitespace; `git diff --check` passes. A pre-existing whitespace deviation in the untouched `docs/development/ai-development-workflow.md` remains outside this change.
 
 ## Acceptance boundaries
 
-The automated Unit gate does not verify production key provisioning, a running Boot application with real configured IAM keys, PostgreSQL-backed account/session validation, frontend authorization flows, or cross-service attestation issuance. PostgreSQL Integration/E2E and frontend gates were not run for this documentation-only phase. These limits do not convert planned workflows into accepted system behavior.
+The automated Unit gate verifies the Spring Boot MVC/security integration with test keys and a mock servlet environment, not an actual deployed HTTP server or production key provisioning. It does not verify PostgreSQL-backed account/session validation, frontend authorization flows, or cross-service attestation issuance. PostgreSQL Integration/E2E and frontend gates were not run for this in-process security integration review. These limits do not convert planned workflows into accepted system behavior.
 
 In particular, the API bearer path rejects missing mandatory trusted IAM wiring rather than operating with a fallback credential. Business operations must still require authenticated identity where necessary; the filter chain is not a general resource-policy enforcement layer.
 
