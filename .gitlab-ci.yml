@@ -5,12 +5,13 @@ stages:
   - test # Also used by GitLab's SAST and secret-detection templates.
   - test-backend-integration
   - test-backend-e2e
-  # No `needs` on the version job or future publish jobs: all prior gates
+  # No `needs` on version or image jobs: all prior gates
   # (including the security templates) must finish first.
   - image-version
-  - image-publish # Phase F: backend and frontend versioned pushes
-  - image-release # Phase F: validate paired digests and write release artifact
-  - image-promote # Phase F: main-only latest promotion
+  - image-preflight # Fail closed on existing version tags before building
+  - image-publish # Independent backend and frontend versioned pushes
+  - image-release # Validate paired remote digests and write release artifact
+  - image-promote # Main-only serialized latest promotion
 
 variables:
   # Initial image version; changes require explicit release-policy review.
@@ -221,8 +222,20 @@ test-image-version:
   script:
     - sh scripts/ci/test-construct-image-version.sh
 
+# Run local registry invariants in every pipeline, without registry credentials
+# or a container runtime. The real-registry acceptance is separate in Gate F.
+test-image-registry-contract:
+  image: python:3.12-alpine
+  stage: test
+  interruptible: true
+  dependencies: []
+  before_script:
+    - apk add --no-cache jq
+  script:
+    - python3 -m unittest discover -s scripts/ci/tests -p 'test_image_registry.py' -v
+
 # This job runs only after ALL build, test and security gates finish. The
-# artifact is the single version source for the Phase F image publishing jobs.
+# artifact is the single version source for all image publishing jobs.
 construct-version:
   extends: .image-publishable
   image: alpine:3.24
@@ -234,6 +247,74 @@ construct-version:
     paths:
       - image-version/version.txt
     expire_in: 7 days
+
+
+# No `needs`: each stage remains downstream of every earlier quality gate.
+# A registry-side immutable tag rule is REQUIRED to prevent job retries from
+# changing an accepted version (the preflight alone cannot prevent races).
+.registry-tools:
+  image: alpine:3.24
+  before_script:
+    - apk add --no-cache crane jq
+
+check-image-tags:
+  extends: [.image-publishable, .registry-tools]
+  stage: image-preflight
+  dependencies: [construct-version]
+  script:
+    - sh scripts/ci/check-unused-image-tags.sh
+
+.image-kaniko:
+  extends: .image-publishable
+  stage: image-publish
+  image:
+    name: ghcr.io/osscontainertools/kaniko:v1.28.6-debug@sha256:7ab44d0131c3051b6dea128067e258c7afb5c4815082a93b9cf6c624f2140bf0
+    entrypoint: [""]
+  # Download only the shared version, not backend JARs or npm cache artifacts.
+  dependencies: [construct-version]
+  artifacts:
+    paths:
+      - image-evidence/
+    expire_in: 7 days
+
+publish-backend:
+  extends: .image-kaniko
+  script:
+    - sh scripts/ci/publish-image.sh backend
+
+publish-frontend:
+  extends: .image-kaniko
+  script:
+    - sh scripts/ci/publish-image.sh frontend
+
+# Only the complete validated pair has a release descriptor. A partial push
+# leaves one versioned registry tag, never a successful release artifact.
+release-images:
+  extends: [.image-publishable, .registry-tools]
+  stage: image-release
+  dependencies:
+    - construct-version
+    - publish-backend
+    - publish-frontend
+  script:
+    - sh scripts/ci/release-images.sh
+  artifacts:
+    paths:
+      - image-release/release.json
+    expire_in: 1 year
+
+# Serializes main alias promotion across pipelines. The script also compares
+# registry-hosted version labels to reject a delayed, older pipeline. A retry
+# can repair a partially promoted pair, but `latest` is never an atomic pair.
+promote-latest:
+  stage: image-promote
+  extends: .registry-tools
+  resource_group: sharewise-main-latest
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_PROJECT_PATH == "min-favs/sharewise" && $CI_COMMIT_BRANCH == "main" && $CI_COMMIT_REF_PROTECTED == "true"'
+  dependencies: [release-images]
+  script:
+    - sh scripts/ci/promote-images.sh
 
 # Keep the security analyzers alongside the other checks after a successful build.
 sast:
