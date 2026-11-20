@@ -12,7 +12,6 @@ import {
   NavLink,
   Paper,
 } from "@mantine/core";
-import formInputStyles from "./form-inputs.module.scss";
 
 // Color variants are shared by all components (including the public CTA), not
 // defined per navigation link or menu instance.
@@ -66,7 +65,6 @@ export const theme = createTheme({
     // input-based controls; local forms should not independently set radii.
     Input: Input.extend({
       defaultProps: { radius: "sm" },
-      classNames: { input: formInputStyles.input },
     }),
     InputWrapper: Input.Wrapper.extend({
       // Keep static guidance above its control and validation feedback below it.

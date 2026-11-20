@@ -30,7 +30,6 @@ describe("Mantine application provider", () => {
     // independently configured props on each page or input type.
     expect(email.closest(".mantine-Input-wrapper")).toHaveStyle("--input-radius: 0.5625rem");
     expect(password.closest(".mantine-Input-wrapper")).toHaveStyle("--input-radius: 0.5625rem");
-    expect(email.className).toContain("input");
     const alerts = container.querySelectorAll(".mantine-Alert-root");
     expect(alerts[0]?.getAttribute("style")).toContain("background-color: var(--sw-danger-surface)");
     expect(alerts[1]?.getAttribute("style")).not.toContain("background-color: var(--sw-danger-surface)");
