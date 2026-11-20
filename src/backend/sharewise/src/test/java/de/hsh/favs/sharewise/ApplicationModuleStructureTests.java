@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.identity.IamOperationIngress;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
@@ -85,9 +86,9 @@ class ApplicationModuleStructureTests {
         ApplicationModule identity = modules.getModuleByName("identity")
                 .orElseThrow(() -> new AssertionError("module 'identity' must exist"));
         assertFalse(identity.isOpen(), "identity must be a closed module");
-        assertEquals(List.of(),
+        assertEquals(List.of("shared::claims", "shared::di", "shared::security", "shared::web"),
                 ApplicationModuleInformation.of(identity.getBasePackage()).getDeclaredDependencies(),
-                "identity must declare an empty allowedDependencies whitelist");
+                "identity may consume only its declared shared foundation contracts");
 
         ApplicationModule shared = sharedModule();
         assertFalse(shared.isOpen(), "shared must be a closed module");
@@ -104,15 +105,25 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
-    void identityTopLevelPublishesOnlyTheCurrentCallerContracts() {
+    void identityTopLevelPublishesOnlyTheIntentionalIamContracts() {
         ApplicationModule identity = modules.getModuleByName("identity")
                 .orElseThrow(() -> new AssertionError("module 'identity' must exist"));
         Set<String> publishedTypes = identity.getNamedInterfaces().getUnnamedInterface().asJavaClasses()
                 .map(type -> type.getName())
                 .filter(name -> !name.endsWith(".package-info"))
                 .collect(Collectors.toSet());
-        assertEquals(Set.of(IdentityContext.class.getName(), UnauthenticatedCallerException.class.getName()),
+        assertEquals(Set.of(IdentityContext.class.getName(), IamOperationIngress.class.getName(),
+                UnauthenticatedCallerException.class.getName()),
                 publishedTypes);
+    }
+
+    @Test
+    void identityWebInterfacePublishesOnlyItsHttpIngressContract() {
+        ApplicationModule identity = modules.getModuleByName("identity").orElseThrow();
+        NamedInterface web = identity.getNamedInterfaces().getByName("web").orElseThrow();
+        assertEquals(Set.of(de.hsh.favs.sharewise.identity.web.HttpIamOperationIngress.class.getName()),
+            web.asJavaClasses().map(type -> type.getName())
+                .filter(name -> !name.endsWith(".package-info")).collect(Collectors.toSet()));
     }
 
     @Test
