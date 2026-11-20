@@ -25,7 +25,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
-import de.hsh.favs.sharewise.shared.infra.security.JwtRsaKey;
+import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.List;
@@ -170,7 +170,9 @@ class ApplicationModuleStructureTests {
             JwtCredentialProfile.class.getName(),
             JwtCredentialProfile.Kind.class.getName(),
             JwtIssueRequest.class.getName(),
-            JwtRsaKey.class.getName(),
+            JwtEcKey.class.getName(),
+            de.hsh.favs.sharewise.shared.infra.security.JwtSignatureService.class.getName(),
+            de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService.class.getName(),
             VerifiedJwtCredential.class.getName()), publishedTypesOfSharedInterface("security"));
     }
 

@@ -8,7 +8,7 @@ import java.util.Set;
  * Explicit expectations for one trusted JWT issuer and credential profile.
  *
  * <p>Profiles are selected by trusted application configuration, never by a
- * token's unverified issuer or type. The initial supported JWS algorithm is RS256.
+ * token's unverified issuer or type. The signature algorithm is selected by the configured signing service (ES256 initially).
  *
  * @param name application-defined profile identifier retained as claim provenance
  * @param issuer exact trusted JWT issuer

@@ -12,7 +12,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
-import de.hsh.favs.sharewise.shared.infra.security.JwtRsaKey;
+import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -92,19 +92,21 @@ class VerifiedJwtPublicationTests {
 
         State() {
             try {
-                KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-                generator.initialize(2048);
+                KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+                generator.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"));
                 KeyPair iamKeys = generator.generateKeyPair();
                 KeyPair groupKeys = generator.generateKeyPair();
                 Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
                 iam = new JwtCredentialCodec(new JwtCredentialProfile("iam-access", IAM_ISSUER,
                     "sw-iam-access+jwt", Set.of("api"), JwtCredentialProfile.Kind.PRIMARY, Set.of(),
                     Duration.ofMinutes(5), Duration.ofSeconds(30)),
-                    List.of(JwtRsaKey.signing("iam-key", iamKeys)), Optional.of("iam-key"), clock);
+                    new de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService(
+                        List.of(JwtEcKey.signing("iam-key", iamKeys)), Optional.of("iam-key")), clock);
                 group = new JwtCredentialCodec(new JwtCredentialProfile("group-attestation",
                     "https://groups.sharewise.test", "sw-group+jwt", Set.of("api"),
                     JwtCredentialProfile.Kind.SUBORDINATE, Set.of(IAM_ISSUER), Duration.ofMinutes(5), Duration.ofSeconds(30)),
-                    List.of(JwtRsaKey.signing("group-key", groupKeys)), Optional.of("group-key"), clock);
+                    new de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService(
+                        List.of(JwtEcKey.signing("group-key", groupKeys)), Optional.of("group-key")), clock);
                 primaryToken = iam.sign(new JwtIssueRequest(USER, SESSION, "primary-token",
                     NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(120),
                     Optional.empty(), Map.of()));

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.ECDSASigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
@@ -18,6 +19,8 @@ import java.net.URI;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
+import java.security.spec.ECGenParameterSpec;
+import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.time.Clock;
 import java.time.Duration;
@@ -32,7 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Real RS256 fixtures exercising the trust boundary rather than only claim parsing. */
+/** Real ES256 fixtures exercising the trust boundary rather than only claim parsing. */
 class JwtCredentialCodecTests {
     private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
@@ -42,9 +45,9 @@ class JwtCredentialCodecTests {
     private static final UUID BOB = UUID.fromString("87654321-4321-4432-8432-ba0987654321");
     private static final String SESSION = "iam-session-c4e1a87f";
 
-    private static final KeyPair IAM_OLD = rsa(1);
-    private static final KeyPair IAM_NEW = rsa(2);
-    private static final KeyPair GROUP_KEY = rsa(3);
+    private static final KeyPair IAM_OLD = ec(1);
+    private static final KeyPair IAM_NEW = ec(2);
+    private static final KeyPair GROUP_KEY = ec(3);
 
     private static final JwtCredentialProfile IAM = new JwtCredentialProfile(
         "iam-access", IAM_ISSUER, "sw-iam-access+jwt", Set.of("sharewise-api"),
@@ -55,7 +58,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void signsAndVerifiesTypedPrimaryEvidenceWithOriginAndDirectClaimProvenance() {
-        JwtCredentialCodec codec = primary(List.of(JwtRsaKey.signing("old", IAM_OLD)), "old");
+        JwtCredentialCodec codec = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         VerifiedJwtCredential verified = codec.verifyPrimary(codec.sign(issue(ALICE, SESSION)));
         AuthorizationCredential credential = verified.credential();
 
@@ -79,9 +82,9 @@ class JwtCredentialCodecTests {
 
     @Test
     void explicitKeyOverlapSupportsRotationAndRemovalRejectsOldKey() {
-        JwtCredentialCodec oldSigner = primary(List.of(JwtRsaKey.signing("old", IAM_OLD)), "old");
-        JwtCredentialCodec overlap = primary(List.of(JwtRsaKey.verification("old", rsaPublic(IAM_OLD)),
-            JwtRsaKey.signing("new", IAM_NEW)), "new");
+        JwtCredentialCodec oldSigner = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
+        JwtCredentialCodec overlap = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD)),
+            JwtEcKey.signing("new", IAM_NEW)), "new");
         String oldToken = oldSigner.sign(issue(ALICE, SESSION));
         String newToken = overlap.sign(issue(ALICE, SESSION));
         assertEquals("old", header(oldToken).getKeyID());
@@ -89,7 +92,7 @@ class JwtCredentialCodecTests {
         assertEquals(ALICE, overlap.verifyPrimary(oldToken).userId());
         assertEquals(ALICE, overlap.verifyPrimary(newToken).userId());
 
-        JwtCredentialCodec afterRemoval = primary(List.of(JwtRsaKey.verification("new", rsaPublic(IAM_NEW))), null);
+        JwtCredentialCodec afterRemoval = primary(List.of(JwtEcKey.verification("new", ecPublic(IAM_NEW))), null);
         assertEquals(ALICE, afterRemoval.verifyPrimary(newToken).userId());
         assertRejected(() -> afterRemoval.verifyPrimary(oldToken));
         assertThrows(IllegalStateException.class, () -> afterRemoval.sign(issue(ALICE, SESSION)));
@@ -97,7 +100,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void rejectsDisallowedHeaderAlgorithmsRemoteKeysAndUntrustedKeyIds() throws Exception {
-        JwtCredentialCodec codec = primary(List.of(JwtRsaKey.signing("old", IAM_OLD)), "old");
+        JwtCredentialCodec codec = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         String good = codec.sign(issue(ALICE, SESSION));
         String[] pieces = good.split("\\.");
         String tamperedSignature = pieces[0] + "." + pieces[1] + "."
@@ -111,7 +114,7 @@ class JwtCredentialCodecTests {
         String hsHeader = b64("{\"alg\":\"HS256\",\"kid\":\"old\",\"typ\":\"sw-iam-access+jwt\"}");
         assertRejected(() -> codec.verifyPrimary(hsHeader + "." + pieces[1] + "." + pieces[2]));
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("not-trusted"), validPayload().build(), IAM_OLD)));
-        JWSHeader remote = new JWSHeader.Builder(JWSAlgorithm.RS256)
+        JWSHeader remote = new JWSHeader.Builder(JWSAlgorithm.ES256)
             .type(new JOSEObjectType(IAM.tokenType())).keyID("old")
             .jwkURL(URI.create("https://evil.example.test/jwks.json")).build();
         assertRejected(() -> codec.verifyPrimary(manual(remote, validPayload().build(), IAM_OLD)));
@@ -119,7 +122,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void enforcesIssuerAudienceProtectedTypeAndExactProfileSelection() {
-        JwtCredentialCodec verifier = primary(List.of(JwtRsaKey.verification("old", rsaPublic(IAM_OLD))), null);
+        JwtCredentialCodec verifier = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD))), null);
         JwtCredentialProfile wrongIssuer = new JwtCredentialProfile("iam-access", "https://other.test",
             IAM.tokenType(), IAM.audiences(), IAM.kind(), IAM.trustedPrimaryIssuers(), IAM.maximumLifetime(), IAM.clockSkew());
         JwtCredentialProfile wrongAudience = new JwtCredentialProfile("iam-access", IAM_ISSUER,
@@ -128,7 +131,7 @@ class JwtCredentialCodecTests {
             "sw-refresh+jwt", IAM.audiences(), IAM.kind(), IAM.trustedPrimaryIssuers(), IAM.maximumLifetime(), IAM.clockSkew());
         for (JwtCredentialProfile profile : List.of(wrongIssuer, wrongAudience, wrongType)) {
             JwtCredentialCodec signer = new JwtCredentialCodec(profile,
-                List.of(JwtRsaKey.signing("old", IAM_OLD)), Optional.of("old"), CLOCK);
+                new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
             assertRejected(() -> verifier.verifyPrimary(signer.sign(issue(ALICE, SESSION))));
         }
         assertRejected(() -> verifier.verifyPrimary(manual(primaryHeader("old"),
@@ -141,7 +144,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void strictlyChecksExpiryNotBeforeClockSkewAndMaximumLifetime() {
-        JwtCredentialCodec codec = primary(List.of(JwtRsaKey.signing("old", IAM_OLD)), "old");
+        JwtCredentialCodec codec = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         // Clock skew is 30s: token expiring 29s ago passes, 31s ago fails.
         JwtIssueRequest insideSkew = new JwtIssueRequest(ALICE, SESSION, "old",
             NOW.minusSeconds(240), NOW.minusSeconds(240), NOW.minusSeconds(29), Optional.empty(), Map.of());
@@ -164,7 +167,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void rejectsMalformedMissingAndWronglyTypedPrincipalAndSessionClaims() throws Exception {
-        JwtCredentialCodec codec = primary(List.of(JwtRsaKey.verification("old", rsaPublic(IAM_OLD))), null);
+        JwtCredentialCodec codec = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD))), null);
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("old"),
             validPayload().subject("not-a-uuid").build(), IAM_OLD)));
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("old"),
@@ -186,7 +189,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void rejectsInvalidRegisteredTimeTypesAndMissingExpiryOrIssueTime() {
-        JwtCredentialCodec codec = primary(List.of(JwtRsaKey.verification("old", rsaPublic(IAM_OLD))), null);
+        JwtCredentialCodec codec = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD))), null);
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("old"),
             validPayload().claim("exp", "2026-11-20T12:03:00Z").build(), IAM_OLD)));
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("old"),
@@ -209,8 +212,8 @@ class JwtCredentialCodecTests {
 
     @Test
     void explicitSigningKeyIdIsUsedEvenWhenMultipleTrustedKeysCanSign() {
-        JwtCredentialCodec signer = primary(List.of(JwtRsaKey.signing("old", IAM_OLD),
-            JwtRsaKey.signing("new", IAM_NEW)), "new");
+        JwtCredentialCodec signer = primary(List.of(JwtEcKey.signing("old", IAM_OLD),
+            JwtEcKey.signing("new", IAM_NEW)), "new");
         String token = signer.sign(issue(ALICE, SESSION));
         assertEquals("new", header(token).getKeyID());
         assertEquals(ALICE, signer.verifyPrimary(token).userId());
@@ -218,7 +221,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void subordinateVerificationRequiresMatchingVerifiedPrimaryIssuerUserAndSession() {
-        JwtCredentialCodec iam = primary(List.of(JwtRsaKey.signing("old", IAM_OLD)), "old");
+        JwtCredentialCodec iam = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         JwtCredentialCodec group = subordinate();
         VerifiedJwtCredential primary = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
         String matching = group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER));
@@ -241,12 +244,12 @@ class JwtCredentialCodecTests {
 
     @Test
     void subordinateRequiresTrustedAndStillValidPrimaryIssuer() {
-        JwtCredentialCodec iam = primary(List.of(JwtRsaKey.signing("old", IAM_OLD)), "old");
+        JwtCredentialCodec iam = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         JwtCredentialCodec group = subordinate();
         VerifiedJwtCredential verified = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
 
         JwtCredentialCodec laterGroup = new JwtCredentialCodec(GROUP,
-            List.of(JwtRsaKey.verification("group-1", rsaPublic(GROUP_KEY))), Optional.empty(),
+            new Es256JwtSignatureService(List.of(JwtEcKey.verification("group-1", ecPublic(GROUP_KEY))), Optional.empty()),
             Clock.offset(CLOCK, Duration.ofSeconds(250)));
         JwtIssueRequest laterIssue = new JwtIssueRequest(ALICE, SESSION, "later-group",
             NOW.plusSeconds(249), NOW.plusSeconds(249), NOW.plusSeconds(330),
@@ -257,7 +260,7 @@ class JwtCredentialCodecTests {
             "https://other-iam.test", IAM.tokenType(), IAM.audiences(),
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
         JwtCredentialCodec externalIam = new JwtCredentialCodec(otherPrimary,
-            List.of(JwtRsaKey.signing("old", IAM_OLD)), Optional.of("old"), CLOCK);
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
         VerifiedJwtCredential externalPrimary = externalIam.verifyPrimary(externalIam.sign(issue(ALICE, SESSION)));
         String matchingForeignIssuer = group.sign(subordinateIssue(ALICE, SESSION, otherPrimary.issuer()));
         assertRejected(() -> group.verifySubordinate(matchingForeignIssuer, externalPrimary));
@@ -265,7 +268,7 @@ class JwtCredentialCodecTests {
 
     @Test
     void preservesRepeatedStringAssertionsWithoutFlatteningOrLosingOrigins() {
-        JwtCredentialCodec codec = primary(List.of(JwtRsaKey.verification("old", rsaPublic(IAM_OLD))), null);
+        JwtCredentialCodec codec = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD))), null);
         String token = manual(primaryHeader("old"), validPayload()
             .claim("groups", List.of("group-a", "group-b", "group-a")).build(), IAM_OLD);
         AuthorizationCredential credential = codec.verifyPrimary(token).credential();
@@ -277,39 +280,66 @@ class JwtCredentialCodecTests {
     }
 
     @Test
+    void rejectsNonP256OrMismatchedKeysAtConfigurationTime() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair p384 = generator.generateKeyPair();
+        assertThrows(IllegalArgumentException.class, () -> JwtEcKey.signing("p384", p384));
+        assertThrows(IllegalArgumentException.class, () -> JwtEcKey.verification("p384", ecPublic(p384)));
+        assertThrows(IllegalArgumentException.class,
+            () -> JwtEcKey.signing("wrong-pair", new KeyPair(IAM_OLD.getPublic(), IAM_NEW.getPrivate())));
+
+        KeyPairGenerator rsa = KeyPairGenerator.getInstance("RSA");
+        rsa.initialize(2048);
+        assertThrows(IllegalArgumentException.class, () -> JwtEcKey.signing("rsa", rsa.generateKeyPair()));
+    }
+
+    @Test
+    void rejectsActualRs256TokenDespiteTrustedKeyId() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair rsa = generator.generateKeyPair();
+        SignedJWT signed = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256)
+            .type(new JOSEObjectType(IAM.tokenType())).keyID("old").build(), validPayload().build());
+        signed.sign(new RSASSASigner((RSAPrivateKey) rsa.getPrivate()));
+        JwtCredentialCodec codec = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
+        assertRejected(() -> codec.verifyPrimary(signed.serialize()));
+    }
+
+    @Test
     void invalidInputsAndConfigurationFailBeforeSigningOrTrustPublication() {
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile("x", IAM_ISSUER,
             "x+jwt", Set.of(), JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ZERO));
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile("x", IAM_ISSUER,
             "x+jwt", Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY, Set.of(),
             Duration.ofMinutes(5), Duration.ofSeconds(61)));
-        assertThrows(IllegalArgumentException.class, () -> primary(List.of(), null));
-        assertThrows(IllegalArgumentException.class, () -> primary(List.of(
-            JwtRsaKey.verification("old", rsaPublic(IAM_OLD)), JwtRsaKey.verification("old", rsaPublic(IAM_NEW))), null));
-        assertThrows(IllegalArgumentException.class, () -> primary(List.of(
-            JwtRsaKey.verification("old", rsaPublic(IAM_OLD))), "missing"));
-        assertThrows(IllegalArgumentException.class, () -> primary(List.of(
-            JwtRsaKey.verification("old", rsaPublic(IAM_OLD))), "old"));
+        assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(), Optional.empty()));
+        assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(
+            JwtEcKey.verification("old", ecPublic(IAM_OLD)), JwtEcKey.verification("old", ecPublic(IAM_NEW))), Optional.empty()));
+        assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(
+            JwtEcKey.verification("old", ecPublic(IAM_OLD))), Optional.of("missing")));
+        assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(
+            JwtEcKey.verification("old", ecPublic(IAM_OLD))), Optional.of("old")));
         assertThrows(IllegalArgumentException.class, () -> new JwtIssueRequest(ALICE, SESSION, "id",
             NOW, NOW, NOW.plusSeconds(60), Optional.empty(), Map.of("iss", "forged")));
         assertThrows(IllegalArgumentException.class, () -> subordinate().sign(issue(ALICE, SESSION)));
         assertThrows(IllegalArgumentException.class, () -> primary(
-            List.of(JwtRsaKey.signing("old", IAM_OLD)), "old")
+            List.of(JwtEcKey.signing("old", IAM_OLD)), "old")
             .sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER)));
-        assertFalse(JwtRsaKey.signing("old", IAM_OLD).toString().contains("PRIVATE KEY"));
+        assertFalse(JwtEcKey.signing("old", IAM_OLD).toString().contains("PRIVATE KEY"));
     }
 
     private static String claim(AuthorizationCredential credential, String name) {
         return credential.claims().stream().filter(c -> c.type().equals(name)).findFirst().orElseThrow().value();
     }
 
-    private static JwtCredentialCodec primary(List<JwtRsaKey> keys, String signingKeyId) {
-        return new JwtCredentialCodec(IAM, keys, Optional.ofNullable(signingKeyId), CLOCK);
+    private static JwtCredentialCodec primary(List<JwtEcKey> keys, String signingKeyId) {
+        return new JwtCredentialCodec(IAM, new Es256JwtSignatureService(keys, Optional.ofNullable(signingKeyId)), CLOCK);
     }
 
     private static JwtCredentialCodec subordinate() {
-        return new JwtCredentialCodec(GROUP, List.of(JwtRsaKey.signing("group-1", GROUP_KEY)),
-            Optional.of("group-1"), CLOCK);
+        return new JwtCredentialCodec(GROUP,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("group-1", GROUP_KEY)), Optional.of("group-1")), CLOCK);
     }
 
     private static JwtIssueRequest issue(UUID subject, String session) {
@@ -330,7 +360,7 @@ class JwtCredentialCodecTests {
     }
 
     private static JWSHeader primaryHeader(String kid) {
-        return new JWSHeader.Builder(JWSAlgorithm.RS256)
+        return new JWSHeader.Builder(JWSAlgorithm.ES256)
             .type(new JOSEObjectType(IAM.tokenType())).keyID(kid).build();
     }
 
@@ -345,7 +375,7 @@ class JwtCredentialCodecTests {
     private static String manual(JWSHeader header, JWTClaimsSet claims, KeyPair pair) {
         try {
             SignedJWT signed = new SignedJWT(header, claims);
-            signed.sign(new RSASSASigner((RSAPrivateKey) pair.getPrivate()));
+            signed.sign(new ECDSASigner((ECPrivateKey) pair.getPrivate()));
             return signed.serialize();
         } catch (com.nimbusds.jose.JOSEException exception) {
             throw new AssertionError(exception);
@@ -363,16 +393,16 @@ class JwtCredentialCodecTests {
         assertEquals(null, rejected.getCause());
     }
 
-    private static java.security.interfaces.RSAPublicKey rsaPublic(KeyPair pair) {
-        return (java.security.interfaces.RSAPublicKey) pair.getPublic();
+    private static java.security.interfaces.ECPublicKey ecPublic(KeyPair pair) {
+        return (java.security.interfaces.ECPublicKey) pair.getPublic();
     }
 
-    private static KeyPair rsa(int seed) {
+    private static KeyPair ec(int seed) {
         try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
             SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
             random.setSeed(new byte[] {(byte) seed, 0x45, 0x67, 0x12});
-            generator.initialize(2048, random);
+            generator.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"), random);
             return generator.generateKeyPair();
         } catch (java.security.GeneralSecurityException exception) {
             throw new AssertionError(exception);

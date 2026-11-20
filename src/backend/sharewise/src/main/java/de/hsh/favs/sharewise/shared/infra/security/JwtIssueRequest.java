@@ -45,7 +45,7 @@ public record JwtIssueRequest(
         assertions.forEach((type, value) -> {
             requireText(type, "assertion type");
             Objects.requireNonNull(value, "assertion value");
-            if (JwtCredentialCodec.RESERVED_CLAIMS.contains(type)) {
+            if (JwtCredentialClaims.RESERVED_CLAIMS.contains(type)) {
                 throw new IllegalArgumentException("Cannot override reserved JWT claim");
             }
         });
