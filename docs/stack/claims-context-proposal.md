@@ -1,6 +1,6 @@
 # Verified claims and semantic security contexts: proposed architecture
 
-**Status:** **Proposed design reference** for P2.1.0 and P2.5, not steady-state implementation documentation. Only the minimal published `IdentityContext` and its test-only operation-scoped fixture exist under P2.0a. Generic claims providers, production JWT processing, a scope-input bridge and Group attestations are not yet implemented.
+**Status:** **Design reference** for P2.1.0 and P2.5, not authoritative steady-state implementation documentation. The generic operation-input bridge and authorization-evidence contracts are implemented under P2.1.0 phases A/B. Production JWT processing, IAM identity wiring and Group attestations remain future work.
 
 **Audience:** Engineers implementing the IAM security foundation, inbound adapters and future domain-attestation consumers. Group Management's initial P2.2 operations need only [the published identity contract](../internal/integration/phase-2-foundation.md#boundaries-and-the-first-usable-application-operation), not the components designed here.
 
@@ -21,27 +21,26 @@ The first two levels support verification of downstream attestations without a s
 ```mermaid
 flowchart TD
     Ingress["HTTP / event / test ingress"] --> Scope["Explicit application operation scope"]
-    Scope --> Providers["Operation-scoped ClaimProviders"]
-    Providers --> Evidence["Immutable ClaimsContext · grouped verified evidence"]
-    Evidence --> Binding["Principal/session binding and domain policies"]
-    Binding --> Semantic["IdentityContext · future GroupAuthorizationContext"]
+    Scope --> Providers["Operation-scoped AuthorizationCredentialProviders"]
+    Providers --> Evidence["Immutable AuthorizationContext · verified credentials"]
+    Evidence --> Semantic["IdentityContext · future GroupAuthorizationContext"]
     Semantic --> Services["Application operations / resource authorization"]
     Owned["Group-owned membership / role state"] --> Semantic
 ```
 
-This depicts a **proposed dependency direction**, not an implemented universal security pipeline. In the existing implementation, the `IdentityContext` interface is published by IAM and is backed only by explicitly imported test wiring; production providers and policies are future work. The two semantic context names demonstrate the `<Concept>Context` convention and **do not require** a common inheritance hierarchy.
+This depicts the intended application dependencies, not an implemented universal security pipeline. Source-specific primary identity/session binding happens **before** a provider publishes a credential to the context. The `IdentityContext` interface is currently backed only by explicitly imported test wiring; production security providers and policies are future work. The two semantic context names demonstrate the `<Concept>Context` convention and **do not require** a common inheritance hierarchy.
 
 ## Evidence model: lean claims, not another authorization engine
 
-A small immutable model inspired by [.NET `System.Security.Claims`](https://learn.microsoft.com/en-us/dotnet/api/system.security.claims?view=net-11.0) is sufficient for the documented IAM token and Group attestation. The central unit is a **claim set from one credential/source**, preserving correlation between facts that belong together. Values may share a claim name across issuers, resource scopes or distinct attestations without becoming interchangeable.
+A small immutable model inspired by [.NET `System.Security.Claims`](https://learn.microsoft.com/en-us/dotnet/api/system.security.claims?view=net-11.0) is sufficient for the documented IAM token and Group attestation. The central unit is an **application-level authorization credential**, representing verified evidence from one source, preserving correlation between facts that belong together. Values may share a claim name across issuers, resource scopes or distinct attestations without becoming interchangeable.
 
 | Proposed concept | Contents and meaning | Consumer boundary |
 | --- | --- | --- |
 | `Claim` | Immutable claim kind/name, value and `ClaimOrigin`; repeated kinds remain possible. | Preserves credential provenance even when passed independently; not a permission decision. |
 | `ClaimOrigin` | Verified issuer and credential profile, intended audiences, and applicable token identity/validity metadata. | Attached to each claim; constructing origin metadata does not by itself establish trust. |
-| `ClaimCollection` | One origin plus its immutable, ordered list of matching-origin claims; facts such as `group_id` and `role` must be evaluated **within this collection**. | Construction rejects claims with different origins; claims from distinct credentials cannot be combined to authorize a request. |
-| `ClaimsContext` | Read-only, operation-local collection/query facade over verified claim collections. Queries return `Claim` with its origin; collection access retains credential grouping. | Advanced evidence/policy API; not a substitute for semantic authorization. |
-| `ClaimProvider` | Zero- or minimal-argument service method producing validated claim sets from constructor-injected dependencies. | Infrastructure SPI, operation-scoped through Spring DI. |
+| `AuthorizationCredential` | Application-level verified credential: one origin plus its immutable, ordered list of matching-origin claims; facts such as `group_id` and `role` must be evaluated **within this credential**. | Construction rejects claims with different origins; verified evidence alone is not a permission grant, and claims from distinct credentials cannot be combined to authorize a request. |
+| `AuthorizationContext` | Read-only, operation-local facade over verified credentials. Queries return `Claim` with its origin; `credentials()` preserves grouping. | Advanced evidence/policy API; not a substitute for semantic authorization. |
+| `AuthorizationCredentialProvider` | No-argument service method producing verified credentials from constructor-injected dependencies. | Infrastructure SPI, operation-scoped through Spring DI. |
 | `<Concept>Context` | Domain-facing semantic service backed by evidence and/or current domain state. | Normal application-service dependency. |
 
 The Phase B Java model uses these public contracts (omitting record validation and full origin fields for brevity):
@@ -49,20 +48,20 @@ The Phase B Java model uses these public contracts (omitting record validation a
 ```java
 public record Claim(String type, String value, ClaimOrigin origin) {}
 
-public record ClaimCollection(ClaimOrigin origin, List<Claim> claims) {}
+public record AuthorizationCredential(ClaimOrigin origin, List<Claim> claims) {}
 
-public interface ClaimProvider {
-    List<ClaimCollection> claims();
+public interface AuthorizationCredentialProvider {
+    List<AuthorizationCredential> credentials();
 }
 
-public interface ClaimsContext {
-    List<ClaimCollection> claimCollections();
+public interface AuthorizationContext {
+    List<AuthorizationCredential> credentials();
     List<Claim> find(String claimType);
     List<Claim> find(String issuer, String profile, String claimType);
 }
 ```
 
-A `ClaimCollection` constructor validates that every claim's origin equals its own origin (record value equality). `ClaimOrigin` includes trusted issuer, verified profile, audiences, and applicable token metadata (`aud`, `iat`, `nbf`, `exp`, optional `jti`). Returning a `Claim` from a query therefore cannot strip its origin. The collection remains essential for correlating claims from the **same** credential, since separate credentials may have equal origin metadata. The generic model intentionally avoids mutable claim properties, delegated identities, serialization infrastructure, a policy/query DSL, and global role unions. Verification, binding and business authorization remain separate concerns.
+An `AuthorizationCredential` constructor validates that every claim's origin equals its own origin (record value equality). `ClaimOrigin` includes trusted issuer, verified profile, audiences, and applicable token metadata (`aud`, `iat`, `nbf`, `exp`, optional `jti`). Returning a `Claim` from a query therefore cannot strip its origin. The credential grouping remains essential for correlating claims from the **same** credential, since separate credentials may have equal origin metadata. The generic model intentionally avoids mutable claim properties, delegated identities, serialization infrastructure, a policy/query DSL, and global role unions. Verification, binding and business authorization remain separate concerns.
 
 Issuer/profile-qualification is useful for inspection, **but does not establish permission**. Two valid Group attestations might both say `role=admin` or `role=member` for different groups. A domain consumer must match the group ID and role from the same correlated collection, after checking its authority/profile and requested operation. Domain-specific policy services own that interpretation.
 
@@ -87,15 +86,15 @@ The table maps the [security design's required or illustrative claims](security.
 
 The physical session ID may also be its `identity.sessions.id` UUIDv7; the identifier is a non-secret session reference, whereas the rotating refresh token is a bearer credential. Claims must retain **primary issuer, subject and session binding** across independent JWT issuance and refresh lifecycles. Downstream consumers always require a valid primary IAM JWT in addition to a matching attestation; an attestation cannot authenticate a user alone or authorize issuing another attestation.
 
-A protected operation must validate issuer, allowed algorithm/key, profile, audience, time bounds, resource scope and the correlation to primary identity **before treating attestation contents as usable permission evidence**. `ClaimsContext` must not automatically decide or merge permissions. The precise boundary between an **internal** collection of independently verified, but not yet cross-correlated, evidence and any **application-visible advanced claims API** is a P2.1.0/P2.5a review item. The existing [security specification](security.md#issuing-and-using-domain-attestations) requires identity/session binding before exposing accepted attestation claims to application consumers. No public convenience API should allow an unbound attestation to be treated as an authorized grant.
+A protected operation must validate issuer, allowed algorithm/key, profile, audience, time bounds, resource scope and the correlation to primary identity **before treating attestation contents as usable permission evidence**. `AuthorizationContext` must not automatically decide or merge permissions. The precise boundary between an **internal** collection of independently verified, but not yet cross-correlated, evidence and any **application-visible advanced claims API** is a P2.1.0/P2.5a review item. The existing [security specification](security.md#issuing-and-using-domain-attestations) requires identity/session binding before exposing accepted attestation claims to application consumers. No public convenience API should allow an unbound attestation to be treated as an authorized grant.
 
 ## Composition and lifetime
 
-Each `ClaimProvider` is intended to be an **operation-scoped Spring bean**, created by ordinary DI rather than held as an application singleton. Its `claims()` method has no general-purpose `CredentialInput` argument. Instead, a provider's constructor expresses exactly which operation-local inputs, verified security framework objects, decoders or other providers it needs. A Group attestation provider may depend on verified primary identity evidence to validate the required session binding. A source provider either returns verified evidence for that operation or raises an explicit validation failure; malformed supplied credentials are not silently treated as absent.
+Each `AuthorizationCredentialProvider` is intended to be an **operation-scoped Spring bean**, created by ordinary DI rather than held as an application singleton. Its `credentials()` method has no general-purpose `CredentialInput` argument. Instead, a provider's constructor expresses exactly which operation-local inputs, verified security framework objects, decoders or other providers it needs. A Group attestation provider may depend on verified primary identity evidence to validate the required session binding. A source provider either returns verified evidence for that operation or raises an explicit validation failure; malformed supplied credentials are not silently treated as absent.
 
-The operation-scoped context receives a DI-populated collection of providers, invokes each once to take an immutable evidence snapshot, and exposes read-only lookup methods. There is **no lazy request-time re-verification** on each application query and no hidden authoritative IAM/Group lookup inside `ClaimsContext`. Current-state checks are separate published capabilities with visible availability/freshness semantics.
+The operation-scoped context receives a DI-populated collection of providers, invokes each once to take an immutable evidence snapshot, and exposes read-only lookup methods. There is **no lazy request-time re-verification** on each application query and no hidden authoritative IAM/Group lookup inside `AuthorizationContext`. Current-state checks are separate published capabilities with visible availability/freshness semantics.
 
-The [implemented operation DI scope](../architecture/dependency-injection.md) is independent of HTTP requests and of PostgreSQL transaction segments. Middleware may validate the inbound bearer credential, but application services cannot depend on servlet requests, `SecurityContextHolder`, or a particular token transport. P2.1.0 must specify how **trusted, externally established** ingress information enters scope construction and becomes injectable before provider resolution. The current `OperationDispatcher` has no operation-input registration overload; extending it (or using a tightly scoped bridge) is an **implementation decision**, not a Phase 2.0 prerequisite. Avoid a second container or a mutable global current principal.
+The [implemented operation DI scope](../architecture/dependency-injection.md) is independent of HTTP requests and of PostgreSQL transaction segments. Middleware may validate the inbound bearer credential, but application services cannot depend on servlet requests, `SecurityContextHolder`, or a particular token transport. P2.1.0 must specify how **trusted, externally established** ingress information enters scope construction and becomes injectable before provider resolution. The `OperationDispatcher` supports explicitly registered typed operation inputs and ordered initializers for scoped configurations. Ingress-specific security configuration and verification are implemented in later P2.1.0 phases. Avoid a second container or a mutable global current principal.
 
 Background jobs and event consumers begin their own operations, without inheriting the identity from the HTTP operation that originally published an event. An event's initiating user ID is historical event data, not new verified caller authentication. Tests must prove isolation between parallel operations, stable snapshots within an operation, no scope leakage and fail-closed behavior when a trusted provider is missing.
 
@@ -108,8 +107,8 @@ A later `GroupAuthorizationContext` is a **candidate Group-owned semantic contra
 ```mermaid
 flowchart LR
     Client["Business service"] --> Semantic["Domain-specific Context"]
-    Semantic --> Policy["Authority / binding / scope policy"]
-    Policy --> Claims["Advanced ClaimsContext"]
+    Semantic --> Policy["Domain resource/operation policy"]
+    Policy --> Claims["Advanced AuthorizationContext"]
     Claims --> SourceA["IAM claim set"]
     Claims --> SourceB["Group attestation A"]
     Claims --> SourceC["Group attestation B"]
@@ -132,4 +131,4 @@ The contract-first approach keeps Phase 2 teams independent:
 
 The security foundation's acceptance tests must cover verified issuers/types/audiences, expired credentials, multiple claim sets with overlapping names, mismatched primary subject/issuer/session, cross-group role confusion, missing primary identity, independent operation scopes, and invalid-provider failure propagation. PostgreSQL and HTTP/browser tests subsequently establish the real session/refresh and transport guarantees; claims-only unit tests cannot prove those.
 
-The **open design gate** is the exposure boundary for the advanced claims facade: claim providers verify individual sources, while the security architecture requires cross-token binding before subordinate claims reach ordinary application consumers. P2.1.0/P2.5a must make that distinction enforceable through DI visibility or validated admission, with negative tests, rather than leaving it as an instruction to future callers. This document proposes the structure; it does not authorize an implementation that weakens the existing trust model.
+The **security design constraint** on the advanced authorization facade is the exposure boundary: credential providers verify individual sources, including required primary identity/session binding, before subordinate claims reach ordinary application consumers. P2.1.0 establishes the provider boundary; P2.5a must prove subordinate identity/session binding with negative tests before Group credentials are published. This document proposes the structure; it does not authorize an implementation that weakens the existing trust model.

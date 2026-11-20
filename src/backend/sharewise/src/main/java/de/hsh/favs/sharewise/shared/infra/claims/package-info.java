@@ -1,9 +1,9 @@
 /**
- * Source-agnostic, read-only claim evidence contracts.
+ * Source-agnostic, read-only authorization evidence contracts.
  *
  * <p>The {@code shared::claims} named interface exposes verified evidence to
- * domain-owned semantic contexts. Evidence provenance is not itself proof of
- * authorization. Spring implementations and provider composition are private
+ * domain-owned semantic contexts. Verified credentials establish evidence,
+ * not permission to perform any particular business action. Spring implementations and provider composition are private
  * to the {@code internal} package.
  */
 @NamedInterface("claims")

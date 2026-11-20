@@ -8,10 +8,10 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The immutable, verified metadata associated with one credential's claims.
+ * Immutable provenance metadata associated with one authorization credential.
  *
- * <p>Instantiation alone does not establish trust. Only a trusted {@link ClaimProvider}
- * can publish collections into an operation's {@link ClaimsContext}.
+ * <p>Instantiation alone does not establish trust. Only a trusted {@link AuthorizationCredentialProvider}
+ * can publish verified credentials into an operation's {@link AuthorizationContext}.
  *
  * @param issuer trusted issuer identifier
  * @param profile verified credential profile (such as an IAM access token)

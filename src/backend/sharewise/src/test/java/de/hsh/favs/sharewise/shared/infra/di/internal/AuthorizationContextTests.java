@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider;
 import de.hsh.favs.sharewise.shared.infra.claims.Claim;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimProvider;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimCollection;
 import de.hsh.favs.sharewise.shared.infra.claims.ClaimOrigin;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimsContext;
-import de.hsh.favs.sharewise.shared.infra.claims.internal.ClaimsConfiguration;
+import de.hsh.favs.sharewise.shared.infra.claims.internal.AuthorizationConfiguration;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import java.time.Instant;
@@ -36,31 +36,32 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 import org.springframework.core.annotation.Order;
 
-/** Tests the generic claims layer through Spring's real lexical operation scope. */
-class ClaimsContextTests {
+/** Tests the authorization-evidence layer through Spring's real lexical operation scope. */
+class AuthorizationContextTests {
 
     @Test
     void preservesRepeatedClaimsAndCorrelationsWithinDistinctVerifiedCredentials() {
         try (AnnotationConfigApplicationContext spring = newContext(MultipleIssuers.class)) {
             OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
-            dispatcher.dispatch(ClaimsContext.class, context -> {
-                assertEquals(3, context.claimCollections().size());
+            dispatcher.dispatch(AuthorizationContext.class, context -> {
+                assertEquals(3, context.credentials().size());
+                assertEquals("issuer-a", context.credentials().getFirst().origin().issuer());
                 List<Claim> roles = context.find("role");
                 assertEquals(List.of("admin", "member", "viewer", "admin"),
                     roles.stream().map(Claim::value).toList());
-                assertSame(context.claimCollections().get(0).origin(), roles.get(0).origin());
-                assertSame(context.claimCollections().get(0).origin(), roles.get(1).origin());
-                assertSame(context.claimCollections().get(1).origin(), roles.get(2).origin());
-                assertSame(context.claimCollections().get(2).origin(), roles.get(3).origin());
+                assertSame(context.credentials().get(0).origin(), roles.get(0).origin());
+                assertSame(context.credentials().get(0).origin(), roles.get(1).origin());
+                assertSame(context.credentials().get(1).origin(), roles.get(2).origin());
+                assertSame(context.credentials().get(2).origin(), roles.get(3).origin());
 
                 // Matching a role and resource must remain *within* the same credential.
-                assertEquals("group-a", context.claimCollections().get(0).claims().get(0).value());
-                assertEquals("group-b", context.claimCollections().get(1).claims().get(0).value());
+                assertEquals("group-a", context.credentials().get(0).claims().get(0).value());
+                assertEquals("group-b", context.credentials().get(1).claims().get(0).value());
                 assertEquals(3, context.find("issuer-a", "group-attestation", "role").size());
                 assertEquals(1, context.find("issuer-b", "group-attestation", "role").size());
                 assertTrue(context.find("issuer-b", "access", "role").isEmpty());
                 assertThrows(UnsupportedOperationException.class,
-                    () -> context.claimCollections().add(context.claimCollections().get(0)));
+                    () -> context.credentials().add(context.credentials().get(0)));
                 assertThrows(UnsupportedOperationException.class,
                     () -> context.find("role").clear());
                 return null;
@@ -74,24 +75,24 @@ class ClaimsContextTests {
         ClaimOrigin origin = new ClaimOrigin("issuer", "access", audiences, Optional.of("user"),
             Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Instant.parse("2028-01-01T00:00:00Z")));
         List<Claim> claims = new ArrayList<>(List.of(new Claim("role", "admin", origin)));
-        ClaimCollection collection = new ClaimCollection(origin, claims);
+        AuthorizationCredential credential = new AuthorizationCredential(origin, claims);
         audiences.clear();
         claims.clear();
         assertEquals(Set.of("api", "worker"), origin.audiences());
-        assertEquals(List.of(new Claim("role", "admin", origin)), collection.claims());
+        assertEquals(List.of(new Claim("role", "admin", origin)), credential.claims());
         assertThrows(UnsupportedOperationException.class, () -> origin.audiences().add("other"));
-        assertThrows(UnsupportedOperationException.class, () -> collection.claims().add(new Claim("role", "viewer", origin)));
+        assertThrows(UnsupportedOperationException.class, () -> credential.claims().add(new Claim("role", "viewer", origin)));
         assertThrows(NullPointerException.class, () -> new Claim("type", null, origin));
         assertThrows(IllegalArgumentException.class, () -> new Claim("  ", "x", origin));
         assertThrows(IllegalArgumentException.class, () -> originWithAudiences(Set.of("  ")));
         assertThrows(IllegalArgumentException.class, () -> originWithIssuer(" "));
         assertThrows(NullPointerException.class, () -> new Claim("type", "value", null));
-        assertThrows(NullPointerException.class, () -> new ClaimCollection(origin, Arrays.asList((Claim) null)));
+        assertThrows(NullPointerException.class, () -> new AuthorizationCredential(origin, Arrays.asList((Claim) null)));
         assertThrows(NullPointerException.class, () -> originWithAudiences(null));
     }
 
     @Test
-    void rejectsClaimsWhoseOriginDiffersFromTheirCollection() {
+    void rejectsClaimsWhoseOriginDiffersFromTheirCredential() {
         ClaimOrigin origin = new ClaimOrigin("iam", "access", Set.of("sharewise"),
             Optional.of("alice"), Optional.of("credential-1"),
             Optional.empty(), Optional.empty(), Optional.empty());
@@ -106,14 +107,14 @@ class ClaimsContextTests {
             Optional.empty(), Optional.empty(), Optional.empty());
 
         Claim matching = new Claim("role", "admin", origin);
-        assertEquals(List.of(matching), new ClaimCollection(identical, List.of(matching)).claims());
-        assertEquals(List.of(), new ClaimCollection(origin, List.of()).claims());
+        assertEquals(List.of(matching), new AuthorizationCredential(identical, List.of(matching)).claims());
+        assertEquals(List.of(), new AuthorizationCredential(origin, List.of()).claims());
         assertThrows(IllegalArgumentException.class,
-            () -> new ClaimCollection(origin, List.of(matching, new Claim("role", "admin", otherCredential))));
+            () -> new AuthorizationCredential(origin, List.of(matching, new Claim("role", "admin", otherCredential))));
         assertThrows(IllegalArgumentException.class,
-            () -> new ClaimCollection(origin, List.of(new Claim("sub", "bob", otherSubject))));
-        assertThrows(NullPointerException.class, () -> new ClaimCollection(null, List.of(matching)));
-        assertThrows(NullPointerException.class, () -> new ClaimCollection(origin, null));
+            () -> new AuthorizationCredential(origin, List.of(new Claim("sub", "bob", otherSubject))));
+        assertThrows(NullPointerException.class, () -> new AuthorizationCredential(null, List.of(matching)));
+        assertThrows(NullPointerException.class, () -> new AuthorizationCredential(origin, null));
     }
 
     @Test
@@ -121,22 +122,22 @@ class ClaimsContextTests {
         try (AnnotationConfigApplicationContext spring = newContext(CountingProvider.class)) {
             OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
             Probe probe = spring.getBean(Probe.class);
-            ClaimsContext first = dispatcher.dispatch(ClaimsContext.class, context -> {
-                assertSame(context, spring.getBean(ClaimsContext.class));
+            AuthorizationContext first = dispatcher.dispatch(AuthorizationContext.class, context -> {
+                assertSame(context, spring.getBean(AuthorizationContext.class));
                 assertEquals(List.of("1"), context.find("sequence").stream()
                     .map(Claim::value).toList());
-                assertEquals(1, probe.claimsCalls.get());
+                assertEquals(1, probe.credentialsCalls.get());
                 assertEquals(1, context.find("sequence").size());
-                assertEquals(1, probe.claimsCalls.get());
+                assertEquals(1, probe.credentialsCalls.get());
                 return context;
             });
-            ClaimsContext second = dispatcher.dispatch(ClaimsContext.class, context -> {
+            AuthorizationContext second = dispatcher.dispatch(AuthorizationContext.class, context -> {
                 assertEquals("2", context.find("sequence").getFirst().value());
                 return context;
             });
             assertNotSame(first, second);
             assertEquals("1", first.find("sequence").getFirst().value());
-            assertEquals(2, probe.claimsCalls.get());
+            assertEquals(2, probe.credentialsCalls.get());
             assertEquals(2, probe.instances.get());
         }
     }
@@ -145,8 +146,8 @@ class ClaimsContextTests {
     void optionalAbsenceContributesNothingAndDoesNotImplyAuthentication() {
         try (AnnotationConfigApplicationContext spring = newContext(OptionalProvider.class)) {
             OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
-            dispatcher.dispatch(ClaimsContext.class, claims -> {
-                assertTrue(claims.claimCollections().isEmpty());
+            dispatcher.dispatch(AuthorizationContext.class, claims -> {
+                assertTrue(claims.credentials().isEmpty());
                 assertTrue(claims.find("sub").isEmpty());
                 assertThrows(IllegalArgumentException.class, () -> claims.find(" "));
                 assertThrows(IllegalArgumentException.class, () -> claims.find("", "access", "sub"));
@@ -158,9 +159,9 @@ class ClaimsContextTests {
     @Test
     void missingOptionalProvidersAlsoProducesEmptySnapshot() {
         try (AnnotationConfigApplicationContext spring = newContext()) {
-            ClaimsContext result = spring.getBean(OperationDispatcher.class)
-                .dispatch(ClaimsContext.class, context -> context);
-            assertTrue(result.claimCollections().isEmpty());
+            AuthorizationContext result = spring.getBean(OperationDispatcher.class)
+                .dispatch(AuthorizationContext.class, context -> context);
+            assertTrue(result.credentials().isEmpty());
         }
     }
 
@@ -170,13 +171,13 @@ class ClaimsContextTests {
             OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
             Probe probe = spring.getBean(Probe.class);
             BeanCreationException failure = assertThrows(BeanCreationException.class,
-                () -> dispatcher.dispatch(ClaimsContext.class, context -> {
+                () -> dispatcher.dispatch(AuthorizationContext.class, context -> {
                     probe.published.incrementAndGet();
                     return null;
                 }));
             assertEquals("invalid signature", failure.getMostSpecificCause().getMessage());
             assertEquals(0, probe.published.get());
-            assertEquals(1, probe.claimsCalls.get());
+            assertEquals(1, probe.credentialsCalls.get());
         }
     }
 
@@ -186,7 +187,7 @@ class ClaimsContextTests {
             try (AnnotationConfigApplicationContext spring = newContext(fixture)) {
                 OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
                 BeanCreationException failure = assertThrows(BeanCreationException.class,
-                    () -> dispatcher.dispatch(ClaimsContext.class, context -> null));
+                    () -> dispatcher.dispatch(AuthorizationContext.class, context -> null));
                 assertTrue(failure.getMostSpecificCause() instanceof NullPointerException);
             }
         }
@@ -198,7 +199,7 @@ class ClaimsContextTests {
             try (AnnotationConfigApplicationContext spring = newContext(fixture)) {
                 OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
                 BeanCreationException failure = assertThrows(BeanCreationException.class,
-                    () -> dispatcher.dispatch(ClaimsContext.class, context -> null));
+                    () -> dispatcher.dispatch(AuthorizationContext.class, context -> null));
                 assertTrue(failure.getMostSpecificCause() instanceof IllegalStateException);
                 assertTrue(failure.getMostSpecificCause().getMessage().contains("operation scope"));
             }
@@ -212,16 +213,16 @@ class ClaimsContextTests {
             factory.createScope().close();
             try (de.hsh.favs.sharewise.shared.infra.di.ServiceScope outer = factory.createScope()) {
                 outer.run(provider -> {
-                    ClaimsContext first = provider.getRequiredService(ClaimsContext.class);
+                    AuthorizationContext first = provider.getRequiredService(AuthorizationContext.class);
                     try (de.hsh.favs.sharewise.shared.infra.di.ServiceScope inner = factory.createScope()) {
                         inner.run(innerProvider -> {
-                            ClaimsContext second = innerProvider.getRequiredService(ClaimsContext.class);
+                            AuthorizationContext second = innerProvider.getRequiredService(AuthorizationContext.class);
                             assertNotSame(first, second);
                             assertEquals("2", second.find("sequence").getFirst().value());
                             return null;
                         });
                     }
-                    assertSame(first, provider.getRequiredService(ClaimsContext.class));
+                    assertSame(first, provider.getRequiredService(AuthorizationContext.class));
                     return null;
                 });
             }
@@ -237,7 +238,7 @@ class ClaimsContextTests {
             CountDownLatch release = new CountDownLatch(1);
             List<Future<String>> results = new ArrayList<>();
             for (int index = 0; index < 2; index++) {
-                results.add(executor.submit(() -> dispatcher.dispatch(ClaimsContext.class, claims -> {
+                results.add(executor.submit(() -> dispatcher.dispatch(AuthorizationContext.class, claims -> {
                     String value = claims.find("sequence").getFirst().value();
                     entered.countDown();
                     try {
@@ -260,7 +261,7 @@ class ClaimsContextTests {
                 results.get(1).get(10, TimeUnit.SECONDS)));
             Probe probe = spring.getBean(Probe.class);
             assertEquals(2, probe.instances.get());
-            assertEquals(2, probe.claimsCalls.get());
+            assertEquals(2, probe.credentialsCalls.get());
         }
     }
 
@@ -280,18 +281,18 @@ class ClaimsContextTests {
         return new ClaimData(type, value);
     }
 
-    private static ClaimCollection set(String issuer, String subject, ClaimData... claims) {
+    private static AuthorizationCredential credential(String issuer, String subject, ClaimData... claims) {
         ClaimOrigin origin = new ClaimOrigin(issuer, "group-attestation", Set.of("sharewise"),
             Optional.of(subject), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
         List<Claim> boundClaims = Arrays.stream(claims)
             .map(data -> new Claim(data.type(), data.value(), origin))
             .toList();
-        return new ClaimCollection(origin, boundClaims);
+        return new AuthorizationCredential(origin, boundClaims);
     }
 
     private static AnnotationConfigApplicationContext newContext(Class<?>... fixtures) {
         AnnotationConfigApplicationContext spring = new AnnotationConfigApplicationContext();
-        spring.register(OperationScopeConfiguration.class, ClaimsConfiguration.class);
+        spring.register(OperationScopeConfiguration.class, AuthorizationConfiguration.class);
         if (fixtures.length != 0) {
             spring.register(fixtures);
         }
@@ -301,20 +302,20 @@ class ClaimsContextTests {
 
     static final class Probe {
         final AtomicInteger instances = new AtomicInteger();
-        final AtomicInteger claimsCalls = new AtomicInteger();
+        final AtomicInteger credentialsCalls = new AtomicInteger();
         final AtomicInteger published = new AtomicInteger();
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class MultipleIssuers {
-        @Bean @Order(-1) @Scope("operation") ClaimProvider alpha() {
-            return () -> List.of(set("issuer-a", "alice", claim("group_id", "group-a"),
+        @Bean @Order(-1) @Scope("operation") AuthorizationCredentialProvider alpha() {
+            return () -> List.of(credential("issuer-a", "alice", claim("group_id", "group-a"),
                     claim("role", "admin"), claim("role", "member")),
-                set("issuer-b", "alice", claim("group_id", "group-b"), claim("role", "viewer")));
+                credential("issuer-b", "alice", claim("group_id", "group-b"), claim("role", "viewer")));
         }
 
-        @Bean @Order(1) @Scope("operation") ClaimProvider beta() {
-            return () -> List.of(set("issuer-a", "bob", claim("group_id", "group-c"),
+        @Bean @Order(1) @Scope("operation") AuthorizationCredentialProvider beta() {
+            return () -> List.of(credential("issuer-a", "bob", claim("group_id", "group-c"),
                 claim("role", "admin")));
         }
     }
@@ -323,51 +324,51 @@ class ClaimsContextTests {
     static class CountingProvider {
         @Bean Probe probe() { return new Probe(); }
 
-        @Bean @Scope("operation") ClaimProvider sequence(Probe probe) {
+        @Bean @Scope("operation") AuthorizationCredentialProvider sequence(Probe probe) {
             int sequence = probe.instances.incrementAndGet();
             return () -> {
-                probe.claimsCalls.incrementAndGet();
-                return List.of(set("issuer", "person", claim("sequence", Integer.toString(sequence))));
+                probe.credentialsCalls.incrementAndGet();
+                return List.of(credential("issuer", "person", claim("sequence", Integer.toString(sequence))));
             };
         }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class OptionalProvider {
-        @Bean @Scope("operation") ClaimProvider optional() { return List::of; }
+        @Bean @Scope("operation") AuthorizationCredentialProvider optional() { return List::of; }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class PartiallyFailingProvider {
         @Bean Probe probe() { return new Probe(); }
-        @Bean @Order(-1) @Scope("operation") ClaimProvider first(Probe probe) {
+        @Bean @Order(-1) @Scope("operation") AuthorizationCredentialProvider first(Probe probe) {
             return () -> {
-                probe.claimsCalls.incrementAndGet();
-                return List.of(set("issuer", "user", claim("sub", "user")));
+                probe.credentialsCalls.incrementAndGet();
+                return List.of(credential("issuer", "user", claim("sub", "user")));
             };
         }
-        @Bean @Order(1) @Scope("operation") ClaimProvider invalid() {
+        @Bean @Order(1) @Scope("operation") AuthorizationCredentialProvider invalid() {
             return () -> { throw new IllegalArgumentException("invalid signature"); };
         }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class NullListProvider {
-        @Bean @Scope("operation") ClaimProvider invalid() { return () -> null; }
+        @Bean @Scope("operation") AuthorizationCredentialProvider invalid() { return () -> null; }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class NullElementProvider {
-        @Bean @Scope("operation") ClaimProvider invalid() { return () -> Arrays.asList((ClaimCollection) null); }
+        @Bean @Scope("operation") AuthorizationCredentialProvider invalid() { return () -> Arrays.asList((AuthorizationCredential) null); }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class SingletonProvider {
-        @Bean ClaimProvider invalid() { return List::of; }
+        @Bean AuthorizationCredentialProvider invalid() { return List::of; }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class PrototypeProvider {
-        @Bean @Scope("prototype") ClaimProvider invalid() { return List::of; }
+        @Bean @Scope("prototype") AuthorizationCredentialProvider invalid() { return List::of; }
     }
 }

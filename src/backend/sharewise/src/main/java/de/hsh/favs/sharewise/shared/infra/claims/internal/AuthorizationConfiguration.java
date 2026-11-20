@@ -1,8 +1,8 @@
 package de.hsh.favs.sharewise.shared.infra.claims.internal;
 
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimProvider;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimCollection;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimsContext;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -15,31 +15,31 @@ import org.springframework.context.annotation.Scope;
 
 /** Composes only operation-scoped source providers into a single immutable snapshot. */
 @Configuration(proxyBeanMethods = false)
-public class ClaimsConfiguration {
+public class AuthorizationConfiguration {
 
     @Bean
     @Scope("operation")
-    ClaimsContext claimsContext(
+    AuthorizationContext authorizationContext(
         ConfigurableListableBeanFactory beanFactory,
-        ObjectProvider<ClaimProvider> providers
+        ObjectProvider<AuthorizationCredentialProvider> providers
     ) {
         // Reject incorrectly scoped sources before resolving any of their instances.
-        for (String name : beanFactory.getBeanNamesForType(ClaimProvider.class, true, false)) {
+        for (String name : beanFactory.getBeanNamesForType(AuthorizationCredentialProvider.class, true, false)) {
             BeanDefinition definition = beanFactory.getMergedBeanDefinition(name);
             if (!"operation".equals(definition.getScope())) {
-                throw new IllegalStateException("Claim provider must have operation scope: " + name);
+                throw new IllegalStateException("Authorization credential provider must have operation scope: " + name);
             }
         }
 
-        List<ClaimCollection> verified = new ArrayList<>();
+        List<AuthorizationCredential> verified = new ArrayList<>();
         providers.orderedStream().forEach(provider -> {
-            List<ClaimCollection> contributed = Objects.requireNonNull(provider.claims(),
-                "Claim provider returned null claim collections");
-            for (ClaimCollection collection : contributed) {
-                verified.add(Objects.requireNonNull(collection, "Claim provider returned a null claim collection"));
+            List<AuthorizationCredential> contributed = Objects.requireNonNull(provider.credentials(),
+                "Authorization credential provider returned null credentials");
+            for (AuthorizationCredential credential : contributed) {
+                verified.add(Objects.requireNonNull(credential, "Authorization credential provider returned a null credential"));
             }
         });
         // No context is published if any provider resolution, verification or copying fails.
-        return new DefaultClaimsContext(verified);
+        return new DefaultAuthorizationContext(verified);
     }
 }

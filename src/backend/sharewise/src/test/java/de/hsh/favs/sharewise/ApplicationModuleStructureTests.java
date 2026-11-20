@@ -5,11 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider;
 import de.hsh.favs.sharewise.shared.infra.claims.Claim;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimCollection;
 import de.hsh.favs.sharewise.shared.infra.claims.ClaimOrigin;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimProvider;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimsContext;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
 import de.hsh.favs.sharewise.shared.infra.di.OperationScopedConfiguration;
@@ -151,9 +151,9 @@ class ApplicationModuleStructureTests {
         assertEquals(Set.of(
                 Claim.class.getName(),
                 ClaimOrigin.class.getName(),
-                ClaimCollection.class.getName(),
-                ClaimProvider.class.getName(),
-                ClaimsContext.class.getName()), publishedTypesOfSharedInterface("claims"));
+                AuthorizationCredential.class.getName(),
+                AuthorizationCredentialProvider.class.getName(),
+                AuthorizationContext.class.getName()), publishedTypesOfSharedInterface("claims"));
     }
 
     @Test
