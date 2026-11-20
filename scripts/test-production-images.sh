@@ -33,6 +33,10 @@ done
     test -s /app/app.jar
     command -v java
     command -v curl
+    . /etc/os-release
+    test "$ID" = debian
+    test "$VERSION_ID" = 13
+    dpkg --compare-versions "$(dpkg-query -W -f=\${Version} openjdk-25-jre-headless)" ge 25.0.5.1+2-1~deb13u1
     ! command -v javac
     ! command -v mvn
     ! test -d /build
