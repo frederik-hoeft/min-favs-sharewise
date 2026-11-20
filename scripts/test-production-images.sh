@@ -53,7 +53,7 @@ done
     ! test -e /app/server.js
     ! test -d /app/.next
     test -s /etc/nginx/templates/default.conf.template
-    test -x /docker-entrypoint.d/15-configure-sharewise.sh
+    test -x /docker-entrypoint.d/15-configure-sharewise.envsh
 '
 
 # Probe from within the container: Docker-outside-of-Docker and remote Docker
@@ -68,8 +68,19 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
 container_id="$("$container_cli" create -e SHAREWISE_PUBLIC_HOST=localhost "$frontend_image")"
 "$container_cli" cp "$tls_fixture/privkey.pem" "$container_id:/etc/nginx/tls/privkey.pem"
 "$container_cli" cp "$tls_fixture/fullchain.pem" "$container_id:/etc/nginx/tls/fullchain.pem"
-"$container_cli" start "$container_id" >/dev/null
-"$container_cli" exec "$container_id" nginx -t
+report_frontend_failure() {
+    echo 'Frontend failed to start or validate; container state and logs:' >&2
+    "$container_cli" inspect --format '{{.State.Status}} (exit code {{.State.ExitCode}}, OOM killed: {{.State.OOMKilled}})' "$container_id" >&2 || true
+    "$container_cli" logs "$container_id" >&2 || true
+}
+if ! "$container_cli" start "$container_id" >/dev/null; then
+    report_frontend_failure
+    exit 1
+fi
+if ! "$container_cli" exec "$container_id" nginx -t; then
+    report_frontend_failure
+    exit 1
+fi
 ready=0
 for attempt in $(seq 1 20); do
     if "$container_cli" exec "$container_id" wget -q -O /dev/null http://127.0.0.1:8081/health; then
@@ -79,9 +90,8 @@ for attempt in $(seq 1 20); do
     sleep 1
 done
 if [[ "$ready" -ne 1 ]]; then
-    echo 'Frontend did not become ready; container state and logs:' >&2
-    "$container_cli" inspect --format '{{.State.Status}} (exit code {{.State.ExitCode}})' "$container_id" >&2 || true
-    "$container_cli" logs "$container_id" >&2 || true
+    echo 'Frontend did not become ready' >&2
+    report_frontend_failure
     exit 1
 fi
 for path in / /app /app/dummy1 /app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview; do

@@ -249,7 +249,44 @@ class ProductionNginxTests(unittest.TestCase):
 class NginxStartupConfigurationTests(unittest.TestCase):
     """Fail-closed startup inputs must not enter the template-rendering step."""
 
-    SCRIPT = ROOT / "src/frontend/nginx/15-configure-sharewise.sh"
+    SCRIPT = ROOT / "src/frontend/nginx/15-configure-sharewise.envsh"
+
+    @unittest.skipUnless(shutil.which("envsubst"), "envsubst not available")
+    def test_sourced_initializer_exports_defaults_to_template_renderer(self):
+        # The official Nginx entrypoint sources executable .envsh hooks but
+        # launches .sh hooks in separate processes. The latter silently loses
+        # newly exported values before the subsequent envsubst hook runs.
+        self.assertEqual(self.SCRIPT.suffix, ".envsh")
+        self.assertTrue(os.access(self.SCRIPT, os.X_OK))
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            tls = fixture / "tls"
+            tls.mkdir()
+            for filename in ("fullchain.pem", "privkey.pem"):
+                (tls / filename).write_text("test fixture\n")
+            initializer = fixture / self.SCRIPT.name
+            initializer.write_text(self.SCRIPT.read_text().replace(
+                "/etc/nginx/tls/", f"{tls}/"))
+            command = (
+                '. "$1"\n'
+                "envsubst '${SHAREWISE_PUBLIC_HOST} ${SHAREWISE_HTTPS_PORT} "
+                "${SHAREWISE_TLS_PORT_SUFFIX}' < \"$2\""
+            )
+            for port, suffix in ((None, ""), ("8443", ":8443")):
+                with self.subTest(port=port):
+                    env = {key: value for key, value in os.environ.items()
+                           if key not in ("SHAREWISE_HTTPS_PORT", "SHAREWISE_TLS_PORT_SUFFIX")}
+                    env["SHAREWISE_PUBLIC_HOST"] = "LOCALHOST"
+                    if port is not None:
+                        env["SHAREWISE_HTTPS_PORT"] = port
+                    rendered = subprocess.run(
+                        ["sh", "-ec", command, "sh", str(initializer), str(NGINX_TEMPLATE)],
+                        text=True, capture_output=True, env=env, check=True,
+                    ).stdout
+                    self.assertNotIn("${SHAREWISE_", rendered)
+                    self.assertIn(f"return 308 https://localhost{suffix}$request_uri;", rendered)
+                    self.assertIn(f"proxy_set_header X-Forwarded-Port {port or '443'};", rendered)
+                    self.assertIn(f"proxy_set_header X-Forwarded-Host localhost{suffix};", rendered)
 
     def test_invalid_host_and_ports_are_rejected(self):
         for host, port in [("bad;host", "443"), ("foo..example", "443"),

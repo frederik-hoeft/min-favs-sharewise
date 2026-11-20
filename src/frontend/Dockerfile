@@ -18,8 +18,10 @@ LABEL org.opencontainers.image.title="ShareWise frontend" \
 # such as $request_uri and $remote_addr remain evaluated per request.
 ENV NGINX_ENVSUBST_FILTER="^SHAREWISE_"
 COPY nginx/production.conf.template /etc/nginx/templates/default.conf.template
-COPY nginx/15-configure-sharewise.sh /docker-entrypoint.d/15-configure-sharewise.sh
-RUN chmod +x /docker-entrypoint.d/15-configure-sharewise.sh \
+# The official entrypoint sources executable .envsh hooks, preserving exported
+# defaults for its later Nginx template substitution hook.
+COPY nginx/15-configure-sharewise.envsh /docker-entrypoint.d/15-configure-sharewise.envsh
+RUN chmod +x /docker-entrypoint.d/15-configure-sharewise.envsh \
     && mkdir -p /etc/nginx/tls
 COPY --from=builder /app/.next-export /usr/share/nginx/html
 EXPOSE 80 443

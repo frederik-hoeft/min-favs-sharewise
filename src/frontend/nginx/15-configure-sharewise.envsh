@@ -1,5 +1,6 @@
 #!/bin/sh
-# Executed by the official Nginx entrypoint before its envsubst template step.
+# Sourced by the official Nginx entrypoint before its envsubst template step.
+# The .envsh extension is required: the variables must reach later entrypoint hooks.
 set -eu
 
 fail() {

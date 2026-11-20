@@ -17,7 +17,13 @@ MOCK_DOCKER = r"""#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
 case "$1" in
-    version|build|rm|cp|start) ;;
+    version|build|rm|cp) ;;
+    start)
+        if [[ "$FAKE_SCENARIO" == start-error ]]; then
+            printf 'unable to start frontend container\n' >&2
+            exit 125
+        fi
+        ;;
     image)
         if [[ "$*" == *'org.opencontainers.image.version'* ]]; then
             printf '%s\n' p26ab-b-smoke
@@ -36,6 +42,10 @@ case "$1" in
         fi
         ;;
     exec)
+        if [[ "$FAKE_SCENARIO" == stopped-on-start && "$*" == *'nginx -t'* ]]; then
+            printf 'cannot exec in a stopped state\n' >&2
+            exit 128
+        fi
         if [[ "$*" == *'/no-such-route'* ]]; then
             if [[ "$FAKE_SCENARIO" == bad-404 ]]; then
                 printf '  HTTP/1.1 503 Service Unavailable\n' >&2
@@ -110,6 +120,24 @@ class ProductionImageSmokeTests(unittest.TestCase):
         self.assertIn("Frontend did not become ready", result.stderr)
         self.assertIn("nginx startup failed: fixture diagnostic", result.stderr)
         self.assertIn("inspect --format", calls)
+        self.assertIn("logs smoke-frontend", calls)
+        self.assertIn("rm -f smoke-frontend", calls)
+
+    def test_stopped_container_reports_startup_logs(self) -> None:
+        result, calls = self.run_smoke("stopped-on-start")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot exec in a stopped state", result.stderr)
+        self.assertIn("Frontend failed to start or validate", result.stderr)
+        self.assertIn("nginx startup failed: fixture diagnostic", result.stderr)
+        self.assertIn("inspect --format", calls)
+        self.assertIn("logs smoke-frontend", calls)
+        self.assertIn("rm -f smoke-frontend", calls)
+
+    def test_docker_start_failure_reports_container_logs(self) -> None:
+        result, calls = self.run_smoke("start-error")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unable to start frontend container", result.stderr)
+        self.assertIn("nginx startup failed: fixture diagnostic", result.stderr)
         self.assertIn("logs smoke-frontend", calls)
         self.assertIn("rm -f smoke-frontend", calls)
 
