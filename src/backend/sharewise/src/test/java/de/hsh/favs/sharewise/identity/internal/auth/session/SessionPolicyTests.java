@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.session;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

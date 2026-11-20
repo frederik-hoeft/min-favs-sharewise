@@ -1,5 +1,8 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
+import de.hsh.favs.sharewise.identity.internal.auth.account.EmailAddress;
+import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
+
 import java.util.Objects;
 
 /** Immutable validated login input; length limits apply even to legacy credentials. */

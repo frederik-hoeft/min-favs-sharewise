@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.credential;
 
 import java.nio.charset.StandardCharsets;
 

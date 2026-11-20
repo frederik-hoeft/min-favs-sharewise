@@ -5,6 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.identity.internal.auth.account.AccountSnapshot;
+import de.hsh.favs.sharewise.identity.internal.auth.account.EmailAddress;
+import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
+import de.hsh.favs.sharewise.identity.internal.auth.session.LoginSession;
+import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
+
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.token;
 
 import java.time.Instant;
 import java.util.UUID;

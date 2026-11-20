@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.account;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -50,6 +50,44 @@ class EmailAddressTests {
             assertThrows(IllegalArgumentException.class, () -> EmailAddress.parse(value), value);
         }
         assertThrows(IllegalArgumentException.class, () -> EmailAddress.parse(null));
+    }
+
+    @Test
+    void acceptsQuotedLocalPartsAndInternationalMailboxes() {
+        String[] valid = {
+            "\"first.last\"@example.com",
+            "\"two@places\"@example.com",
+            "\"escaped\\\"quote\"@example.com",
+            "françois@bücher.example",
+            "用户@例子.公司",
+            "a!#$%&'*+-/=?^_`{|}~@example.com"
+        };
+        for (String value : valid) {
+            assertEquals(value, EmailAddress.parse(value).display(), value);
+        }
+        EmailAddress canonical = EmailAddress.parse(" \"Two@Places\"@Example.COM ");
+        assertEquals("\"two@places\"@example.com", canonical.normalized());
+    }
+
+    @Test
+    void rejectsMalformedQuotedAddressesInvalidUnicodeAndDomainLengths() {
+        String[] invalid = {
+            "\"unterminated@example.com",
+            "\"\"@example.com",
+            "\"embedded space\"@example.com",
+            "name@example.com.",
+            "name@exa!mple.com",
+            "name@exa\u00A1mple.com",
+            "name@exa\u200Bmple.com",
+            "alice\u200B@example.com",
+            "alice\uD800@example.com",
+            "name@example.\uD800",
+            "name@" + "a".repeat(64) + ".example",
+            "name@" + "a".repeat(64) + ".com"
+        };
+        for (String value : invalid) {
+            assertThrows(IllegalArgumentException.class, () -> EmailAddress.parse(value), value);
+        }
     }
 
     @Test

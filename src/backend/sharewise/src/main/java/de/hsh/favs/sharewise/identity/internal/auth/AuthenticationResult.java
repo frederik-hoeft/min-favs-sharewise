@@ -1,5 +1,8 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
+import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
+import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+
 import java.util.Objects;
 import java.util.UUID;
 

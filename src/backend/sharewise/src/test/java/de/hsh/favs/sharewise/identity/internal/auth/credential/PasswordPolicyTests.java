@@ -1,9 +1,12 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.credential;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
+import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 
 import org.junit.jupiter.api.Test;
 

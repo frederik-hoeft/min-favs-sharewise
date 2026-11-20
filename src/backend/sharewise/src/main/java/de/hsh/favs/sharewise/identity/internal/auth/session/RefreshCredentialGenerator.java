@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.session;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.credential;
 
 /** IAM-private adapter boundary; production uses Spring Security PasswordEncoder in Phase E. */
 public interface CredentialEncoder {

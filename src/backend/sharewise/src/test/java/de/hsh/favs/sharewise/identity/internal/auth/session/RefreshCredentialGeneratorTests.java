@@ -1,10 +1,13 @@
-package de.hsh.favs.sharewise.identity.internal.auth;
+package de.hsh.favs.sharewise.identity.internal.auth.session;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import de.hsh.favs.sharewise.identity.internal.auth.AuthenticationResult;
+import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
 
 import java.security.MessageDigest;
 import java.security.SecureRandom;
