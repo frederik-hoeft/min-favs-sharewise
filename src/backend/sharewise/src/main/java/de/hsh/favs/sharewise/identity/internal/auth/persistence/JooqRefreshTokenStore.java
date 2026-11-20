@@ -1,6 +1,7 @@
 package de.hsh.favs.sharewise.identity.internal.auth.persistence;
 
-import static de.hsh.favs.sharewise.identity.internal.auth.persistence.AuthTables.*;
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.DatabaseTime.dbTime;
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.RefreshTokens.REFRESH_TOKENS;
 
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenRecord;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
@@ -33,7 +34,9 @@ final class JooqRefreshTokenStore implements RefreshTokenStore {
         Objects.requireNonNull(record, "record");
         DSLContext db = database.dsl();
         int inserted = db.insertInto(REFRESH_TOKENS)
-                .columns(TOKEN_ID, TOKEN_SESSION_ID, VERIFIER_HASH, ISSUED_AT, CONSUMED_AT)
+                .columns(REFRESH_TOKENS.ID, REFRESH_TOKENS.SESSION_ID,
+                        REFRESH_TOKENS.VERIFIER_HASH, REFRESH_TOKENS.ISSUED_AT,
+                        REFRESH_TOKENS.CONSUMED_AT)
                 .values(record.id(), record.sessionId(), record.verifierHash(),
                         dbTime(record.issuedAt()), dbTime(record.consumedAt()))
                 .execute();

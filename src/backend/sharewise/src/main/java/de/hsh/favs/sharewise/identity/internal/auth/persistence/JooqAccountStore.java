@@ -1,17 +1,19 @@
 package de.hsh.favs.sharewise.identity.internal.auth.persistence;
 
-import static de.hsh.favs.sharewise.identity.internal.auth.persistence.AuthTables.*;
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.DatabaseTime.dbTime;
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.DatabaseTime.instant;
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Users.USERS;
 
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountSnapshot;
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountStore;
 import de.hsh.favs.sharewise.identity.internal.auth.account.EmailAddress;
 import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
+import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.records.UsersRecord;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
-import org.jooq.Record;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Repository;
 
@@ -36,11 +38,10 @@ final class JooqAccountStore implements AccountStore {
         // The unique constraint is the arbiter, including under concurrent registrations.
         // ON CONFLICT avoids aborting a transaction for an expected duplicate email.
         return db.insertInto(USERS)
-                .columns(EMAIL, NORMALIZED_EMAIL, PASSWORD_HASH)
+                .columns(USERS.EMAIL, USERS.NORMALIZED_EMAIL, USERS.PASSWORD_HASH)
                 .values(email.display(), email.normalized(), encodedPassword)
-                .onConflict(NORMALIZED_EMAIL).doNothing()
-                .returning(USER_ID, EMAIL, NORMALIZED_EMAIL, PASSWORD_HASH, DISABLED_AT,
-                        FAILED_ATTEMPTS, LOCKED_UNTIL, ACCOUNT_CREATED_AT)
+                .onConflict(USERS.NORMALIZED_EMAIL).doNothing()
+                .returning()
                 .fetchOptional(JooqAccountStore::account);
     }
 
@@ -48,10 +49,8 @@ final class JooqAccountStore implements AccountStore {
     public Optional<AccountSnapshot> findByEmailForUpdate(EmailAddress email) {
         Objects.requireNonNull(email, "email");
         DSLContext db = database.dsl();
-        return db.select(USER_ID, EMAIL, NORMALIZED_EMAIL, PASSWORD_HASH, DISABLED_AT,
-                        FAILED_ATTEMPTS, LOCKED_UNTIL, ACCOUNT_CREATED_AT)
-                .from(USERS)
-                .where(NORMALIZED_EMAIL.eq(email.normalized()))
+        return db.selectFrom(USERS)
+                .where(USERS.NORMALIZED_EMAIL.eq(email.normalized()))
                 .forUpdate()
                 .fetchOptional(JooqAccountStore::account);
     }
@@ -64,21 +63,21 @@ final class JooqAccountStore implements AccountStore {
         Objects.requireNonNull(next, "next");
         DSLContext db = database.dsl();
         return db.update(USERS)
-                .set(FAILED_ATTEMPTS, next.failedAttempts())
-                .set(LOCKED_UNTIL, dbTime(next.lockedUntil()))
-                .where(USER_ID.eq(userId))
-                .and(FAILED_ATTEMPTS.eq(previous.failedAttempts()))
-                .and(LOCKED_UNTIL.isNotDistinctFrom(dbTime(previous.lockedUntil())))
+                .set(USERS.FAILED_LOGIN_ATTEMPTS, next.failedAttempts())
+                .set(USERS.LOCKED_UNTIL, dbTime(next.lockedUntil()))
+                .where(USERS.ID.eq(userId))
+                .and(USERS.FAILED_LOGIN_ATTEMPTS.eq(previous.failedAttempts()))
+                .and(USERS.LOCKED_UNTIL.isNotDistinctFrom(dbTime(previous.lockedUntil())))
                 .execute() == 1;
     }
 
-    private static AccountSnapshot account(Record row) {
-        EmailAddress email = EmailAddress.parse(row.get(EMAIL));
-        if (!email.normalized().equals(row.get(NORMALIZED_EMAIL))) {
+    private static AccountSnapshot account(UsersRecord row) {
+        EmailAddress email = EmailAddress.parse(row.getEmail());
+        if (!email.normalized().equals(row.getNormalizedEmail())) {
             throw new IllegalStateException("Stored IAM email canonicalization is inconsistent");
         }
-        return new AccountSnapshot(row.get(USER_ID), email, row.get(PASSWORD_HASH),
-                instant(row.get(ACCOUNT_CREATED_AT)), instant(row.get(DISABLED_AT)),
-                new LoginLockoutPolicy.State(row.get(FAILED_ATTEMPTS), instant(row.get(LOCKED_UNTIL))));
+        return new AccountSnapshot(row.getId(), email, row.getPasswordHash(),
+                instant(row.getCreatedAt()), instant(row.getDisabledAt()),
+                new LoginLockoutPolicy.State(row.getFailedLoginAttempts(), instant(row.getLockedUntil())));
     }
 }
