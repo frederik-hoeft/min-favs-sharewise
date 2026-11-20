@@ -43,8 +43,7 @@ class OperationInputInitializationTests {
             AtomicReference<OperationInputRegistry> escapedRegistry = new AtomicReference<>();
             InputConfiguration first = dispatcher.dispatch(inputs -> {
                 escapedRegistry.set(inputs);
-                inputs.add(CharSequence.class, "first");
-                inputs.add(Integer.class, 42);
+                assertSame(inputs, inputs.add(CharSequence.class, "first").add(Integer.class, 42));
             }, Entry.class, service -> {
                 assertSame(service.left.configuration(), service.right.configuration());
                 assertEquals("first", service.left.configuration().name());

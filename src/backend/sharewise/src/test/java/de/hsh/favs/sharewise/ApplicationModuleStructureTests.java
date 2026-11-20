@@ -4,6 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.shared.infra.claims.Claim;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimMatch;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimProvider;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimSet;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimSource;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimsContext;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
@@ -34,6 +40,7 @@ import org.springframework.modulith.core.NamedInterface;
  */
 class ApplicationModuleStructureTests {
 
+    private static final String CLAIMS_INTERNAL_PACKAGE = "de.hsh.favs.sharewise.shared.infra.claims.internal";
     private static final String DI_INTERNAL_PACKAGE = "de.hsh.favs.sharewise.shared.infra.di.internal";
     private static final String WEB_INTERNAL_PACKAGE = "de.hsh.favs.sharewise.shared.infra.web.internal";
     private static final String HEALTH_INTERNAL_PACKAGE = "de.hsh.favs.sharewise.shared.infra.health.internal";
@@ -138,6 +145,23 @@ class ApplicationModuleStructureTests {
                 FieldErrorDetail.class.getName(),
                 RequestValidationException.class.getName());
         assertEquals(expectedTypes, publishedTypes);
+    }
+
+    @Test
+    void sharedClaimsNamedInterfacePublishesOnlyEvidenceContracts() {
+        assertEquals(Set.of(
+                Claim.class.getName(),
+                ClaimSource.class.getName(),
+                ClaimSet.class.getName(),
+                ClaimMatch.class.getName(),
+                ClaimProvider.class.getName(),
+                ClaimsContext.class.getName()), publishedTypesOfSharedInterface("claims"));
+    }
+
+    @Test
+    void noNamedInterfacePublishesClaimsImplementationTypes() {
+        assertEquals(List.of(), ModulePublications.publishedTypesIn(modules, CLAIMS_INTERNAL_PACKAGE),
+                "claims implementation must not be published");
     }
 
     @Test

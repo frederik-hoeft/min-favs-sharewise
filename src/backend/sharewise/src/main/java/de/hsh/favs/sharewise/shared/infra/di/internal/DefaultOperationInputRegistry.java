@@ -14,7 +14,7 @@ final class DefaultOperationInputRegistry implements OperationInputRegistry {
     private boolean closed;
 
     @Override
-    public <T> void add(Class<T> type, T instance) {
+    public <T> OperationInputRegistry add(Class<T> type, T instance) {
         ensureOwner();
         if (closed) {
             throw new IllegalStateException("Operation input registration is closed");
@@ -28,6 +28,7 @@ final class DefaultOperationInputRegistry implements OperationInputRegistry {
             throw new IllegalArgumentException("Duplicate operation input: " + type.getName());
         }
         inputs.put(type, instance);
+        return this;
     }
 
     void closeRegistration() {
