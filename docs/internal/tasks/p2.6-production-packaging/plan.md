@@ -1,6 +1,6 @@
 # P2.6a/b: Production packaging and registry publishing implementation plan
 
-**Status:** Human-approved implementation sequence (November 20, 2026); Phase A authorized, runner evidence pending. **Contract:** [Approved P2.6a/b specification](specification.md) and [P2.6 backlog](../backlog.md#p26---production-packaging-deployment-and-cicd). **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
+**Status:** Human-approved implementation sequence (November 20, 2026); Phase A runner probes completed, builder-selection review pending. **Contract:** [Approved P2.6a/b specification](specification.md) and [P2.6 backlog](../backlog.md#p26---production-packaging-deployment-and-cicd). **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
 
 ## Baseline, scope and sequencing
 
@@ -53,6 +53,17 @@ To test the maintained Kaniko alternative on the same runner:
 3. Inspect the job log and `kaniko-probe-results/` artifacts for the resolved executor image digest, Docker executor security profile (confirm with the administrator), build result and tarball. Inspect the resulting image's `/probe-run.txt` and `/probe-copy.txt` contents using a trusted local image tool, where available. Record the exact GitLab job URL and any failures. The Kaniko image normally runs as root **inside the unprivileged job container**; this is not rootless execution and does not mean a privileged Docker executor.
 
 Kaniko executes Dockerfile commands in the job container's own security boundary rather than a nested sandbox. Restrict Dockerfile control and registry credentials to trusted refs when later implementing Phase F. A passing fallback probe establishes runner feasibility only; both actual application Dockerfiles still require runner testing in Phase F.
+
+### Kaniko runner result (November 20, 2026)
+
+The fallback probe **passed** on the university shared runner in [job 2691989](https://gitlab.gwdg.de/min-favs/sharewise/-/jobs/2691989), at commit `86c9a94aa5e61f19ce5bfc9a6174a20eb22458e6`. Evidence was supplied as `kaniko-probe-results.zip` containing `runner.txt`, `build.log`, `digest.txt` and `probe.docker.tar`.
+
+- **Environment:** GitLab Runner 19.5.3, Docker executor, Linux/amd64; job UID:GID `0:0`, effective capabilities `00000000a80425fb` (no `CAP_SYS_ADMIN`). The probe rejected a mounted `/var/run/docker.sock` and did not configure DinD or a privileged service. Being root *inside* the container does not prove the Docker executor is privileged; the administrator must still confirm the runner policy.
+- **Builder:** Community-maintained Kaniko v1.28.6, configured via the digest-pinned `ghcr.io/osscontainertools/kaniko:v1.28.6-debug@sha256:7ab44d0131c3051b6dea128067e258c7afb5c4815082a93b9cf6c624f2140bf0`. The ZIP does not contain the full GitLab pull trace, so the actual image-pull digest has **not** been independently checked against that configured pin.
+- **Execution:** The Kaniko build log confirms both `RUN` and `COPY`, and explicitly reports that registry publication was skipped (`--no-push`). Independent inspection of the Docker archive confirmed `/probe-run.txt` contains `container-build-run-ok\n` and `/probe-copy.txt` contains `ShareWise P2.6ab rootless BuildKit runner probe\n`.
+- **Artifact integrity:** The produced Docker tarball's SHA-256 is `b42d885cef7953d9ae5bf54ad2764cac29d020288cefabff633ae52b434f12ff`, matching `runner.txt`. Kaniko wrote the fixture image digest `sha256:c7e5b88a6a2edb66d1a2cabcfb1dab2a06488ed95c78b9645127d21d7d77de5b`; this is **not** the executor image's digest. A Docker archive does not by itself independently validate that registry-style manifest digest.
+
+**Gate A proposal:** Select the maintained Kaniko fork for Phase F, subject to human approval and verification of the runner's configured security policy and resolved builder image pin. The probe establishes the viability of this trivial Dockerfile on the runner, **not** the production backend/frontend image builds, registry credentials or publishing gates. Retain both opt-in probe jobs isolated from normal CI for reproducible diagnostics until their removal is separately approved.
 
 **Gate A:** The human reviews actual runner evidence and approves one daemonless builder. If access or compatibility is unavailable, record **blocked**; P2.6a may proceed independently, but P2.6b publication cannot be accepted. An unverified fallback must not silently replace BuildKit.
 
