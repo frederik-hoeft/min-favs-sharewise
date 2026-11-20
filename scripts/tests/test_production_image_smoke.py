@@ -42,9 +42,14 @@ case "$1" in
         fi
         ;;
     exec)
-        if [[ "$FAKE_SCENARIO" == stopped-on-start && "$*" == *'nginx -t'* ]]; then
+        if [[ "$FAKE_SCENARIO" == stopped-on-start && "$*" == *'/health'* ]]; then
             printf 'cannot exec in a stopped state\n' >&2
             exit 128
+        fi
+        if [[ "$FAKE_SCENARIO" == transient-not-ready && "$*" == *'/health'* && ! -e "$FAKE_READY_MARKER" ]]; then
+            touch "$FAKE_READY_MARKER"
+            printf 'wget: cannot connect to remote host\n' >&2
+            exit 1
         fi
         if [[ "$*" == *'/no-such-route'* ]]; then
             if [[ "$FAKE_SCENARIO" == bad-404 ]]; then
@@ -60,7 +65,15 @@ case "$1" in
         fi
         ;;
     inspect)
-        printf 'exited (exit code 1)\n'
+        if [[ "$*" == *'.State.Running'* ]]; then
+            if [[ "$FAKE_SCENARIO" == stopped-on-start ]]; then
+                printf 'false\n'
+            else
+                printf 'true\n'
+            fi
+        else
+            printf 'exited (exit code 1)\n'
+        fi
         ;;
     logs)
         printf 'nginx startup failed: fixture diagnostic\n' >&2
@@ -93,6 +106,7 @@ class ProductionImageSmokeTests(unittest.TestCase):
                 "FAKE_DOCKER_LOG": str(calls),
                 "FAKE_SCENARIO": scenario,
                 "FAKE_REVISION": revision,
+                "FAKE_READY_MARKER": str(root / "ready-on-next-attempt"),
                 "PATH": f"{root}:{os.environ['PATH']}",
             }
             result = subprocess.run(
@@ -113,6 +127,15 @@ class ProductionImageSmokeTests(unittest.TestCase):
         self.assertNotIn(" -p ", calls)
         self.assertNotIn("port smoke-frontend", calls)
         self.assertIn("rm -f smoke-frontend", calls)
+        self.assertLess(calls.index("/health"), calls.index("nginx -t"))
+
+    def test_transient_connection_refusal_is_retried_silently(self) -> None:
+        result, calls = self.run_smoke("transient-not-ready")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("wget: cannot connect", result.stderr)
+        self.assertEqual(calls.count("http://127.0.0.1:8081/health"), 2)
+        self.assertIn("inspect --format {{.State.Running}} smoke-frontend", calls)
+        self.assertIn("nginx -t", calls)
 
     def test_readiness_failure_prints_container_logs_and_cleans_up(self) -> None:
         result, calls = self.run_smoke("not-ready")
@@ -126,7 +149,7 @@ class ProductionImageSmokeTests(unittest.TestCase):
     def test_stopped_container_reports_startup_logs(self) -> None:
         result, calls = self.run_smoke("stopped-on-start")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("cannot exec in a stopped state", result.stderr)
+        self.assertIn("Frontend stopped before becoming ready", result.stderr)
         self.assertIn("Frontend failed to start or validate", result.stderr)
         self.assertIn("nginx startup failed: fixture diagnostic", result.stderr)
         self.assertIn("inspect --format", calls)

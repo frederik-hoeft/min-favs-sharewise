@@ -77,20 +77,30 @@ if ! "$container_cli" start "$container_id" >/dev/null; then
     report_frontend_failure
     exit 1
 fi
-if ! "$container_cli" exec "$container_id" nginx -t; then
-    report_frontend_failure
-    exit 1
-fi
+# `docker start` can return before Nginx opens its listening sockets. A
+# connection refusal during this interval is expected, not a smoke-test error.
+# A separate `nginx -t` may also succeed before PID 1 has finished startup,
+# so check the running service first, then validate its rendered configuration.
 ready=0
 for attempt in $(seq 1 20); do
-    if "$container_cli" exec "$container_id" wget -q -O /dev/null http://127.0.0.1:8081/health; then
+    if "$container_cli" exec "$container_id" wget -q -O /dev/null http://127.0.0.1:8081/health >/dev/null 2>&1; then
         ready=1
         break
+    fi
+    # Do not retry against a container whose Nginx process has already exited.
+    if ! "$container_cli" inspect --format '{{.State.Running}}' "$container_id" | grep -qx true; then
+        echo 'Frontend stopped before becoming ready' >&2
+        report_frontend_failure
+        exit 1
     fi
     sleep 1
 done
 if [[ "$ready" -ne 1 ]]; then
-    echo 'Frontend did not become ready' >&2
+    echo 'Frontend did not become ready within 20 seconds' >&2
+    report_frontend_failure
+    exit 1
+fi
+if ! "$container_cli" exec "$container_id" nginx -t; then
     report_frontend_failure
     exit 1
 fi
