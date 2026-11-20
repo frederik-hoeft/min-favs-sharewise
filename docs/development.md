@@ -18,7 +18,7 @@ The source checkout remains on the host and survives container rebuilds. Tools o
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
-The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. The current standalone-server build and container image are transitional; the production static-export deployment is a separate task. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below describe the current standalone-server development setup.
+The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. Ordinary Next.js development/build commands produce the standalone-server output; the frontend production image builds a static export and serves it with Nginx. The [security architecture](stack/security.md) specifies same-origin `/api/*` forwarding; TLS, reverse-proxy wiring and production Compose remain future P2.6a phases.
 
 ## Database
 
@@ -53,24 +53,20 @@ The frontend `.npmrc` rejects unreviewed dependency lifecycle scripts. Keep the 
 
 The starter defaults to frontend port 3000 and backend port 8080. Consult the backend `pom.xml`, wrapper configuration, frontend `package-lock.json`, and frontend-specific `src/frontend/AGENTS.md` for authoritative build and dependency details. Use project-owned commands rather than modifying dependencies merely to work around a developer's environment.
 
-## Current starter: separate-container execution
+## Application images (P2.6a)
 
-The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`), tested through the frontend Vitest project. `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
+The backend and frontend Dockerfiles are buildable directly from a clean source checkout. The backend Dockerfile uses Maven 3.10.0/JDK 25 in its build stage, then a Java 25 JRE runtime with a non-root UID and a `curl` HTTP readiness check at `/api/system/v1/health`. That endpoint requires a working PostgreSQL connection; running the backend image without correctly provisioned database roles will not result in a ready service. Maven test gates run separately in CI.
 
-```sh
-cd src/backend/sharewise
-./mvnw clean package -DskipITs
-cd ../../..
+The frontend Dockerfile builds the Next.js static export using Node.js 24 and the checked-in npm lockfile, then packages the generated HTML/assets in an Nginx-only image. Nginx serves HTTP on port 80 for this image phase; `/api/*` routing, TLS and production Compose will be configured in the subsequent phases. Static pages and assets can already be smoke-tested in isolation:
+
+```bash
 docker build -t sharewise-backend src/backend/sharewise
 docker build -t sharewise-frontend src/frontend
-docker network create sharewise
-docker run -d --name sharewise-backend --network sharewise sharewise-backend
-docker run --rm --name sharewise-frontend --network sharewise \
-  -e BACKEND_URL=http://sharewise-backend:8080 \
-  -p 3000:3000 sharewise-frontend
+docker run --rm -p 127.0.0.1:8081:80 sharewise-frontend
+# Browse http://127.0.0.1:8081/ and http://127.0.0.1:8081/app
 ```
 
-The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The backend container needs a reachable PostgreSQL database with the ShareWise roles: run a `postgres:18` container on the same network with the bootstrap scripts as init scripts and pass the `SPRING_DATASOURCE_*` and `SPRING_FLYWAY_*` variables to `sharewise-backend` (for example `SPRING_DATASOURCE_URL=jdbc:postgresql://<postgres-container>:5432/sharewise`). A Compose setup for this follows with P8.1.
+For a more thorough check on a container-capable host with Docker, Git and curl installed, run `bash scripts/test-production-images.sh` from the repository root. It rebuilds both images without layer cache, inspects the runtime image contents/labels, and checks static page routes and 404 handling. The frontend image contains neither Node.js nor a Next.js server. Local development still uses `npm run dev` (port 3000), and its `BACKEND_URL` rewrite is evaluated by the development server, not by the static image.
 
 ## Application modules
 

@@ -32,4 +32,4 @@ Tests live in the separate `tests/` project and run through the root npm scripts
 - [Quiet clarity design](../../docs/design/sharewise-design-foundation.md): visual language and centralized Mantine theme.
 - [Repository development environment](../../docs/development.md): containers, toolchain, backend and offline handoff.
 
-The current Next.js build runs as a standalone server; static export behind Nginx remains a separate deployment task. For library-specific guidance, see [frontend agent notes](AGENTS.md) and the checked-in [Mantine reference](../../.agents/references/frontend-mantine-llms-full.txt).
+The ordinary Next.js build retains standalone output; `npm run build:static` generates the Nginx-ready static export used by the frontend production image. Production TLS and `/api/*` reverse proxy configuration remain separate infrastructure work. For library-specific guidance, see [frontend agent notes](AGENTS.md) and the checked-in [Mantine reference](../../.agents/references/frontend-mantine-llms-full.txt).

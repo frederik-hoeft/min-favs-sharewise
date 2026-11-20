@@ -49,7 +49,7 @@ src/frontend/vitest-junit.xml
 
 # next.js
 src/frontend/.next/
-src/frontend/.next-export-probe/
+src/frontend/.next-export/
 src/frontend/out/
 
 # production
@@ -82,5 +82,6 @@ next-env.d.ts
 # Downloaded toolchain archives for the offline handoff generator.
 /.offline-handoff-cache/
 
-# Disposable GitLab rootless BuildKit probe artifacts.
-/buildkit-probe-results/
+# Python local test runner outputs.
+__pycache__/
+*.pyc

@@ -37,7 +37,7 @@ This distinction also defines the React boundary: layouts and pages can remain S
 
 The client accepts request and unauthorized-response hooks. An unauthorized hook may authorize **one** retry after a `401`; repeated unauthorized responses do not trigger an unbounded renewal loop. These hooks establish a transport extension point, not an implemented IAM session, CSRF protocol or token lifecycle.
 
-The client is independent of the page that invokes it: callers supply an API path and receive a typed result or error. No business-specific adapter is currently connected. During local development, `next.config.ts` rewrites same-origin `/api/:path*` requests to the Spring backend at `BACKEND_URL`. The current Next.js build runs with standalone-server output. The planned static deployment replaces the Next.js rewrite with Nginx serving exported assets and proxying `/api/*`; it does not change the browser-facing URL or move business logic into Next.js route handlers.
+The client is independent of the page that invokes it: callers supply an API path and receive a typed result or error. No business-specific adapter is currently connected. During local development, `next.config.ts` rewrites same-origin `/api/:path*` requests to the Spring backend at `BACKEND_URL`. Ordinary Next.js builds retain standalone-server output. An explicit production export mode generates static HTML and assets for the Nginx-only frontend image; Nginx will also own the production `/api/*` reverse proxy. This preserves the browser-facing URL and keeps business logic out of Next.js route handlers. The production proxy configuration and TLS integration belong to the subsequent infrastructure phase.
 
 ## Domain ownership and extension boundary
 
