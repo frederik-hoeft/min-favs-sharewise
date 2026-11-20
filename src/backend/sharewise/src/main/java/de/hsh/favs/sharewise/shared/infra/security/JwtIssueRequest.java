@@ -34,13 +34,13 @@ public record JwtIssueRequest(
     /** Copies assertion data and rejects missing mandatory information. */
     public JwtIssueRequest {
         Objects.requireNonNull(subject, "subject");
-        requireText(sessionId, "sessionId");
-        requireText(tokenId, "tokenId");
+        requireCredentialText(sessionId, "sessionId");
+        requireCredentialText(tokenId, "tokenId");
         Objects.requireNonNull(issuedAt, "issuedAt");
         Objects.requireNonNull(notBefore, "notBefore");
         Objects.requireNonNull(expiresAt, "expiresAt");
         principalIssuer = Objects.requireNonNull(principalIssuer, "principalIssuer");
-        principalIssuer.ifPresent(value -> requireText(value, "principalIssuer"));
+        principalIssuer.ifPresent(value -> requireCredentialText(value, "principalIssuer"));
         assertions = Map.copyOf(Objects.requireNonNull(assertions, "assertions"));
         assertions.forEach((type, value) -> {
             requireText(type, "assertion type");
@@ -49,6 +49,13 @@ public record JwtIssueRequest(
                 throw new IllegalArgumentException("Cannot override reserved JWT claim");
             }
         });
+    }
+
+    private static void requireCredentialText(String value, String field) {
+        Objects.requireNonNull(value, field);
+        if (!JwtCredentialClaims.isValidRequiredString(value)) {
+            throw new IllegalArgumentException(field + " must be nonblank and at most 256 characters long");
+        }
     }
 
     private static void requireText(String value, String field) {

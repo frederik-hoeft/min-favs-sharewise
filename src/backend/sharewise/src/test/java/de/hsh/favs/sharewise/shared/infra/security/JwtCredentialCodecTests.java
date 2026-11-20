@@ -355,6 +355,43 @@ class JwtCredentialCodecTests {
     }
 
     @Test
+    void rejectsOversizedMandatoryCredentialFieldsBeforeSigning() {
+        String overLimit = "x".repeat(257);
+        assertThrows(IllegalArgumentException.class, () -> new JwtIssueRequest(ALICE,
+            overLimit, "token", NOW, NOW, NOW.plusSeconds(60), Optional.empty(), Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new JwtIssueRequest(ALICE,
+            SESSION, overLimit, NOW, NOW, NOW.plusSeconds(60), Optional.empty(), Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new JwtIssueRequest(ALICE,
+            SESSION, "token", NOW, NOW, NOW.plusSeconds(60), Optional.of(overLimit), Map.of()));
+
+        JwtCredentialCodec verifier = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
+        assertRejected(() -> verifier.verifyPrimary(manual(primaryHeader("old"),
+            validPayload().claim("sid", overLimit).build(), IAM_OLD)));
+        assertRejected(() -> verifier.verifyPrimary(manual(primaryHeader("old"),
+            validPayload().jwtID(overLimit).build(), IAM_OLD)));
+    }
+
+    @Test
+    void maximumLengthIdentifiersRoundTripForPrimaryAndSubordinateCredentials() {
+        String maximum = "x".repeat(256);
+        JwtCredentialCodec iam = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
+        JwtIssueRequest primaryRequest = new JwtIssueRequest(ALICE, maximum, maximum,
+            NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180),
+            Optional.empty(), Map.of());
+        VerifiedJwtCredential primary = iam.verifyPrimary(iam.sign(primaryRequest));
+        assertEquals(maximum, primary.sessionId());
+        assertEquals(Optional.of(maximum), primary.credential().origin().credentialId());
+
+        JwtCredentialCodec group = subordinate();
+        JwtIssueRequest subordinateRequest = new JwtIssueRequest(ALICE, maximum, maximum,
+            NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(90),
+            Optional.of(IAM_ISSUER), Map.of("role", "member"));
+        VerifiedJwtCredential subordinate = group.verifySubordinate(group.sign(subordinateRequest), primary);
+        assertEquals(maximum, subordinate.sessionId());
+        assertEquals(Optional.of(maximum), subordinate.credential().origin().credentialId());
+    }
+
+    @Test
     void invalidInputsAndConfigurationFailBeforeSigningOrTrustPublication() {
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile("x", IAM_ISSUER,
             "x+jwt", Set.of(), JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ZERO));

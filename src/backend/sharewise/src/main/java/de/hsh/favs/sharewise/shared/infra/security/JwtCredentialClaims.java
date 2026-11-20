@@ -22,6 +22,7 @@ final class JwtCredentialClaims {
     static final Set<String> RESERVED_CLAIMS = Set.of(
         "iss", "sub", "aud", "iat", "nbf", "exp", "jti", "sid", "principal_iss", "principal_sid");
     private static final Set<String> METADATA_CLAIMS = Set.of("iss", "aud", "iat", "nbf", "exp", "jti");
+    private static final int MAX_REQUIRED_STRING_LENGTH = 256;
 
     private final JwtCredentialProfile profile;
     private final Clock clock;
@@ -73,7 +74,7 @@ final class JwtCredentialClaims {
             session = requiredString(claims.get("sid"));
         } else {
             if (claims.containsKey("sid") || primary == null
-                || !primary.credential().origin().issuer().equals(claims.get("principal_iss"))
+                || !primary.credential().origin().issuer().equals(requiredString(claims.get("principal_iss")))
                 || !primary.userId().equals(subject)) {
                 throw new JwtCredentialException();
             }
@@ -133,8 +134,18 @@ final class JwtCredentialClaims {
         return uuid;
     }
 
+    /**
+     * Checks the common string-claim bound used by issuance and verification.
+     *
+     * @param text candidate required claim value
+     * @return whether the text is nonblank and within the accepted length
+     */
+    static boolean isValidRequiredString(String text) {
+        return text != null && !text.isBlank() && text.length() <= MAX_REQUIRED_STRING_LENGTH;
+    }
+
     private static String requiredString(Object value) {
-        if (!(value instanceof String text) || text.isBlank() || text.length() > 256) {
+        if (!(value instanceof String text) || !isValidRequiredString(text)) {
             throw new JwtCredentialException();
         }
         return text;
