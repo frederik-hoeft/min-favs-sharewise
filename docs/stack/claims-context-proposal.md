@@ -37,37 +37,34 @@ A small immutable model inspired by [.NET `System.Security.Claims`](https://lear
 
 | Proposed concept | Contents and meaning | Consumer boundary |
 | --- | --- | --- |
-| `Claim` | Claim kind/name and value; repeated kinds remain possible. | Data, not a permission decision. |
-| `ClaimSource` | Verified issuer and credential profile, intended audiences, and applicable token identity/validity metadata. | Provenance is bound to its **entire claim set**, not a free-form issuer string supplied by the caller. |
-| `ClaimSet` | One source plus its immutable list of claims; facts such as `group_id` and `role` must be evaluated **within this set**. | Cannot arbitrarily combine claim values from different tokens. |
-| `ClaimsContext` | Read-only, operation-local collection/query facade over the verified claim sets. Queries return their matching source/set, not provenance-stripped values. | Advanced evidence/policy API; not a substitute for semantic authorization. |
+| `Claim` | Immutable claim kind/name, value and `ClaimOrigin`; repeated kinds remain possible. | Preserves credential provenance even when passed independently; not a permission decision. |
+| `ClaimOrigin` | Verified issuer and credential profile, intended audiences, and applicable token identity/validity metadata. | Attached to each claim; constructing origin metadata does not by itself establish trust. |
+| `ClaimCollection` | One origin plus its immutable, ordered list of matching-origin claims; facts such as `group_id` and `role` must be evaluated **within this collection**. | Construction rejects claims with different origins; claims from distinct credentials cannot be combined to authorize a request. |
+| `ClaimsContext` | Read-only, operation-local collection/query facade over verified claim collections. Queries return `Claim` with its origin; collection access retains credential grouping. | Advanced evidence/policy API; not a substitute for semantic authorization. |
 | `ClaimProvider` | Zero- or minimal-argument service method producing validated claim sets from constructor-injected dependencies. | Infrastructure SPI, operation-scoped through Spring DI. |
 | `<Concept>Context` | Domain-facing semantic service backed by evidence and/or current domain state. | Normal application-service dependency. |
 
-A possible *illustrative*, non-final Java shape is:
+The Phase B Java model uses these public contracts (omitting record validation and full origin fields for brevity):
 
 ```java
-public record Claim(String type, String value) {}
+public record Claim(String type, String value, ClaimOrigin origin) {}
 
-public record ClaimSet(ClaimSource source, List<Claim> claims) {
-    public ClaimSet {
-        claims = List.copyOf(claims);
-    }
-}
+public record ClaimCollection(ClaimOrigin origin, List<Claim> claims) {}
 
 public interface ClaimProvider {
-    List<ClaimSet> claims();
+    List<ClaimCollection> claims();
 }
 
 public interface ClaimsContext {
-    List<ClaimSet> claimSets();
-    List<ClaimMatch> findClaims(String issuer, String claimType);
+    List<ClaimCollection> claimCollections();
+    List<Claim> find(String claimType);
+    List<Claim> find(String issuer, String profile, String claimType);
 }
 ```
 
-`ClaimSource` contains at least a trusted issuer and a validated source/profile identity; its remaining fields reflect whichever credential metadata exists (for JWTs, for example, `aud`, `iat`, `nbf`, `exp`, and optional `jti`). `ClaimMatch` retains the `ClaimSet` that produced the match. The exact Java records, nullability and API names are **not approved** until P2.1.0. We intentionally avoid delegated identities, mutable claims, claim-level arbitrary dictionaries, generic serialization, a claim query DSL and the semantics of unqualified global role lookup.
+A `ClaimCollection` constructor validates that every claim's origin equals its own origin (record value equality). `ClaimOrigin` includes trusted issuer, verified profile, audiences, and applicable token metadata (`aud`, `iat`, `nbf`, `exp`, optional `jti`). Returning a `Claim` from a query therefore cannot strip its origin. The collection remains essential for correlating claims from the **same** credential, since separate credentials may have equal origin metadata. The generic model intentionally avoids mutable claim properties, delegated identities, serialization infrastructure, a policy/query DSL, and global role unions. Verification, binding and business authorization remain separate concerns.
 
-A generic query keyed only by `(issuer, claimType)` is convenient for inspection, **but not enough to make a permission decision**. Two valid Group attestations might both say `role=admin` or `role=member` for different groups. A consumer must match the group ID and role from the *same* correlated attestation, after checking the authority/profile and requested operation. Domain-specific policy services should own that logic so business services do not repeat fragile string comparisons.
+Issuer/profile-qualification is useful for inspection, **but does not establish permission**. Two valid Group attestations might both say `role=admin` or `role=member` for different groups. A domain consumer must match the group ID and role from the same correlated collection, after checking its authority/profile and requested operation. Domain-specific policy services own that interpretation.
 
 ## JWT and attestation mapping
 
@@ -75,7 +72,7 @@ The table maps the [security design's required or illustrative claims](security.
 
 | Token element | Primary IAM JWT | Group attestation | Proposed representation / obligation |
 | --- | --- | --- | --- |
-| `iss` | Trusted IAM authority | Trusted Group authority | Verified `ClaimSource.issuer`; the configured authority/profile, not a self-asserted string, determines trust. |
+| `iss` | Trusted IAM authority | Trusted Group authority | Verified `ClaimOrigin.issuer`; the configured authority/profile, not a self-asserted string, determines trust. |
 | `sub` | Stable IAM user ID | Same subject as primary IAM token | `Claim` plus semantic `IdentityContext.userId()` for the primary principal; binding policy matches subjects. |
 | `sid` | Stable login-session ID | Not a replacement primary login session | IAM claim; its semantic value is the session binding, preserved through refresh. |
 | `principal_iss` | Not applicable | Primary IAM issuer | Attestation claim; illustrative spelling in security design; correlate against verified primary source. |

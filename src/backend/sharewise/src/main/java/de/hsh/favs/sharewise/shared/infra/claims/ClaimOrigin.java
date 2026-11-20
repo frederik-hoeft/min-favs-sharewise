@@ -8,14 +8,21 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Immutable provenance metadata from a source-specific verifier.
+ * The immutable, verified metadata associated with one credential's claims.
  *
- * <p>Constructing this value does <strong>not</strong> establish trust: only a trusted,
- * operation-scoped {@link ClaimProvider} may contribute verified claim sets to
- * {@link ClaimsContext}. The provider must validate issuer, profile, audience,
- * lifetime and any required cross-credential binding before publication.
+ * <p>Instantiation alone does not establish trust. Only a trusted {@link ClaimProvider}
+ * can publish collections into an operation's {@link ClaimsContext}.
+ *
+ * @param issuer trusted issuer identifier
+ * @param profile verified credential profile (such as an IAM access token)
+ * @param audiences verified intended audiences
+ * @param subject optional subject identity
+ * @param credentialId optional credential identifier
+ * @param issuedAt optional issuance time
+ * @param notBefore optional start of validity
+ * @param expiresAt optional end of validity
  */
-public record ClaimSource(
+public record ClaimOrigin(
     String issuer,
     String profile,
     Set<String> audiences,
@@ -26,7 +33,8 @@ public record ClaimSource(
     Optional<Instant> expiresAt
 ) {
 
-    public ClaimSource {
+    /** Validates required metadata and defensively copies audience identifiers. */
+    public ClaimOrigin {
         requireNonBlank(issuer, "issuer");
         requireNonBlank(profile, "profile");
         Objects.requireNonNull(audiences, "audiences");

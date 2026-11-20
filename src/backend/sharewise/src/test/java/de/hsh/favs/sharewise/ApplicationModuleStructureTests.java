@@ -4,13 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import de.hsh.favs.sharewise.identity.IdentityContext;
-import de.hsh.favs.sharewise.shared.infra.claims.Claim;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimMatch;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimProvider;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimSet;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimSource;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimsContext;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
+import de.hsh.favs.sharewise.shared.infra.claims.Claim;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimCollection;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimOrigin;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimProvider;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimsContext;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
 import de.hsh.favs.sharewise.shared.infra.di.OperationScopedConfiguration;
@@ -151,9 +150,8 @@ class ApplicationModuleStructureTests {
     void sharedClaimsNamedInterfacePublishesOnlyEvidenceContracts() {
         assertEquals(Set.of(
                 Claim.class.getName(),
-                ClaimSource.class.getName(),
-                ClaimSet.class.getName(),
-                ClaimMatch.class.getName(),
+                ClaimOrigin.class.getName(),
+                ClaimCollection.class.getName(),
                 ClaimProvider.class.getName(),
                 ClaimsContext.class.getName()), publishedTypesOfSharedInterface("claims"));
     }

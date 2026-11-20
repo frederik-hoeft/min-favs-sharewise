@@ -1,7 +1,7 @@
 package de.hsh.favs.sharewise.shared.infra.claims.internal;
 
 import de.hsh.favs.sharewise.shared.infra.claims.ClaimProvider;
-import de.hsh.favs.sharewise.shared.infra.claims.ClaimSet;
+import de.hsh.favs.sharewise.shared.infra.claims.ClaimCollection;
 import de.hsh.favs.sharewise.shared.infra.claims.ClaimsContext;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,12 +31,12 @@ public class ClaimsConfiguration {
             }
         }
 
-        List<ClaimSet> verified = new ArrayList<>();
+        List<ClaimCollection> verified = new ArrayList<>();
         providers.orderedStream().forEach(provider -> {
-            List<ClaimSet> contributed = Objects.requireNonNull(provider.claims(),
-                "Claim provider returned null claim sets");
-            for (ClaimSet set : contributed) {
-                verified.add(Objects.requireNonNull(set, "Claim provider returned a null claim set"));
+            List<ClaimCollection> contributed = Objects.requireNonNull(provider.claims(),
+                "Claim provider returned null claim collections");
+            for (ClaimCollection collection : contributed) {
+                verified.add(Objects.requireNonNull(collection, "Claim provider returned a null claim collection"));
             }
         });
         // No context is published if any provider resolution, verification or copying fails.
