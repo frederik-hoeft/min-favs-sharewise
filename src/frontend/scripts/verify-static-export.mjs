@@ -15,6 +15,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const excluded = new Set(["node_modules", ".next", ".next-export-probe", "out", "coverage", ".git"]);
 const routes = [
   { path: "/", text: "Keep the plans." },
+  { path: "/login", text: "Welcome back." },
+  { path: "/register", text: "Start sharing clearly." },
   { path: "/app", text: "Your workspace." },
   { path: "/app/dummy1", text: "This placeholder demonstrates a standard feature page" },
   { path: "/app/dummy2", text: "A second destination for validating links" },

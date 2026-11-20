@@ -30,10 +30,8 @@ describe("ShareWise landing page", () => {
     }
     const header = screen.getByRole("banner");
     expect(within(header).getByRole("link", { name: /sharewise, back to top/i })).toHaveAttribute("href", "#top");
-    const explore = within(header).getByRole("link", { name: /take a look/i });
-    expect(explore).toHaveAttribute("href", "#product");
-    expect(explore.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
-    expect(explore.textContent).toBe("Take a look");
+    expect(within(header).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    expect(within(header).getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/register");
     const primaryAction = screen.getByRole("link", { name: /explore sharewise/i });
     expect(primaryAction.style.getPropertyValue("--button-color")).toBe("var(--sw-action-ink)");
     const secondaryAction = screen.getByRole("link", { name: /see how it works/i });
