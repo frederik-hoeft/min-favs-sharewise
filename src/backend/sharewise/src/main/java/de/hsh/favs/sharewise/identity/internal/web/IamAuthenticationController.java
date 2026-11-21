@@ -7,23 +7,19 @@ import de.hsh.favs.sharewise.identity.internal.auth.LoginService;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationFailure;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationService;
-import de.hsh.favs.sharewise.identity.internal.auth.account.EmailAddress;
-import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthResponse;
 import de.hsh.favs.sharewise.identity.internal.web.dto.CsrfBootstrap;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
-import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
+import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -49,14 +45,20 @@ final class IamAuthenticationController {
     private static final String REFRESH_COOKIE = "__Host-sharewise-refresh";
 
     private final OperationIngressDispatcher ingress;
-    private final PasswordPolicy passwords;
+    private final DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations;
+    private final DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins;
     private final CsrfTokenRepository csrfTokens;
     private final Clock clock;
 
-    IamAuthenticationController(OperationIngressDispatcher ingress, PasswordPolicy passwords,
+    IamAuthenticationController(OperationIngressDispatcher ingress,
+            @Qualifier("registrationCommandFactory")
+            DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations,
+            @Qualifier("loginCommandFactory")
+            DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins,
             CsrfTokenRepository csrfTokens, @Qualifier("iamClock") Clock clock) {
         this.ingress = Objects.requireNonNull(ingress);
-        this.passwords = Objects.requireNonNull(passwords);
+        this.registrations = Objects.requireNonNull(registrations);
+        this.logins = Objects.requireNonNull(logins);
         this.csrfTokens = Objects.requireNonNull(csrfTokens);
         this.clock = Objects.requireNonNull(clock);
     }
@@ -97,37 +99,15 @@ final class IamAuthenticationController {
     }
 
     private RegistrationCommand registration(AuthCredentialsRequest input) {
-        checkInput(input, true);
-        return RegistrationCommand.from(input.email(), input.password(), passwords);
+        return registrations.createFrom(input).fold(
+                command -> command,
+                errors -> { throw RequestValidationException.from(errors); });
     }
 
     private LoginCommand loginCommand(AuthCredentialsRequest input) {
-        checkInput(input, false);
-        return LoginCommand.from(input.email(), input.password(), passwords);
-    }
-
-    private void checkInput(AuthCredentialsRequest input, boolean registration) {
-        List<FieldErrorDetail> errors = new ArrayList<>();
-        if (input == null) {
-            throw RequestValidationException.ofSingleField("request", "required", "Credentials are required.");
-        }
-        try {
-            EmailAddress.parse(input.email());
-        } catch (IllegalArgumentException exception) {
-            errors.add(new FieldErrorDetail("email", "invalid", "Enter a valid email address."));
-        }
-        try {
-            if (registration) {
-                passwords.validateRegistration(input.password());
-            } else {
-                passwords.validateVerificationInput(input.password());
-            }
-        } catch (IllegalArgumentException exception) {
-            errors.add(new FieldErrorDetail("password", "invalid", "Enter a valid password."));
-        }
-        if (!errors.isEmpty()) {
-            throw new RequestValidationException(errors);
-        }
+        return logins.createFrom(input).fold(
+                command -> command,
+                errors -> { throw RequestValidationException.from(errors); });
     }
 
     private ResponseEntity<AuthResponse> succeeded(AuthenticationResult result, HttpStatus status,

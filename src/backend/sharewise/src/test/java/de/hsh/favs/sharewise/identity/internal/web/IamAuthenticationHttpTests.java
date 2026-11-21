@@ -174,6 +174,15 @@ class IamAuthenticationHttpTests {
                     .cookie(cookie).header("X-XSRF-TOKEN", token))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("validation_failed"))
+            .andExpect(jsonPath("$.fieldErrors.length()").value(2))
+            .andExpect(jsonPath("$.fieldErrors[0].field").value("email"))
+            .andExpect(jsonPath("$.fieldErrors[0].code").value("invalid"))
+            .andExpect(jsonPath("$.fieldErrors[1].field").value("password"))
+            .andExpect(jsonPath("$.fieldErrors[1].code").value("invalid"));
+        mvc.perform(sameOrigin(post(LOGIN).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"email\":\"invalid\",\"password\":\"\"}"))
+                    .cookie(cookie).header("X-XSRF-TOKEN", token))
+            .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.fieldErrors.length()").value(2));
         verifyNoInteractions(ingress);
         when(ingress.dispatch(eq(LoginService.class), any()))
@@ -226,7 +235,9 @@ class IamAuthenticationHttpTests {
         @Bean
         IamAuthenticationController controller(OperationIngressDispatcher ingress,
                 CsrfTokenRepository repository) {
-            return new IamAuthenticationController(ingress, PasswordPolicy.initial(), repository, CLOCK);
+            PasswordPolicy policy = PasswordPolicy.initial();
+            return new IamAuthenticationController(ingress, new RegistrationCommandFactory(policy),
+                    new LoginCommandFactory(policy), repository, CLOCK);
         }
 
         @Bean

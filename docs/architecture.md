@@ -44,6 +44,8 @@ CI publishes the backend and frontend as separate images and verifies a matching
 
 Published interfaces expose meaningful command and query operations. DI-managed, normally stateless application services implement them; small cohesive services can be used directly without a pass-through facade. Application input and output contracts use **immutable Java records** where suitable, independently of JPA entities and transport-specific types. Cross-context references use stable business terminology and opaque IDs; navigable entity graphs remain within their owning module.
 
+Input adapters can use the published `shared::validation` `DomainObjectFactory` contract to convert transport DTOs into validated commands, returning `Result<Command, ValidationErrors>`. Domain/application validators remain authoritative; adapters map structured errors into protocol-specific responses, such as HTTP `ProblemDetail`, without requiring domain objects to depend on transport types.
+
 Typical names and responsibilities:
 
 | Contract | Example | Meaning |
