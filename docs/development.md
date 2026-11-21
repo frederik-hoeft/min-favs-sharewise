@@ -242,6 +242,8 @@ tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
 ./deps/verify-offline.sh verify deps --source /path/to/sharewise
 ```
 
+The Maven cache is populated by running the actual `-Punit-tests clean verify` lifecycle, including Spring Boot repackaging and Surefire/Failsafe plugins, rather than prefetching every plugin managed by the Spring Boot parent. The opt-in `jooq-codegen-identity` profile is excluded: generated sources are already committed, and the handoff does not provide PostgreSQL. Running code generation separately requires a migrated PostgreSQL schema and its plugin dependencies.
+
 The verifier hashes the required original toolchain archives, extracts them to temporary storage, checks the selected source dependency descriptors and runs the corresponding backend tests and/or frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar` and basic Unix checksum utilities, plus Python 3 when verifying Maven builds (to unpack the original Maven ZIP), but not preinstalled language toolchains. See `README-OFFLINE.md` within the dependency archive for more information.
 
 Ordinary source changes do **not** invalidate the handoff. Changes to the **selected** project's `pom.xml`, Maven wrapper properties, `package.json` or `package-lock.json` invalidate it conservatively. Container images, PostgreSQL and external services are not included and require separate provisioning. The frontend starter avoids build-time Google Fonts network requests.
