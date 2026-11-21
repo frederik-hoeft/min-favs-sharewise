@@ -1,6 +1,6 @@
 # Phase 3 design handoff: Finance foundations
 
-**Status:** Proposed P3.0 architecture and technical ER for human review. This is a design contract, not an implemented Finance schema or deployed event API. Read it with the [domain model](../../data-model-design.md), [Phase 2 identity/Group handoff](phase-2-foundation.md), [persistence foundation](../../architecture/persistence.md), [messaging architecture](../../stack/messaging.md) and [security design](../../stack/security.md).
+**Status:** Proposed shared Phase 3 contract for human P3.0 approval, not an implemented Finance schema or deployed event API. This document owns the **cross-team model, invariants and integration guarantees**; the [backlog](../tasks/backlog.md#phase-3---finance-actor-synchronization-and-accounting-foundations) owns sequencing, task boundaries and acceptance gates. Read it with the [domain model](../../data-model-design.md), [Phase 2 identity/Group handoff](phase-2-foundation.md), [persistence foundation](../../architecture/persistence.md), [messaging architecture](../../stack/messaging.md) and [security design](../../stack/security.md).
 
 **Audience:** Independent owners of Finance schema/provisioning (P3.1), membership projection (P3.2), pure accounting (P3.3), financial revision coordination (P3.4), and the Group-side event producer (P2.4b). This handoff specifies **only the two Phase 3 Finance tables** and their Group-side prerequisites; Expenses, Settlements and ChangeRecords belong to later phases.
 
@@ -10,7 +10,7 @@ The proposed schema reconciles requirements in this order. An earlier domain req
 
 | Marker | Source / authority | Used for |
 | --- | --- | --- |
-| **DEC** | Agreed P3.0 decisions recorded in the [Phase 3 backlog](../tasks/backlog.md) and [specification](../tasks/p3.0-finance-foundation/specification.md) | MVP lifecycle, event separation, actor replication, revision rules, no currency/deletion feature |
+| **DEC** | Agreed design direction captured in the [Phase 3 backlog](../tasks/backlog.md); P3.0 human approval is still pending | MVP lifecycle, event separation, actor replication, revision rules, no currency/deletion feature |
 | **DOM** | [Conceptual domain model](../../data-model-design.md) | FinancialGroup aggregate boundary, retained actor identities, financial revisions and authorization separation |
 | **ER** | Human-maintained yEd Phase 3 diagram (review input; not yet a repository asset) | Table/column names, composite keys, defaults, enum and type choices |
 | **REC** | Reconciliation and implementation rationale in this handoff | Concurrency protocol, diagnostics and future integration constraints |
@@ -132,6 +132,28 @@ P3.3 supplies pure, exact `Money`/`Percentage` and split-strategy calculations, 
 
 The MVP's first Finance listener must be registered before new organizational Group data requiring replication is created. Earlier disposable data is explicitly reset/reseeded or backfilled via a separately verified, writes-suspended Flyway release migration. The publication registry does not retroactively publish facts from before listener registration. Failed ordinary deliveries remain pending/recoverable through the existing Modulith registry and operator-visible retry mechanisms; P3 introduces no separate queue, periodic reconciliation or custom scheduler. Permanent loss of a never-published event is **not** automatically repaired. Optional snapshot-based drift repair and periodic retries remain conditional [Phase 8 hardening](../tasks/backlog.md#phase-8---operational-hardening-and-full-mvp-readiness), not a P3 prerequisite.
 
-## Parallel implementation boundary
+## Cross-team handoffs and acceptance
 
-**P3.1a** alone owns Finance DDL, constraints, domains/enum and trigger. **P3.1b** owns the idempotent root/lock primitive. **P3.2a** owns guarded member facts and independent Group-created activation; **P3.2b** connects them to P2.4a/b publication/consumer contracts with joint P2.4c acceptance. **P3.3** is pure accounting without schema/events; **P3.4** uses the same Finance row lock for the independent financial revision protocol. This design deliberately avoids shared first migrations and cross-lane implementation dependencies. The [P3.0 specification](../tasks/p3.0-finance-foundation/specification.md) defines focused test cases and review gates.
+The ownership boundary is the **contract**, not the internal service or repository class used to implement it. Teams may develop against agreed event fixtures and published interfaces without waiting for the other side's production adapter; joint acceptance requires the real producer, registry and consumer.
+
+| Boundary | Provider → consumer | Required handoff |
+| --- | --- | --- |
+| Group source | **P2.4b → P3.2a/b** | Two independent creation facts; stable event IDs; atomic membership revision assignment and publication obligations; resulting-state add/remove events. The consumer uses only published event contracts, never Group-owned SQL. |
+| Durable delivery | **P2.4a + P2.4b → P3.2b**, accepted with **P2.4c** | Source transaction/publication atomicity, independent Finance commit, incomplete-publication recovery and at-least-once redelivery. The consumer's per-actor source version guard supplies idempotency. |
+| Finance persistence | **P3.1a/b → P3.2a and P3.4** | One Finance-owned migration and one idempotent root-creation/row-lock contract, shared by membership and financial write paths. No duplicate schema or competing lock primitive. |
+| Authorization | **P2.5 → future Finance APIs (P4/P5)** | Verified, session-bound Group attestations authorize scoped access; actor existence/eligibility governs financial participation separately. Neither is a substitute for the other. |
+| Arithmetic | **P3.3 → future money-writing features (P4/P5)** | One fixed two-decimal unit, exact arithmetic, deterministic allocation/rounding and conserved totals; no persistence or Group integration in the P3.3 deliverable. |
+
+### Integration scenarios that require coordination
+
+These are **design-time acceptance obligations**, not tests already run. The authorization/API case is a contract for later Finance API verticals, **not** a dependency that blocks the P3 sprint. The [backlog](../tasks/backlog.md#phase-3---finance-actor-synchronization-and-accounting-foundations) assigns their implementation and review gates; task-local specs may add tests without redefining the shared contract.
+
+| Scenario | Required observation / evidence |
+| --- | --- |
+| **First evidence / reordering** | Concurrent membership events for an unknown Group produce one `provisioning` root and valid actor FKs. `GroupCreatedV1` before or after an initial-owner event at revision `1` (or a later member event) converges; creation alone can produce `open` with no actors. |
+| **Replays / ABA** | Leave-before-join creates a tombstone; leave/rejoin and owner-event reorder converge by *actor-local* source version. A stale event is a true no-op (including `updated_at`); contradictory same-actor/same-revision state is an observable error. |
+| **Publication failures** | Group creation publishes both facts atomically with the owner row; source rollback publishes neither. Finance commit is independent, registry-completion failure permits harmless redelivery, and incomplete publications remain recoverable. No extra Finance queue is introduced. |
+| **Lifecycle / authority lag** | P3 verifies lifecycle guards and no implicit actor creation. **Later Finance API acceptance (P4/P5)** verifies that a valid Group attestation can authorize a read before the caller has an actor and that actor-dependent writes reject missing/ineligible actors. Authorization never relies on the actor flag. |
+| **Finance ordering** | Membership events never increment `current_revision`. Later Finance business writes are serialized by the same root lock, allocate distinct committed financial revisions without rollback gaps, and do not unnecessarily serialize different groups. |
+
+The [Phase 3 backlog](../tasks/backlog.md#phase-3---finance-actor-synchronization-and-accounting-foundations) is the authoritative task/dependency plan. P3.0 approval concerns these contracts and the two-table provenance, **not** approval of task-specific implementation designs; P3.1–P3.4 still require their own appropriate specification, test design and human review gates. No P3.2 snapshot/backfill task, currency field, Group-deletion handler or periodic reconciliation scheduler is part of the MVP contract.
