@@ -1,4 +1,4 @@
-﻿# Development environment
+# Development environment
 
 **Status:** Development setup guidance for the current platform foundations and frontend demonstration. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
