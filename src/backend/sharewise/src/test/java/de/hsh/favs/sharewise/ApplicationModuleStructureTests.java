@@ -1,4 +1,4 @@
-﻿package de.hsh.favs.sharewise;
+package de.hsh.favs.sharewise;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Identity and authentication contracts published by the IAM bounded context.
  *
  * <p>Application services consume this API without depending on credential
