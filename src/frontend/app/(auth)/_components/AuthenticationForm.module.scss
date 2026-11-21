@@ -25,7 +25,11 @@
 
 .submit { margin-top: 0.5rem; }
 
-.errorFocus:focus { outline: none; }
+.errorFocus:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled, currentColor);
+  outline-offset: 4px;
+  border-radius: var(--mantine-radius-md);
+}
 
 .textLink {
   color: var(--sw-accent);

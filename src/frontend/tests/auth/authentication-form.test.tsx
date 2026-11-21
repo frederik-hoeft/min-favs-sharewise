@@ -184,6 +184,35 @@ describe('registration and login presentation', () => {
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
   });
 
+  it('treats a lost registration POST response as uncertain and offers sign-in recovery', async () => {
+    const user = userEvent.setup();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/csrf')) return jsonResponse({ token: 'fresh' });
+      throw new TypeError('private network diagnostic');
+    });
+    renderAuth('register', fetchImpl as typeof fetch);
+    await enterCredentials(user);
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/may have/i);
+    expect(alert).toHaveTextContent(/signing in/i);
+    expect(alert).not.toHaveTextContent(/private network diagnostic/i);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/auth/login');
+  });
+
+  it('ignores malformed server field errors instead of throwing during error display', async () => {
+    const user = userEvent.setup();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/csrf')
+      ? jsonResponse({ token: 'fresh' })
+      : problemResponse(400, 'validation_failed', [null, 42, {}, {
+        field: 'email', code: 'invalid', message: 'Invalid email on server.',
+      }]));
+    renderAuth('register', fetchImpl as typeof fetch);
+    await enterCredentials(user);
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(await screen.findByText('Invalid email on server.')).toBeVisible();
+  });
+
   it('prevents duplicate submission while waiting on the CSRF request', async () => {
     const user = userEvent.setup();
     const csrf = deferred<Response>();

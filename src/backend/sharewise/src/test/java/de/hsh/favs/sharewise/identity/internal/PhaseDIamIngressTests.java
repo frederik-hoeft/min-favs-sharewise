@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.hsh.favs.sharewise.ApiHttpSecurityConfiguration;
+import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
@@ -435,12 +436,14 @@ class PhaseDIamIngressTests {
         private final OperationIngressDispatcher ingress;
         IdentityController(OperationIngressDispatcher ingress) { this.ingress = ingress; }
 
+        @ApiAccess
         @GetMapping("/api/test/protected")
         Map<String, String> protectedIdentity() {
             return ingress.dispatch(IdentityContext.class,
                 identity -> Map.of("userId", identity.requireUserId().toString()));
         }
 
+        @ApiAccess(ApiAccess.Mode.ANONYMOUS)
         @GetMapping("/api/test/contributions")
         Map<String, String> contributions() {
             return ingress.dispatch(ContributionEntry.class, entry -> Map.of(
@@ -448,12 +451,14 @@ class PhaseDIamIngressTests {
                 "additional", entry.additional().value()));
         }
 
+        @ApiAccess(ApiAccess.Mode.ANONYMOUS)
         @GetMapping("/api/test/public")
         Map<String, String> publicIdentity() {
             return ingress.dispatch(IdentityContext.class,
                 identity -> Map.of("userId", identity.userId().map(UUID::toString).orElse("anonymous")));
         }
 
+        @ApiAccess(ApiAccess.Mode.ANONYMOUS)
         @GetMapping("/api/system/v1/health")
         Map<String, String> publicHealth() { return Map.of("status", "UP"); }
     }
@@ -464,6 +469,13 @@ class PhaseDIamIngressTests {
         ApiHttpSecurityConfiguration.class, IamHttpSecurityConfiguration.class, HttpIamInputContributor.class, IamIdentityExceptionHandler.class,
         DefaultIdentityContext.class})
     static class Fixture {
+        // This legacy ingress test builds standalone MockMvc controllers outside the
+        // Spring mapping registry; global MVC endpoint admission is exercised in
+        // FullApplicationIamIngressTests instead.
+        @Bean
+        org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping standaloneMvcMapping() {
+            return new org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping();
+        }
         @Bean @RequestScope(proxyMode = ScopedProxyMode.INTERFACES)
         OperationInputContributor additionalRequestContributor(jakarta.servlet.http.HttpServletRequest request) {
             return inputs -> {

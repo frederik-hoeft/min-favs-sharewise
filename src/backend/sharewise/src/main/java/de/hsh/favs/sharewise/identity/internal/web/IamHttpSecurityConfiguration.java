@@ -3,11 +3,14 @@ package de.hsh.favs.sharewise.identity.internal.web;
 import de.hsh.favs.sharewise.identity.internal.IamCredentialVerifier;
 import de.hsh.favs.sharewise.identity.transport.IamApiSecurityContribution;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.Optional;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
 
@@ -31,14 +34,36 @@ public class IamHttpSecurityConfiguration {
     @Bean
     IamApiSecurityContribution iamApiSecurityContribution(IamCredentialVerifier verifier,
             CsrfTokenRepository iamCsrfTokenRepository) {
-        return http -> http
-            .csrf(csrf -> csrf.csrfTokenRepository(iamCsrfTokenRepository)
+        return new IamApiSecurityContribution() {
+            @Override
+            public boolean hasVerifiedIdentity(HttpServletRequest request) {
+                Object evidence = request.getAttribute(IamBearerIngressFilter.VERIFIED_INGRESS_ATTRIBUTE);
+                return evidence instanceof Optional<?> verified && verified.isPresent();
+            }
+
+            @Override
+            public void contribute(HttpSecurity http) {
+                http.csrf(csrf -> csrf.csrfTokenRepository(iamCsrfTokenRepository)
                 .csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
                 .requireCsrfProtectionMatcher(IamCredentialEntryFilter::isAuthMutation))
-            .exceptionHandling(errors -> errors.accessDeniedHandler((request, response, exception) ->
+            .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
+                if (hasVerifiedIdentity(request)) {
+                    IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
+                            "access_denied", "Access Denied");
+                } else {
+                    response.setHeader(org.springframework.http.HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+                    IamHttpProblemWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED,
+                            "authentication_required", "IAM Authentication Required");
+                }
+            }).accessDeniedHandler((request, response, exception) -> {
+                boolean csrfFailure = exception instanceof CsrfException;
                 IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
-                    "csrf_invalid", "CSRF Validation Failed")))
+                        csrfFailure ? "csrf_invalid" : "access_denied",
+                        csrfFailure ? "CSRF Validation Failed" : "Access Denied");
+            }))
             .addFilterBefore(new IamBearerIngressFilter(verifier), CsrfFilter.class)
             .addFilterAfter(new IamCredentialEntryFilter(), IamBearerIngressFilter.class);
+            }
+        };
     }
 }

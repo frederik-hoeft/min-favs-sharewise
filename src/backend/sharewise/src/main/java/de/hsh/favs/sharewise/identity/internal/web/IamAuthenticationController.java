@@ -12,6 +12,7 @@ import de.hsh.favs.sharewise.identity.internal.web.dto.AuthResponse;
 import de.hsh.favs.sharewise.identity.internal.web.dto.CsrfBootstrap;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
+import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Anonymous credential entry through the trusted HTTP-to-operation-scope ingress. */
 @RestController
+@ApiAccess(ApiAccess.Mode.ANONYMOUS)
 @RequestMapping("/api/iam/v1/auth")
 @ConditionalOnProperty(prefix = "sharewise.iam.auth", name = "enabled", havingValue = "true")
 final class IamAuthenticationController {

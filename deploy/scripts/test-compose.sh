@@ -115,6 +115,14 @@ wrong_host_status="$("${compose[@]}" exec -T backend curl --silent --insecure \
     exit 1
 }
 
+# Exercise the real HTTPS proxy, CSRF/Origin filters, initial authentication,
+# and signing key distribution. All account fixtures remain disposable.
+export CONTAINER_CLI="$cli"
+issuer="$SHAREWISE_IAM_ISSUER"
+audience="${SHAREWISE_IAM_AUDIENCE:-sharewise-api}"
+python3 "$deploy_dir/scripts/iam-http-smoke.py" --host "$host" --port "$https_port" \
+    --issuer "$issuer" --audience "$audience"
+
 # A psql process reads the password within its own container; no credentials
 # are passed through CLI arguments or printed into the CI/developer terminal.
 query() {

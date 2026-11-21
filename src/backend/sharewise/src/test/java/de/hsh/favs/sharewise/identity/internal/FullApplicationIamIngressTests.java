@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.identity.internal.web.IamBearerIngressFilter;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
@@ -84,6 +85,7 @@ class FullApplicationIamIngressTests {
     @Autowired MockMvc mvc;
     @Autowired ApplicationContext context;
     @Autowired FilterChainProxy securityFilterChain;
+    @Autowired org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping handlerMappings;
     // This Unit-suite context excludes DataSource auto-configuration. Isolate the
     // real readiness probe so this test verifies HTTP security, not database wiring.
     @MockitoBean(name = "dataSourceReadinessIndicator", enforceOverride = true)
@@ -116,6 +118,61 @@ class FullApplicationIamIngressTests {
         assertTrue(ingressPosition < authorizationPosition);
         assertEquals(0, chains.get(1).getFilters().stream()
             .filter(IamBearerIngressFilter.class::isInstance).count());
+    }
+
+    @Test
+    void everyProductionApiControllerDeclaresItsAdmissionContract() {
+        for (java.util.Map.Entry<org.springframework.web.servlet.mvc.method.RequestMappingInfo,
+                org.springframework.web.method.HandlerMethod> mapping : handlerMappings.getHandlerMethods().entrySet()) {
+            org.springframework.web.method.HandlerMethod handler = mapping.getValue();
+            // Synthetic handlers are tested separately below; real application
+            // controllers in any bounded context must never be unclassified.
+            if (handler.getBeanType().getName().contains("Tests$")) {
+                continue;
+            }
+            if (mapping.getKey().getPatternValues().stream().noneMatch(path -> path.startsWith("/api/"))) {
+                continue;
+            }
+            de.hsh.favs.sharewise.shared.infra.web.ApiAccess declaration =
+                org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation(
+                    handler.getMethod(), de.hsh.favs.sharewise.shared.infra.web.ApiAccess.class);
+            if (declaration == null) {
+                declaration = org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation(
+                    handler.getBeanType(), de.hsh.favs.sharewise.shared.infra.web.ApiAccess.class);
+            }
+            org.junit.jupiter.api.Assertions.assertNotNull(declaration,
+                    () -> "Missing @ApiAccess: " + handler);
+            if (declaration.value() == de.hsh.favs.sharewise.shared.infra.web.ApiAccess.Mode.CUSTOM) {
+                org.junit.jupiter.api.Assertions.assertFalse(declaration.policy().isBlank());
+            } else {
+                org.junit.jupiter.api.Assertions.assertTrue(declaration.policy().isBlank());
+            }
+        }
+    }
+
+    @Test
+    void explicitlyDeclaredRouteAdmissionDeniesUnclassifiedHandlersAndEnforcesCustomPolicy() throws Exception {
+        String bearer = "Bearer " + token();
+        // An explicitly anonymous wildcard must not override the exact
+        // protected/unclassified MVC mappings, irrespective of map iteration order.
+        mvc.perform(get("/api/__test/identity/arbitrary-other-route"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.wildcard").value("true"));
+        // A new controller cannot make an endpoint public by omitting @ApiAccess.
+        mvc.perform(get("/api/__test/identity/unclassified"))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/__test/identity/unclassified")
+                .header(HttpHeaders.AUTHORIZATION, bearer))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("access_denied"));
+        mvc.perform(get("/api/__test/identity/custom"))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/__test/identity/custom")
+                .header(HttpHeaders.AUTHORIZATION, bearer))
+            .andExpect(status().isForbidden());
+        mvc.perform(get("/api/__test/identity/custom")
+                .header(HttpHeaders.AUTHORIZATION, bearer).header("X-Allowed-Test", "yes"))
+            .andExpect(status().isOk());
     }
 
     @Test
@@ -262,12 +319,31 @@ class FullApplicationIamIngressTests {
             this.ingress = ingress;
         }
 
+        @ApiAccess(ApiAccess.Mode.ANONYMOUS)
+        @GetMapping("/api/__test/identity/{*rest}")
+        Map<String, String> permissiveWildcardMustNotShadowExactRoutes() {
+            return Map.of("wildcard", "true");
+        }
+
+        @ApiAccess
         @GetMapping("/api/__test/identity/protected")
         Map<String, String> protectedIdentity() {
             return ingress.dispatch(IdentityContext.class,
                 identity -> Map.of("userId", identity.requireUserId().toString()));
         }
 
+        @GetMapping("/api/__test/identity/unclassified")
+        Map<String, String> unclassified() {
+            return Map.of("shouldNeverBeReachable", "true");
+        }
+
+        @ApiAccess(value = ApiAccess.Mode.CUSTOM, policy = "test-header")
+        @GetMapping("/api/__test/identity/custom")
+        Map<String, String> custom() {
+            return Map.of("accepted", "true");
+        }
+
+        @ApiAccess(ApiAccess.Mode.ANONYMOUS)
         @GetMapping("/api/__test/identity/optional")
         Map<String, String> optionalIdentity() {
             return ingress.dispatch(IdentityContext.class,
@@ -284,12 +360,14 @@ class FullApplicationIamIngressTests {
             this.ingress = ingress;
         }
 
+        @ApiAccess
         @GetMapping("/api/groups/v1/__test/identity")
         Map<String, String> getIdentity() {
             return ingress.dispatch(IdentityContext.class,
                 identity -> Map.of("userId", identity.requireUserId().toString()));
         }
 
+        @ApiAccess
         @PostMapping("/api/groups/v1/__test/identity")
         Map<String, String> postIdentity() {
             return getIdentity();
@@ -298,6 +376,15 @@ class FullApplicationIamIngressTests {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class Fixture {
+        @Bean
+        de.hsh.favs.sharewise.shared.infra.web.ApiCustomAccessPolicy testHeaderPolicy() {
+            return new de.hsh.favs.sharewise.shared.infra.web.ApiCustomAccessPolicy() {
+                @Override public String name() { return "test-header"; }
+                @Override public boolean allows(jakarta.servlet.http.HttpServletRequest request) {
+                    return "yes".equals(request.getHeader("X-Allowed-Test"));
+                }
+            };
+        }
         @Bean
         JwtCredentialCodec iamPrimaryJwtCredentialCodec() {
             return new JwtCredentialCodec(PROFILE,

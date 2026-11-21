@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AUTH_COOKIE_LOCK, CSRF_HEADER, createIdentityRuntime } from "@/core/identity";
+import { AUTH_COOKIE_LOCK, AuthCookieLock, CSRF_HEADER, createIdentityRuntime } from "@/core/identity";
 import { ApiError } from "@/lib/api";
 import {
   ControlledLocks, authenticationResponse, credentials, deferred, jsonResponse, problemResponse,
@@ -91,6 +91,24 @@ describe("Identity runtime with mock HTTP", () => {
     expect(runtime.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "initial" });
   });
 
+  it("honors an HTTP timeout override and settles the abort before releasing the lock", async () => {
+    vi.useFakeTimers();
+    const locks = new ControlledLocks();
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () =>
+        reject(new DOMException('Aborted', 'AbortError')), { once: true })));
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => locks.manager);
+    try {
+      const pending = runtime.api.get('/groups/v1/groups', { timeoutMs: 150 });
+      const result = expect(pending).rejects.toMatchObject({ status: 0, code: 'network_error' });
+      await vi.advanceTimersByTimeAsync(151);
+      await result;
+      expect((fetchImpl.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("maps network failures without leaving a pending in-tab submission", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).endsWith("/csrf")) return jsonResponse({ token: "fresh" });
@@ -108,6 +126,26 @@ describe("Identity runtime with mock HTTP", () => {
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
     await expect(runtime.auth.register(credentials)).rejects.toMatchObject({ code: "invalid_csrf_response" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts queued Web Lock acquisition without ever executing the mutation", async () => {
+    vi.useFakeTimers();
+    const action = vi.fn(async () => undefined);
+    const locks = {
+      request: (_name: string, options: LockOptions, _callback: (lock: Lock) => Promise<unknown>) =>
+        new Promise((_, reject) => options.signal?.addEventListener('abort', () =>
+          reject(new DOMException('Timed out', 'AbortError')), { once: true })),
+    } as LockManager;
+    const lock = new AuthCookieLock(() => locks);
+    try {
+      const pending = lock.runExclusive(action);
+      const result = expect(pending).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
+      await vi.advanceTimersByTimeAsync(30_001);
+      await result;
+      expect(action).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fails closed when Web Locks are absent, acquisition rejects or the callback is never entered", async () => {

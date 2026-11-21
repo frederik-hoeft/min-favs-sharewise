@@ -1,6 +1,10 @@
 package de.hsh.favs.sharewise;
 
 import de.hsh.favs.sharewise.identity.transport.IamApiSecurityContribution;
+import java.util.List;
+import de.hsh.favs.sharewise.shared.infra.web.ApiCustomAccessPolicy;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -22,13 +26,15 @@ public class ApiHttpSecurityConfiguration {
 
     @Bean
     @Order(1)
-    SecurityFilterChain apiSecurityFilterChain(HttpSecurity http, IamApiSecurityContribution iam)
+    SecurityFilterChain apiSecurityFilterChain(HttpSecurity http, IamApiSecurityContribution iam,
+            ObjectProvider<RequestMappingHandlerMapping> mappings, List<ApiCustomAccessPolicy> policies)
             throws Exception {
         // All API routes receive the same trusted bearer admission, including
         // future Group endpoints. Operations enforce their own IdentityContext policies.
         HttpSecurity api = statelessTransport(http)
             .securityMatcher(PathPatternRequestMatcher.pathPattern("/api/**"))
-            .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll());
+            .authorizeHttpRequests(authorize -> authorize.anyRequest().access(
+                    new ApiRouteAuthorizationManager(mappings, iam, policies)));
         iam.contribute(api);
         return api.build();
     }

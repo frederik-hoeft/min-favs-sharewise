@@ -113,12 +113,16 @@ services:
     read_only: true
     environment:
       IAM_KEY_ID: ${SHAREWISE_IAM_ACTIVE_KEY_ID:-iam-local-1}
-      IAM_KEY_MODE: ${SHAREWISE_IAM_KEY_MODE:-generate-if-absent}
+      IAM_KEY_MODE: ${SHAREWISE_IAM_KEY_MODE:-require-existing}
     volumes:
       - iam_signing_private:/keys/private
       - iam_verification_public:/keys/public
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=1m,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
     security_opt:
       - no-new-privileges:true
 

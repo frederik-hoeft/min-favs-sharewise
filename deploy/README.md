@@ -58,6 +58,10 @@ docker compose up -d
 
 `cleanup.sh tls` requires confirmation (or explicit `--yes`). Certificates are scoped to the public hostname; merely changing `.env` cannot update an existing certificate or the TLS Docker volume. When using a custom hostname, set `SHAREWISE_PUBLIC_HOST` in `.env` and supply a matching certificate. Nginx rejects unknown TLS hostnames, including mismatched SNI, rather than falling back to an unrelated certificate.
 
+## Ingress request-body limits
+
+The HTTPS Nginx edge is the **only** request-body size enforcement point in the shipped deployment. Its global default is **1 MiB** (`client_max_body_size 1m` in `src/frontend/nginx/production.conf.template`), returning HTTP `413` before proxying oversized requests, including chunked bodies without `Content-Length`. Larger or streaming endpoints require a deliberately reviewed per-location Nginx override; the backend has no independently configured request-body limit. Keep the Spring Boot service private behind this ingress. Any alternative/public backend ingress must enforce an equivalent limit in its own proxy or gateway before exposure.
+
 ## IAM JWT signing-key provisioning and distribution
 
 The local stack enables P2.1a production IAM by default. Its reusable **`iam-key-init` one-shot container** provisions an ES256/NIST P-256 pair using OpenSSL. The backend starts only after the provisioning job exits successfully (`service_completed_successfully`). Keys are **not** in the application image, repository, `.env`, or `deploy/.local` host fixtures.
@@ -70,6 +74,14 @@ The signing identity has a stable `kid` (default `iam-local-1`, set by `SHAREWIS
 | `iam_verification_public` | `active.pem` (SPKI PEM public key), `key-id` | Key-init writes; backend and public-key exporter read; future verifiers on the same Docker daemon may mount read-only |
 
 The job runs with no network access, a read-only container filesystem, and temporary work within the private-key volume. Its private key never passes through Docker image layers, Compose environment variables, logs, or host paths. **Docker daemon administrators and anyone with access to the private volume can still extract the key**; a volume is not an HSM or an OS-level boundary against the Docker administrator. Back up and protect the private volume accordingly.
+
+The standalone key initializer and the Compose fallback default to `require-existing`.
+The **local-only** `deploy/.env.example` deliberately opts into `generate-if-absent`:
+copying this local template into a persistent or production installation also opts into
+implicit regeneration if both volumes are lost. For durable installations, set
+`SHAREWISE_IAM_KEY_MODE=require-existing` after the single authorized provisioning run.
+The key-init container drops all Linux capabilities except `CHOWN` (needed to grant
+backend GID `10001` read access), and runs without networking or a writable root filesystem.
 
 The default `deploy/.env.example` specifies:
 
@@ -125,7 +137,7 @@ volumes:
 
 This is the **key-lifecycle portion**, not a standalone production stack: connect it to the existing backend, network, secrets and ingress definitions, pin a reviewed image digest, and supply real issuer/trust settings. The source image and entrypoint are reusable; the project does not currently ship a production-wide orchestration or automated signing-key rotation system.
 
-For a production installation, default to **`SHAREWISE_IAM_KEY_MODE=require-existing`** after provisioning. This refuses startup if the signing volumes disappear, rather than silently creating a different identity. On the *first* approved provisioning only, set `generate-if-absent` and run the key job. Then switch to `require-existing` and rerun the idempotent check. Alternatively pre-provision the exact files and matching `key-id` metadata in the designated volumes under an independently controlled secret-management procedure. Do not use the local sample issuer or `kid` for public deployments; configure a stable, explicit issuer and audience, and independently manage TLS, backups, access controls and service images.
+For a production installation, keep **`SHAREWISE_IAM_KEY_MODE=require-existing`** after provisioning. This refuses startup if the signing volumes disappear, rather than silently creating a different identity. On the *first* approved provisioning only, set `generate-if-absent` and run the key job. Then switch to `require-existing` and rerun the idempotent check. Alternatively pre-provision the exact files and matching `key-id` metadata in the designated volumes under an independently controlled secret-management procedure. Do not use the local sample issuer or `kid` for public deployments; configure a stable, explicit issuer and audience, and independently manage TLS, backups, access controls and service images.
 
 Changing `SHAREWISE_IAM_ACTIVE_KEY_ID` is **not rotation**: the job rejects it against a populated volume. Rotation requires provisioning a new identity separately, distributing its public key to all verifiers **before cutover**, retaining the old public key during token-lifetime overlap, and updating the active signer plus `sharewise.iam.auth.keys[]` trust entries together. Back up the original private volume and its `kid` alongside recoverable authentication state. **Do not destroy the private-key volume while PostgreSQL/session data survives**; losing the signer can invalidate outstanding access tokens. Emergency revocation and staged rotation are separate operational procedures, not implemented by this bootstrapper.
 
@@ -173,6 +185,12 @@ SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh 
 ```
 
 If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
+
+The disposable Compose smoke performs a CSRF bootstrap, registration and login
+through the real HTTPS proxy and verifies both JWT signatures against the public-only
+exported IAM key. It generates disposable credentials internally and does not print
+passwords, cookies, signing keys or bearer tokens. Run this on a Docker host with
+Python 3 and OpenSSL available; it does not replace the PostgreSQL-backed E2E suite.
 
 For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
 

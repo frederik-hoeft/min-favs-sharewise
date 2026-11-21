@@ -279,3 +279,9 @@ The Maven cache is populated by running the actual `-Punit-tests clean verify` l
 The verifier hashes the required original toolchain archives, extracts them to temporary storage, checks the selected source dependency descriptors and runs the corresponding backend tests and/or frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar` and basic Unix checksum utilities, plus Python 3 when verifying Maven builds (to unpack the original Maven ZIP), but not preinstalled language toolchains. See `README-OFFLINE.md` within the dependency archive for more information.
 
 Ordinary source changes do **not** invalidate the handoff. Changes to the **selected** project's `pom.xml`, Maven wrapper properties, `package.json` or `package-lock.json` invalidate it conservatively. Container images, PostgreSQL and external services are not included and require separate provisioning. The frontend starter avoids build-time Google Fonts network requests.
+
+
+Initial IAM configurable policy defaults: `sharewise.iam.auth.session.access-lifetime=5m`,
+`sharewise.iam.auth.session.idle-lifetime=7d`, `sharewise.iam.auth.session.absolute-lifetime=30d`,
+`sharewise.iam.auth.lockout.threshold=5`, and `sharewise.iam.auth.lockout.duration=15m`.
+Invalid explicit values fail startup. The JWT profile maximum lifetime uses the configured access lifetime.

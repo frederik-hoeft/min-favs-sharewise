@@ -49,3 +49,15 @@ For live registration/login acceptance, follow the [P2.1a Phase G checklist](../
 Browser-level appearance remains a distinct verification concern. jsdom and component accessibility checks do not establish responsive geometry, computed contrast, reduced-motion behavior or the full focus behavior of hydrated menus and Drawers. Visual changes are consequently checked in a browser across representative viewport widths and light, dark and system preferences. The public financial previews are static illustrations and have no dependency on API fixtures.
 
 The [repository development guide](../development.md) covers backend startup, containers and offline dependency handoffs.
+
+
+### Authentication request deadlines
+
+The shared API client aborts stalled HTTP requests after 45 seconds by default;
+callers may supply `timeoutMs` per request (use `0` only for a deliberately
+reviewed long-running request). Authentication cookie operations use a
+30-second Web Lock **acquisition** deadline. Once acquired, the lock is retained
+until the operation finishes, including cancellation of HTTP fetch. A timeout
+on registration after its POST started is an uncertain outcome; sign-in is the
+recommended recovery. P2.1b owns reactive refresh/clock-skew handling, tracked
+separately in the Phase 2 backlog.

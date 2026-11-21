@@ -43,8 +43,22 @@ export class AuthCoordinator {
         try {
             await this.cookieLock.runExclusive(async () => {
                 const csrfToken = await this.api.getCsrfToken();
-                const response: AuthenticationResponse = await this.api[operation](credentials, csrfToken);
-                this.session.accept(response);
+                // After the credential POST starts, loss of its response is
+                // ambiguous: the server may already have committed registration.
+                try {
+                    const response: AuthenticationResponse = await this.api[operation](credentials, csrfToken);
+                    this.session.accept(response);
+                } catch (error) {
+                    if (operation === 'register' && error instanceof ApiError && error.status === 0) {
+                        throw new ApiError({
+                            status: 0,
+                            code: 'registration_outcome_unknown',
+                            title: 'Registration Outcome Unknown',
+                            detail: 'Your registration may have succeeded. Try signing in.',
+                        });
+                    }
+                    throw error;
+                }
             });
         } finally {
             this.inFlight = false;

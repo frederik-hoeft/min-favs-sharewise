@@ -36,6 +36,9 @@ function mapFailure(error: unknown, mode: Mode): { fields: CredentialErrors; mes
     return { fields: {}, message: 'Secure sign-in is unavailable in this browser. Please use a browser with Web Locks support.' };
   }
   if (error.code === 'auth_in_progress') return { fields: {}, message: 'A sign-in request is already in progress.' };
+  if (mode === 'register' && error.code === 'registration_outcome_unknown') {
+    return { fields: {}, message: 'We could not confirm whether your account was created. Try signing in with these credentials first; if that fails, you can retry registration.' };
+  }
   if (error.status === 0) return { fields: {}, message: 'Unable to complete authentication. Check your connection and try again.' };
   return { fields: {}, message: 'Unable to complete authentication right now. Please try again.' };
 }

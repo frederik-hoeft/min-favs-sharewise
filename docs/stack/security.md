@@ -94,6 +94,19 @@ The application composition root owns two ordered, framework-managed Spring Secu
 
 The API chain also installs a Spring Security `CookieCsrfTokenRepository` and masked request-token handler for unsafe requests under `/api/iam/v1/auth/**`. The CSRF cookie is host-prefixed, Secure, HttpOnly, SameSite=Strict and path `/`; GET `/api/iam/v1/auth/csrf` returns the masked header token in a non-cacheable JSON body. An exact same-origin `Origin` check and CSRF verification precede operation dispatch. Successful registration/login clears the CSRF cookie and returns a session-bounded host-prefixed refresh cookie with the same secure attributes, while the primary access JWT is returned only in JSON. Cookie state never authenticates bearer-only operations. The non-API fallback remains stateless. Cookie-authenticated refresh/logout and their CSRF extension remain P2.1b work. Deployment and dependency-cache synchronization remain separate operational gates.
 
+Every mapped `/api/**` controller must explicitly declare its HTTP admission
+policy with `@ApiAccess` at controller or method level. The common declaration
+requires verified primary IAM identity, `ANONYMOUS` is a deliberate exception,
+and `CUSTOM` names a registered additional policy that still requires primary IAM
+verification. Unclassified mapped endpoints fail closed; an architecture test scans
+production controllers for missing declarations. This is an HTTP admission guard,
+not a replacement for context-owned authorization inside operation-scoped services.
+Nginx is the sole request-body size enforcement point for the production-style
+HTTP deployment: all inbound requests have a 1 MiB maximum by default, including chunked requests.
+Larger/streaming routes require an explicitly reviewed Nginx location override.
+Alternate ingress paths must enforce equivalent limits before reaching Spring MVC;
+the backend is not exposed directly in the shipped Compose deployment.
+
 The implemented shared JWT/JOSE and evidence primitives provide trusted token profiles, signing and verification, session binding, and immutable provenance-preserving claims. The [architecture chapter](../architecture/authorization.md) describes their current runtime integration. Domain authorization policies and refresh-token state remain with their owning contexts. Verified claims retain issuer and resource provenance instead of being collected in a mutable global claims bag. The modulith shares this code in-process; extracted services use the same library with independently configured trust keys.
 
 ### API boundaries and client behavior

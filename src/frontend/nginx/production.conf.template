@@ -37,6 +37,11 @@ server {
     ssl_certificate_key /etc/nginx/tls/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    # Sole inbound request-body limit for the shipped HTTPS deployment.
+    # Nginx rejects oversize Content-Length and streamed/chunked bodies before
+    # handing them to the backend. Larger endpoints need explicit location overrides.
+    client_max_body_size 1m;
+
     root /usr/share/nginx/html;
     index index.html;
 

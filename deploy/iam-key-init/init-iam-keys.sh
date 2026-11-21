@@ -105,6 +105,13 @@ fi
     echo 'IAM key ID does not match persisted signing identity; refusing implicit rotation' >&2
     exit 1
 }
+# Reject traditional SEC1 and encrypted key envelopes. The JVM loader accepts
+# unencrypted PKCS#8 PRIVATE KEY only, regardless of what OpenSSL can parse.
+[ "$(sed -n '1p' "$private_key")" = '-----BEGIN PRIVATE KEY-----' ] &&
+    [ "$(tail -n 1 "$private_key")" = '-----END PRIVATE KEY-----' ] || {
+    echo 'IAM signing key must use an unencrypted PKCS#8 PRIVATE KEY PEM envelope' >&2
+    exit 1
+}
 # Verification uses a pipe; derived public material is never copied out of the private volume
 # except to the explicitly public-only volume at initial provisioning.
 openssl pkey -in "$private_key" -noout -text 2>/dev/null | grep -q 'ASN1 OID: prime256v1' || {

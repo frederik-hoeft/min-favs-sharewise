@@ -52,7 +52,13 @@ export async function parseErrorResponse(response: Response): Promise<ApiError> 
                 code: typeof payload.code === 'string' && payload.code.length > 0 ? payload.code : 'http_error',
                 title: typeof payload.title === 'string' && payload.title.length > 0 ? payload.title : (response.statusText || 'Request Failed'),
                 detail: typeof payload.detail === 'string' && payload.detail.length > 0 ? payload.detail : `Request failed with status ${response.status}.`,
-                fieldErrors: Array.isArray(payload.fieldErrors) ? payload.fieldErrors : [],
+                fieldErrors: Array.isArray(payload.fieldErrors)
+                    ? payload.fieldErrors.filter((entry): entry is FieldError =>
+                        entry !== null && typeof entry === 'object' &&
+                        (entry.field === 'email' || entry.field === 'password' ||
+                            (typeof entry.field === 'string' && entry.field.length > 0)) &&
+                        typeof entry.code === 'string' && typeof entry.message === 'string')
+                    : [],
             });
         } catch {
             // Fall through to generic status error if JSON body is malformed.

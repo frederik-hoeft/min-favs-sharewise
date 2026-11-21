@@ -67,6 +67,14 @@ class ComposeLifecycleTests(unittest.TestCase):
         importer = scripts / "import-assets.sh"
         importer.write_text("#!/bin/sh\nexit 0\n")
         importer.chmod(0o755)
+        # The real disposable smoke now exercises IAM HTTP/JWT too. Mock only
+        # that inner probe here; the lifecycle test concerns Compose cleanup.
+        iam_smoke = scripts / "iam-http-smoke.py"
+        iam_smoke.write_text(
+            "import sys\n"
+            "assert '--host' in sys.argv and '--port' in sys.argv\n"
+            "assert '--issuer' in sys.argv and '--audience' in sys.argv\n"
+        )
         (self.deploy / ".env").write_text("COMPOSE_PROJECT_NAME=sharewise-p26ab-local\n")
         self.cli = root / "docker"
         self.cli.write_text(FAKE_DOCKER)

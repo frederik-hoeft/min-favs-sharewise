@@ -224,6 +224,32 @@ class ProductionNginxTests(unittest.TestCase):
                         "x-forwarded-by", "x-forwarded-protocol"):
             self.assertNotIn(removed, observed)
 
+    def test_api_body_size_limit_rejects_regular_and_chunked_requests(self):
+        # Nginx is the single enforced body-size boundary for the shipped
+        # deployment. Large requests must never be proxied to MVC.
+        too_large = b"x" * (1024 * 1024 + 1)
+        for route in ("/api/iam/v1/auth/register", "/api/groups/v1/__test/upload"):
+            with self.subTest(route=route, encoding="content-length"):
+                status, _, _ = self.request("POST", route, body=too_large)
+                self.assertEqual(status, 413)
+            with self.subTest(route=route, encoding="chunked"):
+                connection = http.client.HTTPSConnection(
+                    "localhost", self.https_port, timeout=10,
+                    context=ssl._create_unverified_context())
+                try:
+                    # encode_chunked sends no Content-Length; a streaming ingress
+                    # must still enforce the body limit before forwarding.
+                    connection.request("POST", route, body=[too_large[:65536], too_large[65536:]],
+                                       headers={"Transfer-Encoding": "chunked"},
+                                       encode_chunked=True)
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 413)
+                    response.read()
+                finally:
+                    connection.close()
+        status, _, _ = self.request("POST", "/api/iam/v1/auth/register", body=b"{}")
+        self.assertEqual(status, 200)
+
     def test_api_unavailable_returns_gateway_error_not_static_fallback(self):
         self.backend.shutdown()
         self.backend.server_close()

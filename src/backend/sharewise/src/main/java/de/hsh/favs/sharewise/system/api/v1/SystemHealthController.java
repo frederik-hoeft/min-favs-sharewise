@@ -1,6 +1,7 @@
 package de.hsh.favs.sharewise.system.api.v1;
 
 import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
+import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Exposes the versioned system health and readiness endpoint ({@code GET /api/system/v1/health}).
  */
 @RestController
+@ApiAccess(ApiAccess.Mode.ANONYMOUS)
 public final class SystemHealthController {
 
     private static final Logger LOG = LoggerFactory.getLogger(SystemHealthController.class);

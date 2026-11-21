@@ -2,7 +2,11 @@ import { ApiError, parseErrorResponse } from './api-error.ts';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
+    /** Abort a stalled network request; 0 deliberately disables the deadline. */
+    readonly timeoutMs?: number;
 }
+
+export const DEFAULT_API_TIMEOUT_MS = 45_000;
 
 export interface ApiClientHooks {
     /**
@@ -72,16 +76,31 @@ export function createApiClient(
             await hooks.onRequest(targetPath, headers);
         }
 
+        const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+        if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+            throw new RangeError('Invalid HTTP request timeout');
+        }
+        const controller = new AbortController();
+        // Do not race the fetch promise. The caller may hold the cross-tab cookie
+        // lock and may only release it after fetch has actually settled/aborted.
+        const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+        const abort = () => controller.abort();
+        options.signal?.addEventListener('abort', abort, { once: true });
+        if (options.signal?.aborted) controller.abort();
         let response: Response;
         try {
+            const { timeoutMs: _timeoutMs, body: _body, ...requestOptions } = options;
             response = await fetchImpl(targetPath, {
-                ...options,
+                ...requestOptions,
+                signal: controller.signal,
                 headers,
                 body: serializedBody,
                 credentials: options.credentials ?? 'same-origin',
                 cache: options.cache ?? 'no-store',
             });
         } catch (cause) {
+            if (timeout !== undefined) clearTimeout(timeout);
+            options.signal?.removeEventListener('abort', abort);
             throw new ApiError({
                 status: 0,
                 code: 'network_error',
@@ -90,6 +109,7 @@ export function createApiClient(
             });
         }
 
+        try {
         if (response.status === 401 && allowUnauthorizedRetry && hooks.onUnauthorized) {
             const shouldRetry = await hooks.onUnauthorized(targetPath, response, headers);
             if (shouldRetry) {
@@ -111,6 +131,10 @@ export function createApiClient(
         }
 
         return (await response.text()) as unknown as T;
+        } finally {
+            if (timeout !== undefined) clearTimeout(timeout);
+            options.signal?.removeEventListener('abort', abort);
+        }
     }
 
     return {

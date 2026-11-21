@@ -76,6 +76,23 @@ class IamKeyInitializationTests(unittest.TestCase):
         derived = subprocess.check_output(["openssl", "pkey", "-in", str(private), "-pubout"])
         self.assertEqual(derived, public.read_bytes())
 
+    def test_valid_sec1_key_is_rejected_as_incompatible_with_jvm_loader(self) -> None:
+        subprocess.run([
+            "openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout",
+            "-out", str(self.private / "active.pem"),
+        ], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([
+            "openssl", "pkey", "-in", str(self.private / "active.pem"),
+            "-pubout", "-out", str(self.public / "active.pem"),
+        ], check=True, stdout=subprocess.DEVNULL)
+        (self.private / "key-id").write_text("iam-local-1")
+        (self.public / "key-id").write_text("iam-local-1")
+        before = (self.private / "active.pem").read_bytes()
+        rejected = self.run_init(mode="require-existing")
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("PKCS#8", rejected.stderr)
+        self.assertEqual((self.private / "active.pem").read_bytes(), before)
+
     def test_idempotence_and_require_existing_mode_do_not_rotate(self) -> None:
         self.assertNotEqual(self.run_init(mode="require-existing").returncode, 0)
         self.assertEqual(self.run_init().returncode, 0)

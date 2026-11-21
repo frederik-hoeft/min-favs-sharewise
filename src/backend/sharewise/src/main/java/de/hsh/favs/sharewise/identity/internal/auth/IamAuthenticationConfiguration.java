@@ -96,7 +96,7 @@ class IamAuthenticationConfiguration {
         }
         JwtCredentialProfile profile = new JwtCredentialProfile(
                 "iam-access", settings.issuer(), "sw-iam-access+jwt", Set.of(settings.audience()),
-                JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5),
+                JwtCredentialProfile.Kind.PRIMARY, Set.of(), settings.session().accessLifetime(),
                 Duration.ofSeconds(30), 4096);
         return new JwtCredentialCodec(profile,
                 new Es256JwtSignatureService(keys, Optional.of(settings.activeKeyId())), clock);
@@ -108,13 +108,13 @@ class IamAuthenticationConfiguration {
     }
 
     @Bean
-    SessionPolicy iamSessionPolicy() {
-        return SessionPolicy.initial();
+    SessionPolicy iamSessionPolicy(IamAuthenticationSettings settings) {
+        return settings.session().toPolicy();
     }
 
     @Bean
-    LoginLockoutPolicy iamLoginLockoutPolicy() {
-        return LoginLockoutPolicy.initial();
+    LoginLockoutPolicy iamLoginLockoutPolicy(IamAuthenticationSettings settings) {
+        return settings.lockout().toPolicy();
     }
 
     @Bean
