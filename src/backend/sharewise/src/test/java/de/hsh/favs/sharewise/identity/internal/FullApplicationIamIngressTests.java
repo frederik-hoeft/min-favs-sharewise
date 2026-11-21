@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,6 +14,7 @@ import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.internal.web.IamBearerIngressFilter;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
+import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
 import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
@@ -48,6 +50,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -79,6 +82,10 @@ class FullApplicationIamIngressTests {
     @Autowired MockMvc mvc;
     @Autowired ApplicationContext context;
     @Autowired FilterChainProxy securityFilterChain;
+    // This Unit-suite context excludes DataSource auto-configuration. Isolate the
+    // real readiness probe so this test verifies HTTP security, not database wiring.
+    @MockitoBean(name = "dataSourceReadinessIndicator", enforceOverride = true)
+    ReadinessIndicator dataSourceReadinessIndicator;
     @Autowired @Qualifier("iamPrimaryJwtCredentialCodec") JwtCredentialCodec iamPrimaryJwtCredentialCodec;
 
     @Test
@@ -120,9 +127,11 @@ class FullApplicationIamIngressTests {
 
     @Test
     void healthAndNonApiEndpointsDoNotRequireTrustedBearerEvidence() throws Exception {
-        // The health exception is intentional even when a malformed bearer is supplied.
+        // Health bypasses bearer validation even when a malformed bearer is supplied.
+        when(dataSourceReadinessIndicator.isReady()).thenReturn(true);
         mvc.perform(get("/api/system/v1/health").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("UP"));
         // Non-API routes are not intercepted by IAM's verifier; they retain their MVC status.
         mvc.perform(get("/__test/non-api").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
             .andExpect(status().isNotFound());
