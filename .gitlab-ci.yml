@@ -203,6 +203,19 @@ test-frontend-static-export:
   script:
     - npm run test:static-export
 
+# Reject BOMs and invalid UTF-8 in tracked text before any build starts.
+# This is the same check installed by .githooks/pre-commit, but scans all files.
+test-source-encoding:
+  stage: pre-build
+  image: python:3.12-alpine
+  interruptible: true
+  dependencies: []
+  before_script:
+    - apk add --no-cache git
+  script:
+    - python3 scripts/ci/check-source-encoding.py
+    - python3 -m unittest discover -s scripts/ci/tests -p 'test_source_encoding.py' -v
+
 # Validate offline-handoff tooling using isolated fixtures, before image builds.
 # This test does not depend on packaged application artifacts.
 test-offline-handoff:

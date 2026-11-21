@@ -139,8 +139,7 @@ class ModuleVerificationFixtureTests {
                 "publishing a package is not a verification violation, so a project check must detect it");
         assertEquals(List.of("shared :: di-internal publishes "
                         + FIXTURES + ".publishedinternal.shared.infra.di.internal.SharedImplementation"),
-                ModulePublications.publishedTypesIn(modules,
-                        FIXTURES + ".publishedinternal.shared.infra.di.internal"));
+                ModulePublications.publishedTypesInInternalPackages(modules));
     }
 
     @Test

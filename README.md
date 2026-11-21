@@ -1,4 +1,4 @@
-﻿# ShareWise
+# ShareWise
 
 ShareWise is a group expense-sharing and bookkeeping application. Members record expenses and settlements of payments made outside the application, calculate their current balances, and inspect the group's financial position at earlier revisions. It does **not** move money, verify external payments, or enforce debts.
 
@@ -8,7 +8,7 @@ The repository is an **early implementation baseline**, not a finished product. 
 
 | Path | Purpose |
 | --- | --- |
-| `src/backend/sharewise/` | Java 25 / Spring Boot 4.1 Maven starter |
+| `src/backend/sharewise/` | Java 25 / Spring Boot 4.2 Maven starter |
 | `src/frontend/` | Next.js 16.4 / React 19 / TypeScript frontend |
 | `docs/stack/overview.md` | **Start here:** technical architecture, technology map and links to detailed stack decisions |
 | `docs/data-model-design.md` | Domain ownership, financial invariants, and historical revision semantics |
