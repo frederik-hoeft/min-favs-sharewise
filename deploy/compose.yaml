@@ -1,0 +1,103 @@
+# Local single-host acceptance stack. Setup and DooD asset import: deploy/README.md.
+name: ${COMPOSE_PROJECT_NAME:-sharewise-p26ab-local}
+
+services:
+  postgres:
+    image: sharewise-postgres:local
+    build:
+      context: ..
+      dockerfile: deploy/postgres/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sharewise
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - postgres_secrets:/run/secrets:ro
+    networks:
+      - data
+    healthcheck:
+      # A TCP probe cannot succeed against the temporary socket-only init server.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d sharewise"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  backend:
+    image: ${SHAREWISE_BACKEND_IMAGE:-sharewise-backend:local}
+    build:
+      context: ../src/backend/sharewise
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+    volumes:
+      - backend_secrets:/run/secrets:ro
+    networks:
+      - edge
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --max-time 5 http://127.0.0.1:8080/api/system/v1/health > /dev/null"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 60s
+
+  frontend:
+    image: ${SHAREWISE_FRONTEND_IMAGE:-sharewise-frontend:local}
+    build:
+      context: ../src/frontend
+    restart: unless-stopped
+    environment:
+      SHAREWISE_PUBLIC_HOST: ${SHAREWISE_PUBLIC_HOST:?Set SHAREWISE_PUBLIC_HOST in the Compose environment file}
+      SHAREWISE_HTTPS_PORT: ${SHAREWISE_HTTPS_PORT:-8443}
+    ports:
+      - "${SHAREWISE_HTTP_BIND:-127.0.0.1}:${SHAREWISE_HTTP_PORT:-18080}:80"
+      - "${SHAREWISE_HTTPS_BIND:-127.0.0.1}:${SHAREWISE_HTTPS_PORT:-8443}:443"
+    volumes:
+      - tls_certs:/etc/nginx/tls:ro
+    networks:
+      - edge
+    depends_on:
+      backend:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # One-off Docker-API stdin importer; the source checkout is never bind-mounted.
+  # Each service receives only the credentials needed by its role.
+  asset-loader:
+    profiles: [setup]
+    image: alpine:3.24
+    network_mode: none
+    volumes:
+      - postgres_secrets:/assets/postgres
+      - backend_secrets:/assets/backend
+      - tls_certs:/assets/tls
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=1m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  edge: {}
+  data:
+    internal: true
+
+volumes:
+  postgres_data: {}
+  postgres_secrets: {}
+  backend_secrets: {}
+  tls_certs: {}

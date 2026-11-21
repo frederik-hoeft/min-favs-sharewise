@@ -1,6 +1,6 @@
 # Application architecture
 
-**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md) and [transaction management](architecture/transactions.md) infrastructure and executable module-boundary verification are implemented; business modules and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
+**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md), [transaction management](architecture/transactions.md), [verified-credential foundation](architecture/authorization.md), and executable module-boundary verification are implemented; most business capabilities and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
 
 ## System organization
 
@@ -30,7 +30,15 @@ A module's **top-level package is its published API**: the operation-focused com
 
 Every module is a closed module and declares its permitted dependencies with `@ApplicationModule(allowedDependencies = {...})` in its base `package-info.java`, listing each module API or named interface it uses. A new cross-module dependency therefore changes that declaration and is visible in review. The declaration records a dependency but does not approve it: a synchronous cross-context call still requires the reviewed integration boundary described above. Dependencies on `shared` are listed explicitly, for example `"shared :: di"`, rather than implicitly allowed for all modules.
 
-`shared` declares `allowedDependencies = {}`, so infrastructure can never depend on a business context, and the module graph stays acyclic and extractable. Its top-level package publishes nothing; each infrastructure capability has its own named interface. For example, the DI contracts in `shared.infra.di` are published as `shared::di`, the operation result contracts in `shared.result` as `shared::result`, and the controller error/validation contracts in `shared.infra.web` as `shared::web`, while Spring implementations under `internal` sub-packages are not published.
+`shared` declares `allowedDependencies = {}`, so infrastructure can never depend on a business context, and the module graph stays acyclic and extractable. Its top-level package publishes nothing; each infrastructure capability has its own named interface. For example, the DI contracts in `shared.infra.di` are published as `shared::di`, the authorization evidence API in `shared.infra.claims` as `shared::claims`, the JWT primitives in `shared.infra.security` as `shared::security`, and the controller error/validation contracts in `shared.infra.web` as `shared::web`, while Spring implementations under `internal` sub-packages are not published.
+
+## Packaging and runtime boundary
+
+The locally runnable deployment has one Nginx/static-export frontend, one Spring Boot modular-monolith backend and one PostgreSQL 18 database. Nginx is the only host-exposed service; it terminates TLS and forwards `/api/*` unchanged over a private application network. The backend alone accesses PostgreSQL on a separate data network. The browser does not connect to PostgreSQL or require a Next.js runtime server. Deployment packaging does not change bounded-context ownership or introduce a distributed business-service boundary.
+
+PostgreSQL initializes separate runtime and Flyway migration roles on an empty persistent data volume. The Spring `production` profile requires distinct runtime secret files and starts Flyway before readiness; Nginx and the backend expose independent health checks. These startup guarantees do not imply automatic rollout, backup, or password rotation for a populated database. See the [persistence foundation](architecture/persistence.md) for database authority and the [deployment guide](../deploy/README.md) for concrete single-host operations.
+
+CI publishes the backend and frontend as separate images and verifies a matching, digest-qualified pair before recording a release descriptor. The `latest` aliases are not a transaction or an authoritative deployment reference. Host provisioning and rollout/rollback automation remain separate P2.6c/d responsibilities; [CI and test guidance](development/tests.md#ci-and-diagnostics) owns the versioning and registry contract.
 
 ## Operation- and data-flow-oriented services
 
@@ -73,7 +81,7 @@ The [preliminary messaging architecture](stack/messaging.md) uses versioned inte
 
 **Finance's ChangeRecord journal is business-visible financial history, not the delivery registry or an event store.** Group Management remains membership authority; Finance maintains an eventually synchronized local FinancialActor representation. Rejoining reactivates the same financial identity. An external broker is introduced on justified service extraction without changing context-owned business operations. Each context owns its transactions and tables even when deployed in the same process.
 
-The [preliminary security architecture](stack/security.md) separates IAM identity/session assertions from issuer-qualified domain attestations. Group Management owns group permissions; consumers validate independently signed claims and enforce their own resource and business rules. Published authorization capabilities provide immediate checks within the modulith. Authoritative remote introspection remains a possible later extension if an extracted service requires stricter freshness. The [generic file ACL proposal](file-management-acl-proposal.md) is a separate, unaccepted extension of this trust model.
+The [implemented credential foundation](architecture/authorization.md) verifies primary IAM evidence and exposes operation-scoped identity. The [preliminary security design](stack/security.md) separates IAM identity/session assertions from issuer-qualified domain attestations. Group Management owns group permissions; consumers validate independently signed claims and enforce their own resource and business rules. Published authorization capabilities provide immediate checks within the modulith. Authoritative remote introspection remains a possible later extension if an extracted service requires stricter freshness. The [generic file ACL proposal](file-management-acl-proposal.md) is a separate, unaccepted extension of this trust model.
 
 ## Infrastructure integration
 

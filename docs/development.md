@@ -1,4 +1,4 @@
-# Development environment
+﻿# Development environment
 
 **Status:** Development setup guidance for the current platform foundations and frontend demonstration. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
@@ -10,15 +10,17 @@ To get started:
 
 1. Install **Docker** and **VS Code** with Microsoft's **Dev Containers** extension, and start Docker.
 2. Open the repository root in VS Code. From the Command Palette (`Ctrl+Shift+P`), select **Dev Containers: Reopen in Container**. VS Code builds and starts the configured container and runs its initialization steps; the initial setup requires network access to obtain images and dependencies.
-3. Use VS Code's terminal inside the container to run the commands below. The backend and frontend ports (`8080` and `3000`) are forwarded to the host. After changing `.devcontainer/` configuration, run **Dev Containers: Rebuild Container**.
+3. Use VS Code's terminal inside the container to run the commands below. The backend and frontend ports (`8080` and `3000`) are explicitly forwarded to the host; automatic forwarding of other detected ports is disabled. After changing `.devcontainer/` configuration, run **Dev Containers: Rebuild Container**.
 
 The source checkout remains on the host and survives container rebuilds. Tools or files installed only inside an individual container should not be treated as persistent project state.
+
+Git stores executable permissions independently of host/mount permissions. Windows/NTFS-mounted files may appear executable inside a devcontainer even when Git records mode `100644`, which breaks fresh Linux CI checkouts. Keep executable shebang scripts at Git mode `100755` (`git update-index --chmod=+x path/to/script`) and run `python3 scripts/ci/check-script-modes.py` before pushing; the `pre-build` CI gate runs the same check. Source-only shell fragments should not have a shebang.
 
 ## Current toolchain
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
-The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. The current standalone-server build and container image are transitional; the production static-export deployment is a separate task. The [security architecture](stack/security.md) targets a static Next.js export served by Nginx with same-origin `/api/*` forwarding; that deployment is **not yet implemented**, and the commands below describe the current standalone-server development setup.
+The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. Ordinary Next.js development/build commands produce the standalone-server output; the frontend production image builds a static export and serves it with Nginx. The production Nginx image serves the exported assets with TLS and forwards same-origin `/api/*` requests to the backend. A separate production-style Compose stack supplies PostgreSQL roles, runtime secrets and health-based startup; see [local Compose acceptance](development/production-compose.md).
 
 ## Database
 
@@ -43,7 +45,7 @@ cd src/backend/sharewise
 
 The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role. Review and commit the generated sources under `identity/internal/auth/persistence/generated/` alongside the Flyway change. Ordinary Maven builds use those checked-in sources and do not contact PostgreSQL for code generation. The generator profile is opt-in and requires its plugin artifacts, which are not included in the Maven-only offline handoff; CI generation-freshness checking is still planned.
 
-`application.properties` contains dev-only defaults for the dev-container database. Other environments override them with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
+`application.properties` contains dev-only defaults for the dev-container database. The production image uses the `production` profile and required password files via the [Compose runtime configuration](development/production-compose.md). Other non-production environments may override the dev values with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
 The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
 
@@ -65,24 +67,19 @@ The frontend `.npmrc` rejects unreviewed dependency lifecycle scripts. Keep the 
 
 The starter defaults to frontend port 3000 and backend port 8080. Consult the backend `pom.xml`, wrapper configuration, frontend `package-lock.json`, and frontend-specific `src/frontend/AGENTS.md` for authoritative build and dependency details. Use project-owned commands rather than modifying dependencies merely to work around a developer's environment.
 
-## Current starter: separate-container execution
+## Application images (P2.6a)
 
-The Next.js configuration (`next.config.ts`) rewrites `/api/:path*` requests to `${BACKEND_URL}/api/:path*` while the browser uses the shared API client (`src/frontend/lib/api/`), tested through the frontend Vitest project. `BACKEND_URL` is the **backend's base URL as seen from the frontend server**, not the address used by a browser. It defaults to `http://localhost:8080` for the devcontainer or two processes on the same host. When the backend and frontend run in separate containers, their loopback interfaces are different, so provide an address reachable over their shared Docker network. For example, after building the backend JAR:
+The backend and frontend Dockerfiles are buildable directly from a clean source checkout. The backend Dockerfile uses Maven 3.10.0/JDK 25 in its build stage, then a Java 25 JRE runtime with a non-root UID and a `curl` HTTP readiness check at `/api/system/v1/health`. That endpoint requires a working PostgreSQL connection; running the backend image without correctly provisioned database roles will not result in a ready service. Maven test gates run separately in CI.
 
-```sh
-cd src/backend/sharewise
-./mvnw clean package -DskipITs
-cd ../../..
-docker build -t sharewise-backend src/backend/sharewise
-docker build -t sharewise-frontend src/frontend
-docker network create sharewise
-docker run -d --name sharewise-backend --network sharewise sharewise-backend
-docker run --rm --name sharewise-frontend --network sharewise \
-  -e BACKEND_URL=http://sharewise-backend:8080 \
-  -p 3000:3000 sharewise-frontend
-```
+The frontend Dockerfile builds the Next.js static export using Node.js 24 and the checked-in npm lockfile, then packages the generated HTML/assets in an Nginx-only runtime. The edge serves HTTPS on container port 443 and redirects HTTP on port 80 to the configured public HTTPS address. It accepts one explicit `SHAREWISE_PUBLIC_HOST` (DNS name or IPv4 address), and `SHAREWISE_HTTPS_PORT` (default `443`) identifies the **externally published** TLS port for redirects and forwarding metadata. Unknown hostnames are rejected. It serves exported extensionless routes, never falls back to `/` for unknown paths, and applies `no-store` to HTML/API responses while caching fingerprinted Next.js assets immutably.
 
-The frontend resolves `sharewise-backend` through Docker's network DNS and exposes the UI at `http://localhost:3000`. For a Compose or orchestrated deployment, set `BACKEND_URL` to the corresponding backend service DNS name instead. The variable is read by the Next.js server at runtime; it should not be a `NEXT_PUBLIC_` setting. The frontend runtime uses Next.js standalone output, with no full development dependency tree. Both production images run as non-root users. The backend container needs a reachable PostgreSQL database with the ShareWise roles: run a `postgres:18` container on the same network with the bootstrap scripts as init scripts and pass the `SPRING_DATASOURCE_*` and `SPRING_FLYWAY_*` variables to `sharewise-backend` (for example `SPRING_DATASOURCE_URL=jdbc:postgresql://<postgres-container>:5432/sharewise`). A Compose setup for this follows with P8.1.
+Nginx expects an externally supplied certificate and key at `/etc/nginx/tls/fullchain.pem` and `/etc/nginx/tls/privkey.pem`; the image contains neither. Missing files or an invalid public hostname prevent startup. For local builds, HTTPS checks, and Docker-outside-of-Docker-compatible Compose deployment, use the [deployment guide](../deploy/README.md) and its scripts. Deployment HTTP/HTTPS host ports are separate from the explicitly forwarded development ports.
+
+The Nginx `/api/*` location forwards unchanged paths, queries, methods, bodies, authorization and cookies to the service named `backend` on port 8080. It ignores client-supplied forwarding headers and supplies trusted public origin/client values. When the backend is absent, only API requests fail; static content remains available. The Spring production profile (`SPRING_PROFILES_ACTIVE=production`) enables framework forwarded-header interpretation and is safe only behind the **private, trusted proxy network** established in Phase D. Development mode does not trust arbitrary forwarded headers. Nginx never rewrites application cookies. Production certificate issuance, trusted ingress provisioning and their lifecycle belong to P2.6c/d, not this image.
+
+For a full image check on a Docker-capable host with Docker, Git and OpenSSL installed, run `bash deploy/scripts/test-images.sh`. It builds both images without layer cache, inspects runtime contents and labels, creates a disposable TLS certificate, and checks the static HTTPS routes and 404 handling from *within* the frontend container. It transfers the certificate via the Docker API and therefore works with Docker-outside-of-Docker/remote Docker without needing a shared temporary host path. For proxy/TLS/forwarding tests using a controlled local backend, run `python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v` (requires Nginx, OpenSSL and `envsubst`). For real PostgreSQL-backed `/api/system/v1/health` and service-startup validation, follow [local deployment and Compose acceptance](../deploy/README.md); this requires a Docker-capable host and an empty disposable test volume. Local development still uses `npm run dev` (port 3000) with the `BACKEND_URL` rewrite.
+
+GitLab publishes versioned images through a daemonless builder only for protected `main` pushes and protected `dev-<slug>` Git tags. It records matching, verified image digests in the `image-release/release.json` pipeline artifact. See [CI and diagnostics](development/tests.md#ci-and-diagnostics) for the publishing contract and its remaining acceptance limits.
 
 ## Application modules
 
@@ -114,7 +111,7 @@ The verification tests also run small fixture applications under `de.hsh.favs.mo
 
 The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published. The DI foundation, transaction manager and jOOQ/JPA accessors are implemented and tested; domain-specific business modules are not yet present.
 
-Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Production inbound adapters inject the singleton `OperationDispatcher` and dispatch an entry-service type rather than obtaining an operation-scoped bean from a singleton during construction:
+Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Inbound adapters dispatch an entry-service type rather than obtaining an operation-scoped bean during construction. HTTP controllers use the request-scoped `OperationIngressDispatcher`, which composes caller-side inputs; non-HTTP adapters may use the core `OperationDispatcher` directly or compose their own contributors. The example below illustrates a core dispatcher call:
 
 ```java
 // Example service types; no financial business modules exist yet.

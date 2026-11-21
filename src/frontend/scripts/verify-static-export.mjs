@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const excluded = new Set(["node_modules", ".next", ".next-export-probe", "out", "coverage", ".git"]);
+const excluded = new Set(["node_modules", ".next", ".next-export", "out", "coverage", ".git"]);
 const routes = [
   { path: "/", text: "Keep the plans." },
   { path: "/auth/login", text: "Welcome back." },
@@ -30,7 +30,7 @@ function runBuild(workspace) {
   return new Promise((resolveRun, reject) => {
     const child = spawn(process.execPath, [join(workspace, "node_modules/next/dist/bin/next"), "build"], {
       cwd: workspace,
-      env: { ...process.env, SHAREWISE_STATIC_EXPORT_PROBE: "1", NEXT_TELEMETRY_DISABLED: "1" },
+      env: { ...process.env, SHAREWISE_STATIC_EXPORT: "1", NEXT_TELEMETRY_DISABLED: "1" },
       stdio: "inherit",
     });
     child.once("error", reject);
@@ -85,7 +85,7 @@ function serveStaticFiles(output) {
 async function main() {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "sharewise-static-export-"));
   const workspace = join(temporaryRoot, "frontend");
-  const output = join(workspace, ".next-export-probe");
+  const output = join(workspace, ".next-export");
 
   try {
     // Copy source without generated outputs, then copy installed dependencies.

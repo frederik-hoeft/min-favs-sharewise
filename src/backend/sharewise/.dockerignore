@@ -1,0 +1,9 @@
+# The Maven builder needs only pom.xml and src/.
+*
+!pom.xml
+!src/
+!src/**
+# Ensure generated outputs and local config never enter build context.
+**/target/
+**/.env*
+**/*.pem

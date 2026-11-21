@@ -1,4 +1,4 @@
-# Frontend architecture
+﻿# Frontend architecture
 
 ShareWise's frontend has two independent responsibilities: it presents the product and workspace through Next.js routes, and it provides a browser-side boundary to the Spring API. Route structure determines where an experience is presented; it does not define business ownership. The backend remains authoritative for identities, group membership, expenses, balances, settlements and financial history.
 
@@ -42,7 +42,7 @@ This distinction also defines the React boundary: layouts and pages can remain S
 
 The client accepts request and unauthorized-response hooks. An unauthorized hook may authorize **one** retry after a `401`; repeated unauthorized responses do not trigger an unbounded renewal loop. The IAM boundary currently uses those hooks for a memory-only bearer token and invalidates it on expiry or unauthorized responses; it does not yet renew tokens. Authentication mutations acquire an exclusive same-origin Web Lock and fetch a fresh CSRF token inside it before sending credentials.
 
-The client is independent of the page that invokes it: callers supply an API path and receive a typed result or error. The presentation-independent `core/identity/` adapter owns the typed IAM endpoints and session/locking coordination. During local development, `next.config.ts` rewrites same-origin `/api/:path*` requests to the Spring backend at `BACKEND_URL`. The current Next.js build runs with standalone-server output. The planned static deployment replaces the Next.js rewrite with Nginx serving exported assets and proxying `/api/*`; it does not change the browser-facing URL or move business logic into Next.js route handlers.
+The client is independent of the page that invokes it: callers supply an API path and receive a typed result or error. The presentation-independent `core/identity/` adapter owns the typed IAM endpoints and session/locking coordination. During local development, `next.config.ts` rewrites same-origin `/api/:path*` requests to the Spring backend at `BACKEND_URL`. Ordinary Next.js builds retain standalone-server output. An explicit production export mode generates static HTML and assets for the Nginx-only frontend image; Nginx serves the static export over HTTPS and forwards production `/api/*` calls to Spring without altering the path or application cookies. It enforces a configured public hostname, rejects forged forwarding headers and keeps API responses uncached. Spring interprets the trusted forwarding values only under its production profile, which must be isolated behind the internal proxy network. This preserves the browser-facing URL and keeps business logic out of Next.js route handlers. Production Compose and database readiness are separate deployment responsibilities.
 
 ## Domain ownership and extension boundary
 
