@@ -194,8 +194,8 @@ describe('registration and login presentation', () => {
     await enterCredentials(user);
     await user.click(screen.getByRole('button', { name: 'Create account' }));
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/may have/i);
-    expect(alert).toHaveTextContent(/signing in/i);
+    expect(alert).toHaveTextContent(/sign.?in/i);
+    expect(alert).not.toHaveTextContent(/check your connection/i);
     expect(alert).not.toHaveTextContent(/private network diagnostic/i);
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/auth/login');
   });

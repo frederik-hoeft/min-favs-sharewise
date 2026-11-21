@@ -121,6 +121,24 @@ describe("Identity runtime with mock HTTP", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
+  it.each([
+    ["truncated JSON", () => new Response('{"accessToken":', {
+      status: 201, headers: { "content-type": "application/json" },
+    })],
+    ["aborted body", () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.error(new DOMException("body interrupted", "AbortError")); },
+    }), { status: 201, headers: { "content-type": "application/json" } })],
+  ])("treats committed registration with %s as uncertain without storing credentials", async (_case, response) => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/csrf")
+      ? jsonResponse({ token: "fresh" }) : response());
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
+    await expect(runtime.auth.register(credentials)).rejects.toMatchObject({
+      status: 0, code: "registration_outcome_unknown",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(runtime.session.getAccessToken()).toBeUndefined();
+  });
+
   it("rejects a malformed CSRF response without ever sending credentials", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ unexpected: "value" }));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);

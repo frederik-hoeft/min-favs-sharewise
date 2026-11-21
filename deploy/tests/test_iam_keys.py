@@ -93,6 +93,16 @@ class IamKeyInitializationTests(unittest.TestCase):
         self.assertIn("PKCS#8", rejected.stderr)
         self.assertEqual((self.private / "active.pem").read_bytes(), before)
 
+    def test_concatenated_pkcs8_blocks_are_rejected(self) -> None:
+        self.assertEqual(self.run_init().returncode, 0)
+        private = self.private / "active.pem"
+        original = private.read_bytes()
+        private.write_bytes(original + original)
+        rejected = self.run_init(mode="require-existing")
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("exactly one", rejected.stderr)
+        self.assertEqual(private.read_bytes(), original + original)
+
     def test_idempotence_and_require_existing_mode_do_not_rotate(self) -> None:
         self.assertNotEqual(self.run_init(mode="require-existing").returncode, 0)
         self.assertEqual(self.run_init().returncode, 0)

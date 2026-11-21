@@ -105,11 +105,16 @@ fi
     echo 'IAM key ID does not match persisted signing identity; refusing implicit rotation' >&2
     exit 1
 }
-# Reject traditional SEC1 and encrypted key envelopes. The JVM loader accepts
-# unencrypted PKCS#8 PRIVATE KEY only, regardless of what OpenSSL can parse.
-[ "$(sed -n '1p' "$private_key")" = '-----BEGIN PRIVATE KEY-----' ] &&
-    [ "$(tail -n 1 "$private_key")" = '-----END PRIVATE KEY-----' ] || {
-    echo 'IAM signing key must use an unencrypted PKCS#8 PRIVATE KEY PEM envelope' >&2
+# The JVM loader expects one unencrypted PKCS#8 PEM block. OpenSSL may
+# silently accept the first block in a concatenated PEM that Java rejects.
+LC_ALL=C awk '
+    NR == 1 { if ($0 != "-----BEGIN PRIVATE KEY-----") exit 1; next }
+    $0 == "-----END PRIVATE KEY-----" { if (closed) exit 1; closed = 1; next }
+    closed || $0 !~ /^[A-Za-z0-9+\/=]+$/ { exit 1 }
+    { body = 1 }
+    END { if (!closed || !body) exit 1 }
+' "$private_key" || {
+    echo 'IAM signing key must contain exactly one unencrypted PKCS#8 PRIVATE KEY PEM block' >&2
     exit 1
 }
 # Verification uses a pipe; derived public material is never copied out of the private volume

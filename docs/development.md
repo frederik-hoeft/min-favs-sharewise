@@ -282,6 +282,7 @@ Ordinary source changes do **not** invalidate the handoff. Changes to the **sele
 
 
 Initial IAM configurable policy defaults: `sharewise.iam.auth.session.access-lifetime=5m`,
-`sharewise.iam.auth.session.idle-lifetime=7d`, `sharewise.iam.auth.session.absolute-lifetime=30d`,
+`sharewise.iam.auth.session.minimum-access-lifetime=1m` (may be lowered to 2s or raised, but
+`access-lifetime` must be at least this minimum), `sharewise.iam.auth.session.idle-lifetime=7d`, `sharewise.iam.auth.session.absolute-lifetime=30d`,
 `sharewise.iam.auth.lockout.threshold=5`, and `sharewise.iam.auth.lockout.duration=15m`.
 Invalid explicit values fail startup. The JWT profile maximum lifetime uses the configured access lifetime.

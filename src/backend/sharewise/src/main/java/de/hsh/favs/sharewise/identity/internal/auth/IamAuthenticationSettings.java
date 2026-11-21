@@ -13,20 +13,23 @@ public record IamAuthenticationSettings(
         Session session, Lockout lockout) {
 
     public IamAuthenticationSettings {
-        session = session == null ? new Session(null, null, null) : session;
+        session = session == null ? new Session(null, null, null, null) : session;
         lockout = lockout == null ? new Lockout(null, null) : lockout;
     }
 
     public record Key(String id, String publicKeyFile, String privateKeyFile) { }
 
-    public record Session(Duration accessLifetime, Duration idleLifetime, Duration absoluteLifetime) {
+    public record Session(Duration accessLifetime, Duration minimumAccessLifetime,
+            Duration idleLifetime, Duration absoluteLifetime) {
         public Session {
             accessLifetime = accessLifetime == null ? Duration.ofMinutes(5) : accessLifetime;
+            minimumAccessLifetime = minimumAccessLifetime == null ? Duration.ofMinutes(1) : minimumAccessLifetime;
             idleLifetime = idleLifetime == null ? Duration.ofDays(7) : idleLifetime;
             absoluteLifetime = absoluteLifetime == null ? Duration.ofDays(30) : absoluteLifetime;
-            // Reject invalid operator configuration at startup, including nonsensical
-            // expiry ordering and durations that overflow downstream timestamp maths.
-            if (accessLifetime.isNegative() || accessLifetime.isZero()
+            // JWT NumericDate timestamps have whole-second precision. Keep a hard
+            // safety floor even when the operator reduces the configured minimum.
+            if (minimumAccessLifetime.compareTo(Duration.ofSeconds(2)) < 0
+                    || accessLifetime.compareTo(minimumAccessLifetime) < 0
                     || accessLifetime.compareTo(Duration.ofHours(1)) > 0
                     || idleLifetime.compareTo(accessLifetime) < 0
                     || idleLifetime.compareTo(Duration.ofDays(90)) > 0

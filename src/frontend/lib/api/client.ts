@@ -110,27 +110,37 @@ export function createApiClient(
         }
 
         try {
-        if (response.status === 401 && allowUnauthorizedRetry && hooks.onUnauthorized) {
-            const shouldRetry = await hooks.onUnauthorized(targetPath, response, headers);
-            if (shouldRetry) {
-                return executeRequest<T>(path, options, false);
+            if (response.status === 401 && allowUnauthorizedRetry && hooks.onUnauthorized) {
+                const shouldRetry = await hooks.onUnauthorized(targetPath, response, headers);
+                if (shouldRetry) {
+                    return executeRequest<T>(path, options, false);
+                }
             }
-        }
 
-        if (!response.ok) {
-            throw await parseErrorResponse(response);
-        }
+            if (!response.ok) {
+                throw await parseErrorResponse(response);
+            }
 
-        if (response.status === 204) {
-            return undefined as T;
-        }
+            if (response.status === 204) {
+                return undefined as T;
+            }
 
-        const contentType = response.headers.get('content-type') ?? '';
-        if (contentType.includes('json')) {
-            return (await response.json()) as T;
-        }
-
-        return (await response.text()) as unknown as T;
+            try {
+                const contentType = response.headers.get('content-type') ?? '';
+                if (contentType.includes('json')) {
+                    return (await response.json()) as T;
+                }
+                return (await response.text()) as unknown as T;
+            } catch {
+                // Headers can arrive after a mutation commits, even if the body
+                // is lost, truncated or aborted. Surface an uncertain outcome.
+                throw new ApiError({
+                    status: 0,
+                    code: 'invalid_response',
+                    title: 'Response Unavailable',
+                    detail: 'Unable to read the server response.',
+                });
+            }
         } finally {
             if (timeout !== undefined) clearTimeout(timeout);
             options.signal?.removeEventListener('abort', abort);
