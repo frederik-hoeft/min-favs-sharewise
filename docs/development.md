@@ -57,17 +57,9 @@ The production password encoder uses Spring Security's `Pbkdf2PasswordEncoder` a
 
 The demo does not provision a common-password blocklist or implement an in-process hashing semaphore. PBKDF2 requires CPU time per verification, not Argon2-style working memory; benchmark concurrency before public exposure. Source/edge throttling or rate limiting can be supplied by a reverse proxy/WAF; account lockout remains implemented by IAM. Do not silently lower the configured PBKDF2 work factor to address load.
 
-Provision an ES256 NIST P-256 signing key as a **PKCS#8 unencrypted PEM** private key file and the matching SPKI PEM public key file. The deployment secrets mechanism must restrict file permissions. Additional verification-only public keys support overlap during rotation. Only the active key may carry private material. For example, pass the following using a deployment-specific Spring configuration (the paths and values are placeholders, not shipped secrets):
+In the local production-style Compose deployment, **IAM key provisioning is automated** by the one-shot `iam-key-init` service: it generates a P-256 ES256 key into a protected Docker private-key volume if explicitly permitted, stores the corresponding public key in an independent public-only volume, and blocks backend startup on missing or mismatched keys. Public verification material can be exported for other services without mounting or exporting the private volume. See [the deployment IAM key runbook](../deploy/README.md#iam-jwt-signing-key-provisioning-and-distribution) for first-use provisioning, production `require-existing` mode, export, permissions, backup and rotation constraints.
 
-```properties
-sharewise.iam.auth.enabled=true
-sharewise.iam.auth.issuer=https://iam.example.org
-sharewise.iam.auth.audience=sharewise-api
-sharewise.iam.auth.active-key-id=iam-2026-11
-sharewise.iam.auth.keys[0].id=iam-2026-11
-sharewise.iam.auth.keys[0].public-key-file=/run/secrets/iam-2026-11-public.pem
-sharewise.iam.auth.keys[0].private-key-file=/run/secrets/iam-2026-11-private-pkcs8.pem
-```
+Outside that Compose deployment, the application accepts **externally provisioned** unencrypted PKCS#8 P-256 PEM private keys and SPKI PEM public keys via `sharewise.iam.auth.keys[]`, along with the configured issuer, audience, active key ID and `sharewise.iam.auth.enabled=true`. Exactly one key is active for signing; additional configured keys may be public-only verification keys for rotation. The signer never generates production keys implicitly at application startup.
 
 The configured IAM issuer and audience must be the same trusted values used by bearer verification. The signed primary profile has `typ=sw-iam-access+jwt`, maximum lifetime five minutes, 30-second clock skew and 4 KiB token limit. Both issuance and verification use the same named `iamPrimaryJwtCredentialCodec` from the P2.1.0 infrastructure; a valid signature alone does not prove the current session is still eligible (P2.1d). No JWT signing key or fake credential fallback is bundled in the application image. Never log keys, raw credentials or hashes.
 

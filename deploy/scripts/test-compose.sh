@@ -41,6 +41,9 @@ default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$deploy_dir/.env" | tai
 export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-28080}"
 export SHAREWISE_HTTPS_PORT="${SHAREWISE_SMOKE_HTTPS_PORT:-18443}"
 export COMPOSE_PROJECT_NAME="$project"
+# The disposable stack has a different HTTPS port from the normal local stack.
+# Align its token issuer with the browser-visible origin used for this test.
+export SHAREWISE_IAM_ISSUER="https://$(sed -n 's/^SHAREWISE_PUBLIC_HOST=//p' "$deploy_dir/.env" | tail -n 1):$SHAREWISE_HTTPS_PORT"
 
 cleanup_started=false
 report_failure() {
