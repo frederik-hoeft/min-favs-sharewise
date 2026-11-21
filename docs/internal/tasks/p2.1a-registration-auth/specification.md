@@ -1,6 +1,6 @@
 # P2.1a - Registration and initial authentication
 
-**Status:** P2.1.0 and P2.1a Phases A–E and F0 are approved; the F0 CI gate passed. Phase F1 implements registration/login HTTP, Spring CSRF, Origin enforcement and cookies, pending PostgreSQL CI and human review. Live browser acceptance remains Phase G.
+**Status:** P2.1.0 and P2.1a Phases A–E, F0 and F1 are approved; the maintainer confirmed green PostgreSQL/real-servlet F1 CI on November 21, 2026. Phase G live HTTPS browser acceptance, frontend checks, documentation reconciliation and final independent review remain open.
 
 ## Goal and scope
 
@@ -35,7 +35,7 @@ Authentication services depend on IAM-owned account/session ports, the existing 
 
 P2.1.0 supplies the shared trusted primary-token profile and validation (`iss`, `aud`, protected access-token `typ`, strictly typed UUID `sub` and stable `sid`, validity times, explicit signing/verification keys and permitted algorithms), trusted HTTP-to-operation-scope binding, immutable `AuthorizationContext`, and the IAM-owned **production implementation of the unchanged** `IdentityContext`. P2.1a uses the shared signing/profile facilities to issue corresponding tokens and configures the registration/login/CSRF HTTP entry policy. It does not implement a second JWT codec, claims aggregation, security configuration initializer, or dispatch-input registry. P2.1.0's verified primary evidence alone is **not** a fresh account/session-state query; authoritative eligibility is P2.1d. Group consumers continue using the published semantic identity contract without changes.
 
-P2.1.0's published `JwtCredentialCodec`, `JwtCredentialProfile`, `JwtIssueRequest`, signing service and verified ingress/operation-input bridge are implemented. P2.1a's account/session orchestration, mock-backed frontend and opt-in production `CredentialEncoder`/`AccessTokenIssuer` adapters are implemented, and Phase F1 now adds conditionally enabled registration/login/CSRF HTTP routes. The shared JWT codec, admission and operation-initialization machinery remains authoritative; test-only issuers and encoders cannot be production-discovered fallbacks. Ordered `SecurityFilterChain` beans provide bearer ingress, and F1 adds cookie/CSRF and Origin checks before dispatch. Physical PostgreSQL HTTP verification and browser acceptance remain separate gates.
+P2.1.0's published `JwtCredentialCodec`, `JwtCredentialProfile`, `JwtIssueRequest`, signing service and verified ingress/operation-input bridge are implemented. P2.1a's account/session orchestration, mock-backed frontend and opt-in production `CredentialEncoder`/`AccessTokenIssuer` adapters are implemented, and Phase F1 now adds conditionally enabled registration/login/CSRF HTTP routes. The shared JWT codec, admission and operation-initialization machinery remains authoritative; test-only issuers and encoders cannot be production-discovered fallbacks. Ordered `SecurityFilterChain` beans provide bearer ingress, and F1 adds cookie/CSRF and Origin checks before dispatch. Physical PostgreSQL HTTP verification passed the F1 CI gate; live browser acceptance remains a separate Phase G gate.
 
 ```mermaid
 flowchart LR
@@ -157,7 +157,7 @@ The scenarios below specify essential behavior. Implementation additionally prov
 3. **HTTP prerequisite:** Convert P2.1.0's manually built filter proxy to framework-managed ordered security chains before adding CSRF/cookie endpoints. Preserve verified ingress, fail-closed invalid credentials and unchanged semantic identity; require servlet filter-order and duplicate-registration regression tests.
 4. **Throttling and deployment exposure:** Account lockout and fixed PBKDF2 costs are in scope; source/edge throttling for unknown-account abuse remains an external-exposure gate coordinated with P2.6, not a claim of production-ready protection.
 5. **Session and Group boundaries:** The browser reauthenticates on reload/expiry until P2.1b; login/registration reuse the existing Web Lock. Initial registration does not publish durable `UserRegistered` events, which remain P2.4a/P2.2d work. External eligibility remains P2.1d's responsibility.
-6. **Evidence:** B/C PostgreSQL and D/frontend CI acceptance were completed on their respective runners. The current workspace's Maven-only gate cannot substitute for live credentials, HTTP/cookie/CSRF, PostgreSQL E2E and browser acceptance in F/G.
+6. **Evidence:** B/C PostgreSQL, D/frontend, and F1 PostgreSQL/HTTP CI gates have been accepted. Phase G still requires a fully exercised real HTTPS browser flow, current frontend checks, final documentation and independent review; a green server-side E2E alone does not establish those conditions.
 
 ## Documentation reconciliation
 

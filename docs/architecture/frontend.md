@@ -2,7 +2,7 @@
 
 ShareWise's frontend has two independent responsibilities: it presents the product and workspace through Next.js routes, and it provides a browser-side boundary to the Spring API. Route structure determines where an experience is presented; it does not define business ownership. The backend remains authoritative for identities, group membership, expenses, balances, settlements and financial history.
 
-The implemented frontend is a foundation for those workflows. The public site uses static financial illustrations, and the application workspace contains demonstration routes rather than protected business data. The standalone authentication pages provide registration/login forms against an agreed HTTP contract; browser-side identity orchestration is mock-tested while production IAM HTTP endpoints are pending. A shared browser HTTP client and same-origin development API forwarding provide the transport boundary.
+The implemented frontend is a foundation for those workflows. The public site uses static financial illustrations, and the application workspace contains demonstration routes rather than protected business data. The standalone authentication pages call the implemented production IAM registration/login/CSRF endpoints through the shared API client when the backend is configured with IAM signing trust. Automated browser-side identity tests use an injected mock transport; the real HTTPS browser flow is a separate acceptance gate. A shared browser HTTP client and same-origin development API forwarding provide the transport boundary.
 
 ## Route composition and UI ownership
 
