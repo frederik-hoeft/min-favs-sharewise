@@ -1,5 +1,7 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -153,15 +155,23 @@ class IamAuthenticationHttpTests {
             .andExpect(jsonPath("$.tokenType").value("Bearer"))
             .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
             .andReturn();
-        Cookie clearedCsrf = accepted.getResponse().getCookie("__Host-sharewise-csrf");
-        Cookie refresh = accepted.getResponse().getCookie("__Host-sharewise-refresh");
-        assertNotNull(clearedCsrf);
-        assertNotNull(refresh);
-        assertTrue(clearedCsrf.getMaxAge() == 0);
-        assertTrue(refresh.isHttpOnly() && refresh.getSecure());
-        assertTrue("Strict".equals(refresh.getAttribute("SameSite")));
-        assertTrue(refresh.getDomain() == null && "/".equals(refresh.getPath()));
-        assertTrue(refresh.getMaxAge() == 604800);
+        // Check actual wire headers, not getCookie(): the latter can retain servlet
+        // cookies even when ResponseEntity overwrites their Set-Cookie headers.
+        List<String> setCookies = accepted.getResponse().getHeaders(HttpHeaders.SET_COOKIE);
+        assertEquals(2, setCookies.size(), "Expected CSRF deletion and refresh cookies");
+        String clearedCsrf = setCookies.stream()
+                .filter(value -> value.startsWith("__Host-sharewise-csrf="))
+                .findFirst().orElseThrow();
+        String refresh = setCookies.stream()
+                .filter(value -> value.startsWith("__Host-sharewise-refresh="))
+                .findFirst().orElseThrow();
+        assertTrue(clearedCsrf.contains("Max-Age=0"));
+        assertTrue(refresh.contains("HttpOnly"));
+        assertTrue(refresh.contains("Secure"));
+        assertTrue(refresh.contains("SameSite=Strict"));
+        assertTrue(refresh.contains("Path=/"));
+        assertFalse(refresh.contains("Domain="));
+        assertTrue(refresh.contains("Max-Age=604800"));
     }
 
     @Test

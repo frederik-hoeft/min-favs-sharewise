@@ -123,8 +123,10 @@ final class IamAuthenticationController {
                 .maxAge(Duration.ofSeconds(maxAge)).build();
         // Prevent a token pair obtained before authentication from being reused later.
         csrfTokens.saveToken(null, request, response);
+        // Append rather than replacing the CSRF deletion Set-Cookie. ResponseEntity's
+        // header writer uses setHeader(), which drops the earlier servlet cookie.
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         return ResponseEntity.status(status)
-                .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .body(new AuthResponse(result.accessToken().value(), "Bearer",
                         result.accessToken().expiresAt()));
     }
