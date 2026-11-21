@@ -50,7 +50,7 @@ describe('registration and login presentation', () => {
       expect(within(form).getByRole('textbox', { name: /email address/i })).toHaveAttribute('type', 'email');
       expect(within(form).getByRole('textbox', { name: /email address/i })).toHaveAttribute('inputmode', 'email');
       if (mode === 'register') {
-        expect(screen.getByText('Use between 15 and 256 characters.')).toBeVisible();
+        expect(screen.getByText('Use between 8 and 256 characters.')).toBeVisible();
       }
       expect(screen.queryByText(/UTF-8 bytes/i)).not.toBeInTheDocument();
       expect(within(form).getByLabelText(/^Password/)).toHaveAttribute(
@@ -78,7 +78,7 @@ describe('registration and login presentation', () => {
     await user.click(screen.getByRole('button', { name: 'Create account' }));
     expect(screen.getByLabelText(/^Password/)).toHaveFocus();
     const passwordField = screen.getByLabelText(/^Password/);
-    const guidance = screen.getByText('Use between 15 and 256 characters.');
+    const guidance = screen.getByText('Use between 8 and 256 characters.');
     const passwordError = screen.getByText('Password is too short.');
     expect(guidance).toBeVisible();
     expect(passwordError).toBeVisible();

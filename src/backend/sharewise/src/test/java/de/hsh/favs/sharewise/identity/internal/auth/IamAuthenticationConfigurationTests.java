@@ -9,16 +9,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.identity.internal.auth.token.PrimaryAccessTokenIssuer;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.MessageDigest;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,7 +37,7 @@ class IamAuthenticationConfigurationTests {
     }
 
     @Test
-    void enabledWithoutTrustedKeysAndBlocklistCannotStart() {
+    void enabledWithoutTrustedKeysCannotStart() {
         new ApplicationContextRunner().withUserConfiguration(IamAuthenticationConfiguration.class)
                 .withPropertyValues("sharewise.iam.auth.enabled=true")
                 .run(context -> assertNotNull(context.getStartupFailure()));
@@ -53,13 +50,6 @@ class IamAuthenticationConfigurationTests {
         Path privateKey = directory.resolve("private.pem");
         writePem(publicKey, "PUBLIC KEY", pair.getPublic().getEncoded());
         writePem(privateKey, "PRIVATE KEY", pair.getPrivate().getEncoded());
-        Path list = directory.resolve("list.txt");
-        StringBuilder content = new StringBuilder();
-        for (int i = 0; i < 10_000; i++) {
-            content.append("bad-password-").append(i).append('\n');
-        }
-        Files.writeString(list, content.toString(), StandardCharsets.UTF_8);
-        String sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(list)));
         new ApplicationContextRunner().withUserConfiguration(IamAuthenticationConfiguration.class)
                 .withPropertyValues(
                         "sharewise.iam.auth.enabled=true",
@@ -68,11 +58,7 @@ class IamAuthenticationConfigurationTests {
                         "sharewise.iam.auth.active-key-id=primary-2026",
                         "sharewise.iam.auth.keys[0].id=primary-2026",
                         "sharewise.iam.auth.keys[0].public-key-file=" + publicKey,
-                        "sharewise.iam.auth.keys[0].private-key-file=" + privateKey,
-                        "sharewise.iam.auth.blocklist-file=" + list,
-                        "sharewise.iam.auth.blocklist-version=synthetic-test-2026",
-                        "sharewise.iam.auth.blocklist-sha256=" + sha,
-                        "sharewise.iam.auth.max-concurrent-hashes=1")
+                        "sharewise.iam.auth.keys[0].private-key-file=" + privateKey)
                 .run(context -> {
                     assertNull(context.getStartupFailure());
                     assertTrue(context.containsBean("iamRegistrationService"));
@@ -86,8 +72,11 @@ class IamAuthenticationConfigurationTests {
                     assertEquals(user, codec.verifyPrimary(signed).userId());
                     assertEquals(session.toString(), codec.verifyPrimary(signed).sessionId());
                     assertEquals("https://iam.sharewise.example", codec.profile().issuer());
-                    assertTrue(context.getBean(IamAuthenticationConfiguration.DummyVerifier.class)
-                            .encoded().startsWith("$argon2id$v=19$m=65536,t=3,p=4$"));
+                    String dummy = context.getBean(IamAuthenticationConfiguration.DummyVerifier.class).encoded();
+                    assertTrue(dummy.matches("[0-9a-f]{96}"));
+                    assertFalse(context.getBean(
+                            de.hsh.favs.sharewise.identity.internal.auth.credential.CredentialEncoder.class)
+                            .matches("unlikely-actual-password", dummy));
                 });
     }
 

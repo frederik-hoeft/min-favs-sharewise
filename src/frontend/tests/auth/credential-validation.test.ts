@@ -14,27 +14,29 @@ describe('authentication form policy', () => {
     expect(validateCredentials('login', `${'a'.repeat(245)}@example.org`, 'password').email).toMatch(/256/);
   });
 
-  it('enforces 15 to 256 NFC-normalized code points on registration', () => {
-    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(14)).password).toMatch(/too short/i);
-    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(15)).password).toBeUndefined();
+  it('enforces 8 to 256 UTF-16 code units on registration', () => {
+    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(7)).password).toMatch(/too short/i);
+    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(8)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(3)).password).toMatch(/too short/i);
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(4)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(128)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(129)).password).toMatch(/256/);
     expect(validateCredentials('register', 'test@example.org', 'a'.repeat(256)).password).toBeUndefined();
     expect(validateCredentials('register', 'test@example.org', 'a'.repeat(257)).password).toMatch(/256/);
-    expect(validateCredentials('register', 'test@example.org', 'e\u0301'.repeat(15)).password).toBeUndefined();
-    expect(validateCredentials('register', 'test@example.org', 'e\u0301'.repeat(257)).password).toMatch(/256/);
     expect(validateCredentials('login', 'test@example.org', 'short').password).toBeUndefined();
   });
 
-  it('does not impose the old bcrypt byte ceiling on multibyte passwords', () => {
-    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(256)).password).toBeUndefined();
-    expect(validateCredentials('login', 'test@example.org', '😀'.repeat(257)).password).toMatch(/256/);
-    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(2049)).password).toMatch(/256/);
+  it('preserves password input without Unicode normalization or a bcrypt byte limit', () => {
+    expect(validateCredentials('register', 'test@example.org', 'e\u0301'.repeat(128)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', 'e\u0301'.repeat(129)).password).toMatch(/256/);
+    expect(validateCredentials('login', 'test@example.org', '😀'.repeat(129)).password).toMatch(/256/);
   });
 
-  it('rejects malformed surrogate pairs and never trims passwords', () => {
+  it('rejects malformed surrogates and never trims passwords', () => {
     expect(validateCredentials('login', 'test@example.org', '\ud800').password).toMatch(/invalid characters/i);
     expect(validateCredentials('login', 'test@example.org', '\udc00').password).toMatch(/invalid characters/i);
-    expect(validateCredentials('login', 'test@example.org', 'pass\nword').password).toMatch(/invalid characters/i);
+    expect(validateCredentials('login', 'test@example.org', 'pass\nword').password).toBeUndefined();
     expect(validateCredentials('login', 'test@example.org', '  ').password).toBeUndefined();
-    expect(validateCredentials('register', 'test@example.org', '  '.repeat(8)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', '  '.repeat(4)).password).toBeUndefined();
   });
 });

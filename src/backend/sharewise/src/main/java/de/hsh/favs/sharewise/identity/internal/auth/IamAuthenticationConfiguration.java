@@ -2,9 +2,8 @@ package de.hsh.favs.sharewise.identity.internal.auth;
 
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountStore;
 import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
-import de.hsh.favs.sharewise.identity.internal.auth.credential.Argon2CredentialEncoder;
+import de.hsh.favs.sharewise.identity.internal.auth.credential.Pbkdf2CredentialEncoder;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.CredentialEncoder;
-import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordBlocklist;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
@@ -18,7 +17,6 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
-import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -37,7 +35,7 @@ import org.springframework.context.annotation.Scope;
 
 /**
  * Fail-closed production authentication wiring. Enable only with provisioned IAM
- * signing/verification keys and a checksum-pinned blocklist; no test fixtures are scanned.
+ * signing/verification keys; no test fixtures are scanned.
  * F1 owns exposure of these application services through HTTP/operation ingress.
  */
 @Configuration(proxyBeanMethods = false)
@@ -56,15 +54,8 @@ class IamAuthenticationConfiguration {
     }
 
     @Bean
-    PasswordBlocklist iamPasswordBlocklist(IamAuthenticationSettings settings) {
-        return PasswordBlocklist.load(Path.of(Objects.requireNonNull(settings.blocklistFile())),
-                settings.blocklistVersion(), settings.blocklistSha256());
-    }
-
-    @Bean
-    CredentialEncoder iamCredentialEncoder(PasswordPolicy policy, PasswordBlocklist blocklist,
-            IamAuthenticationSettings settings) {
-        return new Argon2CredentialEncoder(policy, blocklist, settings.maxConcurrentHashes());
+    CredentialEncoder iamCredentialEncoder(PasswordPolicy policy) {
+        return new Pbkdf2CredentialEncoder(policy);
     }
 
     @Bean

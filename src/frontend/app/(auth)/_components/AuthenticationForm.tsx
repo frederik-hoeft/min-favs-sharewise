@@ -145,7 +145,7 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
                 error={errors.password}
                 onChange={(event) => { setPassword(event.currentTarget.value); setErrors((current) => ({ ...current, password: undefined })); setMessage(undefined); }}
                 disabled={pending}
-                description={isRegistration ? 'Use between 15 and 256 characters.' : undefined}
+                description={isRegistration ? 'Use between 8 and 256 characters.' : undefined}
               />
               <Button type="submit" size="md" fullWidth loading={pending} disabled={pending} className={styles.submit}>
                 {isRegistration ? 'Create account' : 'Sign in'}

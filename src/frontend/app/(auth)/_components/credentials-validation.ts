@@ -22,33 +22,23 @@ export function validateCredentials(mode: 'login' | 'register', emailInput: stri
 
   if (!password) {
     errors.password = 'Enter your password.';
+  } else if (password.length > 256) {
+    errors.password = 'Password must not exceed 256 characters.';
+  } else if (mode === 'register' && password.length < 8) {
+    errors.password = 'Password is too short.';
   } else {
-    // Reject malformed UTF-16 and avoid normalizing unbounded input.
-    // This is deliberately looser than the 256-normalized-code-point limit.
-    const excessiveRawLength = password.length > 2048;
-    let validUnicode = true;
-    for (let i = 0; !excessiveRawLength && i < password.length; i++) {
+    // A malformed surrogate cannot be encoded as the intended UTF-8 string.
+    for (let i = 0; i < password.length; i++) {
       const unit = password.charCodeAt(i);
       if (unit >= 0xd800 && unit <= 0xdbff) {
-        if (i + 1 >= password.length || password.charCodeAt(++i) < 0xdc00 || password.charCodeAt(i) > 0xdfff) {
-          validUnicode = false;
+        if (++i >= password.length || password.charCodeAt(i) < 0xdc00 || password.charCodeAt(i) > 0xdfff) {
+          errors.password = 'Password contains invalid characters.';
           break;
         }
       } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-        validUnicode = false;
+        errors.password = 'Password contains invalid characters.';
         break;
       }
-    }
-    if (excessiveRawLength) {
-      errors.password = 'Password must not exceed 256 characters.';
-    } else if (!validUnicode) {
-      errors.password = 'Password contains invalid characters.';
-    } else if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(password)) {
-      errors.password = 'Password contains invalid characters.';
-    } else if (Array.from(password.normalize('NFC')).length > 256) {
-      errors.password = 'Password must not exceed 256 characters.';
-    } else if (mode === 'register' && Array.from(password.normalize('NFC')).length < 15) {
-      errors.password = 'Password is too short.';
     }
   }
 

@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
-
 import org.junit.jupiter.api.Test;
 
 class PasswordPolicyTests {
@@ -15,33 +14,30 @@ class PasswordPolicyTests {
     private final PasswordPolicy policy = PasswordPolicy.initial();
 
     @Test
-    void registrationUsesNormalizedUnicodeCodePointsWithoutByteTruncation() {
-        assertDoesNotThrow(() -> policy.validateRegistration("a".repeat(15)));
-        assertDoesNotThrow(() -> policy.validateRegistration("e\u0301".repeat(15)));
-        assertDoesNotThrow(() -> policy.validateRegistration("🌍".repeat(256)));
+    void registrationUsesEightTo256Utf16CodeUnitsWithoutNormalizationOrTruncation() {
+        assertDoesNotThrow(() -> policy.validateRegistration("a".repeat(8)));
+        assertDoesNotThrow(() -> policy.validateRegistration("🌍".repeat(4))); // UTF-16 length 8
+        assertDoesNotThrow(() -> policy.validateRegistration("🌍".repeat(128)));
+        assertDoesNotThrow(() -> policy.validateRegistration("e\u0301".repeat(128)));
         assertDoesNotThrow(() -> policy.validateRegistration("a".repeat(256)));
-        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("🌍".repeat(14)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("a".repeat(7)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("🌍".repeat(3)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("🌍".repeat(129)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("e\u0301".repeat(129)));
         assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("a".repeat(257)));
-        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("e\u0301".repeat(257)));
-        assertEquals("é".repeat(15), policy.normalized("e\u0301".repeat(15)));
     }
 
     @Test
-    void loginMayUseShortPasswordsButRejectsOversizedOrMalformedInput() {
+    void loginAllowsShortPasswordsButRejectsOversizedOrInvalidUtf16() {
         assertDoesNotThrow(() -> policy.validateVerificationInput("legacy"));
-        assertDoesNotThrow(() -> policy.validateVerificationInput("🌍".repeat(256)));
+        assertDoesNotThrow(() -> policy.validateVerificationInput("🌍".repeat(128)));
+        assertDoesNotThrow(() -> policy.validateVerificationInput("pass\nword"));
+        assertDoesNotThrow(() -> policy.validateVerificationInput("  "));
         assertThrows(IllegalArgumentException.class, () -> policy.validateVerificationInput(""));
         assertThrows(IllegalArgumentException.class, () -> policy.validateVerificationInput(null));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateVerificationInput("a".repeat(257)));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateVerificationInput("abc\uD800"));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateVerificationInput("abc\uDC00"));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateVerificationInput("pass\nword"));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateVerificationInput("a".repeat(2049)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateVerificationInput("a".repeat(257)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateVerificationInput("abc\uD800"));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateVerificationInput("abc\uDC00"));
     }
 
     @Test

@@ -28,4 +28,4 @@ The current HTTP chain is manually assembled from Spring Security web primitives
 
 P2.1.0's independent review, human approval and baseline integration are complete. The earlier Unit evidence remains scoped to the shared claims/JOSE and ingress foundation, **not** a production IAM login or deployment acceptance.
 
-P2.1a owns the next concrete gates: real IAM signing/profile and Argon2id credential adapters, migration to framework-managed HTTP security chains, CSRF/refresh-cookie endpoints and real PostgreSQL/browser acceptance. Production key provisioning, network deployment and Group attestations retain their own gates; none is implied by the approval of P2.1.0.
+P2.1a owns the next concrete gates: real IAM signing/profile and PBKDF2 credential adapters, migration to framework-managed HTTP security chains, CSRF/refresh-cookie endpoints and real PostgreSQL/browser acceptance. Production key provisioning, network deployment and Group attestations retain their own gates; none is implied by the approval of P2.1.0.

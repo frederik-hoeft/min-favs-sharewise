@@ -81,7 +81,7 @@ Spring Security is the selected enforcement framework; IAM application services 
 
 | Concern | Spring / Java mechanism | Application-owned work |
 | --- | --- | --- |
-| Password authentication | `AuthenticationManager`, `DaoAuthenticationProvider`, `UserDetailsService`, `PasswordEncoder` (`DelegatingPasswordEncoder`, bcrypt/Argon2 as configured) | Account lookup, policies, registration, recovery, lockout and credential/session transactions |
+| Password authentication | `AuthenticationManager`, `DaoAuthenticationProvider`, `UserDetailsService`, `PasswordEncoder` (PBKDF2-HMAC-SHA256 for the initial IAM MVP) | Account lookup, policies, registration, recovery, lockout and credential/session transactions |
 | HTTP authentication | `SecurityFilterChain`, Resource Server JWT filter, `JwtDecoder` / `NimbusJwtDecoder` from Spring Security OAuth2 Resource Server + JOSE | Trusted issuer, audience, algorithm and custom token-type validation; distinguish public, bearer and cookie-backed routes |
 | JWT issuance | Spring Security `JwtEncoder` / `NimbusJwtEncoder` and JOSE primitives | IAM and domain issuance orchestration, keys/JWKS publication, issuance claims and lifetimes; no handwritten cryptography |
 | Method and resource authorization | `@EnableMethodSecurity`, `@PreAuthorize`, `AuthorizationManager`, Spring Security `Authentication` / `SecurityContext` | Typed, issuer-qualified verified-authorization context; context-owned resource policies and failure mapping |
