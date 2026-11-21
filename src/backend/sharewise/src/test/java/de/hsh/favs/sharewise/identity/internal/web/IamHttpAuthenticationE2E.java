@@ -84,7 +84,7 @@ class IamHttpAuthenticationE2E {
             String firstRefresh = findCookie(registered, "__Host-sharewise-refresh");
             assertTrue(firstRefresh.contains("HttpOnly"));
             assertTrue(firstRefresh.contains("Secure"));
-            assertTrue(firstRefresh.contains("SameSite=Lax"));
+            assertTrue(firstRefresh.contains("SameSite=Strict"));
             assertTrue(firstRefresh.contains("Path=/"));
             assertFalse(firstRefresh.contains("Domain="));
             assertFalse(registered.body().contains(firstRefresh.split("=", 2)[1].split(";", 2)[0]));
@@ -123,7 +123,7 @@ class IamHttpAuthenticationE2E {
     }
 
     private static CsrfPair csrf(HttpClient client, String base) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(base + "/api/iam/v1/csrf"))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(base + "/api/iam/v1/auth/csrf"))
                 .GET().timeout(Duration.ofSeconds(10)).build();
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode(), response.body());
@@ -132,7 +132,7 @@ class IamHttpAuthenticationE2E {
         String cookie = findCookie(response, "__Host-sharewise-csrf");
         assertTrue(cookie.contains("HttpOnly"));
         assertTrue(cookie.contains("Secure"));
-        assertTrue(cookie.contains("SameSite=Lax"));
+        assertTrue(cookie.contains("SameSite=Strict"));
         return new CsrfPair(token, cookie.split(";", 2)[0]);
     }
 

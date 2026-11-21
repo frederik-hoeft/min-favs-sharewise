@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -71,7 +72,7 @@ class IamAuthenticationHttpTests {
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final String REGISTER = "/api/iam/v1/auth/register";
     private static final String LOGIN = "/api/iam/v1/auth/login";
-    private static final String CSRF = "/api/iam/v1/csrf";
+    private static final String CSRF = "/api/iam/v1/auth/csrf";
     private static final String BODY = "{\"email\":\"user@example.com\",\"password\":\"strong-password\"}";
 
     @Autowired MockMvc mvc;
@@ -86,10 +87,12 @@ class IamAuthenticationHttpTests {
         assertTrue(cookie.getSecure());
         assertTrue("/".equals(cookie.getPath()));
         assertTrue(cookie.getDomain() == null);
-        assertTrue("Lax".equals(cookie.getAttribute("SameSite")));
+        assertTrue("Strict".equals(cookie.getAttribute("SameSite")));
         String token = com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.token");
         // XorCsrfTokenRequestAttributeHandler masks the wire token; it is not the raw cookie secret.
         assertTrue(!token.equals(cookie.getValue()));
+        mvc.perform(get("/api/iam/v1/csrf").with(secureRequest()))
+            .andExpect(status().isNotFound());
         verifyNoInteractions(ingress);
     }
 
@@ -126,6 +129,15 @@ class IamAuthenticationHttpTests {
                     .contentType(MediaType.APPLICATION_JSON).content("{}")))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("csrf_invalid"));
+        // CSRF protects any unsafe method in the auth namespace, not just POST.
+        mvc.perform(sameOrigin(patch("/api/iam/v1/auth/future-mutation")
+                    .contentType(MediaType.APPLICATION_JSON).content("{}")))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("csrf_invalid"));
+        // Other IAM APIs are bearer-only and must not inherit cookie CSRF enforcement.
+        mvc.perform(sameOrigin(post("/api/iam/v1/non-auth-mutation")
+                    .contentType(MediaType.APPLICATION_JSON).content("{}")))
+            .andExpect(status().isNotFound());
         verifyNoInteractions(ingress);
     }
 
@@ -147,7 +159,7 @@ class IamAuthenticationHttpTests {
         assertNotNull(refresh);
         assertTrue(clearedCsrf.getMaxAge() == 0);
         assertTrue(refresh.isHttpOnly() && refresh.getSecure());
-        assertTrue("Lax".equals(refresh.getAttribute("SameSite")));
+        assertTrue("Strict".equals(refresh.getAttribute("SameSite")));
         assertTrue(refresh.getDomain() == null && "/".equals(refresh.getPath()));
         assertTrue(refresh.getMaxAge() == 604800);
     }

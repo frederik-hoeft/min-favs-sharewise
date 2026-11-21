@@ -43,7 +43,7 @@ describe("Identity runtime with mock HTTP", () => {
     expect(runtime.session.getSnapshot().status).toBe("authenticated");
     expect(runtime.session.getAccessToken()).toBe("opaque.jwt.value");
     expect(events).toEqual([
-      "GET:/api/iam/v1/csrf", `POST:${path}`,
+      "GET:/api/iam/v1/auth/csrf", `POST:${path}`,
     ]);
     expect(locks.events).toEqual([
       `queued:${AUTH_COOKIE_LOCK}`, `acquired:${AUTH_COOKIE_LOCK}:exclusive`, `released:${AUTH_COOKIE_LOCK}`,
@@ -59,10 +59,10 @@ describe("Identity runtime with mock HTTP", () => {
     const runtime = createRuntime(fetchImpl as typeof fetch, () => undefined);
     runtime.session.accept(authenticationResponse("bearer-one"));
     await runtime.api.get("/groups/v1/groups");
-    await runtime.api.get("/iam/v1/csrf");
+    await runtime.api.get("/iam/v1/auth/csrf");
     expect(calls).toEqual([
       { path: "/api/groups/v1/groups", authorization: "Bearer bearer-one" },
-      { path: "/api/iam/v1/csrf", authorization: null },
+      { path: "/api/iam/v1/auth/csrf", authorization: null },
     ]);
   });
 

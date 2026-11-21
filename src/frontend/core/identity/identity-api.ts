@@ -6,7 +6,7 @@ const ROOT = '/iam/v1';
 export const CSRF_HEADER = 'X-XSRF-TOKEN';
 
 export const ANONYMOUS_IDENTITY_PATHS = new Set([
-    '/api/iam/v1/csrf',
+    '/api/iam/v1/auth/csrf',
     '/api/iam/v1/auth/register',
     '/api/iam/v1/auth/login',
 ]);
@@ -16,7 +16,7 @@ export class IdentityApi {
     constructor(private readonly client: ApiClient) {}
 
     async getCsrfToken(): Promise<string> {
-        const response = await this.client.get<unknown>(`${ROOT}/csrf`);
+        const response = await this.client.get<unknown>(`${ROOT}/auth/csrf`);
         if (
             typeof response !== 'object' || response === null ||
             !('token' in response) || typeof response.token !== 'string' || !response.token

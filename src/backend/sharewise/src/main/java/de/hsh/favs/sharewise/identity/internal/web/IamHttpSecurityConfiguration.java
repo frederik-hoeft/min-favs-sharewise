@@ -32,7 +32,7 @@ public class IamHttpSecurityConfiguration {
         CookieCsrfTokenRepository repository = new CookieCsrfTokenRepository();
         repository.setCookieName("__Host-sharewise-csrf");
         repository.setHeaderName("X-XSRF-TOKEN");
-        repository.setCookieCustomizer(cookie -> cookie.path("/").secure(true).httpOnly(true).sameSite("Lax"));
+        repository.setCookieCustomizer(cookie -> cookie.path("/").secure(true).httpOnly(true).sameSite("Strict"));
         return repository;
     }
 
@@ -48,7 +48,7 @@ public class IamHttpSecurityConfiguration {
             .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
             .csrf(csrf -> csrf.csrfTokenRepository(iamCsrfTokenRepository)
                 .csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
-                .requireCsrfProtectionMatcher(IamCredentialEntryFilter::isCredentialPost))
+                .requireCsrfProtectionMatcher(IamCredentialEntryFilter::isAuthMutation))
             .exceptionHandling(errors -> errors.accessDeniedHandler((request, response, exception) ->
                 IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
                     "csrf_invalid", "CSRF Validation Failed")))

@@ -9,6 +9,9 @@ import de.hsh.favs.sharewise.identity.internal.auth.RegistrationFailure;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationService;
 import de.hsh.favs.sharewise.identity.internal.auth.account.EmailAddress;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
+import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
+import de.hsh.favs.sharewise.identity.internal.web.dto.AuthResponse;
+import de.hsh.favs.sharewise.identity.internal.web.dto.CsrfBootstrap;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
@@ -39,7 +42,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Anonymous credential entry through the trusted HTTP-to-operation-scope ingress. */
 @RestController
-@RequestMapping("/api/iam/v1")
+@RequestMapping("/api/iam/v1/auth")
 @ConditionalOnProperty(prefix = "sharewise.iam.auth", name = "enabled", havingValue = "true")
 final class IamAuthenticationController {
 
@@ -69,8 +72,8 @@ final class IamAuthenticationController {
         return new CsrfBootstrap(token.getToken());
     }
 
-    @PostMapping(value = "/auth/register", consumes = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<?> register(@RequestBody Credentials input, HttpServletRequest request,
+    @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<?> register(@RequestBody AuthCredentialsRequest input, HttpServletRequest request,
             HttpServletResponse response) {
         RegistrationCommand command = registration(input);
         Result<AuthenticationResult, RegistrationFailure> result = ingress.dispatch(
@@ -81,8 +84,8 @@ final class IamAuthenticationController {
                         "email_unavailable", "Email Unavailable", "This email address is unavailable.")));
     }
 
-    @PostMapping(value = "/auth/login", consumes = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<?> login(@RequestBody Credentials input, HttpServletRequest request,
+    @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<?> login(@RequestBody AuthCredentialsRequest input, HttpServletRequest request,
             HttpServletResponse response) {
         LoginCommand command = loginCommand(input);
         Result<AuthenticationResult, LoginFailure> result = ingress.dispatch(
@@ -93,17 +96,17 @@ final class IamAuthenticationController {
                         "invalid_credentials", "Authentication Failed", "Invalid credentials.")));
     }
 
-    private RegistrationCommand registration(Credentials input) {
+    private RegistrationCommand registration(AuthCredentialsRequest input) {
         checkInput(input, true);
         return RegistrationCommand.from(input.email(), input.password(), passwords);
     }
 
-    private LoginCommand loginCommand(Credentials input) {
+    private LoginCommand loginCommand(AuthCredentialsRequest input) {
         checkInput(input, false);
         return LoginCommand.from(input.email(), input.password(), passwords);
     }
 
-    private void checkInput(Credentials input, boolean registration) {
+    private void checkInput(AuthCredentialsRequest input, boolean registration) {
         List<FieldErrorDetail> errors = new ArrayList<>();
         if (input == null) {
             throw RequestValidationException.ofSingleField("request", "required", "Credentials are required.");
@@ -136,7 +139,7 @@ final class IamAuthenticationController {
             throw new IllegalStateException("Committed IAM session has expired before cookie issuance");
         }
         ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, result.refreshCredential().cookieValue())
-                .httpOnly(true).secure(true).sameSite("Lax").path("/")
+                .httpOnly(true).secure(true).sameSite("Strict").path("/")
                 .maxAge(Duration.ofSeconds(maxAge)).build();
         // Prevent a token pair obtained before authentication from being reused later.
         csrfTokens.saveToken(null, request, response);
@@ -146,24 +149,4 @@ final class IamAuthenticationController {
                         result.accessToken().expiresAt()));
     }
 
-    record Credentials(String email, String password) {
-        @Override
-        public String toString() {
-            return "Credentials[redacted]";
-        }
-    }
-
-    record AuthResponse(String accessToken, String tokenType, Instant expiresAt) {
-        @Override
-        public String toString() {
-            return "AuthResponse[redacted]";
-        }
-    }
-
-    record CsrfBootstrap(String token) {
-        @Override
-        public String toString() {
-            return "CsrfBootstrap[redacted]";
-        }
-    }
 }

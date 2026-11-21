@@ -10,7 +10,6 @@ import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -18,19 +17,24 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /** Applies no-store and strict same-origin checks at the HTTP boundary before credential entry. */
 final class IamCredentialEntryFilter extends OncePerRequestFilter {
 
-    static final String CSRF_PATH = "/api/iam/v1/csrf";
+    static final String CSRF_PATH = "/api/iam/v1/auth/csrf";
 
-    private static final RequestMatcher IAM_MUTATION = PathPatternRequestMatcher.withDefaults()
-            .matcher(HttpMethod.POST, "/api/iam/v1/**");
+    // Cookie-backed authentication operations only. Bearer-only domain and IAM APIs
+    // remain outside the CSRF boundary; future refresh/logout use this same path.
+    private static final RequestMatcher AUTH_ROUTES = PathPatternRequestMatcher.withDefaults()
+            .matcher("/api/iam/v1/auth/**");
 
-    static boolean isCredentialPost(HttpServletRequest request) {
-        return IAM_MUTATION.matches(request);
+    static boolean isAuthMutation(HttpServletRequest request) {
+        String method = request.getMethod();
+        return !"GET".equals(method) && !"HEAD".equals(method)
+                && !"OPTIONS".equals(method) && !"TRACE".equals(method)
+                && AUTH_ROUTES.matches(request);
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        return !CSRF_PATH.equals(path) && !isCredentialPost(request);
+        return !CSRF_PATH.equals(path) && !isAuthMutation(request);
     }
 
     @Override
@@ -40,7 +44,7 @@ final class IamCredentialEntryFilter extends OncePerRequestFilter {
         response.setHeader(HttpHeaders.PRAGMA, "no-cache");
         // A credential mutation must come from the exact effective request origin.
         // Forwarded headers must only be interpreted by a separately trusted proxy configuration.
-        if (isCredentialPost(request) && !isSameOrigin(request)) {
+        if (isAuthMutation(request) && !isSameOrigin(request)) {
             IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
                     "invalid_origin", "Origin Verification Failed");
             return;
