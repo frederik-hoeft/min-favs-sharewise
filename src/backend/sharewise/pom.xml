@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.2</version>
+        <version>4.2.0</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>de.hsh.favs</groupId>
@@ -28,7 +28,7 @@
     </scm>
     <properties>
         <java.version>25</java.version>
-        <spring-modulith.version>2.1.2</spring-modulith.version>
+        <spring-modulith.version>2.2.0</spring-modulith.version>
         <!-- Surefire owns offline Unit tests. Failsafe owns real PostgreSQL suites. -->
         <skipUnitTests>false</skipUnitTests>
         <skipDatabaseTests>false</skipDatabaseTests>
