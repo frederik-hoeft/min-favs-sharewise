@@ -1,93 +1,137 @@
 # Phase 3 design handoff: Finance foundations
 
-**Status:** Proposed P3.0 architecture and technical ER for human review. No Finance business tables, Group membership source revisions or event consumers are implemented by this document. The [domain model](../../data-model-design.md), [application architecture](../../architecture.md), [persistence foundation](../../architecture/persistence.md) and [messaging design](../../stack/messaging.md) remain authoritative; this handoff specifies the narrower **MVP realization** without presenting it as implemented behavior.
+**Status:** Proposed P3.0 architecture and technical ER for human review. This is a design contract, not an implemented Finance schema or deployed event API. Read it with the [domain model](../../data-model-design.md), [Phase 2 identity/Group handoff](phase-2-foundation.md), [persistence foundation](../../architecture/persistence.md), [messaging architecture](../../stack/messaging.md) and [security design](../../stack/security.md).
 
-**Audience:** Independent owners of FinancialGroup persistence/provisioning (P3.1), actor projection/event consumption (P3.2), pure accounting (P3.3), group-local financial revisions (P3.4), and Group Management membership-event publication (P2.4b).
+**Audience:** Independent owners of Finance schema/provisioning (P3.1), membership projection (P3.2), pure accounting (P3.3), financial revision coordination (P3.4), and the Group-side event producer (P2.4b). This handoff specifies **only the two Phase 3 Finance tables** and their Group-side prerequisites; Expenses, Settlements and ChangeRecords belong to later phases.
 
-## Ownership, lifecycle and data flow
+## Sources, provenance and scope
 
-Group Management owns organizational group existence, authoritative membership, roles and permissions. Finance owns one `FinancialGroup` aggregate per observed Group, its retained `FinancialActor` projection, its financial lifecycle, and its **independent financial change sequence**. Cross-context Group/user references are opaque UUIDs, not database foreign keys. Finance-owned actors **do** have a local FK to `financial_groups`; no separate orphan-capable projection root or queue is needed.
+The proposed schema reconciles requirements in this order. An earlier domain requirement remains valid unless a more authoritative decision explicitly narrows it for the MVP.
 
-1. **Provisioning:** The first trusted Group Management event concerning a Group (including an out-of-order join/leave) idempotently creates its FinancialGroup in `PROVISIONING` and persists the relevant membership state in the same Finance transaction. Every handler follows an insert-if-absent/lock/apply/commit protocol on that group's row. A `GroupCreatedV1` event includes the atomically created initial owner membership at Group membership revision `1`. When that event is processed, Finance applies the owner state using the same version guard and transitions `PROVISIONING → OPEN` in that transaction. A late creation event never overwrites a newer actor state or reopens `CLOSED`/`ARCHIVED` Finance groups.
-2. **Membership propagation:** Group Management transactionally publishes versioned membership facts through the existing Spring Modulith registry. Finance consumes them in a separate transaction with a per-actor source-version guard. Unknown departures create **inactive actor tombstones**, and leave/rejoin retains the same actor identity. An event for a Finance group not yet present creates the root instead of being discarded or parked. The registry may redeliver after consumer failure; completion follows the Finance commit.
-3. **Financial mutation:** A Finance operation uses the **same FinancialGroup row lock** to check lifecycle and serialize financial writes, allocating the next *Finance* revision only for Finance business changes. Membership replication never allocates a financial revision or fabricates ChangeRecords.
+| Marker | Source / authority | Used for |
+| --- | --- | --- |
+| **DEC** | Agreed P3.0 decisions recorded in the [Phase 3 backlog](../tasks/backlog.md) and [specification](../tasks/p3.0-finance-foundation/specification.md) | MVP lifecycle, event separation, actor replication, revision rules, no currency/deletion feature |
+| **DOM** | [Conceptual domain model](../../data-model-design.md) | FinancialGroup aggregate boundary, retained actor identities, financial revisions and authorization separation |
+| **ER** | Human-maintained yEd Phase 3 diagram (review input; not yet a repository asset) | Table/column names, composite keys, defaults, enum and type choices |
+| **REC** | Reconciliation and implementation rationale in this handoff | Concurrency protocol, diagnostics and future integration constraints |
+| **PG** | PostgreSQL implementation mapping | `uuid`, `timestamptz`, `bigint` checks/domains, PK/FK/index/trigger semantics |
 
-```mermaid
-flowchart LR
-    group["Group Management: source of truth"] -->|"GroupCreated / member changed; durable publication"| listener["Finance membership consumer"]
-    listener -->|"insert-if-absent + row lock + actor version guard"| fg["FinancialGroup: PROVISIONING / OPEN / CLOSED / ARCHIVED"]
-    fg --> actor["Retained FinancialActor projection"]
-    operation["Finance write"] -->|"same Finance-local row lock"| fg
-    operation -->|"later P4/P5: independent Finance revision"| journal["Financial record + ChangeRecord"]
-```
+**P2/ARCH** denotes constraints from the [Phase 2 ER handoff](phase-2-foundation.md), [architecture](../../architecture.md), [persistence](../../architecture/persistence.md), [messaging](../../stack/messaging.md) and [security](../../stack/security.md). The Group Management ER remains owned by P2; only the new `membership_revision` producer requirement is proposed here.
 
-### Lifecycle and readiness are different concepts
+### Ownership and logical relationships
 
-`PROVISIONING` is an expected, potentially visible pre-activation state, not a corrupt or incomplete SQL row. It forbids expenses, settlements and financial-history mutations. Once a valid `GroupCreatedV1` establishes the initial owner, Finance automatically enters `OPEN` (subject to the same transaction); no user-selected currency or synchronous Group callback is required. Group-authorized callers may see an *initializing* state and receive a typed not-ready outcome for financial writes; the eventual HTTP/UI presentation belongs to the consuming vertical. Reads or mutations must not leak Group existence to unauthorized callers.
-
-**Initial membership evidence is not full synchronization freshness.** Seeing `GroupCreatedV1` proves that the initial owner was projected; it does *not* prove all subsequently committed membership events have arrived. `OPEN` never means "caught up through the latest Group revision." Later membership lag is tolerated as described in the [domain model](../../data-model-design.md), while per-actor version guards prevent regression. Consumer operations must not infer current caller authorization from `FinancialActor.active`; they use the approved Group authority/attestation contract. If a referenced member has not yet replicated, a financial mutation must fail predictably rather than create an unverified actor.
-
-`OPEN → CLOSED`, `CLOSED → OPEN` and terminal `ARCHIVED` remain P5.3 operations. Group deletion and any terminal cleanup/suppression of late events need an explicit future policy; an old event must not recreate a deliberately retired Finance root.
-
-### Proposed Phase 3 technical ER
-
-This ER describes **only Phase 3 Finance-owned tables**. Expenses, Allocations, Settlements, ChangeRecords and a generic event inbox are not introduced here. The dotted Group link is logical, **not a database FK**; candidate column names are not deployed DDL.
+Group Management owns `groups.groups` and `groups.group_members`, authoritative membership, roles and Group-issued attestations. Finance owns `finance.groups` and `finance.actors`, its lifecycle and its **separate financial change sequence**. A Finance root may exist before the Group-created event arrives. Every actor belongs to one Finance root, including inactive tombstones; no separately persisted orphan projection is required.
 
 ```mermaid
 erDiagram
-    GROUPS_GROUP ||..o| FINANCE_FINANCIAL_GROUP : "logical UUID reference only"
-    FINANCE_FINANCIAL_GROUP ||--o{ FINANCE_FINANCIAL_ACTOR : contains
+    GROUPS_GROUP ||..o| FINANCE_GROUP : "Group ID; logical only"
+    FINANCE_GROUP ||--o{ FINANCE_ACTOR : "Finance-local FK"
 
     GROUPS_GROUP {
         uuid id PK
+        bigint membership_revision "P2.4b; >= 1, initial 1"
     }
-    FINANCE_FINANCIAL_GROUP {
-        uuid group_id PK
-        varchar_16 lifecycle "PROVISIONING OPEN CLOSED ARCHIVED"
-        bigint current_revision "NOT NULL, >= 0, initially 0"
-        timestamptz created_at "NOT NULL"
+    FINANCE_GROUP {
+        uuid id PK
+        group_state state "NOT NULL, default provisioning"
+        bigint current_revision "NOT NULL, >= 0, default 0"
+        timestamptz created_at "NOT NULL, default now()"
     }
-    FINANCE_FINANCIAL_ACTOR {
-        uuid group_id PK,FK "Finance-local FK only"
-        uuid user_id PK "opaque IAM UUID"
-        boolean active "NOT NULL"
-        bigint source_membership_revision "NOT NULL, >= 1"
-        timestamptz created_at "NOT NULL"
-        timestamptz updated_at "NOT NULL"
+    FINANCE_ACTOR {
+        uuid group_id PK,FK "references finance.groups(id)"
+        uuid user_id PK "opaque IAM identity"
+        boolean deleted "NOT NULL, no default"
+        bigint upstream_revision "NOT NULL, > 0"
+        timestamptz created_at "NOT NULL, default now()"
+        timestamptz updated_at "NOT NULL, default now()"
     }
 ```
 
-| Element | Proposed invariant | Owner |
+The dotted Group relationship is **logical, never a PostgreSQL FK**; `groups.group_members` replicates into Finance through versioned events rather than a cardinality-equivalent table relationship. Organizational Group/member IDs are not cross-context database constraints even though all Modulith schemas currently share one PostgreSQL database. `finance.groups` has `0..*` actors; `OPEN` alone does not require an actor row or guarantee the latest membership projection. There is no Finance-local `user_id`-only index in P3: expected reads and events are group-scoped, supported by the leftmost `group_id` portion of the actor PK.
+
+## P3 schema reference: `finance.groups`
+
+One row per organizational Group that Finance has observed through a **trusted** Group-originated event. The row is the aggregate root, source of the Finance lifecycle, and the shared **group-local row-lock target** for projection changes and future financial writes.
+
+| Column | PostgreSQL type and constraints | Provenance / why it exists |
 | --- | --- | --- |
-| `financial_groups.group_id` | Unique, immutable opaque Group ID; the root can precede the GroupCreated event, but is created **only** from a trusted Group event | P3.1a/b |
-| `lifecycle` | `NOT NULL DEFAULT 'PROVISIONING'`, constrained to `PROVISIONING`, `OPEN`, `CLOSED`, `ARCHIVED`; only GroupCreated processing activates a new root; financial writes require the applicable post-provisioning state | P3.1a/b, P3.2a; P5.3 later |
-| `current_revision` | `bigint NOT NULL DEFAULT 0 CHECK >= 0`; incremented by serialized Finance business changes, **never** membership replication or provisioning | P3.1a, P3.4 |
-| `(financial_actors.group_id, user_id)` | Composite PK and Finance-local group FK; retained for leave/rejoin and referenced by later historical finance records | P3.1a, P3.2a |
-| `active` / `source_membership_revision` | Resulting member state and per-actor maximum **committed Group membership revision**; an unknown leave inserts `active=false` with its revision | P3.2a |
-| Timestamps | Diagnostics, not ordering/idempotency authority; root `created_at` means Finance first observed the group, **not** the Group creation timestamp | P3.1a/P3.2a |
+| `id` | `uuid PRIMARY KEY`; **no generated UUID default** | **DEC, DOM, ER:** Exactly the upstream `groups.groups.id`, rather than an independently generated Finance identity. Prevents multiple Finance roots for one organizational Group. No cross-context FK. |
+| `state` | `finance.group_state NOT NULL DEFAULT 'provisioning'` (enum: `provisioning`, `open`, `closed`, `archived`) | **DEC, DOM, ER:** Business lifecycle. A member event may create a `provisioning` root; only `GroupCreatedV1` activates it to `open`. Closed/reopen and terminal archive are later P5.3 business operations. |
+| `current_revision` | `bigint NOT NULL DEFAULT 0 CHECK (current_revision >= 0)`; yEd: `bignatural0` | **DOM, DEC, ER, PG:** Position in Finance's group-local **financial business-change** sequence; initialized at zero. Membership events and initial Group-created activation do not advance it. P3.4 owns atomic allocation for future money/history mutations. |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` | **ER, REC, PG:** Diagnostic timestamp for when Finance first persisted this root, **not** organizational Group creation or transition to `open`. A late Group-created event does not change it. |
 
-The `0..*` actor cardinality accommodates an empty `PROVISIONING` persistence root within a transaction. After `GroupCreatedV1` is committed in Finance, the initial owner actor exists (though a later authoritative leave may already have deactivated it). No cross-context FK, cascade, runtime table join or shared Group entity is permitted.
+The PostgreSQL enum is the current **ER-selected** representation, not a requirement to share a type across bounded contexts. Its values and lifecycle guards must be tested against the real migrated database. `provisioning` rejects financial mutations; `open` permits them subject to authorization and actor eligibility. Closing/reopening and archival are not implemented in P3, although the schema reserves their states. No currency, readiness watermark, `opened_at`, `deleted_at` or financial journal column is required by P3.
 
-### MVP monetary representation
+## P3 schema reference: `finance.actors`
 
-**No currency column or currency-selection workflow in Phase 3.** MVP amounts use one **application-wide, fixed accounting denomination** with a documented fixed scale (initially two decimal places); their database representation is exact (for example integer minor units). The frontend displays one fixed currency symbol consistently. The precise displayed currency/code must be fixed **before the first money-writing feature ships**; changing a symbol later must not silently reinterpret existing persisted amounts. No multi-currency input, conversion, per-group override or variable-scale arithmetic is supported in the MVP.
+One retained financial identity for each `(group_id, user_id)` across the entire lifetime of that membership's join/leave/rejoin cycles. A removal changes a flag; it never deletes the actor row, so later Finance records can refer to the same identity.
 
-The conceptual domain model's per-group accounting-currency contract remains the intended future capability. Introducing currencies is a separate later vertical: a coordinated **Flyway** migration assigns the then-established default currency to all existing amounts/groups **without conversion**, adds the required explicit metadata and adjusts Money validation/UI. This is safe only while the single-denomination assumption was enforced for all earlier writes.
+| Column | PostgreSQL type and constraints | Provenance / why it exists |
+| --- | --- | --- |
+| `group_id` | `uuid NOT NULL`; first column of `PRIMARY KEY (group_id, user_id)`; `FOREIGN KEY (group_id) REFERENCES finance.groups(id)` | **DEC, DOM, ER, PG:** Finance-local aggregate membership and referential integrity. The group must be ensured in the same Finance transaction before inserting the actor. No cascade deletion. |
+| `user_id` | `uuid NOT NULL`; second column of composite PK | **DEC, DOM, ER:** Stable IAM user identity, **not** the Group membership row UUIDv7. No IAM FK. Uniqueness per group is enforced by the PK; no surrogate actor UUID or redundant unique index. |
+| `deleted` | `boolean NOT NULL`, **no default** | **DEC, DOM, ER:** Last accepted resulting membership state (`false` = active, `true` = removed). An unknown removal creates an inactive tombstone. No implicit activation from an omitted event field. |
+| `upstream_revision` | `bigint NOT NULL CHECK (upstream_revision > 0)`; yEd: `bignatural1` | **DEC, ER, PG:** Last committed **Group-owned membership revision affecting this actor**, used for per-actor version guards and ABA/reordering safety. Not a Finance revision and not derived from UUIDv7/timestamps. |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` | **ER, REC:** Finance-side first persistence, including a tombstone created before its join arrives. It is not the Group membership's `joined_at`. |
+| `updated_at` | `timestamptz NOT NULL DEFAULT now()`; `BEFORE UPDATE` trigger assigns `now()` | **ER, REC, PG:** Diagnostic timestamp of an accepted local projection update, not event occurrence/commit order. Only actual newer-version changes should issue SQL `UPDATE`. |
 
-## Group source ordering and idempotency
+The composite PK also lets later Finance tables reference a payer, participant or sender with `(group_id, user_id)` FKs that enforce same-FinancialGroup membership **without extra cross-table constraints**. Those tables/FKs are **not** part of P3. A separate `user_id` index is deferred until a concrete user-centric, cross-group Finance query exists; PostgreSQL's `(group_id, user_id)` B-tree already serves the group-scoped access patterns.
 
-**P2.4b producer contract:** Creating a Group and its owner membership is one authoritative transaction, establishing `membershipRevision=1` and one stable `GroupCreatedV1(eventId, groupId, initialOwnerUserId, sourceMembershipRevision=1)` fact. Each later committed membership transition (join, leave, remove, rejoin) advances a **group-scoped counter**, serially and transactionally, and publishes a stable event with `eventId`, `groupId`, `userId`, committed `sourceMembershipRevision`, and **resulting** `active` state. A retransmission keeps the original ID and revision. Role-only changes do not advance this membership counter or grant Finance authorization. Deleted/recreated membership UUIDv7 IDs or timestamps are not substitutes for committed order.
+### Numeric and timestamp semantics
 
-**P3.2 consumer contract:** In one Finance transaction, ensure the root exists, lock its row, and apply an event only when its source revision is strictly greater than that of its `(groupId,userId)` actor (or when no actor exists). A newer inactive event creates a tombstone when the actor is missing. Exact duplicates and older events are no-ops; contradictory payloads at the **same actor and revision** are diagnosed and fail rather than being silently treated as legitimate replays. Other users' events need not be delivered in group-revision order. In particular, processing revision 3 for B must not suppress revision 2 for A. The group-level source counter is **not** `FinancialGroup.current_revision`, which stays at zero throughout membership-only changes.
+`bignatural0` and `bignatural1` in the yEd diagram mean signed PostgreSQL `int8`/`bigint` constrained respectively to `>= 0` and `> 0`. P3.1a may implement them as well-owned PostgreSQL domains or equivalently explicit column-local `CHECK` constraints; **the invariants, not reusable physical type names, are mandatory**. If implemented as domains, schema/type ownership and migration ordering must not couple Group-owned and Finance-owned migrations accidentally.
 
-A `GroupCreatedV1` event must initialize the owner *through* this guard and conditionally activate only a `PROVISIONING` root. Applying a delayed revision-1 owner fact cannot undo a newer leave/rejoin. Source event processing and root creation share a Finance-local transaction and lock, but do **not** require a Group lock, synchronous Group callback, or a separate Finance queue. Registry consumption is acknowledged only on successful consumer transaction completion. Group-created publication delayed behind later membership events is therefore safe without assuming FIFO delivery.
+`now()` is PostgreSQL's **transaction-start timestamp**. This is acceptable for the diagnostic `created_at` and `updated_at` columns selected by the ER: a transaction that waits for a row lock may commit a newer projection revision with an *earlier* `updated_at` than a prior commit. Neither column establishes source order, commit order or synchronization freshness. `clock_timestamp()` would describe actual trigger execution more closely but still would not be an ordering authority; it is not required for P3. Stale/duplicate events must execute **no UPDATE**, so the trigger does not change `updated_at` on redelivery. Trigger-based `updated_at` behavior and concurrent timestamp anomalies need PostgreSQL tests, not ordering assumptions.
 
-## Recovery, rollout and deferred synchronization
+## Group Management producer prerequisite (P2.4b)
 
-For the MVP, the **first Finance consumer is registered before new Group data needing replication is created**. There is no automatic import of groups created before that subscription: the controlled release either **resets/disposes disposable MVP data** or includes a separately verified, writes-suspended **Flyway backfill**. These are explicit deployment alternatives, not a runtime reconciliation feature. P3.2 does not implement a snapshot API, periodic drift repair or a background retry scheduler. Spring Modulith's existing durable publication and failure/redelivery behavior (P2.4a/P2.4c) remains required; failures are not acknowledged as success.
+The Group-side diagram adds `groups.groups.membership_revision: bignatural1 = 1`. Creation of the Group and initial owner membership is **one committed Group transaction**, leaving `membership_revision = 1`. That transaction durably publishes **two independent facts** via the existing Spring Modulith publication registry:
 
-A persistent delivery failure can leave an otherwise valid Group's Finance root in `PROVISIONING`, or leave `OPEN` actor state temporarily stale. It must remain observable and recoverable through the existing publication registry's supported operator/recovery mechanisms. There is **no autonomous convergence guarantee after an event is permanently lost or was never published**. Once operational evidence justifies it, a later hardening task may add snapshot/backfill protocols, durable drift detection and scheduled reconciliation/retry jobs; these are not Phase 3 prerequisites.
+- `GroupCreatedV1(eventId, groupId)` reports organizational Group creation, with **no owner and no membership revision**. Finance ensures the root exists and transitions `provisioning → open`; it does not fabricate a `FinancialActor`.
+- `GroupMemberAddedV1(eventId, groupId, userId, membershipRevision=1)` reports the initial owner membership, using the same full-state member-event contract as subsequent additions. It may arrive before or after `GroupCreatedV1`.
 
-## Parallel-work boundary
+Each later successful membership addition/removal atomically advances `groups.groups.membership_revision` **exactly once** under Group-local serialization and publishes a stable, versioned event carrying `eventId`, `groupId`, `userId`, the committed positive `membershipRevision`, and the **resulting** membership state (`deleted`/active). A removal retains the affected user ID even though Group Management may delete the original `group_members` row. Both independent creation facts must have durable publication obligations in the Group creation transaction when the corresponding subscriber exists. A retry preserves the original event identity and version. Role-only changes do not increment the membership revision or grant Finance authority. Insertion of the initial owner is **revision 1**, not a second increment to 2.
 
-P3.1a alone defines the two Finance tables and their constraints. P3.1b owns idempotent root provisioning and the shared row-lock primitive needed before a Finance root exists. P3.2a owns event-state transitions, actor tombstones and automatic activation on GroupCreated, independently of listener wiring; P3.2b owns integration with P2.4a/P2.4b and joint P2.4c acceptance. P3.3 implements fixed-scale pure money/split calculations without Finance DDL or events. P3.4 owns transactional **financial** revision allocation using the same row, independent of P3.2. Future migrations/backfill, recurrent reconciliation and currency management are not separate required Phase 3 lanes.
+The `group_members.id` UUIDv7 identifies one organizational membership incarnation, not its removal or group-wide commit order. Finance never needs that row ID. The Group-side counter is a proposed P2.4b schema extension; P2.0c's existing ER asset does not yet show it.
+
+## Finance provisioning, ordering and concurrency
+
+Each event handler applies one **Finance-local** transaction: ensure `finance.groups(id)` exists (idempotent insert-if-absent), acquire that group's row lock, check lifecycle and relevant source revision, apply its effect, then commit. Concurrent first observations converge on one root via the PK. No Group SQL joins, remote callback, distributed lock or Finance-specific pending-event queue are needed.
+
+- A membership event can create `provisioning` and upsert its actor immediately. Later `GroupCreatedV1` activates the existing root; if creation arrives first, the root may be committed as `open` **with zero actors** until the owner's separate member event arrives. These delivery orders are both valid.
+- A member event applies only when `event.membershipRevision > actors.upstream_revision` (or the actor does not exist). Unknown departures insert `deleted=true` tombstones. Older events and exact duplicates are no-ops. Contradictory states at the **same actor and revision** are producer-contract violations and fail observably rather than overwriting data. A later rejoin reuses the same `(group_id,user_id)` key.
+- The comparison is **per actor**. Receiving revision 3 for B must not suppress revision 2 for A. Neither a highest-seen Group watermark nor a snapshot baseline is persisted in P3.
+- `GroupCreatedV1` opens only a `provisioning` Finance root; duplicate/delayed creation cannot reopen `closed` or `archived` groups or change `current_revision`. Member events never increment that Finance revision either.
+
+The core conditional upsert is equivalent to:
+
+```sql
+INSERT INTO finance.actors (group_id, user_id, deleted, upstream_revision)
+VALUES (:group_id, :user_id, :deleted, :membership_revision)
+ON CONFLICT (group_id, user_id) DO UPDATE
+SET deleted = EXCLUDED.deleted,
+    upstream_revision = EXCLUDED.upstream_revision
+WHERE finance.actors.upstream_revision < EXCLUDED.upstream_revision;
+```
+
+Same-revision contradictory events need an additional explicit check: the conditional upsert alone leaves them unchanged and cannot distinguish corruption from legitimate redelivery. Version checking and upsert must be transactional under the root lock. Source publication commits with the Group mutation; Finance consumption commits independently. A publication is completed only after the Finance operation commits. Registry completion failure can cause redelivery, which must be harmless. P2.4a/c own the transport/recovery integration; the actor version guard is the consumer-specific idempotency mechanism replacing a redundant inbox.
+
+### Authorization is not the actor projection
+
+Finance verifies **Group-issued, issuer-/audience-/session-qualified membership attestations** through the approved P2.5 authority flow when authorizing a group-scoped API operation; it must not infer request authority from `finance.actors.deleted` or local row existence. A newly added user with a valid attestation may perform authorized Finance **reads while their FinancialActor has not yet replicated**, provided the resource and operation policy permits the read. Actor-dependent financial operations additionally require the relevant actor(s) to exist and be eligible; an attestation never implicitly creates an actor or bypasses Finance's lifecycle guard. A member removed from Group Management may retain a valid attestation until its bounded expiration; that staleness is handled by the security policy, not by assuming immediate projection delivery. These are **later API/feature enforcement requirements**, not new P3 columns or an already implemented authorization flow.
+
+### Lifecycle versus replication readiness
+
+`provisioning` means that Finance has evidence of a Group but has not yet consumed its `GroupCreatedV1` fact. `open` means that creation was observed, **not** that the owner or other members have necessarily replicated or that the projection is fully caught up. No additional readiness counter is inferred from `current_revision`. Finance refuses monetary mutations in `provisioning`, with a typed not-ready result; the presentation of initialization/absence to an authorized user is left to the relevant UI/API vertical. Reads must never disclose Group existence to an unauthorized caller.
+
+Later `open → closed`, `closed → open`, and terminal `archived` transitions are Finance business operations (P5.3). **Organizational Group deletion is deferred:** no `GroupDeleted` subscriber, `deleted_at` field, timer, hard-delete or terminal-source tombstone is introduced in P3. Deletion cannot safely be enabled without a separate retention/authorization/replay policy that prevents delayed older events resurrecting a retired group. A synchronous Group → Finance deletion preflight is not an accepted substitute for that policy.
+
+## MVP monetary scope, rollout and recovery
+
+P3.3 supplies pure, exact `Money`/`Percentage` and split-strategy calculations, not persisted expense, allocation, settlement or journal tables. The MVP uses one implicit **application-wide fixed two-decimal denomination**, without a currency column or per-group selection. The frontend displays one consistently chosen unit. Its actual code/symbol must be fixed before money-writing features ship; a future currency-management vertical may use a coordinated **Flyway** migration to label prior amounts with that fixed unit **without conversion**, not reinterpret historical values.
+
+The MVP's first Finance listener must be registered before new organizational Group data requiring replication is created. Earlier disposable data is explicitly reset/reseeded or backfilled via a separately verified, writes-suspended Flyway release migration. The publication registry does not retroactively publish facts from before listener registration. Failed ordinary deliveries remain pending/recoverable through the existing Modulith registry and operator-visible retry mechanisms; P3 introduces no separate queue, periodic reconciliation or custom scheduler. Permanent loss of a never-published event is **not** automatically repaired. Optional snapshot-based drift repair and periodic retries remain conditional [Phase 8 hardening](../tasks/backlog.md#phase-8---operational-hardening-and-full-mvp-readiness), not a P3 prerequisite.
+
+## Parallel implementation boundary
+
+**P3.1a** alone owns Finance DDL, constraints, domains/enum and trigger. **P3.1b** owns the idempotent root/lock primitive. **P3.2a** owns guarded member facts and independent Group-created activation; **P3.2b** connects them to P2.4a/b publication/consumer contracts with joint P2.4c acceptance. **P3.3** is pure accounting without schema/events; **P3.4** uses the same Finance row lock for the independent financial revision protocol. This design deliberately avoids shared first migrations and cross-lane implementation dependencies. The [P3.0 specification](../tasks/p3.0-finance-foundation/specification.md) defines focused test cases and review gates.
