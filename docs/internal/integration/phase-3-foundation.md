@@ -12,7 +12,7 @@ The proposed schema reconciles requirements in this order. An earlier domain req
 | --- | --- | --- |
 | **DEC** | Agreed design direction captured in the [Phase 3 backlog](../tasks/backlog.md); P3.0 human approval is still pending | MVP lifecycle, event separation, actor replication, revision rules, no currency/deletion feature |
 | **DOM** | [Conceptual domain model](../../data-model-design.md) | FinancialGroup aggregate boundary, retained actor identities, financial revisions and authorization separation |
-| **ER** | Human-maintained yEd Phase 3 diagram (review input; not yet a repository asset) | Table/column names, composite keys, defaults, enum and type choices |
+| **ER** | [Authoritative yEd ERD](../../assets/er-data-model.pdf) | Table/column names, composite keys, defaults, enum and type choices |
 | **REC** | Reconciliation and implementation rationale in this handoff | Concurrency protocol, diagnostics and future integration constraints |
 | **PG** | PostgreSQL implementation mapping | `uuid`, `timestamptz`, `bigint` checks/domains, PK/FK/index/trigger semantics |
 
@@ -22,32 +22,9 @@ The proposed schema reconciles requirements in this order. An earlier domain req
 
 Group Management owns `groups.groups` and `groups.group_members`, authoritative membership, roles and Group-issued attestations. Finance owns `finance.groups` and `finance.actors`, its lifecycle and its **separate financial change sequence**. A Finance root may exist before the Group-created event arrives. Every actor belongs to one Finance root, including inactive tombstones; no separately persisted orphan projection is required.
 
-```mermaid
-erDiagram
-    GROUPS_GROUP ||..o| FINANCE_GROUP : "Group ID; logical only"
-    FINANCE_GROUP ||--o{ FINANCE_ACTOR : "Finance-local FK"
+The [authoritative yEd ERD](../../assets/er-data-model.pdf) defines the visual entity relationships and physical table structure. The column-level provenance and cross-team contracts below explain those design choices without reproducing the diagram.
 
-    GROUPS_GROUP {
-        uuid id PK
-        bigint membership_revision "P2.4b; >= 1, initial 1"
-    }
-    FINANCE_GROUP {
-        uuid id PK
-        group_state state "NOT NULL, default provisioning"
-        bigint current_revision "NOT NULL, >= 0, default 0"
-        timestamptz created_at "NOT NULL, default now()"
-    }
-    FINANCE_ACTOR {
-        uuid group_id PK,FK "references finance.groups(id)"
-        uuid user_id PK "opaque IAM identity"
-        boolean deleted "NOT NULL, no default"
-        bigint upstream_revision "NOT NULL, > 0"
-        timestamptz created_at "NOT NULL, default now()"
-        timestamptz updated_at "NOT NULL, default now()"
-    }
-```
-
-The dotted Group relationship is **logical, never a PostgreSQL FK**; `groups.group_members` replicates into Finance through versioned events rather than a cardinality-equivalent table relationship. Organizational Group/member IDs are not cross-context database constraints even though all Modulith schemas currently share one PostgreSQL database. `finance.groups` has `0..*` actors; `OPEN` alone does not require an actor row or guarantee the latest membership projection. There is no Finance-local `user_id`-only index in P3: expected reads and events are group-scoped, supported by the leftmost `group_id` portion of the actor PK.
+Organizational Group-to-Finance relationships are **logical, never PostgreSQL FKs**; `groups.group_members` replicates into Finance through versioned events rather than a cardinality-equivalent table relationship. Organizational Group/member IDs are not cross-context database constraints even though all Modulith schemas currently share one PostgreSQL database. `finance.groups` has `0..*` actors; `OPEN` alone does not require an actor row or guarantee the latest membership projection. There is no Finance-local `user_id`-only index in P3: expected reads and events are group-scoped, supported by the leftmost `group_id` portion of the actor PK.
 
 ## P3 schema reference: `finance.groups`
 
