@@ -114,6 +114,36 @@ class ModuleVerificationFixtureTests {
     }
 
     @Test
+    void unusedWildcardGrantPassesModulithButFailsOurModulePolicy() {
+        ApplicationModules modules = fixture("broadallowance");
+
+        assertEquals(List.of(), modules.detectViolations().getMessages());
+        assertEquals(List.of("consumer -> provider :: **"),
+                ModuleDependencyDeclarations.forbiddenDependencyGrants(modules));
+    }
+
+    @Test
+    void overlyBroadModuleGrantsAreRejectedByProjectPolicy() {
+        // Modulith validates actual dependencies, not the amount of access
+        // granted for hypothetical future uses.
+        assertEquals(List.of(), ModuleDependencyDeclarations.forbiddenDependencyGrants(fixture("valid")));
+        assertEquals(List.of(
+                        "consumer -> provider :: *",
+                        "consumer -> provider::**",
+                        "consumer -> shared"),
+                ModuleDependencyDeclarations.forbiddenDependencyGrants("consumer",
+                        List.of("provider", "provider :: *", "provider::**", "shared", "shared :: di"))
+                        .sorted().toList());
+        assertEquals(List.of("system -> identity", "system -> shared :: di"),
+                ModuleDependencyDeclarations.forbiddenDependencyGrants("system",
+                        List.of("shared :: health", "shared :: di", "identity"))
+                        .sorted().toList());
+        assertEquals(List.of(), ModuleDependencyDeclarations.forbiddenDependencyGrants("finance",
+                        List.of("identity", "shared::claims")).toList(),
+                "explicit top-level business API grants remain review-governed");
+    }
+
+    @Test
     void globallySharedModuleIsReported() {
         ApplicationModules modules = ApplicationModules.of(ImplicitSharedApplication.class, INCLUDE_TEST_CLASSES);
 

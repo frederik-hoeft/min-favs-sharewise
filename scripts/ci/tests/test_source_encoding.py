@@ -76,6 +76,34 @@ class SourceEncodingTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("UTF-16 LE BOM", result.stderr)
 
+    def test_bomless_utf16_in_known_source_files_is_rejected_in_both_modes(self) -> None:
+        # Markdown and Python use text=auto (unlike explicitly marked Java).
+        for name in ("docs/guide.md", "scripts/tool.py", "code.java", ".githooks/pre-commit"):
+            with self.subTest(name=name):
+                self.write(name, b"A\x00B\x00")
+                self.git("add", name)
+                for mode in ((), ("--staged",)):
+                    result = self.check(*mode)
+                    self.assertEqual(1, result.returncode, result.stderr)
+                    self.assertIn(name, result.stderr)
+                    self.assertIn("NUL byte", result.stderr)
+                self.git("reset", "-q", "HEAD", "--", name)
+                (self.root / name).unlink()
+
+    def test_unknown_auto_binary_is_ignored_but_explicit_text_rejects_nul(self) -> None:
+        self.write("data.bin", b"\x00\xff\x00")
+        self.git("add", "data.bin")
+        self.assertEqual(0, self.check("--staged").returncode)
+
+        self.write(".gitattributes", b"* text=auto eol=lf\n*.pdf binary\n*.dat text\n")
+        self.git("add", ".gitattributes")
+        self.write("data.dat", b"A\x00B\x00")
+        self.git("add", "data.dat")
+        result = self.check("--staged")
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("data.dat", result.stderr)
+        self.assertIn("NUL byte", result.stderr)
+
     def test_binary_files_and_deletions_are_not_mistaken_for_text(self) -> None:
         self.write("snapshot.pdf", b"%PDF-1.7\x80\x00\xff")
         self.git("add", "snapshot.pdf")

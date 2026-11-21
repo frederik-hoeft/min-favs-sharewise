@@ -34,6 +34,12 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
+    void dependencyGrantsDoNotBroadenReviewedModuleBoundaries() {
+        assertEquals(List.of(), ModuleDependencyDeclarations.forbiddenDependencyGrants(modules),
+                "wildcard API grants, broad shared access and unexpected system dependencies are forbidden");
+    }
+
+    @Test
     void noModuleIsGloballyShared() {
         assertEquals(List.of(), ModuleDependencyDeclarations.globallySharedModules(modules),
                 "modules must declare their dependencies on shared explicitly, not via @Modulithic(sharedModules = ...)");
