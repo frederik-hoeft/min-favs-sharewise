@@ -14,7 +14,7 @@ import java.util.Set;
  * separately configured signature service.
  *
  * @param name application-defined profile name within the issuer, retained as claim provenance
- * @param issuer exact trusted JWT issuer
+ * @param issuer exact trusted JWT issuer, limited to the supported mandatory-string length
  * @param tokenType exact protected JOSE {@code typ} header
  * @param audiences required audience set, matched exactly
  * @param kind whether the credential authenticates a primary user or is subordinate
@@ -43,13 +43,13 @@ public record JwtCredentialProfile(
      * verified against {@code iss}; the profile name is attached to accepted
      * evidence only after the token satisfies that profile's validation rules.
      *
-     * @param issuer exact trusted issuer
+     * @param issuer exact trusted issuer, limited to the supported mandatory-string length
      * @param name application-defined credential category within that issuer
      */
     public record Id(String issuer, String name) {
         /** Validates the qualified profile identifier. */
         public Id {
-            nonBlank(issuer, "issuer");
+            requireIssuer(issuer);
             nonBlank(name, "name");
         }
     }
@@ -74,7 +74,7 @@ public record JwtCredentialProfile(
     /** Checks invariants and copies the audience and trusted-primary sets. */
     public JwtCredentialProfile {
         nonBlank(name, "name");
-        nonBlank(issuer, "issuer");
+        requireIssuer(issuer);
         nonBlank(tokenType, "tokenType");
         audiences = Set.copyOf(Objects.requireNonNull(audiences, "audiences"));
         if (audiences.isEmpty()) {
@@ -96,6 +96,13 @@ public record JwtCredentialProfile(
         }
         if (maximumTokenLength < 1 || maximumTokenLength > ABSOLUTE_MAXIMUM_TOKEN_LENGTH) {
             throw new IllegalArgumentException("JWT profile size limit is outside supported bounds");
+        }
+    }
+
+    private static void requireIssuer(String issuer) {
+        Objects.requireNonNull(issuer, "issuer");
+        if (!JwtCredentialClaims.isValidRequiredString(issuer)) {
+            throw new IllegalArgumentException("issuer must be nonblank and at most 256 characters long");
         }
     }
 

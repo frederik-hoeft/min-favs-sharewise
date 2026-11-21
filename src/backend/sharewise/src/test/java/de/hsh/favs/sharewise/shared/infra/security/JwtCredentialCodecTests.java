@@ -320,6 +320,39 @@ class JwtCredentialCodecTests {
     }
 
     @Test
+    void primaryIssuerLengthIsCompatibleWithSubordinateBinding() {
+        String issuerPrefix = "https://iam.sharewise.test/";
+        String maximumIssuer = issuerPrefix + "x".repeat(256 - issuerPrefix.length());
+        String oversizedIssuer = maximumIssuer + "x";
+
+        assertThrows(IllegalArgumentException.class,
+            () -> new JwtCredentialProfile.Id(oversizedIssuer, IAM.name()));
+        assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile(
+            IAM.name(), oversizedIssuer, IAM.tokenType(), IAM.audiences(), IAM.kind(),
+            IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew(), IAM.maximumTokenLength()));
+        assertThrows(IllegalArgumentException.class, () -> subordinateIssue(ALICE, SESSION, oversizedIssuer));
+
+        JwtCredentialProfile primaryProfile = new JwtCredentialProfile(
+            IAM.name(), maximumIssuer, IAM.tokenType(), IAM.audiences(), IAM.kind(),
+            IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew(), IAM.maximumTokenLength());
+        JwtCredentialProfile subordinateProfile = new JwtCredentialProfile(
+            GROUP.name(), GROUP.issuer(), GROUP.tokenType(), GROUP.audiences(), GROUP.kind(),
+            Set.of(primaryProfile.id()), GROUP.maximumLifetime(), GROUP.clockSkew(), GROUP.maximumTokenLength());
+        JwtCredentialCodec iam = new JwtCredentialCodec(primaryProfile,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
+        JwtCredentialCodec group = new JwtCredentialCodec(subordinateProfile,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("group-1", GROUP_KEY)),
+                Optional.of("group-1")), CLOCK);
+        VerifiedJwtCredential verifiedPrimary = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
+        VerifiedJwtCredential verifiedSubordinate = group.verifySubordinate(
+            group.sign(subordinateIssue(ALICE, SESSION, maximumIssuer)), verifiedPrimary);
+
+        assertEquals(maximumIssuer, verifiedPrimary.credential().origin().issuer());
+        assertEquals(maximumIssuer, claim(verifiedSubordinate.credential(), "principal_iss"));
+        assertEquals(ALICE, verifiedSubordinate.userId());
+    }
+
+    @Test
     void profileSpecificCompactJwtLimitAppliesSymmetricallyToIssuanceAndVerification() {
         JwtCredentialCodec standard = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         JwtCredentialProfile largeProfile = new JwtCredentialProfile(
