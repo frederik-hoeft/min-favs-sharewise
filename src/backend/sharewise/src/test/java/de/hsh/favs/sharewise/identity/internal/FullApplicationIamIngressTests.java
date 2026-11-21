@@ -1,5 +1,9 @@
 package de.hsh.favs.sharewise.identity.internal;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -7,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.identity.internal.web.IamBearerIngressFilter;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
@@ -14,6 +19,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import jakarta.servlet.Filter;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -32,10 +38,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.TestComponent;
+import org.springframework.boot.web.servlet.DelegatingFilterProxyRegistrationBean;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.web.FilterChainProxy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -65,7 +77,56 @@ class FullApplicationIamIngressTests {
     private static final KeyPair KEY = generateKey();
 
     @Autowired MockMvc mvc;
+    @Autowired ApplicationContext context;
+    @Autowired FilterChainProxy securityFilterChain;
     @Autowired @Qualifier("iamPrimaryJwtCredentialCodec") JwtCredentialCodec iamPrimaryJwtCredentialCodec;
+
+    @Test
+    void bootRegistersOneOrderedSecurityProxyWithoutDuplicatingBearerVerification() {
+        assertEquals(1, context.getBeansOfType(FilterChainProxy.class).size());
+        assertSame(securityFilterChain, context.getBean("springSecurityFilterChain", FilterChainProxy.class));
+        assertEquals(1, context.getBeansOfType(DelegatingFilterProxyRegistrationBean.class).size());
+        // The ingress filter is owned by the API chain, never registered as a servlet Filter bean.
+        assertTrue(context.getBeansOfType(IamBearerIngressFilter.class).isEmpty());
+
+        List<SecurityFilterChain> chains = securityFilterChain.getFilterChains();
+        assertEquals(2, chains.size());
+        MockHttpServletRequest apiRoot = new MockHttpServletRequest("GET", "/api");
+        MockHttpServletRequest apiChild = new MockHttpServletRequest("GET", "/api/__test/identity/optional");
+        MockHttpServletRequest outside = new MockHttpServletRequest("GET", "/public");
+        assertTrue(chains.get(0).matches(apiRoot));
+        assertTrue(chains.get(0).matches(apiChild));
+        assertFalse(chains.get(0).matches(outside));
+        assertTrue(chains.get(1).matches(outside));
+
+        List<Filter> apiFilters = chains.get(0).getFilters();
+        assertEquals(1, apiFilters.stream().filter(IamBearerIngressFilter.class::isInstance).count());
+        assertTrue(apiFilters.stream().anyMatch(AuthorizationFilter.class::isInstance));
+        int ingressPosition = indexOf(apiFilters, IamBearerIngressFilter.class);
+        int authorizationPosition = indexOf(apiFilters, AuthorizationFilter.class);
+        assertTrue(ingressPosition < authorizationPosition);
+        assertEquals(0, chains.get(1).getFilters().stream()
+            .filter(IamBearerIngressFilter.class::isInstance).count());
+    }
+
+    private static int indexOf(List<Filter> filters, Class<? extends Filter> type) {
+        for (int index = 0; index < filters.size(); index++) {
+            if (type.isInstance(filters.get(index))) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    @Test
+    void healthAndNonApiEndpointsDoNotRequireTrustedBearerEvidence() throws Exception {
+        // The health exception is intentional even when a malformed bearer is supplied.
+        mvc.perform(get("/api/system/v1/health").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
+            .andExpect(status().isOk());
+        // Non-API routes are not intercepted by IAM's verifier; they retain their MVC status.
+        mvc.perform(get("/__test/non-api").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
+            .andExpect(status().isNotFound());
+    }
 
     @Test
     void bootRegisteredHttpSecurityBindsAuthenticatedAndAnonymousOperations() throws Exception {

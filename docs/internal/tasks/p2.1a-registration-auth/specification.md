@@ -1,6 +1,6 @@
 # P2.1a - Registration and initial authentication
 
-**Status:** Phases A–D approved and checked into the current baseline alongside completed and approved P2.1.0. Phase E's revised password policy and the Phase F security-chain prerequisite are specified here for review; production credential/HTTP integration is not yet implemented. Each remaining increment requires separate human approval.
+**Status:** Phases A–D and P2.1.0 are approved in the baseline. Phase E production credential/JWT adapters have been reviewed; Phase F0 security-chain migration is under review. Registration/login HTTP, CSRF and browser integration are not implemented. Each remaining increment requires separate human approval.
 
 ## Goal and scope
 
@@ -35,7 +35,7 @@ Authentication services depend on IAM-owned account/session ports, the existing 
 
 P2.1.0 supplies the shared trusted primary-token profile and validation (`iss`, `aud`, protected access-token `typ`, strictly typed UUID `sub` and stable `sid`, validity times, explicit signing/verification keys and permitted algorithms), trusted HTTP-to-operation-scope binding, immutable `AuthorizationContext`, and the IAM-owned **production implementation of the unchanged** `IdentityContext`. P2.1a uses the shared signing/profile facilities to issue corresponding tokens and configures the registration/login/CSRF HTTP entry policy. It does not implement a second JWT codec, claims aggregation, security configuration initializer, or dispatch-input registry. P2.1.0's verified primary evidence alone is **not** a fresh account/session-state query; authoritative eligibility is P2.1d. Group consumers continue using the published semantic identity contract without changes.
 
-P2.1.0's published `JwtCredentialCodec`, `JwtCredentialProfile`, `JwtIssueRequest`, signing service and verified ingress/operation-input bridge are implemented. P2.1a's account/session orchestration and mock-backed frontend are also implemented, but production `CredentialEncoder`/`AccessTokenIssuer` adapters and registration/login HTTP routes are not. Adapt the existing IAM-private ports to the **actual** shared interfaces; do not reimplement JWT codecs, token admission or operation initialization. The installed HTTP security configuration still uses a manually constructed `FilterChainProxy`; replace it with framework-managed, ordered `SecurityFilterChain` beans and verify servlet filter registration **before** adding cookie/CSRF endpoints. Test-only credentials and token issuers must never become production-discovered fallbacks.
+P2.1.0's published `JwtCredentialCodec`, `JwtCredentialProfile`, `JwtIssueRequest`, signing service and verified ingress/operation-input bridge are implemented. P2.1a's account/session orchestration, mock-backed frontend and opt-in production `CredentialEncoder`/`AccessTokenIssuer` adapters are implemented, but registration/login HTTP routes are not. The shared JWT codec, admission and operation-initialization machinery remains authoritative; test-only issuers and encoders cannot be production-discovered fallbacks. The HTTP security configuration uses ordered, framework-managed `SecurityFilterChain` beans with one servlet proxy; the dedicated cookie/CSRF and Origin policy remains a prerequisite before exposing registration or login routes.
 
 ```mermaid
 flowchart LR
@@ -56,10 +56,10 @@ flowchart LR
 
 | Boundary | Current state | Remaining P2.1a responsibility |
 | --- | --- | --- |
-| IAM account/session policy, Flyway migrations, generated jOOQ adapters and transactional workflows | Phases A–C approved; PostgreSQL CI accepted | Integrate real credential and access-token adapters without changing persistence/commit semantics |
-| Public register/login forms, `core/identity` API adapter, in-memory bearer state and Web Locks | Phase D approved against mock HTTP | Update the revised password feedback; verify the live browser/HTTP flow in G |
-| Shared claims, JOSE, verified bearer admission, operation ingress and `IdentityContext` | P2.1.0 completed and approved | Consume its published contracts; configure trusted IAM signing, not a second codec or ingress system |
-| HTTP security, anonymous CSRF entry and refresh-cookie issuance | Existing manually assembled bearer security chain; no registration/login HTTP routes | Migrate the filter chain in F0, then implement controllers, CSRF/Origin and cookie behavior in F1 |
+| IAM account/session policy, Flyway migrations, generated jOOQ adapters and transactional workflows | Phases A–C approved; PostgreSQL CI accepted; Phase E credential/JWT adapters reviewed | Wire the approved application services into HTTP without changing transaction and commit semantics |
+| Public register/login forms, `core/identity` API adapter, in-memory bearer state and Web Locks | Phase D approved; revised password-length validation implemented in E | Verify the live browser/HTTP flow in G |
+| Shared claims, JOSE, verified bearer admission, operation ingress and `IdentityContext` | P2.1.0 completed and approved; IAM signing adapter implemented in E | Provision trusted IAM keys/profile for deployment without introducing another codec or ingress system |
+| HTTP security, anonymous CSRF entry and refresh-cookie issuance | Framework-managed API bearer chain and public fallback in F0; no registration/login routes | Finish F0 verification/review, then implement controllers, CSRF/Origin and cookie behavior in F1 |
 
 The IAM encoder/issuer ports remain **private implementation seams**, with test implementations explicitly imported only in tests. Existing successful backend/CI and frontend gates establish the independent phases, not production credential issuance or live browser acceptance. An incomplete production adapter must fail closed rather than fabricate a token or silently activate test credentials.
 
