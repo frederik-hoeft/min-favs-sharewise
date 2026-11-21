@@ -17,21 +17,183 @@
 
 A green E2E CI job demonstrates backend HTTP/transaction/cookie behavior through a servlet and PostgreSQL, **not** browser cookie persistence, real Web Locks, frontend accessibility, or the reverse proxy in a production-style topology. Record the final CI job/pipeline URL and commit ID with the acceptance decision; do not infer them from a local test run.
 
-## Human browser procedure (IAM-AT14/15)
+## Manual browser acceptance: executable workflows (IAM-AT14/15)
 
-**Prerequisites:** Use a disposable PostgreSQL 18 database, a backend with `sharewise.iam.auth.enabled=true` and correctly provisioned ES256 issuer/audience/signing/verification profile, and the current frontend served at a **single trusted HTTPS origin** with same-origin `/api/*` forwarding to the backend. Use an isolated browser profile without old ShareWise cookies. Do not use test JWT issuers, bypass browser TLS errors, disable the CSRF filter, or move the frontend to a separate origin. The [developer setup](../../../development.md#initial-iam-authentication) and [deployment guide](../../../../deploy/README.md) describe the relevant wiring. Use unique test identities and nonproduction passwords.
+Complete the checkboxes **against the running application**, not against mocks or screenshots alone. A check is complete only when its *expected outcome* was observed. If a step fails, record the defect and leave that checkbox unchecked. Record a workflow as **Pass**, **Fail**, or **Blocked** in the evidence table below; a blocked workflow does not pass by inference from CI.
 
-Record the browser/version, viewport sizes, theme, backend/frontend commit IDs, origin (excluding credentials), and results. Do **not** paste access JWTs, refresh-cookie values, signing keys or raw passwords into the report.
+### Test environment and evidence
 
-1. **Registration and server contract:** Navigate to `/auth/register` with keyboard only, submit a valid unique email/password, and verify accessible completion/navigation. In DevTools Network, confirm a non-cacheable `GET /api/iam/v1/auth/csrf` before `POST /api/iam/v1/auth/register`, matching `X-XSRF-TOKEN`, `Origin` equal to the browser origin, and a `201` response. The CSRF token bootstrap must occur inside the Web Lock. Check that an existing email gives the documented `409` and field errors are announced for invalid input.
-2. **Cookies:** Inspect browser cookie attributes **without copying their values**. The CSRF and refresh cookies use `__Host-` names, `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`. On successful authentication, the CSRF cookie is invalidated and a refresh cookie is set with expiry bounded by the committed session deadline. Inspect both `Set-Cookie` headers: a servlet may express deletion using `Expires` in the past instead of `Max-Age=0`. Cookies must not appear in response JSON.
-3. **Login, CSRF renewal and errors:** Open `/auth/login` and sign in with the new account; verify a **fresh** CSRF bootstrap following the preceding successful mutation, then `200` login. Wrong password, missing/invalid CSRF, and untrusted Origin must not authenticate or set a new refresh cookie. Check that the UI describes denial generically and keeps password values out of displayed/server logs.
-4. **Session lifetime:** Verify that a bearer is sent for subsequent authenticated API requests, but **not** for anonymous IAM auth endpoints. Inspect memory/storage behavior without displaying the credential: no JWT in `localStorage`, `sessionStorage`, persistent cookies or HTML hydration. Reload the page and open a new tab; both should require reauthentication even if the HttpOnly refresh cookie persists. Verify expired/unauthorized token handling also leads to reauthentication, without simulated refresh or a functional logout claim.
-5. **Cross-tab locking:** In two tabs on the same HTTPS origin, initiate overlapping login/register submissions and inspect sequencing of CSRF bootstrap and cookie-changing POST requests. The second mutation must not start its CSRF bootstrap before the first lock has released. In a browser/devtools fixture where `navigator.locks` is unavailable or lock acquisition fails, no credential POST must be issued; an actionable error should be shown. Restore the API afterward.
-6. **Accessibility and appearance:** Repeat form navigation, validation errors, submission, focus changes, and success/denial with keyboard only. Check narrow/mobile and desktop widths, light/dark/system themes, zoom and focus visibility, and screen-reader announcements where available. Record any contrast, layout or keyboard blocker as a defect rather than declaring acceptance from jsdom tests.
-7. **Cross-context isolation:** Verify that a refresh cookie alone does not authenticate a bearer-only Group-shaped API operation. Confirm no visible Group projection, automatic membership creation, refresh rotation, or account lifecycle event behavior is presented as implemented.
+Use a disposable PostgreSQL 18 database; a backend with `sharewise.iam.auth.enabled=true` and a correctly provisioned **production** ES256 issuer/audience/signing/verification profile; and the current frontend on one trusted **HTTPS origin** with same-origin `/api/*` proxying. Use an isolated browser profile without prior ShareWise cookies. Do **not** bypass TLS warnings, turn off security filters, or use fixture issuers. See [initial IAM setup](../../../development.md#initial-iam-authentication) and the [deployment guide](../../../../deploy/README.md).
 
-**Acceptance evidence:** Attach sanitized request/response status/attribute observations, screenshots of layout/focus if useful, and a pass/fail/blocked entry per step. A blocked step remains an open gate, even if Unit and E2E CI pass.
+- [ ] Confirm the frontend is served over trusted HTTPS and that the deployed `/api/*` proxy targets the **same origin** (not a separate backend origin). The authentication workflows below will exercise `/api/iam/v1/auth/csrf`; no standalone bootstrap request is needed for setup.
+- [ ] Confirm the backend uses disposable test data and the approved production IAM signing/trust configuration; avoid reusing a real account or password.
+- [ ] Open an isolated browser profile. In DevTools **Network**, enable **Preserve log**, filter to `iam/v1/auth`, and keep the **Application/Storage → Cookies** view available.
+- [ ] Record the browser/version, backend/frontend commit IDs, test origin (no credentials), viewport sizes and tested themes in the report.
+- [ ] Prepare **two unique test email addresses** at a nonproduction domain and a password of 8–256 UTF-16 code units. Never paste passwords, access JWTs, `Set-Cookie` values or signing keys into evidence.
+
+**Evidence/environment:** Browser/version: ____ · Origin: ____ · Backend commit: ____ · Frontend commit: ____ · Date: ____
+
+### Workflow 1: Validate the registration form before network submission
+
+**Start:** New tab at `/auth/register` in the isolated profile; DevTools Network cleared.
+
+- [ ] Using **Tab** and **Shift+Tab**, reach the email field, password field, **Create account** button, the **Sign in** link and the home link in a logical order. Focus is visible.
+- [ ] Submit the empty form using keyboard (**Enter** or Space on the button). **Expected:** email gets focus, "Enter your email address." is shown, and **no** `/auth/csrf` or credential POST occurs.
+- [ ] Enter a syntactically invalid address (for example `not-an-email`) and a valid test password, then submit. **Expected:** inline email error, focus on email, **no** IAM HTTP call.
+- [ ] Enter a valid address and a **7-character** password, then submit. **Expected:** "Password is too short.", password receives focus, **no** IAM HTTP call.
+- [ ] Try a **257-character** password. **Expected:** too-long feedback and **no** IAM HTTP call. Confirm the help text says 8–256 characters.
+- [ ] Correct the fields. **Expected:** previous field errors clear as edited, without losing keyboard focus or moving the fields unexpectedly.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 2: Register an account and verify the real HTTP contract
+
+**Start:** Valid, never-before-registered email and password on `/auth/register` (a mixed-case email with leading/trailing spaces is useful to exercise trimming). **Do not submit another registration with the same email yet.**
+
+- [ ] Submit **Create account** once. **Expected:** fields/button are disabled while pending; on success the browser navigates client-side to `/app` and shows **"Signed in for this tab"**.
+- [ ] In DevTools Network, verify **GET `/api/iam/v1/auth/csrf` occurs before POST `/api/iam/v1/auth/register`**; the GET returns `200`, a JSON `token`, and a `Cache-Control` policy preventing storage. Inspect the GET response cookie by **attributes only**: `__Host-sharewise-csrf`, `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`.
+- [ ] Verify the POST has status **`201`**, an `X-XSRF-TOKEN` header corresponding to the just-fetched token, and an `Origin` matching the frontend HTTPS origin. The CSRF bootstrap should not have been performed before the authentication lock (see Workflow 7).
+- [ ] Inspect the registration response's JSON **keys only**: `accessToken`, `tokenType: Bearer`, `expiresAt`. **Expected:** no refresh-token or CSRF-cookie value in JSON and no credential value in UI errors or application logs.
+- [ ] In the registration response's **separate `Set-Cookie` headers**, verify that `__Host-sharewise-refresh` is issued and `__Host-sharewise-csrf` is **cleared** (empty value with `Max-Age=0` or an `Expires` timestamp in the past). **Do not copy cookie values.**
+- [ ] For the refresh cookie, confirm `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/` and **no `Domain`**. Confirm the lifetime is not longer than the configured initial session deadline (normally 7-day idle expiry, subject to the earlier absolute deadline).
+- [ ] In **Application → Cookies**, verify the browser actually retained the secure refresh cookie for this HTTPS origin and no longer has the prior CSRF cookie. **Expected:** browser behavior matches the wire headers, not merely a MockMvc test.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 3: Duplicate registration and field-level server feedback
+
+**Start:** Navigate to `/auth/register` (a reload here intentionally clears the in-memory access JWT), using the email registered in Workflow 2.
+
+- [ ] Enter the same registered address using **different letter case** and/or surrounding whitespace, with a valid password, and submit.
+- [ ] **Expected:** `GET /auth/csrf` then `POST /auth/register` → **`409`** with code `email_unavailable`; the form displays **"This email address is unavailable."** and focuses the email field.
+- [ ] **Expected:** no access token in the failed response and **no new refresh `Set-Cookie`** header. An existing refresh cookie from an earlier success may still be present in browser storage; that is not a newly issued cookie.
+- [ ] Replace the email with a new unused test address. **Expected:** the duplicate-email message clears as you edit (you need not create a second account solely for this check).
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 4: Generic login denial and recovery
+
+**Start:** `/auth/login`; use the real registered email from Workflow 2.
+
+- [ ] Enter the registered email with an incorrect password and submit using **Enter**. **Expected:** `GET /auth/csrf`, then POST `/auth/login` → **`401`**.
+- [ ] Verify the alert says **"We couldn't sign you in"** and does **not** reveal whether the account is unknown, locked or disabled. Keyboard focus moves to the error announcement.
+- [ ] Verify the failed response contains **no `accessToken`** and **no newly issued refresh `Set-Cookie`** header; the form remains usable afterward.
+- [ ] Repeat with a nonexistent email and an incorrect password. **Expected:** the **same generic user-facing denial**, without account-existence hints.
+- [ ] Edit a field and retry. **Expected:** stale error messaging clears and controls are usable. **Do not deliberately exhaust the account's lockout threshold** unless you have a separate controlled test account.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 5: Log in successfully with fresh CSRF and Strict cookies
+
+**Start:** `/auth/login`; registered account; no active in-memory sign-in in this tab.
+
+- [ ] Submit the correct credentials. **Expected:** fresh **GET `/api/iam/v1/auth/csrf`** before POST `/api/iam/v1/auth/login` → **`200`**, followed by client-side navigation to `/app`.
+- [ ] Confirm `X-XSRF-TOKEN` and same-origin `Origin` are on the POST; token state is freshly bootstrapped even after earlier successful registration or login.
+- [ ] Inspect response JSON **keys only**: `accessToken`, `tokenType: Bearer`, `expiresAt`; there must be no opaque refresh secret in the body.
+- [ ] Verify **both** `Set-Cookie` headers survive: refresh cookie with `Secure; HttpOnly; SameSite=Strict; Path=/` and no `Domain`, plus an expired/cleared CSRF cookie. Tomcat may use a past `Expires` instead of `Max-Age=0`.
+- [ ] Confirm the Application/Storage cookie view reflects the issued refresh cookie and cleared CSRF cookie. The `/app` notice says **"Signed in for this tab"**.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 6: Memory-only session, reload, new tab and expiry
+
+**Start:** Immediately after a successful login in Workflow 5; leave `/app` open.
+
+- [ ] Verify the workspace displays the **signed-in-for-this-tab** notice, without falsely claiming that the demo workspace provides protected account/Group data.
+- [ ] Inspect `localStorage`, `sessionStorage`, IndexedDB and browser cookies **by names/keys**, without exposing values. **Expected:** no persisted **access JWT**; `__Host-sharewise-refresh` is an opaque HttpOnly cookie, not a bearer-token cookie. The JWT is allowed in the successful auth **network response**, not persistent browser storage or HTML hydration.
+- [ ] Open `/app` in a **new tab** at the same origin. **Expected:** **"No active sign-in in this tab"** and a **Sign in** link, even while the shared HttpOnly refresh cookie exists.
+- [ ] Return to the signed-in tab and **reload** `/app`. **Expected:** the in-memory session is discarded and reauthentication is requested; no silent refresh call occurs.
+- [ ] Log in again and leave the tab open until the configured access-token expiry (normally **5 minutes**). **Expected:** session expiry is announced and the client requires sign-in again, without refresh/rotation or automatic replay.
+- [ ] Confirm no **working logout/refresh** workflow is represented as implemented in this P2.1a UI. If you see a protected API request in Network, check that it uses `Authorization: Bearer` and that **anonymous IAM auth** calls do not; if no protected API is exposed by the current demo, record **not observable in browser** rather than inventing a check.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 7: Web Lock serializes cross-tab authentication
+
+**Start:** Two tabs, **A** and **B**, on the same HTTPS origin. Tab B shows `/auth/login`, prefilled with disposable valid credentials. Do not use multiple origins or separate private profiles; Web Locks must coordinate in the same browser storage partition.
+
+- [ ] In tab A's DevTools **Console**, run the following test-only lock holder. Wait for **"ShareWise test lock acquired"** before submitting in tab B:
+
+```js
+void navigator.locks.request('sharewise:iam:refresh-cookie', { mode: 'exclusive' }, async () => {
+  console.info('ShareWise test lock acquired');
+  await new Promise((resolve) => { window.__releaseSharewiseTestLock = resolve; });
+});
+```
+
+- [ ] In tab B, submit **Sign in** while A holds the lock. **Expected:** the form stays pending and **neither GET `/auth/csrf` nor POST `/auth/login` starts**. This proves the CSRF bootstrap runs *inside* the exclusive lock.
+- [ ] In tab A's Console, execute `window.__releaseSharewiseTestLock()` to release the lock. **Expected:** B now sends the CSRF GET, then the credential POST, and completes normally.
+- [ ] Repeat if desired with `/auth/register` and a **new** email. **Expected:** both mutation types use the same lock; no concurrent cookie-changing request bypasses it.
+- [ ] Verify the test lock is released; close/reload tab A if necessary. Record the observed ordering/timestamps **without request bodies or credential values**.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 8: Web Locks unavailable must fail closed
+
+**Start:** New tab at `/auth/login` with DevTools Console and Network open. Use disposable credentials. The override below is **temporary to this tab**; reload the page to restore normal behavior.
+
+- [ ] Before submitting, execute `Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });` in DevTools Console. Verify `navigator.locks` is `undefined`.
+- [ ] Submit a syntactically valid login form. **Expected:** a visible actionable message mentioning **Web Locks**, with no CSRF GET and **no credential POST**. The form becomes usable after the error.
+- [ ] **Reload** the tab to restore native `navigator.locks`; verify normal login works afterward. If your browser blocks this test override, mark it **Blocked** and rely on the existing frontend fail-closed tests instead of disabling security on the backend.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 9: Browser CSRF rejection with no real credentials
+
+**Start:** Logged-out tab at the same trusted HTTPS origin. This test uses deliberately **invalid** credentials to avoid mutating an account, and runs entirely from the browser Console under the same Web Lock. Do not paste any real password or token into the Console.
+
+- [ ] In DevTools Console, run this safe negative probe. It obtains a real CSRF cookie but deliberately sends a **wrong header** on the login POST:
+
+```js
+await navigator.locks.request('sharewise:iam:refresh-cookie', async () => {
+  const bootstrap = await fetch('/api/iam/v1/auth/csrf', { credentials: 'same-origin' });
+  if (!bootstrap.ok) throw new Error(`CSRF bootstrap failed: ${bootstrap.status}`);
+  const rejected = await fetch('/api/iam/v1/auth/login', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': 'deliberately-invalid' },
+    body: JSON.stringify({ email: 'no-such-browser-test-account@example.test', password: 'intentionally-wrong' }),
+  });
+  console.info('Rejected HTTP status:', rejected.status);
+});
+```
+
+- [ ] **Expected:** the POST is rejected (normally **`403`**) before credential verification, with **no new refresh cookie** and no access token. The CSRF GET itself returns `200` and is non-cacheable.
+- [ ] Revisit the normal login form after the probe. **Expected:** it bootstraps its own new CSRF token and remains functional.
+- [ ] On the regular login/register POSTs in Network, verify the browser supplies an `Origin` matching the HTTPS application origin. **Note:** arbitrary `Origin` spoofing is restricted in browser JavaScript; the **negative Origin/missing-Origin** cases belong to the existing HTTP/E2E test suite, not this UI checklist.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Workflow 10: Accessibility, responsive layout and theme
+
+**Start:** Visit **both** `/auth/register` and `/auth/login`; exercise empty-form, field-error, login-denial and success states with the test account.
+
+- [ ] Complete the forms **without a mouse**: Tab/Shift+Tab, Enter to submit, visible focus, reachable navigation links, and logical focus on the first invalid field.
+- [ ] Verify field errors and the generic authentication alert are readable and, using a screen reader if available, appropriately announced (alert/field association). A failure to announce errors is a defect, not a passing check.
+- [ ] Test a **narrow viewport (approximately 390 CSS px)** and a **desktop viewport (approximately 1280 CSS px)**. **Expected:** no horizontal overflow, cropped controls, hidden error messages, or obstructed submit button.
+- [ ] Test **200% browser zoom** and keyboard-only operation at both widths; focus indicators, form labels and error text remain usable.
+- [ ] Test **light**, **dark**, and **system** theme settings where offered. **Expected:** readable contrast and consistent feedback; if a mode is unavailable, record **N/A** rather than silently passing it.
+- [ ] Confirm the links **Sign in**, **Create an account**, **ShareWise home**, and **Learn more about ShareWise** navigate to their intended destinations.
+
+**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+
+### Acceptance summary
+
+| Workflow | Result (Pass / Fail / Blocked) | Evidence or defect reference |
+| --- | --- | --- |
+| 1. Registration client validation | ____ | ____ |
+| 2. Real HTTP registration/cookies | ____ | ____ |
+| 3. Duplicate account | ____ | ____ |
+| 4. Generic login denial | ____ | ____ |
+| 5. Login/CSRF/cookies | ____ | ____ |
+| 6. In-memory session and expiry | ____ | ____ |
+| 7. Cross-tab Web Lock | ____ | ____ |
+| 8. Missing Web Locks API | ____ | ____ |
+| 9. CSRF negative probe and Origin observation | ____ | ____ |
+| 10. Accessibility/responsiveness/themes | ____ | ____ |
+
+**Evidence rules:** Attach sanitized status/response-header *attribute* observations and screenshots of focus/layout as appropriate. Do not capture token/cookie values, signing keys, credential request bodies or real passwords. A failed/blocked required workflow remains an open Phase G gate even when CI is green.
+
+**Explicitly outside browser-only acceptance:** The CI-backed PostgreSQL atomicity/lockout/race tests (IAM-AT01–AT08), cryptographic profile/issuer checks, missing/forged Origin rejection, operation-scope authorization and bearer-only Group-shaped routes, and absence of `UserRegistered`/Group-table writes must be signed off using the automated/architecture evidence below. The demo workspace currently does **not** provide a real Group API surface; do not manufacture browser evidence for it.
 
 ## Requirement-to-evidence trace
 
