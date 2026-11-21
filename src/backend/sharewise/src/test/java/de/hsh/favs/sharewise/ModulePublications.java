@@ -50,6 +50,17 @@ final class ModulePublications {
     }
 
     /**
+     * Returns types published from any module's {@code internal} package or
+     * descendants. Module verification guards consumers, but not accidental
+     * publication of implementation classes through named interfaces.
+     */
+    static List<String> publishedTypesInInternalPackages(ApplicationModules modules) {
+        return publishedTypesMatching(modules, packageName ->
+                packageName.equals("internal") || packageName.startsWith("internal.")
+                        || packageName.endsWith(".internal") || packageName.contains(".internal."));
+    }
+
+    /**
      * Returns every type declared directly in {@code packageName}, excluding
      * its sub-packages, that any named interface of any module publishes,
      * including a module's unnamed top-level interface. Each entry has the

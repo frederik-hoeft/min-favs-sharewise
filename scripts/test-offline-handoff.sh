@@ -15,7 +15,18 @@ mkdir -p "$source/scripts" "$source/src/backend/sharewise/.mvn/wrapper" "$source
     "$work/toolchain-content/maven-test/bin" "$work/vendor"
 cp "$(dirname "${BASH_SOURCE[0]}")/create-offline-handoff.sh" "$source/scripts/"
 chmod +x "$source/scripts/create-offline-handoff.sh"
-printf 'backend descriptor\n' > "$source/src/backend/sharewise/pom.xml"
+cat > "$source/src/backend/sharewise/pom.xml" <<'XML'
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <!-- Opt-in plugin must not be prefetched by a routine handoff build. -->
+    <profiles><profile>
+        <id>jooq-codegen-identity</id>
+        <build><plugins><plugin>
+            <groupId>org.jooq</groupId><artifactId>jooq-codegen-maven</artifactId>
+        </plugin></plugins></build>
+    </profile></profiles>
+</project>
+XML
 printf 'wrapper descriptor\n' > "$source/src/backend/sharewise/.mvn/wrapper/maven-wrapper.properties"
 printf 'frontend descriptor\n' > "$source/src/frontend/package.json"
 printf 'frontend lock\n' > "$source/src/frontend/package-lock.json"
@@ -34,6 +45,11 @@ set -eu
 if [[ "${1:-}" == -version ]]; then echo 'Apache Maven 3.10.0'; exit; fi
 for arg in "$@"; do case "$arg" in -Dmaven.repo.local=*) repo=${arg#*=} ;; esac; done
 [[ -n "${repo:-}" ]] || exit 2
+# A real build must replace the overbroad plugin prefetch.
+[[ " $* " != *' dependency:go-offline '* ]] || exit 4
+[[ " $* " != *' -Pjooq-codegen-identity '* ]] || exit 5
+[[ " $* " != *' org.jooq:jooq-codegen-maven:generate '* ]] || exit 5
+[[ " $* " == *' -Punit-tests clean verify'* ]] || exit 6
 if [[ " $* " == *' -o '* ]]; then
     [[ -f "$repo/cached-maven-artifact" ]] || exit 3
 else
@@ -141,6 +157,10 @@ rm "$work/all/deps/manifest/dependency-selection.txt"
 "$work/all/deps/verify-offline.sh" verify "$work/all/deps" --source "$source" \
     --toolchains "$work/all/toolchains" >/dev/null 2>&1
 
+# The opt-in code generator is not part of the offline build or its cache.
+assert_absent "$work/all/deps/cache/maven/cached-jooq-codegen"
+assert_absent "$work/maven/deps/cache/maven/cached-jooq-codegen"
+
 # Default filenames keep partial variants separate from the original bundle.
 "$source/scripts/create-offline-handoff.sh" pack --deps node \
     --node "$work/vendor/node.tar.xz" --cache-dir "$work/vendor" >/dev/null 2>&1
@@ -149,4 +169,4 @@ assert_file "$source/.offline-handoff-cache/sharewise-offline-deps-node-linux-x6
 should_fail "$source/scripts/create-offline-handoff.sh" pack --deps invalid
 should_fail "$source/scripts/create-offline-handoff.sh" pack --deps node --jdk "$work/vendor/jdk.tar.gz"
 should_fail "$source/scripts/create-offline-handoff.sh" pack --deps maven --node "$work/vendor/node.tar.xz"
-printf 'PASS: full, Maven-only and Node-only bundles; offline verification; selective manifests; legacy compatibility; invalid options\n'
+printf 'PASS: full, Maven-only and Node-only bundles; excluded optional jOOQ codegen; offline verification; selective manifests; legacy compatibility; invalid options\n'
