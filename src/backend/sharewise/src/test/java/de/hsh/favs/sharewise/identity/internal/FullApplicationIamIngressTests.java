@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -53,6 +54,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -114,6 +116,28 @@ class FullApplicationIamIngressTests {
         assertTrue(ingressPosition < authorizationPosition);
         assertEquals(0, chains.get(1).getFilters().stream()
             .filter(IamBearerIngressFilter.class::isInstance).count());
+    }
+
+    @Test
+    void applicationApiChainProtectsOtherContextsWithoutSeparateMiddlewareOrCookieCsrf() throws Exception {
+        String credential = "Bearer " + token();
+        String endpoint = "/api/groups/v1/__test/identity";
+        // Group-owned HTTP surfaces inherit IAM bearer verification from the one API chain.
+        mvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, credential))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.userId").value(ALICE.toString()));
+        mvc.perform(get(endpoint))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("invalid_credential"));
+        // Cookie CSRF/Origin requirements apply to IAM auth mutations, not bearer-only Group POSTs.
+        mvc.perform(post(endpoint).header(HttpHeaders.AUTHORIZATION, credential))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.userId").value(ALICE.toString()));
+        mvc.perform(post(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("invalid_credential"));
     }
 
     private static int indexOf(List<Filter> filters, Class<? extends Filter> type) {
@@ -251,12 +275,38 @@ class FullApplicationIamIngressTests {
         }
     }
 
+    @TestComponent
+    @RestController
+    static final class CrossContextProbeController {
+        private final OperationIngressDispatcher ingress;
+
+        CrossContextProbeController(OperationIngressDispatcher ingress) {
+            this.ingress = ingress;
+        }
+
+        @GetMapping("/api/groups/v1/__test/identity")
+        Map<String, String> getIdentity() {
+            return ingress.dispatch(IdentityContext.class,
+                identity -> Map.of("userId", identity.requireUserId().toString()));
+        }
+
+        @PostMapping("/api/groups/v1/__test/identity")
+        Map<String, String> postIdentity() {
+            return getIdentity();
+        }
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class Fixture {
         @Bean
         JwtCredentialCodec iamPrimaryJwtCredentialCodec() {
             return new JwtCredentialCodec(PROFILE,
                 new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
+        }
+
+        @Bean
+        CrossContextProbeController crossContextProbeController(OperationIngressDispatcher ingress) {
+            return new CrossContextProbeController(ingress);
         }
 
         @Bean

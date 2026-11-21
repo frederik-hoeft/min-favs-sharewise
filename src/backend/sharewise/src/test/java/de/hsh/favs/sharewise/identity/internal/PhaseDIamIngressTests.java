@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import de.hsh.favs.sharewise.ApiHttpSecurityConfiguration;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
@@ -460,7 +461,7 @@ class PhaseDIamIngressTests {
     @TestConfiguration(proxyBeanMethods = false)
     @Import({IamOperationSecurityConfiguration.class, IamIngressInitializer.class,
         IamPrimaryCredentialProvider.class, IamCredentialVerifier.class,
-        IamHttpSecurityConfiguration.class, HttpIamInputContributor.class, IamIdentityExceptionHandler.class,
+        ApiHttpSecurityConfiguration.class, IamHttpSecurityConfiguration.class, HttpIamInputContributor.class, IamIdentityExceptionHandler.class,
         DefaultIdentityContext.class})
     static class Fixture {
         @Bean @RequestScope(proxyMode = ScopedProxyMode.INTERFACES)

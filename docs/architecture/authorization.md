@@ -63,7 +63,7 @@ A subordinate credential introduces an additional trust dependency: its own vali
 
 ## From inbound request to operation identity
 
-An HTTP request and an application operation have different lifetimes, so verified request evidence must cross an explicit boundary before it can become an operation-scoped dependency. Spring Security's API bearer filter first verifies the primary IAM token and keeps the immutable result in request-local state. When no bearer is supplied, the request has no primary evidence to contribute; when a bearer *is* supplied but fails verification, the request is rejected before application dispatch rather than silently treated as anonymous.
+An HTTP request and an application operation have different lifetimes, so verified request evidence must cross an explicit boundary before it can become an operation-scoped dependency. The application-wide `/api/**` security chain is assembled at the Spring Boot composition root from an IAM-owned `identity::transport` contribution. The shared chain applies IAM primary bearer verification to every context's HTTP endpoints, including future Group APIs, without moving IAM trust policy into `shared` or creating parallel context-specific filter chains. Its bearer filter verifies the primary IAM token and keeps the immutable result in request-local state. When no bearer is supplied, the request has no primary evidence to contribute; when a bearer *is* supplied but fails verification, the request is rejected before application dispatch rather than silently treated as anonymous.
 
 ```mermaid
 flowchart LR
