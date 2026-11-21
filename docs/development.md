@@ -99,7 +99,7 @@ The verification tests also run small fixture applications under `de.hsh.favs.mo
 
 The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published. The DI foundation, transaction manager and jOOQ/JPA accessors are implemented and tested; domain-specific business modules are not yet present.
 
-Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Production inbound adapters inject the singleton `OperationDispatcher` and dispatch an entry-service type rather than obtaining an operation-scoped bean from a singleton during construction:
+Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Inbound adapters dispatch an entry-service type rather than obtaining an operation-scoped bean during construction. HTTP controllers use the request-scoped `OperationIngressDispatcher`, which composes caller-side inputs; non-HTTP adapters may use the core `OperationDispatcher` directly or compose their own contributors. The example below illustrates a core dispatcher call:
 
 ```java
 // Example service types; no financial business modules exist yet.

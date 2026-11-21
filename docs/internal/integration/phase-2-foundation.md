@@ -1,10 +1,10 @@
 # Phase 2 implementation foundation: IAM and Group Management
 
-**Status:** Phase 2 design handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). This describes intended Phase 2 business tables and integration contracts, **not deployed DDL or completed IAM/Group features**. The PostgreSQL namespaces and transaction infrastructure exist; feature-owned migrations, durable event delivery, and production authentication are subsequent work.
+**Status:** Phase 2 design handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). This describes intended Phase 2 business tables and integration contracts, **not deployed DDL or completed IAM/Group features**. The PostgreSQL namespaces and transaction infrastructure exist; feature-owned migrations, durable event delivery, and production account/session authentication flows remain subsequent work; the primary bearer verification and operation identity foundation is implemented.
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
-The [domain model](../../data-model-design.md) owns business invariants, the [security design](../../stack/security.md) owns the trust model, and the [messaging design](../../stack/messaging.md) owns delivery guarantees. The [proposed claims architecture](../../stack/claims-context-proposal.md) describes how later verified credentials can back semantic security APIs. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
+The [domain model](../../data-model-design.md) owns business invariants, the [security design](../../stack/security.md) owns the trust model, and the [messaging design](../../stack/messaging.md) owns delivery guarantees. The [implemented verified-credential architecture](../../architecture/authorization.md) explains the operation identity and evidence foundation; the [domain-context proposal](../../stack/claims-context-proposal.md) covers later Group attestation policies. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
 
 ## Boundaries and the first usable application operation
 
@@ -35,7 +35,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
     dispatcher.dispatch(GroupOperation.class, GroupOperation::run));
 ```
 
-The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. P2.1.0 will replace its backing with verified IAM evidence, preserving the consumer interface and operation scope. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
+The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary credentials within the operation scope; login/session state remains future work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
 Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 
