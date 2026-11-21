@@ -1,10 +1,10 @@
 # P2.6a/b: Production packaging and registry publishing specification
 
-**Status:** Architecture and implementation sequence approved November 20, 2026; each phase requires separate acceptance. **Scope:** [P2.6a and P2.6b](../backlog.md#p26---production-packaging-deployment-and-cicd). **Implementation plan:** [Approved plan](plan.md), following the [AI development workflow](../../../development/ai-development-workflow.md).
+**Status:** Architecture and implementation sequence approved November 20, 2026. Local Compose and protected-tag preview publishing were accepted; final release/retention verification and merge authorization remain pending. **Scope:** [P2.6a and P2.6b](../backlog.md#p26---production-packaging-deployment-and-cicd). **Implementation plan:** [Approved plan](plan.md), following the [AI development workflow](../../../development/ai-development-workflow.md).
 
 ## Starting point and objective
 
-ShareWise currently has a Java 25 / Spring Boot 4.1 modular-monolith backend, PostgreSQL 18 with separate application and Flyway roles, a Next.js 16 frontend, a development Compose database, and GitLab build/test/security jobs. The backend Dockerfile packages an already-built JAR, while the frontend Dockerfile serves a Next.js standalone server. The frontend's static-export test establishes that the present routes can be generated without a Next.js server. The existing backend health route is `GET /api/system/v1/health`, whose readiness indicators include a database check. These are starting-state facts; production Nginx/Compose and registry publication are not yet implemented.
+At the start of P2.6a/b, ShareWise had a Java 25 / Spring Boot 4.1 modular-monolith backend, PostgreSQL 18 with separate application and Flyway roles, a Next.js 16 frontend, a development Compose database, and GitLab build/test/security jobs. The backend Dockerfile packaged an already-built JAR, while the frontend Dockerfile served a Next.js standalone server. The frontend's static-export test established that the available routes could be generated without a Next.js server. The existing backend health route was `GET /api/system/v1/health`, whose readiness indicators included a database check. These are the *historical starting-state facts* against which the approved design was reviewed, not the current implementation status; acceptance evidence is tracked in the [implementation plan](plan.md).
 
 P2.6a delivers images and a production-style Compose stack that can be started locally from a clean checkout, provided a container runtime, access to required images and build dependencies, TLS material and local secrets. P2.6b publishes versioned backend and frontend images through the existing GitLab pipeline without Docker-in-Docker, a host Docker socket or privileged runner access. The same images and configuration interfaces must remain usable by the separate P2.6c host-provisioning and P2.6d deployment tasks.
 
@@ -12,7 +12,7 @@ The package boundary does **not** include IAM/Group business functionality, impl
 
 ## Proposed architectural decisions
 
-The following decisions form the approved planning baseline. The runner-dependent choice in D9 remains conditional until an actual GitLab runner proof; it must not be assumed compatible solely because it is daemonless.
+The following decisions form the approved planning baseline. D9 required a real runner test; the [Phase A evidence](plan.md#phase-a---prove-a-daemonless-runner-build-p26b-feasibility) records the failed rootless BuildKit probe and accepted maintained Kaniko fallback.
 
 | ID | Proposal | Rationale and consequences |
 | --- | --- | --- |
@@ -100,9 +100,9 @@ The [implementation plan](plan.md) breaks this work into independently reviewabl
 ## Operational risks and decisions to verify
 
 - **Q1: Initial version prefix.** Use `0.1` for the pre-MVP application; the unrelated reference project uses `1.0`. Changing the accepted versioning strategy requires review.
-- **Q2: Runner builder.** What executor/security policy does the university GitLab runner use, and will unprivileged user namespaces/mount operations work? Rootless BuildKit needs an actual compatibility check; default to a maintained daemonless fallback when blocked. Do not introduce a private privileged runner as a hidden prerequisite.
+- **Q2: Runner builder.** Resolved by the university runner probes: rootless BuildKit failed at RootlessKit startup under the current Docker executor, while the maintained, pinned Kaniko fork built the `RUN`/`COPY` fixture and subsequently published both application images. The administrative privileged-mode setting was not independently confirmed; no private privileged runner is a prerequisite.
 - **Q3: Release scope.** Which non-main refs are trusted to publish pre-release images, and should external/fork MRs remain build/test-only? Accepted Phase E policy: protected `main` pushes publish stable images; protected `dev-<slug>` tag pushes opt into prereleases; ordinary branch pushes do not publish. Only `main` owns `latest`.
-- **Q4: Local certificate interface.** Proposed default is HTTPS even for local Compose acceptance, using generated untracked test certificates. P2.6c later supplies trusted certificates and production ports.
+- **Q4: Local certificate interface.** Resolved for local acceptance: Nginx serves HTTPS with an explicit `localhost` public hostname and an untracked, self-signed test certificate; the deployment scripts import it through the Docker API for DooD compatibility. P2.6c/d own trusted public certificates, production ports and renewal.
 - **Q5: Image retention and release metadata.** Confirm GitLab Container Registry tag-protection/retention capabilities and how long digest artifacts are retained. P2.6d needs resolvable content-addressed release references, not `latest` alone.
 - **Q6: Production bootstrap policy.** Production init scripts run only on an empty database volume; credential rotation and recovery on an existing volume are not delegated to those scripts. The P2.6a local smoke instructions should call this out; durable host provisioning and rotation automation remain P2.6c/d/P8.
 
