@@ -66,6 +66,9 @@ registry_verify_config() {
     actual_ref=$1
     expected_version=$2
     expected_sha=$3
-    crane config "$actual_ref" | jq -e --arg v "$expected_version" --arg sha "$expected_sha" \
+    # POSIX pipelines return the last command's status, not crane's. A failed
+    # registry read must never be accepted even if it emits plausible JSON.
+    image_config=$(crane config "$actual_ref") || registry_fail "cannot inspect image config for $actual_ref"
+    printf '%s\n' "$image_config" | jq -e --arg v "$expected_version" --arg sha "$expected_sha" \
         '(.config.Labels["org.opencontainers.image.version"] == $v) and (.config.Labels["org.opencontainers.image.revision"] == $sha)' >/dev/null || registry_fail "image labels mismatch for $actual_ref"
 }

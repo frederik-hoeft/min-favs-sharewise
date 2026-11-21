@@ -20,11 +20,13 @@ for role in backend frontend; do
     case "$ref" in "$repo@sha256:"*) ;; *) registry_fail "invalid $role release ref" ;; esac
     digest=${ref#"$repo@"}
     registry_assert_sha256 "$digest"
-    [ "$(crane digest "$ref")" = "$digest" ] || registry_fail "$role release digest not available"
+    resolved_digest=$(crane digest "$ref") || registry_fail "cannot inspect $role release digest"
+    [ "$resolved_digest" = "$digest" ] || registry_fail "$role release digest not available"
     registry_verify_config "$ref" "$version" "$CI_COMMIT_SHA"
     if old_digest=$(registry_lookup_digest "$repo:latest"); then
         registry_assert_sha256 "$old_digest"
-        old_version=$(crane config "$repo:latest" | jq -er '.config.Labels["org.opencontainers.image.version"]') || registry_fail "cannot read $role latest version label"
+        old_config=$(crane config "$repo:latest") || registry_fail "cannot inspect $role latest image config"
+        old_version=$(printf '%s\n' "$old_config" | jq -er '.config.Labels["org.opencontainers.image.version"]') || registry_fail "cannot read $role latest version label"
         case "$old_version" in 0.1.*) ;; *) registry_fail "$role latest has unknown version $old_version" ;; esac
         old_iid=${old_version#0.1.}
         case "$old_iid" in ''|0*|*[!0-9]*) registry_fail "$role latest is not a stable version" ;; esac
@@ -47,6 +49,7 @@ for role in backend frontend; do
     ref=$(jq -er --arg role "$role" '.images[$role].ref' image-release/release.json)
     digest=${ref#"$repo@"}
     crane tag "$ref" latest || registry_fail "$role latest promotion failed; other alias may have changed"
-    [ "$(crane digest "$repo:latest")" = "$digest" ] || registry_fail "$role latest verification failed; alias promotion may be incomplete"
+    promoted_digest=$(crane digest "$repo:latest") || registry_fail "$role latest digest lookup failed; alias promotion may be incomplete"
+    [ "$promoted_digest" = "$digest" ] || registry_fail "$role latest verification failed; alias promotion may be incomplete"
 done
 printf 'Both latest aliases point to release %s. Deployments must use the digest pair.\n' "$version"

@@ -31,12 +31,15 @@ case "$cmd" in
             echo 'MANIFEST_UNKNOWN: 404 Not Found' >&2
             exit 1
         fi
+        # A transport failure after output must never be mistaken for success.
+        if [ "${FAIL_DIGEST_AFTER_OUTPUT:-}" = "$ref" ]; then exit 7; fi
         ;;
     config)
         jq -ec --arg ref "$ref" '
           .[$ref] | select(. != null) |
           {config:{Labels:{"org.opencontainers.image.version":.version,"org.opencontainers.image.revision":.commit}}}
         ' "$FAKE_REGISTRY_DB" || { echo MANIFEST_UNKNOWN >&2; exit 1; }
+        if [ "${FAIL_CONFIG_AFTER_OUTPUT:-}" = "$ref" ]; then exit 7; fi
         ;;
     tag)
         case "$ref" in
@@ -149,6 +152,45 @@ class ImageRegistryTests(unittest.TestCase):
             self.set_image(role)
         self.run_script("release-images.sh")
         return json.loads((self.work / "image-release/release.json").read_text())
+
+    def test_release_rejects_config_failure_even_with_matching_json(self):
+        for role in DIGESTS:
+            self.set_image(role)
+        self.run_script("release-images.sh", env={
+            "FAIL_CONFIG_AFTER_OUTPUT": REGISTRY + "/backend@" + DIGESTS["backend"],
+        }, success=False)
+        self.assertFalse((self.work / "image-release/release.json").exists())
+
+    def test_promotion_rejects_config_failure_even_with_matching_json(self):
+        self.pair()
+        self.run_script("promote-images.sh", env={
+            "FAIL_CONFIG_AFTER_OUTPUT": REGISTRY + "/backend@" + DIGESTS["backend"],
+        }, success=False)
+        self.assertNotIn(REGISTRY + "/backend:latest", json.loads(self.db.read_text()))
+
+    def test_promotion_rejects_latest_config_read_failure(self):
+        self.pair()
+        for role in DIGESTS:
+            self.set_image(role, version="0.1.41", alias="latest")
+        self.run_script("promote-images.sh", env={
+            "FAIL_CONFIG_AFTER_OUTPUT": REGISTRY + "/backend:latest",
+        }, success=False)
+        self.assertEqual(json.loads(self.db.read_text())[REGISTRY + "/backend:latest"]["version"], "0.1.41")
+
+    def test_promotion_rejects_digest_read_failure_even_with_matching_output(self):
+        self.pair()
+        self.run_script("promote-images.sh", env={
+            "FAIL_DIGEST_AFTER_OUTPUT": REGISTRY + "/backend@" + DIGESTS["backend"],
+        }, success=False)
+        self.assertNotIn(REGISTRY + "/backend:latest", json.loads(self.db.read_text()))
+
+    def test_promotion_rejects_latest_digest_read_failure(self):
+        self.pair()
+        self.run_script("promote-images.sh", env={
+            "FAIL_DIGEST_AFTER_OUTPUT": REGISTRY + "/backend:latest",
+        }, success=False)
+        self.assertIn(REGISTRY + "/backend:latest", json.loads(self.db.read_text()))
+        self.assertNotIn(REGISTRY + "/frontend:latest", json.loads(self.db.read_text()))
 
     def test_kaniko_uses_correct_context_and_build_metadata(self):
         for role in DIGESTS:

@@ -236,6 +236,24 @@ test-image-registry-contract:
   script:
     - python3 -m unittest discover -s scripts/ci/tests -p 'test_image_registry.py' -v
 
+# Validate the production Nginx/TLS, proxy and local-deployment contracts
+# before any image is built. No Docker daemon or PostgreSQL is needed: the
+# Compose/image smoke scripts are exercised with isolated Docker CLI fixtures.
+# Use the SAME Nginx release as the frontend runtime, not the host's nginx.
+test-deployment-contract:
+  image: nginx:1.30.7-alpine3.24
+  stage: pre-build
+  interruptible: true
+  dependencies: []
+  before_script:
+    - apk add --no-cache python3 bash openssl git
+    - |
+      for tool in python3 nginx openssl envsubst tar bash git; do
+        command -v "$tool" >/dev/null || { echo "Missing deployment test prerequisite: $tool" >&2; exit 1; }
+      done
+  script:
+    - python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v
+
 # This job runs only after ALL build, test and security gates finish. The
 # artifact is the single version source for all image publishing jobs.
 construct-version:

@@ -152,6 +152,8 @@ The authoritative [local deployment guide](../../../../deploy/README.md) owns ho
 
 **Final review state:** Documentation and available local test gates are ready for review. A separate independent agent/MR review, unresolved manual acceptance items above and explicit human merge authorization are still required by [the project workflow](../../../development/ai-development-workflow.md).
 
+**PR #24 review follow-up (November 21, 2026):** The independent review identified missing automated deployment regression coverage and a POSIX-shell failure-propagation defect in registry verification. The follow-up adds a pre-build deployment contract gate and checks `crane` exit status before parsing remote config/digest output, with adversarial mock tests. Actual GitLab execution of the added job remains pending. A lower-severity, separate **input reproducibility** concern remains: upstream `FROM` and PostgreSQL base tags can move between builds, and Debian package indexes are mutable. The local [deployment guide](../../../../deploy/README.md#production-image-base-updates) records how to select verified digest pins and test future security updates. No unverified manifest digests have been inserted in this patch; base pinning requires a reviewed, Docker-capable verification pass and remains open.
+
 **Gate G:** Specification, final implementation diff, tests, CI evidence, operator workflow and steady-state docs agree. The human approves final acceptance and **separately authorizes merge**; a successful build is not itself merge authorization.
 
 ## Review and evidence checklist

@@ -26,6 +26,12 @@ docker compose down        # Stops containers, preserves the database and volume
 
 Use `docker compose up -d --build` after changing application source or image build definitions. The optional `--build` forces a rebuild; it is not required for ordinary stop/start. Do not run `docker compose down -v` unless you intend to delete the database and every local secret/certificate volume.
 
+## Production image base updates
+
+The current Dockerfiles use release-tagged (not digest-pinned) upstream images for Maven/Temurin, Debian, Node, Nginx and PostgreSQL. These tags are **mutable**: rebuilding the same commit later can resolve different base layers. Debian `apt-get` and npm dependency download behavior can also change over time. Kaniko's `--reproducible` flag removes build timestamps but does not freeze all build inputs. The validated output digests in the CI release descriptor are the references for deployment and rollback, not proof of bit-for-bit rebuild reproducibility.
+
+For stronger reproducibility, a reviewed follow-up should resolve **current, verified multi-platform index digests** for each base (for example, using `docker buildx imagetools inspect <image:tag>` on a Docker-capable machine), replace the relevant `FROM` references with `image:tag@sha256:<verified-index-digest>`, and pin the deployment's PostgreSQL base consistently. Rebuild both application images and run the local image/Compose tests and a protected preview pipeline. Keep a regular security-update workflow: refreshing a pin is an explicit, tested change, not something an immutable digest receives automatically. The external Debian package repositories still need a separately reviewed snapshot/pinning policy if exact rebuild equivalence is required.
+
 ## Local browser URLs and TLS
 
 By default, open **https://localhost:8443/** in a browser on the **Docker daemon host**. The HTTP URL, http://localhost:18080/, redirects to HTTPS. Both host ports bind to `127.0.0.1`; neither Spring nor PostgreSQL is published. These distinct ports avoid conflict with the devcontainer's `3000`/`8080` development forwards.
