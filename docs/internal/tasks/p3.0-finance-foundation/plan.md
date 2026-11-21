@@ -1,51 +1,50 @@
 # P3.0 - Finance foundation contract: planning and review sequence
 
-**Status:** Proposed documentation-only plan. Specification and architecture gate **pending human review**. See [specification](specification.md), [technical ER handoff](../../integration/phase-3-foundation.md) and [AI development workflow](../../../development/ai-development-workflow.md).
+**Status:** Revised documentation-only plan; [specification](specification.md), [technical handoff](../../integration/phase-3-foundation.md) and [AI development workflow](../../../development/ai-development-workflow.md). Human specification and plan gates remain **pending**; no implementation is authorized by this document alone.
 
-## Planning increment A - Establish shared design (this patch)
+## Planning increment A - Approve common contracts (this patch)
 
-- Inventory current Phase 3, P2.4b/c, existing P2 technical ER, Finance domain model, Modulith/persistence/transaction/messaging contracts and missing source-version assumptions.
-- Draft the Finance Phase 3 technical ER, ownership/defaults/constraints, Group→Finance projection and snapshot ordering semantics, initialization alternatives, and the financial revision protocol without adding feature tables or framework code.
-- Restructure backlog work into schema/API ownership, parallel starts, explicit integration edges and application/real-PostgreSQL acceptance cases. Avoid a forced frontend-only handoff and avoid bundling pure accounting with event delivery.
-- [ ] Human reviews the ER and explicitly selects the **initialization/currency policy**, Group membership source-revision contract, bootstrap scope, safe pre-initialization event handling and contradictory-event failure policy. Reconcile approved choices into this specification/handoff before implementation plans claim approval.
+- Establish Finance root, local actor FK, `PROVISIONING` lifecycle and separate per-actor source revisions versus financial business revisions. Require `GroupCreatedV1` (owner at revision `1`) and versioned member transition facts; no synchronous Group snapshot or Finance-side pending-event queue for normal delivery.
+- Record one fixed implicit two-decimal MVP accounting denomination. Leave currency out of Finance DDL; explicitly defer per-group currency and any future nonconverting Flyway population of currency metadata to a separately reviewed vertical.
+- Define ordered, version-guarded event effects and the first-observed-event/root creation race with PostgreSQL test cases. Distinguish **initial Group creation observed** from **all membership events caught up**.
+- Reduce task dependencies: only P3.1a owns shared DDL, P3.1b owns root/lock operations, P3.2a owns projection effects, P3.2b owns delivery integration, P3.3 is pure, and P3.4 owns financial revision allocation. Move optional periodic drift-repair to operational hardening, not the Phase 3 critical path.
+- [ ] Human reviews and approves the lifecycle/activation rule, source producer event contract, amount-unit assumption, accepted lack of historical backfill/automatic reconciliation, and test matrix. Record any required changes before downstream specifications/implementation plans are approved.
 
-**Gate A:** Approved P3.0 contract and data model. This patch is **for review only**; documentation does not imply a deployed table or approved source schema change.
+**Gate A:** Approved proposed P3.0 design. The artifact is a review proposal, not a deployed relational schema, production contract or implemented test.
 
-## Proposed downstream execution lanes (not authorized by this plan)
+## Independently reviewable downstream tasks
 
-| Lane | Start condition | Deliverable / gate | Parallel with |
+| Lane | Starts after | Deliverable and focused gate | Can proceed alongside |
 | --- | --- | --- | --- |
-| **P3.1a Finance schema** | Gate A and P1 persistence foundation | Versioned Flyway DDL for the two Finance tables, internal adapters, local FK/unique/check constraints and PostgreSQL migration tests | P3.3, P2.4b, initial P3.4 design |
-| **P3.1b Finance initialization** | P3.1a; approved currency workflow | Authorized, idempotent group initialization with atomic membership snapshot; test Group capability with fixture until integration | P3.2a, P3.3, P3.4 |
-| **P3.2a Projection core** | P3.1a table contract; agreed versioned event/snapshot DTOs | Finance-owned version-guarded apply/reconcile operation, Unit and concurrent PostgreSQL tests, no listener requirement | P3.1b, P3.3, P3.4 |
-| **P3.2b Bootstrap/reconciliation** | P3.2a + authoritative Group snapshot and selected rollout policy | Existing-data initialization, migration when necessary, watermark-safe reconciliation; no runtime Group SQL access | P3.2c, P3.3, P3.4 |
-| **P3.2c Delivery integration** | P3.2a + P2.4a registry and P2.4b producer; jointly with P2.4c | Real listener/producer handshake, retry/reorder, independent commit and registry completion E2E | P3.2b (agree fixture and merge boundary) |
-| **P3.3 Pure accounting** | Gate A; does **not** await DDL/Group/events | Exact Money, Percentage, strategies, conservation and deterministic rounding Unit tests | All other Phase 3 tasks |
-| **P3.4 Revision primitive** | P3.1a FinanceGroup DDL + P1 transaction foundation | Reusable Finance-local locking/revision operation and PostgreSQL contention/rollback E2E; P4 later owns journal DDL | P3.1b, P3.2a/b/c, P3.3 |
+| **P3.1a Finance schema** | Gate A + P1 persistence foundation | First Finance Flyway migration for root in `PROVISIONING`, actor composite PK/local FK, lifecycle/revisions/checks. PostgreSQL migration/constraint tests | P2.4b, P3.3 |
+| **P3.1b Root provisioning** | P3.1a; agreed internal operation API | Transactional `ensure/lock` root primitive; safe concurrent insert-if-absent, no external lookup; typed not-ready behavior. PostgreSQL contention/rollback tests | P2.4b, P3.3, P3.4 design |
+| **P3.2a Projection core** | P3.1a schema + approved P3.1b contract | Internal `applyMembershipFact`/`applyGroupCreated` behavior: guarded active/tombstone state and activation, using the common row lock; no transport code. Unit + PostgreSQL concurrency tests | P2.4b producer, P3.3, P3.4 |
+| **P3.2b Registry consumer** | P3.2a + P2.4a registry + P2.4b event DTOs | Finance listener with independent commit/recovery; P2.4c joint producer/consumer E2E, including event-before-creation and replay | P3.3, P3.4 |
+| **P3.3 Fixed-unit accounting** | Gate A (fixed two-decimal scale) | Exact Money/Percentage and equal/fixed/percentage splits; deterministic rounding and conservation Unit/property tests. No DB, Group or messaging prerequisite | All other lanes |
+| **P3.4 Financial revision coordination** | P3.1a, P1 transaction foundation; approved shared root-lock contract | Reusable Finance-local, group-scoped revision allocation guarded by financial lifecycle; PostgreSQL contention/rollback tests. P4/P5 own journal record schema | P3.2a/b, P3.3 |
 
 ```mermaid
 flowchart LR
-    foundation["P3.0 approved contracts"] --> schema["P3.1a Finance schema"]
-    foundation --> math["P3.3 Pure accounting"]
-    schema --> init["P3.1b Initialization"]
-    schema --> projection["P3.2a Projection core"]
-    schema --> revision["P3.4 Revision coordinator"]
-    projection --> bootstrap["P3.2b Bootstrap / reconciliation"]
-    projection --> delivery["P3.2c Delivery consumer"]
-    group["P2.4b Group producer + snapshot"] --> bootstrap
-    group --> delivery
-    registry["P2.4a Registry"] --> delivery
-    init -.->|"snapshot handshake"| bootstrap
-    delivery --> acceptance["P2.4c joint delivery acceptance"]
+    p30["P3.0 approved contract"] --> schema["P3.1a Finance schema"]
+    p30 --> math["P3.3 pure accounting"]
+    schema --> root["P3.1b root/lock contract"]
+    root --> projection["P3.2a projection + activation"]
+    schema --> revision["P3.4 financial revision primitive"]
+    root -.->|"shared row-lock protocol"| revision
+    group["P2.4b Group events"] --> delivery["P3.2b delivery"]
+    registry["P2.4a registry"] --> delivery
+    projection --> delivery
+    delivery --> acceptance["P2.4c joint acceptance"]
 ```
 
-A lane may **design and unit-test against approved test doubles before its production integration prerequisite** exists, but cannot claim its full gate is met. A shared column's migration belongs to the schema owner P3.1a; later tasks use subsequent non-overlapping migrations only for additional justified fields. Coordinate P2.4b's source revision with Group Management *before* Group membership event publication, not after writing Finance consumers.
+A task can design/test against the approved contract before another owner completes its production adapter, but integration acceptance waits for all relevant prerequisites. The only shared Finance schema migration belongs to P3.1a; avoid overlapping edits to its first migration. P2.4b owns Group revision generation/GroupCreated payload and producer publication; P3.2b owns consumer wiring. No task introduces a new outbox, Group SQL join or speculative background scheduler.
 
-## Execution and final acceptance
+## Validation, review and follow-up
 
-- Each owning task drafts and obtains human approval for its own target specification and tested implementation plan; deliver narrow branches/patches without merging to the approved baseline before review.
-- Exercise the affected offline Java Unit checks, PostgreSQL Integration and E2E suites separately; use the existing fixtures and `Transactions` port, not a new cross-context persistence framework.
-- Integrate P3.1b with the Group snapshot provider and the absent-group event handshake, P3.2b with the approved initial-population policy and P3.2c with P2.4b/c only after their independently reviewable unit slices stabilize.
-- Obtain independent agent review, explicit manual acceptance where the integration has a user-facing workflow, and final human merge authorization for each increment. Reconcile steady-state `docs/architecture/`, `docs/data-model-design.md` and developer docs **only once corresponding behavior is implemented**, preserving this document's design status until then.
+- Downstream specifications cover F3-01–F3-09 and F3-T01–F3-T09 from the [P3.0 specification](specification.md), with Unit, real PostgreSQL Integration/E2E and Modulith boundary evidence as appropriate. Offline Unit success alone is not PostgreSQL evidence.
+- Apply the idempotent insert/lock protocol atomically with actor updates. Test `MemberJoined` before `GroupCreated`, late owner state versus newer leave/rejoin, unknown-member tombstones, conflicting same-revision events, commit/registry completion failures, and locks on independent Finance groups.
+- For initial MVP deployment, create new Group data only with the Finance listener registered; explicitly reset disposable earlier data or coordinate a writes-suspended Flyway backfill. Such a backfill is a **release action**, not a required P3.2 runtime feature. Do not assert historical events are available for replay.
+- Track observed long-lived delivery drift and missing pre-subscriber Group enrollment as **deferred operational concerns**; introduce snapshot-based reconciliation and scheduled retry only after a separate scoped approval, not as speculative P3.2 infrastructure.
+- Obtain human specification and plan approval for each owning lane, focused patch/increment review, independent architectural review, and relevant manual acceptance. Once behavior is implemented, reconcile authoritative `docs/architecture/`, `docs/data-model-design.md` and developer docs to the actual MVP state, keeping proposals distinguishable from deployed behavior meanwhile.
 
-**Phase 3 acceptance:** Finance data/actor identity and initial membership converge to Group authority; event failure/replay and race tests pass on PostgreSQL; exact split behavior conserves totals; group-local finance writes allocate unique committed logical revisions; the existing module/transaction boundaries remain intact. Phase 4 depends on these integrated guarantees, not solely on individual green Unit tests.
+**Phase 3 acceptance:** Finance roots and actors preserve local referential integrity through reordering/replay, genesis establishes the initial owner, per-actor source ordering prevents ABA regressions, finance-only revisions are serialized, and fixed-unit calculations conserve totals. Runtime Group authorization is separate from eventual Finance projection. This gate does **not** require automatic drift repair, historical pre-subscriber enrollment or currency configuration.
