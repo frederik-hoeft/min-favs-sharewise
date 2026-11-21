@@ -1,6 +1,6 @@
 # P2.1a - Registration and initial authentication: implementation plan
 
-**Status:** Phases A–D and P2.1.0 approved and checked into the current baseline. This plan specifies the revised Argon2id credential integration (E), the mandatory security-chain migration (F0), HTTP/CSRF entry (F1) and final browser acceptance (G); each remaining increment requires human review.
+**Status:** Phases A–D and P2.1.0 approved and checked into the current baseline. This plan tracks the reviewed Argon2id credential integration (E), the mandatory security-chain migration (F0), HTTP/CSRF entry (F1) and final browser acceptance (G); each remaining increment requires human review.
 
 ## Baseline, ownership and available validation
 
@@ -30,7 +30,7 @@ Phases A–D and the P2.1.0 foundation are accepted. E and F0 can be reviewed in
 - [x] **G2, sequence:** Approve this plan **separately after G1**, then commit and push both reviewed artifacts to the authoritative task branch before implementing dependent work. At this point A–D are authorized; **G3 is not a prerequisite for starting them**.
 - [x] **G3, approved production integration baseline:** P2.1.0 and A–D are in the supplied source; actual shared published interfaces and IAM allowlist were inspected. Refreshed isolated Maven cache and baseline Unit/Modulith/package gate passed. P2.1.0's trust/profile source is authoritative; no draft SPI is assumed.
 - [x] **G4, independent-phase test gates:** The user confirmed green PostgreSQL CI and approval for B/C and accepted Phase D frontend validation. These establish the earlier increments; **live HTTP/browser acceptance for F/G remains open** and cannot be replaced by the current Maven-only cache.
-- [ ] **G5, revised password policy and sequencing:** Review the [Phase E Argon2id policy](specification.md#account-and-credential-policies-revised-phase-e-contract), including 15–128 NFC-normalized code points, 64 MiB/t=3/p=4, blocklist and concurrency/resource limits, and the separate F0 prerequisite. Approve this documentation increment before implementing E/F0.
+- [x] **G5, revised password policy and sequencing:** Review the [Phase E Argon2id policy](specification.md#account-and-credential-policies-revised-phase-e-contract), including 15–256 NFC-normalized code points, 64 MiB/t=3/p=4, blocklist and concurrency/resource limits, and the separate F0 prerequisite. Approved with the requested 256-code-point maximum; implement E and F0 as independently reviewed increments.
 
 ## Phase A - IAM domain policies, value contracts and test seams (independent)
 
@@ -79,7 +79,7 @@ Phases A–D and the P2.1.0 foundation are accepted. E and F0 can be reviewed in
 **Scope:** Implement the [approved-after-G5 Argon2id policy](specification.md#account-and-credential-policies-revised-phase-e-contract) and production `CredentialEncoder` using Spring Security's `PasswordEncoder`, plus an IAM-owned primary access-token issuer backed by **P2.1.0's actual shared JOSE signer and trusted primary profile**. Replace Phase A/D's provisional 12-character/72-byte validation in backend and frontend together. Configure trusted issuer/audience/type/keys and preserve the `sid` link to the committed session. No second decoder, claims pipeline, trusted ingress configuration or `IdentityContext` is created.
 
 - [ ] Use the implemented P2.1.0 named interfaces and `identity` allowlist. Select the actual Argon2id provider/dependencies, update the checksummed isolated Maven handoff and rebuild strictly offline.
-- [ ] Encode new credentials with `m=65536` KiB, `t=3`, `p=4`, 16-byte random salt and 32-byte tag; test encoded version/parameter parsing, full-input verification, NFC equivalence, 15/128-code-point boundaries, malformed Unicode, no bcrypt 72-byte limit, dummy-hash parity, blocklist rejection and no legacy downgrade. Update frontend client-side validation and feedback in the same reviewed increment.
+- [ ] Encode new credentials with `m=65536` KiB, `t=3`, `p=4`, 16-byte random salt and 32-byte tag; test encoded version/parameter parsing, full-input verification, NFC equivalence, 15/256-code-point boundaries, malformed Unicode, no bcrypt 72-byte limit, dummy-hash parity, blocklist rejection and no legacy downgrade. Update frontend client-side validation and feedback in the same reviewed increment.
 - [ ] Bound concurrent memory-hard operations, test admission/saturation and perform representative latency/peak-memory measurements. Verify the configured cost is practical without weakening it silently; document any approved resource adjustments.
 - [ ] Verify profile-bound production signing, required `iss`, `aud`, protected `typ`, UUID `sub`/`sid`, times and signer/configuration failures. Round-trip IAM-issued JWTs through P2.1.0's verifier and deny wrong-profile/issuer/key/time claims; valid JWT alone does not establish current session eligibility.
 - [ ] Verify production DI never discovers test fakes and no crypto/provider configuration weakens P2.1.0's trust/fail-closed guarantees.

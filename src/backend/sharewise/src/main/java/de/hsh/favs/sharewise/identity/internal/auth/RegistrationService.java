@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
-/** IAM registration orchestration. Register explicitly as an operation-scoped bean in Phase E. */
+/** IAM registration orchestration, wired as an operation-scoped bean. */
 public final class RegistrationService {
 
     private final Transactions transactions;

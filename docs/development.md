@@ -18,7 +18,7 @@ Git stores executable permissions independently of host/mount permissions. Windo
 
 ## Current toolchain
 
-The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
+The backend is a **Java 25 / Spring Boot 4.2.0 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.2.0 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
 
 The frontend under `src/frontend/` uses **Next.js 16.4.6**, React **19.3.1**, TypeScript, npm, and a checked-in `package-lock.json`. **Mantine 9.8** supplies standard UI components and theme management; Sass/SCSS Modules supply component-local styles. The homepage uses the selected [Quiet clarity](design/sharewise-design-foundation.md) visual direction with static illustrative financial previews, not implemented financial workflows. Ordinary Next.js development/build commands produce the standalone-server output; the frontend production image builds a static export and serves it with Nginx. The production Nginx image serves the exported assets with TLS and forwards same-origin `/api/*` requests to the backend. A separate production-style Compose stack supplies PostgreSQL roles, runtime secrets and health-based startup; see [local Compose acceptance](development/production-compose.md).
 
@@ -48,6 +48,32 @@ The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`;
 `application.properties` contains dev-only defaults for the dev-container database. The production image uses the `production` profile and required password files via the [Compose runtime configuration](development/production-compose.md). Other non-production environments may override the dev values with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
 The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
+
+## Initial IAM authentication credentials (P2.1a Phase E)
+
+Production IAM password encoding and access-token signing are enabled only with explicitly provisioned settings. Without `sharewise.iam.auth.enabled=true`, the production authentication services and signing codec are **not** registered; the existing bearer ingress remains fail-closed. The registration/login HTTP routes and CSRF/cookie handling are separate Phase F1 work.
+
+The Argon2id encoder uses Spring Security with Bouncy Castle (`bcprov-jdk18on`): `m=65536` KiB, `t=3`, `p=4`, a random 16-byte salt and 32-byte verifier. Passwords are NFC-normalized, not trimmed, and registration accepts 15–256 Unicode code points. Login can verify shorter existing passwords with the current reviewed Argon2id cost profile, but rejects malformed Unicode, oversized input and unsupported hash formats. A future cost upgrade must explicitly retain the previously reviewed profiles without accepting arbitrary unbounded encoded parameters. A bounded semaphore rejects hashing requests immediately when full; it is shared by registration, normal login and unknown-user dummy verification. Configure the maximum concurrency using a **measured** worker memory budget: each worker needs at least 64 MiB of Argon2 working memory, plus Java/provider overhead. The implementation reserves 128 MiB baseline and estimates 96 MiB of JVM heap per simultaneous operation at startup. Memory and latency tests on the actual deployment machine remain mandatory before enabling public traffic.
+
+Provision a locally stored, reviewed **UTF-8 password blocklist**, one entry per line, with at least 10,000 distinct entries after NFC normalization and case-insensitive matching. Comments begin with `#`; entries are otherwise exact (no whitespace trimming). Record its source, version and license in deployment records, and pin its SHA-256 checksum. It must be mounted locally and cannot be downloaded by the application. Startup fails if the file is missing, altered or too small. Do not use a synthetic test list in production.
+
+Provision an ES256 NIST P-256 signing key as a **PKCS#8 unencrypted PEM** private key file and the matching SPKI PEM public key file. The deployment secrets mechanism must restrict file permissions. Additional verification-only public keys support overlap during rotation. Only the active key may carry private material. For example, pass the following using a deployment-specific Spring configuration (the paths and values are placeholders, not shipped secrets):
+
+```properties
+sharewise.iam.auth.enabled=true
+sharewise.iam.auth.issuer=https://iam.example.org
+sharewise.iam.auth.audience=sharewise-api
+sharewise.iam.auth.active-key-id=iam-2026-11
+sharewise.iam.auth.keys[0].id=iam-2026-11
+sharewise.iam.auth.keys[0].public-key-file=/run/secrets/iam-2026-11-public.pem
+sharewise.iam.auth.keys[0].private-key-file=/run/secrets/iam-2026-11-private-pkcs8.pem
+sharewise.iam.auth.blocklist-file=/etc/sharewise/password-blocklist.txt
+sharewise.iam.auth.blocklist-version=reviewed-2026-11
+sharewise.iam.auth.blocklist-sha256=<64-hex-character-reviewed-digest>
+sharewise.iam.auth.max-concurrent-hashes=1
+```
+
+The configured IAM issuer and audience must be the same trusted values used by bearer verification. The signed primary profile has `typ=sw-iam-access+jwt`, maximum lifetime five minutes, 30-second clock skew and 4 KiB token limit. Both issuance and verification use the same named `iamPrimaryJwtCredentialCodec` from the P2.1.0 infrastructure; a valid signature alone does not prove the current session is still eligible (P2.1d). No JWT signing key, compromised-password list or fake credential fallback is bundled in the application image. Never log keys, raw credentials or hashes.
 
 ## Build, test and run
 
@@ -83,7 +109,7 @@ GitLab publishes versioned images through a daemonless builder only for protecte
 
 ## Application modules
 
-The backend is divided into Spring Modulith application modules; the [application architecture](architecture.md#module-structure-and-published-apis) defines their structure and dependency rules. The POM imports the Spring Modulith 2.1.2 BOM. `spring-modulith-api` provides the `@ApplicationModule` and `@NamedInterface` annotations on the compile classpath, and `spring-modulith-core` performs verification in test scope only. No Spring Modulith runtime feature, such as event publication, is installed.
+The backend is divided into Spring Modulith application modules; the [application architecture](architecture.md#module-structure-and-published-apis) defines their structure and dependency rules. The POM imports the Spring Modulith 2.2.0 BOM. `spring-modulith-api` provides the `@ApplicationModule` and `@NamedInterface` annotations on the compile classpath, and `spring-modulith-core` performs verification in test scope only. No Spring Modulith runtime feature, such as event publication, is installed.
 
 A vertical slice that introduces a module creates its package directly below `de.hsh.favs.sharewise` and declares every module API or named interface that the module uses in its `package-info.java`:
 

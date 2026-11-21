@@ -32,8 +32,8 @@ public final class LoginService {
         this.authentication = Objects.requireNonNull(authentication, "authentication");
         this.lockouts = Objects.requireNonNull(lockouts, "lockouts");
         this.clock = Objects.requireNonNull(clock, "clock");
-        // Phase E must supply an encoded dummy verifier matching the production
-        // algorithm and cost, not a plaintext secret or a cheap special case.
+        // The injected dummy verifier must match the production algorithm and cost,
+        // not a plaintext secret or a cheap special case.
         this.dummyEncodedPassword = Objects.requireNonNull(dummyEncodedPassword, "dummyEncodedPassword");
         if (dummyEncodedPassword.isBlank()) {
             throw new IllegalArgumentException("Dummy credential verifier must not be empty");

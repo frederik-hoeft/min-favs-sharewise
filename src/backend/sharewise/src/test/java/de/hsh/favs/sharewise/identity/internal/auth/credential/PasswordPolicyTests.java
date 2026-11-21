@@ -15,30 +15,33 @@ class PasswordPolicyTests {
     private final PasswordPolicy policy = PasswordPolicy.initial();
 
     @Test
-    void registrationUsesCodePointsAndUtf8BytesWithoutNormalizing() {
-        assertDoesNotThrow(() -> policy.validateRegistration("a".repeat(12)));
-        assertDoesNotThrow(() -> policy.validateRegistration("à".repeat(12)));
-        assertDoesNotThrow(() -> policy.validateRegistration("a".repeat(72)));
-        assertDoesNotThrow(() -> policy.validateRegistration("🌍".repeat(18)));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateRegistration("🌍".repeat(19)));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateRegistration("a".repeat(11)));
-        assertThrows(IllegalArgumentException.class,
-                () -> policy.validateRegistration("a".repeat(73)));
+    void registrationUsesNormalizedUnicodeCodePointsWithoutByteTruncation() {
+        assertDoesNotThrow(() -> policy.validateRegistration("a".repeat(15)));
+        assertDoesNotThrow(() -> policy.validateRegistration("e\u0301".repeat(15)));
+        assertDoesNotThrow(() -> policy.validateRegistration("🌍".repeat(256)));
+        assertDoesNotThrow(() -> policy.validateRegistration("a".repeat(256)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("🌍".repeat(14)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("a".repeat(257)));
+        assertThrows(IllegalArgumentException.class, () -> policy.validateRegistration("e\u0301".repeat(257)));
+        assertEquals("é".repeat(15), policy.normalized("e\u0301".repeat(15)));
     }
 
     @Test
-    void loginMayUseLegacyShortPasswordsButNeverTruncatedOrMalformedInput() {
+    void loginMayUseShortPasswordsButRejectsOversizedOrMalformedInput() {
         assertDoesNotThrow(() -> policy.validateVerificationInput("legacy"));
+        assertDoesNotThrow(() -> policy.validateVerificationInput("🌍".repeat(256)));
         assertThrows(IllegalArgumentException.class, () -> policy.validateVerificationInput(""));
         assertThrows(IllegalArgumentException.class, () -> policy.validateVerificationInput(null));
         assertThrows(IllegalArgumentException.class,
-                () -> policy.validateVerificationInput("a".repeat(73)));
+                () -> policy.validateVerificationInput("a".repeat(257)));
         assertThrows(IllegalArgumentException.class,
                 () -> policy.validateVerificationInput("abc\uD800"));
         assertThrows(IllegalArgumentException.class,
                 () -> policy.validateVerificationInput("abc\uDC00"));
+        assertThrows(IllegalArgumentException.class,
+                () -> policy.validateVerificationInput("pass\nword"));
+        assertThrows(IllegalArgumentException.class,
+                () -> policy.validateVerificationInput("a".repeat(2049)));
     }
 
     @Test
@@ -56,7 +59,7 @@ class PasswordPolicyTests {
 
     @Test
     void invalidPolicyFailsBeforeItCanBeUsed() {
-        assertThrows(IllegalArgumentException.class, () -> new PasswordPolicy(0, 72));
-        assertThrows(IllegalArgumentException.class, () -> new PasswordPolicy(13, 12));
+        assertThrows(IllegalArgumentException.class, () -> new PasswordPolicy(0, 256));
+        assertThrows(IllegalArgumentException.class, () -> new PasswordPolicy(16, 15));
     }
 }

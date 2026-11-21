@@ -14,24 +14,27 @@ describe('authentication form policy', () => {
     expect(validateCredentials('login', `${'a'.repeat(245)}@example.org`, 'password').email).toMatch(/256/);
   });
 
-  it('enforces 12 Unicode code points on registration, including supplementary characters', () => {
-    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(11)).password).toMatch(/too short/i);
-    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(12)).password).toBeUndefined();
-    // Login must accept older credentials shorter than registration's current minimum.
+  it('enforces 15 to 256 NFC-normalized code points on registration', () => {
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(14)).password).toMatch(/too short/i);
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(15)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(256)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(257)).password).toMatch(/256/);
+    expect(validateCredentials('register', 'test@example.org', 'e\u0301'.repeat(15)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', 'e\u0301'.repeat(257)).password).toMatch(/256/);
     expect(validateCredentials('login', 'test@example.org', 'short').password).toBeUndefined();
   });
 
-  it('enforces a 72 UTF-8 byte ceiling rather than JavaScript string length', () => {
-    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(72)).password).toBeUndefined();
-    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(73)).password).toMatch(/too long/i);
-    expect(validateCredentials('login', 'test@example.org', '😀'.repeat(18)).password).toBeUndefined();
-    expect(validateCredentials('login', 'test@example.org', '😀'.repeat(19)).password).toMatch(/too long/i);
+  it('does not impose the old bcrypt byte ceiling on multibyte passwords', () => {
+    expect(validateCredentials('register', 'test@example.org', '😀'.repeat(256)).password).toBeUndefined();
+    expect(validateCredentials('login', 'test@example.org', '😀'.repeat(257)).password).toMatch(/256/);
+    expect(validateCredentials('register', 'test@example.org', 'a'.repeat(2049)).password).toMatch(/256/);
   });
 
   it('rejects malformed surrogate pairs and never trims passwords', () => {
     expect(validateCredentials('login', 'test@example.org', '\ud800').password).toMatch(/invalid characters/i);
     expect(validateCredentials('login', 'test@example.org', '\udc00').password).toMatch(/invalid characters/i);
+    expect(validateCredentials('login', 'test@example.org', 'pass\nword').password).toMatch(/invalid characters/i);
     expect(validateCredentials('login', 'test@example.org', '  ').password).toBeUndefined();
-    expect(validateCredentials('register', 'test@example.org', '  '.repeat(6)).password).toBeUndefined();
+    expect(validateCredentials('register', 'test@example.org', '  '.repeat(8)).password).toBeUndefined();
   });
 });
