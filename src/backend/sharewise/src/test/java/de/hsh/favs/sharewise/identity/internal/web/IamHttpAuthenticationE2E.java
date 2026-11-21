@@ -24,7 +24,11 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -96,7 +100,7 @@ class IamHttpAuthenticationE2E {
             assertEquals(1, count(fixture, "identity.refresh_tokens"));
             // The response drops the bootstrap CSRF cookie. A subsequent credential mutation
             // must obtain another CSRF pair, as the browser coordinator already does.
-            assertTrue(findCookie(registered, "__Host-sharewise-csrf").contains("Max-Age=0"));
+            assertDeletedCookie(registered, "__Host-sharewise-csrf");
 
             CsrfPair second = csrf(client, base);
             HttpResponse<String> duplicate = post(client, base, origin, "/api/iam/v1/auth/register",
@@ -156,6 +160,39 @@ class IamHttpAuthenticationE2E {
         return response.headers().allValues("Set-Cookie").stream()
                 .filter(value -> value.startsWith(name + "="))
                 .findFirst().orElseThrow(() -> new AssertionError("Missing cookie " + name));
+    }
+
+    private static void assertDeletedCookie(HttpResponse<?> response, String name) {
+        String cookie = findCookie(response, name);
+        List<String> attributes = List.of(cookie.split(";\\s*"));
+        // The original cookie value must be cleared; simply expiring a nonempty
+        // credential is a weaker and less explicit protocol assertion.
+        assertEquals(name + "=", attributes.getFirst(), cookie);
+
+        assertTrue(attributes.contains("Path=/"), cookie);
+        assertTrue(attributes.contains("Secure"), cookie);
+        assertTrue(attributes.contains("HttpOnly"), cookie);
+        assertTrue(attributes.contains("SameSite=Strict"), cookie);
+        assertFalse(attributes.stream().anyMatch(value -> value.startsWith("Domain=")), cookie);
+
+        String maxAge = null;
+        String expires = null;
+        for (String attribute : attributes.subList(1, attributes.size())) {
+            if (attribute.regionMatches(true, 0, "Max-Age=", 0, "Max-Age=".length())) {
+                maxAge = attribute.substring("Max-Age=".length());
+            } else if (attribute.regionMatches(true, 0, "Expires=", 0, "Expires=".length())) {
+                expires = attribute.substring("Expires=".length());
+            }
+        }
+        // MockMvc preserves Max-Age=0; Tomcat 11 emits a past Expires date.
+        // Per cookie precedence rules, Max-Age takes priority when both exist.
+        if (maxAge != null) {
+            assertEquals(0L, Long.parseLong(maxAge), cookie);
+        } else {
+            assertTrue(expires != null, "Missing cookie expiration: " + cookie);
+            Instant deadline = OffsetDateTime.parse(expires, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+            assertTrue(deadline.isBefore(Instant.now()), "Cookie has not expired: " + cookie);
+        }
     }
 
     private static int count(IntegrationTestContext fixture, String table) throws Exception {
