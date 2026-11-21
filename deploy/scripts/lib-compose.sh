@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+# Sourced by deployment Bash scripts; not an executable entry point.
 # Shared invocation for deployment scripts. Plain `docker compose` works inside deploy/.
 [[ -f "$deploy_dir/.env" ]] || {
     printf 'Missing %s/.env; run ./deploy/scripts/bootstrap.sh first.\n' "$deploy_dir" >&2

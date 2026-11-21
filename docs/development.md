@@ -14,6 +14,8 @@ To get started:
 
 The source checkout remains on the host and survives container rebuilds. Tools or files installed only inside an individual container should not be treated as persistent project state.
 
+Git stores executable permissions independently of host/mount permissions. Windows/NTFS-mounted files may appear executable inside a devcontainer even when Git records mode `100644`, which breaks fresh Linux CI checkouts. Keep executable shebang scripts at Git mode `100755` (`git update-index --chmod=+x path/to/script`) and run `python3 scripts/ci/check-script-modes.py` before pushing; the `pre-build` CI gate runs the same check. Source-only shell fragments should not have a shebang.
+
 ## Current toolchain
 
 The backend is a **Java 25 / Spring Boot 4.1.2 Maven** project under `src/backend/sharewise/`. The Maven wrapper requests Maven **3.10.0** and is configured as a script-only wrapper (it does not bundle Maven). The current backend dependencies include Spring MVC, JPA/Hibernate, jOOQ, the PostgreSQL JDBC driver, Flyway, operation-scoped DI and transaction management, test starters and Spring Modulith 2.1.2 for [module structure verification](#application-modules). Spring Modulith event publication remains an architectural target rather than an installed backend feature.
