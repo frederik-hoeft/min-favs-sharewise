@@ -1,0 +1,94 @@
+# Loopback-only liveness endpoint; never expose this port from Compose.
+server {
+    listen 127.0.0.1:8081;
+    server_name localhost;
+    location = /health { return 200 "ok\n"; }
+    location / { return 404; }
+}
+
+# Production edge: all unrecognized hosts are rejected, including over TLS.
+# Compose provides the public hostname, published TLS port, and certificate files.
+server {
+    listen 80 default_server;
+    server_name _;
+    return 421;
+}
+
+server {
+    listen 80;
+    server_name ${SHAREWISE_PUBLIC_HOST};
+    return 308 https://${SHAREWISE_PUBLIC_HOST}${SHAREWISE_TLS_PORT_SUFFIX}$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    ssl_reject_handshake on;
+    return 421;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${SHAREWISE_PUBLIC_HOST};
+    server_tokens off;
+    # SNI and the HTTP Host header are separate inputs. A valid SNI does not
+    # authorize a conflicting Host header.
+    if ($host != ${SHAREWISE_PUBLIC_HOST}) { return 421; }
+    ssl_certificate /etc/nginx/tls/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The proxy resolves the Compose service lazily. Static files remain
+    # available if the backend is temporarily absent or starting.
+    location ^~ /api/ {
+        resolver 127.0.0.11 valid=10s ipv6=off;
+        set $sharewise_backend backend:8080;
+        proxy_pass http://$sharewise_backend$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Do not allow clients to spoof the origin or proxy chain. The backend
+        # trusts these values only when its production profile is active and
+        # it is reachable exclusively through this trusted network boundary.
+        proxy_set_header Host ${SHAREWISE_PUBLIC_HOST}${SHAREWISE_TLS_PORT_SUFFIX};
+        proxy_set_header Forwarded "";
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Port ${SHAREWISE_HTTPS_PORT};
+        proxy_set_header X-Forwarded-Host ${SHAREWISE_PUBLIC_HOST}${SHAREWISE_TLS_PORT_SUFFIX};
+        proxy_set_header X-Forwarded-Ssl "";
+        proxy_set_header X-Forwarded-Scheme "";
+        proxy_set_header X-Forwarded-Prefix "";
+        proxy_set_header X-Forwarded-Server "";
+        proxy_set_header X-Forwarded-By "";
+        proxy_set_header X-Forwarded-Protocol "";
+        proxy_set_header X-Forwarded-Uri "";
+        proxy_set_header X-Forwarded-Path "";
+        proxy_set_header X-Original-Host "";
+        proxy_set_header X-Original-URL "";
+        proxy_set_header X-Rewrite-URL "";
+
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        add_header Cache-Control "no-store" always;
+    }
+
+    # Never expose exported dotfiles or non-public configuration through
+    # static hosting. Regex locations also take precedence over static assets.
+    location ~ (^|/)\. {
+        return 404;
+    }
+
+    location /_next/static/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location / {
+        try_files $uri $uri.html $uri/ =404;
+        add_header Cache-Control "no-store" always;
+    }
+}

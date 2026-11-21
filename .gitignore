@@ -49,11 +49,13 @@ src/frontend/vitest-junit.xml
 
 # next.js
 src/frontend/.next/
-src/frontend/.next-export-probe/
+src/frontend/.next-export/
 src/frontend/out/
 
 # production
 src/frontend/build
+# Untracked local TLS certificates and disposable deployment inputs.
+.local/
 
 # misc
 .DS_Store
@@ -67,6 +69,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Safe, password-free Compose defaults are intentionally versioned.
+!deploy/.env.example
 
 # vercel
 .vercel
@@ -81,3 +85,7 @@ next-env.d.ts
 
 # Downloaded toolchain archives for the offline handoff generator.
 /.offline-handoff-cache/
+
+# Python local test runner outputs.
+__pycache__/
+*.pyc
