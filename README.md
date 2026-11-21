@@ -49,6 +49,8 @@ npm run dev
 
 The frontend runs on port 3000 and the backend on port 8080 in the provided starter setup. The backend exposes a readiness endpoint at `/api/system/v1/health`; the full financial APIs are not yet implemented.
 
+For local production-style Compose startup and teardown, use the [deployment guide](deploy/README.md). Production images are published from protected GitLab refs; the [CI guide](docs/development/tests.md#ci-and-diagnostics) describes versioning and paired digest evidence.
+
 For setup and application builds, consult the [development guide](docs/development.md). The backend [test guide](docs/development/tests.md) covers the separate PostgreSQL Integration and E2E gates. The backend runs on PostgreSQL 18 with Flyway migrations; the dev container provides the database.
 
 ## Architecture and contribution guidance

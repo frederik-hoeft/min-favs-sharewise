@@ -1,15 +1,15 @@
-﻿import type { NextConfig } from "next";
+import type { NextConfig } from "next";
 
 const backendUrl: string = process.env.BACKEND_URL || "http://localhost:8080";
 
-// The acceptance probe compiles the same routes as a static site, without
-// altering the production standalone output or same-origin development proxy.
-const staticExportProbe = process.env.SHAREWISE_STATIC_EXPORT_PROBE === "1";
+// The Docker build and the disposable acceptance test use the same static export
+// mode. Normal development/CI builds retain standalone output and the API rewrite.
+const staticExport = process.env.SHAREWISE_STATIC_EXPORT === "1";
 
 const nextConfig: NextConfig = {
-  output: staticExportProbe ? "export" : "standalone",
-  ...(staticExportProbe && { distDir: ".next-export-probe" }),
-  ...(!staticExportProbe && {
+  output: staticExport ? "export" : "standalone",
+  ...(staticExport && { distDir: ".next-export" }),
+  ...(!staticExport && {
     async rewrites() {
       return [{ source: "/api/:path*", destination: `${backendUrl}/api/:path*` }];
     },

@@ -32,6 +32,14 @@ Every module is a closed module and declares its permitted dependencies with `@A
 
 `shared` declares `allowedDependencies = {}`, so infrastructure can never depend on a business context, and the module graph stays acyclic and extractable. Its top-level package publishes nothing; each infrastructure capability has its own named interface. For example, the DI contracts in `shared.infra.di` are published as `shared::di`, the operation result contracts in `shared.result` as `shared::result`, and the controller error/validation contracts in `shared.infra.web` as `shared::web`, while Spring implementations under `internal` sub-packages are not published.
 
+## Packaging and runtime boundary
+
+The locally runnable deployment has one Nginx/static-export frontend, one Spring Boot modular-monolith backend and one PostgreSQL 18 database. Nginx is the only host-exposed service; it terminates TLS and forwards `/api/*` unchanged over a private application network. The backend alone accesses PostgreSQL on a separate data network. The browser does not connect to PostgreSQL or require a Next.js runtime server. Deployment packaging does not change bounded-context ownership or introduce a distributed business-service boundary.
+
+PostgreSQL initializes separate runtime and Flyway migration roles on an empty persistent data volume. The Spring `production` profile requires distinct runtime secret files and starts Flyway before readiness; Nginx and the backend expose independent health checks. These startup guarantees do not imply automatic rollout, backup, or password rotation for a populated database. See the [persistence foundation](architecture/persistence.md) for database authority and the [deployment guide](../deploy/README.md) for concrete single-host operations.
+
+CI publishes the backend and frontend as separate images and verifies a matching, digest-qualified pair before recording a release descriptor. The `latest` aliases are not a transaction or an authoritative deployment reference. Host provisioning and rollout/rollback automation remain separate P2.6c/d responsibilities; [CI and test guidance](development/tests.md#ci-and-diagnostics) owns the versioning and registry contract.
+
 ## Operation- and data-flow-oriented services
 
 Published interfaces expose meaningful command and query operations. DI-managed, normally stateless application services implement them; small cohesive services can be used directly without a pass-through facade. Application input and output contracts use **immutable Java records** where suitable, independently of JPA entities and transport-specific types. Cross-context references use stable business terminology and opaque IDs; navigable entity graphs remain within their owning module.

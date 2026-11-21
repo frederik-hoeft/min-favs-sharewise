@@ -33,7 +33,8 @@
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",
-        "files.autoSave": "afterDelay"
+        "files.autoSave": "afterDelay",
+        "remote.autoForwardPorts": false
       }
     }
   },

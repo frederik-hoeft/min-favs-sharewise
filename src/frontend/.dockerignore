@@ -1,5 +1,18 @@
+# Build from the lockfile and source, never from local generated state.
 node_modules
 .next
+.next-export
+out
+coverage
+.npm
 .git
+.gitignore
+.env*
+*.tsbuildinfo
+next-env.d.ts
+vitest-junit.xml
 Dockerfile
 .dockerignore
+README.md
+AGENTS.md
+tests

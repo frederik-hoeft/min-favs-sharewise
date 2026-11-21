@@ -1,10 +1,26 @@
-# Both builds gate the shared test stage. PostgreSQL suites then depend on
-# the preceding backend suite, not unrelated frontend checks. No DinD.
+# Source-only checks precede builds. PostgreSQL suites depend on their
+# preceding backend suite, not unrelated frontend checks. No DinD.
 stages:
+  - pre-build # Lint, type checks, source security scans and CI contract tests.
   - build
-  - test # Also used by GitLab's SAST and secret-detection templates.
-  - test-backend-integration
-  - test-backend-e2e
+  - test # Unit, component and static-export integration tests.
+  - integration-tests
+  - e2e-tests
+  # No `needs` on version or image jobs: all prior gates
+  # (including the security templates) must finish first.
+  - image-version
+  - image-preflight # Fail closed on existing version tags before building
+  - image-publish # Independent backend and frontend versioned pushes
+  - image-release # Validate paired remote digests and write release artifact
+  - image-promote # Main-only serialized latest promotion
+
+variables:
+  # Initial image version; changes require explicit release-policy review.
+  MAJOR_VERSION: '0'
+  MINOR_VERSION: '1'
+  # Security analyzers must also run in merge-request pipelines.
+  AST_ENABLE_MR_PIPELINES: 'true'
+  SECRET_DETECTION_ENABLED: 'true'
 
 # Prefer MR pipelines over duplicate push pipelines for unprotected branches.
 # Keep protected-ref pipelines (including protected pushes with an open MR),
@@ -22,6 +38,15 @@ workflow:
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
       when: never
     - when: always
+
+# Publish stable versions from protected main; opt-in preview versions from
+# protected dev-<slug> tags. Protect dev-* in GitLab repository settings.
+# Ordinary branch pushes, MRs, forks, schedules, API and manual pipelines
+# keep their verification jobs but do not publish images.
+.image-publishable:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_PROJECT_PATH == "min-favs/sharewise" && $CI_COMMIT_BRANCH == "main" && $CI_COMMIT_REF_PROTECTED == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_PROJECT_PATH == "min-favs/sharewise" && $CI_COMMIT_TAG =~ /^dev-[a-z0-9]+(-[a-z0-9]+)*$/ && $CI_COMMIT_REF_PROTECTED == "true"'
 
 .backend-maven:
   image: eclipse-temurin:25-jdk
@@ -126,7 +151,7 @@ test-backend-unit:
 
 test-backend-integration:
   extends: [.postgres-tests, .backend-test-reports]
-  stage: test-backend-integration
+  stage: integration-tests
   needs:
     - job: test-backend-unit
       artifacts: false
@@ -135,7 +160,7 @@ test-backend-integration:
 
 test-backend-e2e:
   extends: [.postgres-tests, .backend-test-reports]
-  stage: test-backend-e2e
+  stage: e2e-tests
   needs:
     - job: test-backend-integration
       artifacts: false
@@ -144,19 +169,19 @@ test-backend-e2e:
 
 test-frontend-lint:
   extends: .frontend-npm
-  stage: test
+  stage: pre-build
   script:
     - npm run lint
 
 test-frontend-typecheck:
   extends: .frontend-npm
-  stage: test
+  stage: pre-build
   script:
     - npm run typecheck
 
 test-frontend-test-typecheck:
   extends: .frontend-npm
-  stage: test
+  stage: pre-build
   script:
     - npm run test:typecheck
 
@@ -178,9 +203,10 @@ test-frontend-static-export:
   script:
     - npm run test:static-export
 
-# Validates the offline handoff without a language SDK or project dependency downloads.
+# Validate offline-handoff tooling using isolated fixtures, before image builds.
+# This test does not depend on packaged application artifacts.
 test-offline-handoff:
-  stage: test
+  stage: pre-build
   image: python:3.12-trixie
   interruptible: true
   dependencies: []
@@ -189,19 +215,141 @@ test-offline-handoff:
   script:
     - bash scripts/test-offline-handoff.sh
 
-# Keep the security analyzers alongside the other checks after a successful build.
+# Check version construction before building, including non-publishing MRs.
+test-image-version:
+  image: alpine:3.24
+  stage: pre-build
+  interruptible: true
+  dependencies: []
+  script:
+    - sh scripts/ci/test-construct-image-version.sh
+
+# Check local registry invariants before building, without registry credentials
+# or a container runtime. The real-registry acceptance is separate in Gate F.
+test-image-registry-contract:
+  image: python:3.12-alpine
+  stage: pre-build
+  interruptible: true
+  dependencies: []
+  before_script:
+    - apk add --no-cache jq
+  script:
+    - python3 -m unittest discover -s scripts/ci/tests -p 'test_image_registry.py' -v
+
+# Validate the production Nginx/TLS, proxy and local-deployment contracts
+# before any image is built. No Docker daemon or PostgreSQL is needed: the
+# Compose/image smoke scripts are exercised with isolated Docker CLI fixtures.
+# Use the SAME Nginx release as the frontend runtime, not the host's nginx.
+test-deployment-contract:
+  image: nginx:1.30.7-alpine3.24
+  stage: pre-build
+  interruptible: true
+  dependencies: []
+  before_script:
+    - apk add --no-cache python3 bash openssl git
+    - |
+      for tool in python3 nginx openssl envsubst tar bash git; do
+        command -v "$tool" >/dev/null || { echo "Missing deployment test prerequisite: $tool" >&2; exit 1; }
+      done
+  script:
+    - python3 scripts/ci/check-script-modes.py
+    - python3 -m unittest discover -s scripts/ci/tests -p 'test_script_modes.py' -v
+    - python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v
+
+# This job runs only after ALL build, test and security gates finish. The
+# artifact is the single version source for all image publishing jobs.
+construct-version:
+  extends: .image-publishable
+  image: alpine:3.24
+  stage: image-version
+  dependencies: []
+  script:
+    - sh scripts/ci/construct-image-version.sh image-version/version.txt
+  artifacts:
+    paths:
+      - image-version/version.txt
+    expire_in: 7 days
+
+
+# No `needs`: each stage remains downstream of every earlier quality gate.
+# Preflight rejects known version-tag collisions; it cannot prevent a concurrent
+# writer or job retry from replacing a tag without registry-side enforcement.
+# Digest-qualified release references are authoritative, not mutable tags.
+.registry-tools:
+  image: alpine:3.24
+  before_script:
+    - apk add --no-cache crane jq
+
+check-image-tags:
+  extends: [.image-publishable, .registry-tools]
+  stage: image-preflight
+  dependencies: [construct-version]
+  script:
+    - sh scripts/ci/check-unused-image-tags.sh
+
+.image-kaniko:
+  extends: .image-publishable
+  stage: image-publish
+  image:
+    name: ghcr.io/osscontainertools/kaniko:v1.28.6-debug@sha256:7ab44d0131c3051b6dea128067e258c7afb5c4815082a93b9cf6c624f2140bf0
+    entrypoint: [""]
+  # Download only the shared version, not backend JARs or npm cache artifacts.
+  dependencies: [construct-version]
+  artifacts:
+    paths:
+      - image-evidence/
+    expire_in: 7 days
+
+publish-backend:
+  extends: .image-kaniko
+  script:
+    - sh scripts/ci/publish-image.sh backend
+
+publish-frontend:
+  extends: .image-kaniko
+  script:
+    - sh scripts/ci/publish-image.sh frontend
+
+# Only the complete validated pair has a release descriptor. A partial push
+# leaves one versioned registry tag, never a successful release artifact.
+release-images:
+  extends: [.image-publishable, .registry-tools]
+  stage: image-release
+  dependencies:
+    - construct-version
+    - publish-backend
+    - publish-frontend
+  script:
+    - sh scripts/ci/release-images.sh
+  artifacts:
+    paths:
+      - image-release/release.json
+    expire_in: 1 year
+
+# Serializes main alias promotion across pipelines. The script also compares
+# registry-hosted version labels to reject a delayed, older pipeline. A retry
+# can repair a partially promoted pair, but `latest` is never an atomic pair.
+promote-latest:
+  stage: image-promote
+  extends: .registry-tools
+  resource_group: sharewise-main-latest
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_PROJECT_PATH == "min-favs/sharewise" && $CI_COMMIT_BRANCH == "main" && $CI_COMMIT_REF_PROTECTED == "true"'
+  dependencies: [release-images]
+  script:
+    - sh scripts/ci/promote-images.sh
+
+# Current GitLab Semgrep and secret-detection jobs need source, not build output.
+# The template's analyzer jobs extend `sast`, retaining their existing rules
+# and failure policies. Override the stage without replacing those rules.
 sast:
-  stage: test
+  stage: pre-build
   # Template analyzer jobs extend sast and must not download backend build artifacts.
   dependencies: []
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
-variables:
-  # Security analyzers must run in MR pipelines after workflow switches from push.
-  AST_ENABLE_MR_PIPELINES: 'true'
-  SECRET_DETECTION_ENABLED: 'true'
 
 secret_detection:
-  stage: test
+  stage: pre-build
   dependencies: []
