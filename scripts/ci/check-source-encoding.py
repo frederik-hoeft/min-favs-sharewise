@@ -1,9 +1,9 @@
 """Reject BOMs and non-UTF-8 content in tracked source text.
 
 CI checks the working tree; the pre-commit hook checks the Git index, not
-potentially different unstaged working-tree contents. Git attributes identify
-explicitly binary files and text files. Under text=auto, recognized source
-files must remain NUL-free; unknown binary assets may contain NUL bytes.
+potentially different unstaged working-tree contents. Only files explicitly
+marked binary in .gitattributes are exempted from UTF-8 decoding; text=auto
+must not silently permit BOM-less UTF-16 or unknown binary formats.
 """
 
 import argparse
@@ -11,21 +11,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-
-# Git text=auto classifies NUL-bearing content as binary, including malformed
-# text files. Treat known source paths as text even when their attribute is auto.
-TEXT_SUFFIXES = frozenset({
-    ".bat", ".cjs", ".cmd", ".css", ".csv", ".gradle", ".html",
-    ".htm", ".ini", ".java", ".js", ".json", ".jsonc", ".jsx",
-    ".kts", ".kt", ".md", ".mjs", ".properties", ".py", ".scss",
-    ".sh", ".sql", ".svg", ".toml", ".ts", ".tsx", ".txt",
-    ".xml", ".yaml", ".yml",
-})
-TEXT_FILENAMES = frozenset({
-    ".dockerignore", ".editorconfig", ".gitattributes", ".gitignore",
-    ".npmrc", "Containerfile", "Dockerfile", "Makefile", "mvnw",
-    "gradlew", "LICENSE", "NOTICE",
-})
 
 BOMS = (
     (b"\x00\x00\xfe\xff", "UTF-32 BE BOM"),
@@ -74,14 +59,6 @@ def source_bytes(path: bytes, staged: bool) -> bytes:
     return source.read_bytes()
 
 
-def is_known_text(path: bytes) -> bool:
-    source = Path(os.fsdecode(path))
-    return (source.suffix.lower() in TEXT_SUFFIXES
-            or source.name in TEXT_FILENAMES
-            or source.name.startswith(".env")
-            or ".githooks" in source.parts)
-
-
 def check(path: bytes, content: bytes, attribute: bytes) -> list[str]:
     issues = []
     for marker, description in BOMS:
@@ -91,11 +68,11 @@ def check(path: bytes, content: bytes, attribute: bytes) -> list[str]:
 
     if attribute == b"unset":
         return issues  # Explicitly binary in .gitattributes.
+    # Git text=auto is content-sensitive: it can misclassify BOM-less UTF-16
+    # source files as binary. Only an explicit -text/binary attribute exempts
+    # a tracked file from this check.
     if b"\x00" in content:
-        if attribute != b"auto" or is_known_text(path):
-            issues.append("NUL byte in text file")
-        else:
-            return issues  # Unknown auto-detected binary asset.
+        issues.append("NUL byte in text file")
 
     try:
         content.decode("utf-8")

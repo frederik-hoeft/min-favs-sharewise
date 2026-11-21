@@ -90,19 +90,41 @@ class SourceEncodingTests(unittest.TestCase):
                 self.git("reset", "-q", "HEAD", "--", name)
                 (self.root / name).unlink()
 
-    def test_unknown_auto_binary_is_ignored_but_explicit_text_rejects_nul(self) -> None:
-        self.write("data.bin", b"\x00\xff\x00")
-        self.git("add", "data.bin")
-        self.assertEqual(0, self.check("--staged").returncode)
+    def test_bomless_utf16_in_other_tracked_text_formats_is_rejected(self) -> None:
+        # These real repository paths inherit text=auto rather than an explicit
+        # text attribute. An extension allowlist misses them.
+        for name in (
+            "src/frontend/tests/vitest.config.mts",
+            "src/frontend/nginx/production.conf.template",
+            "docs/assets/src/domain-model.graphml",
+            "deploy/postgres/Dockerfile.dockerignore",
+        ):
+            with self.subTest(name=name):
+                self.write(name, b"A\x00B\x00")
+                self.git("add", name)
+                for mode in ((), ("--staged",)):
+                    result = self.check(*mode)
+                    self.assertEqual(1, result.returncode, result.stderr)
+                    self.assertIn(name, result.stderr)
+                    self.assertIn("NUL byte", result.stderr)
+                self.git("reset", "-q", "HEAD", "--", name)
+                (self.root / name).unlink()
 
-        self.write(".gitattributes", b"* text=auto eol=lf\n*.pdf binary\n*.dat text\n")
+    def test_auto_binary_requires_explicit_git_attribute(self) -> None:
+        # An unknown NUL-containing path should not bypass the UTF-8 policy.
+        self.write("asset.custom", b"\x00\xff\x00")
+        self.git("add", "asset.custom")
+        for mode in ((), ("--staged",)):
+            result = self.check(*mode)
+            self.assertEqual(1, result.returncode, result.stderr)
+            self.assertIn("NUL byte", result.stderr)
+
+        # Only an explicit binary declaration exempts the content.
+        self.write(".gitattributes", b"* text=auto eol=lf\n*.pdf binary\n*.custom binary\n")
         self.git("add", ".gitattributes")
-        self.write("data.dat", b"A\x00B\x00")
-        self.git("add", "data.dat")
-        result = self.check("--staged")
-        self.assertEqual(1, result.returncode, result.stderr)
-        self.assertIn("data.dat", result.stderr)
-        self.assertIn("NUL byte", result.stderr)
+        for mode in ((), ("--staged",)):
+            result = self.check(*mode)
+            self.assertEqual(0, result.returncode, result.stderr)
 
     def test_binary_files_and_deletions_are_not_mistaken_for_text(self) -> None:
         self.write("snapshot.pdf", b"%PDF-1.7\x80\x00\xff")
