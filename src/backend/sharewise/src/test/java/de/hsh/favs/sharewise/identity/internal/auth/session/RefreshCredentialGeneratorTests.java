@@ -83,7 +83,7 @@ class RefreshCredentialGeneratorTests {
         RefreshCredentialGenerator.GeneratedCredential refresh =
                 new RefreshCredentialGenerator().generate(tokenId);
         AuthenticationResult result = new AuthenticationResult(
-                sessionId, sessionId, access, refresh);
+                sessionId, sessionId, access, refresh, now.plusSeconds(3600));
         assertFalse(access.toString().contains("access-secret"));
         assertFalse(result.toString().contains("access-secret"));
         assertFalse(result.toString().contains(refresh.cookieValue()));

@@ -1,6 +1,6 @@
 # P2.1a - Registration and initial authentication
 
-**Status:** Phases A–D and P2.1.0 are approved in the baseline. Phase E production credential/JWT adapters have been reviewed; Phase F0 security-chain migration is under review. Registration/login HTTP, CSRF and browser integration are not implemented. Each remaining increment requires separate human approval.
+**Status:** P2.1.0 and P2.1a Phases A–E and F0 are approved; the F0 CI gate passed. Phase F1 implements registration/login HTTP, Spring CSRF, Origin enforcement and cookies, pending PostgreSQL CI and human review. Live browser acceptance remains Phase G.
 
 ## Goal and scope
 
@@ -35,7 +35,7 @@ Authentication services depend on IAM-owned account/session ports, the existing 
 
 P2.1.0 supplies the shared trusted primary-token profile and validation (`iss`, `aud`, protected access-token `typ`, strictly typed UUID `sub` and stable `sid`, validity times, explicit signing/verification keys and permitted algorithms), trusted HTTP-to-operation-scope binding, immutable `AuthorizationContext`, and the IAM-owned **production implementation of the unchanged** `IdentityContext`. P2.1a uses the shared signing/profile facilities to issue corresponding tokens and configures the registration/login/CSRF HTTP entry policy. It does not implement a second JWT codec, claims aggregation, security configuration initializer, or dispatch-input registry. P2.1.0's verified primary evidence alone is **not** a fresh account/session-state query; authoritative eligibility is P2.1d. Group consumers continue using the published semantic identity contract without changes.
 
-P2.1.0's published `JwtCredentialCodec`, `JwtCredentialProfile`, `JwtIssueRequest`, signing service and verified ingress/operation-input bridge are implemented. P2.1a's account/session orchestration, mock-backed frontend and opt-in production `CredentialEncoder`/`AccessTokenIssuer` adapters are implemented, but registration/login HTTP routes are not. The shared JWT codec, admission and operation-initialization machinery remains authoritative; test-only issuers and encoders cannot be production-discovered fallbacks. The HTTP security configuration uses ordered, framework-managed `SecurityFilterChain` beans with one servlet proxy; the dedicated cookie/CSRF and Origin policy remains a prerequisite before exposing registration or login routes.
+P2.1.0's published `JwtCredentialCodec`, `JwtCredentialProfile`, `JwtIssueRequest`, signing service and verified ingress/operation-input bridge are implemented. P2.1a's account/session orchestration, mock-backed frontend and opt-in production `CredentialEncoder`/`AccessTokenIssuer` adapters are implemented, and Phase F1 now adds conditionally enabled registration/login/CSRF HTTP routes. The shared JWT codec, admission and operation-initialization machinery remains authoritative; test-only issuers and encoders cannot be production-discovered fallbacks. Ordered `SecurityFilterChain` beans provide bearer ingress, and F1 adds cookie/CSRF and Origin checks before dispatch. Physical PostgreSQL HTTP verification and browser acceptance remain separate gates.
 
 ```mermaid
 flowchart LR

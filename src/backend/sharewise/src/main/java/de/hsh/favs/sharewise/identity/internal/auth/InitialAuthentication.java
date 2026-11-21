@@ -47,6 +47,7 @@ public final class InitialAuthentication {
         if (!expiry.equals(accessToken.expiresAt())) {
             throw new IllegalStateException("Access token issuer returned the wrong expiration");
         }
-        return new AuthenticationResult(userId, session.id(), accessToken, credential);
+        return new AuthenticationResult(userId, session.id(), accessToken, credential,
+                session.deadlines().effectiveExpiresAt());
     }
 }

@@ -63,10 +63,10 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
             }
         } catch (JwtCredentialException exception) {
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-            problem(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_credential", "Invalid Bearer Credential");
+            IamHttpProblemWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_credential", "Invalid Bearer Credential");
             return;
         } catch (IllegalStateException exception) {
-            problem(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+            IamHttpProblemWriter.write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                 "security_unavailable", "Security Configuration Unavailable");
             return;
         }
@@ -78,11 +78,4 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
         }
     }
 
-    private static void problem(HttpServletResponse response, int status, String code, String title)
-        throws IOException {
-        response.setStatus(status);
-        response.setContentType("application/problem+json");
-        response.getWriter().write("{\"type\":\"about:blank\",\"status\":" + status
-            + ",\"title\":\"" + title + "\",\"code\":\"" + code + "\"}");
-    }
 }

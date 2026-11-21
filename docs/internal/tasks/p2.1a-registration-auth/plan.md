@@ -1,11 +1,11 @@
 # P2.1a - Registration and initial authentication: implementation plan
 
-**Status:** Phases A–D and P2.1.0 approved and checked into the current baseline. This plan tracks the reviewed PBKDF2 credential integration (E), the mandatory security-chain migration (F0), HTTP/CSRF entry (F1) and final browser acceptance (G); each remaining increment requires human review.
+**Status:** P2.1.0 and Phases A–D, E and F0 approved; F0 CI passed. Phase F1 HTTP/CSRF/cookie integration is under review, with physical PostgreSQL HTTP acceptance pending CI. Phase G live-browser acceptance remains open.
 
 ## Baseline, ownership and available validation
 
-- The November 21, 2026 baseline contains reviewed P2.1.0 `shared::claims`, `shared::security` and `shared::di` ingress contracts, an IAM production `IdentityContext`, and completed Phase A–C IAM policies/persistence/workflows plus Phase D Next.js registration/login UI. Production IAM credential/JWT adapters and registration/login/CSRF HTTP routes are still absent. The existing HTTP bearer security chain is manually assembled.
-- The isolated Maven-only handoff is refreshed for **Spring Boot 4.2.0 / Spring Modulith 2.2.0**, with Temurin JDK 25.0.5.1 and Maven 3.10.0. The unchanged new baseline passed strict-offline `clean verify` with **225 Unit tests, zero failures, and successful packaging**. Previous CI accepted Phase B/C PostgreSQL tests and Phase D frontend checks; the current workspace cannot independently execute PostgreSQL/browser tests. The forthcoming `spring-security-config`/Boot security dependency addition for F0 needs a separate reviewed POM change and updated handoff.
+- The November 21, 2026 refreshed baseline includes P2.1.0's published claims, security and DI ingress contracts; the accepted Phase A–D workflows/frontend; Phase E's production PBKDF2 and trusted JWT issuance; and F0's ordered Spring-managed security chains. Phase F1 adds credential-entry HTTP, CSRF, Origin and refresh-cookie integration on top of that baseline.
+- The stable offline Maven handoff targets **Spring Boot 4.2.0 / Spring Modulith 2.2.0**, Temurin JDK 25.0.5.1 and Maven 3.10.0. F0 CI is green and the required Spring Security starter is already present. The local F1 Unit/Modulith gate runs offline; physical PostgreSQL and browser acceptance remain separate CI/human gates.
 - P2.1a owns account/credential/session state, transactional registration/login, **IAM-specific access-token issuance orchestration**, CSRF/cookie HTTP entry endpoints, and its frontend. P2.1.0 owns reusable shared JOSE/claims, the trusted ingress/operation-input bridge, and the unchanged production `IdentityContext`. P2.1b owns refresh/revocation/logout; P2.1d owns authoritative live identity/session eligibility; P2.4a/P2.2d own registration-event publication/projection. The [Phase 2 schema/integration handoff](../../integration/phase-2-foundation.md) is the IAM DDL reference.
 - Follow `AGENTS.md`, repository documentation and engineering-quality skills, [backend test guidance](../../../development/tests.md) and [frontend guidance](../../../development/frontend.md). Keep each increment reviewable. Consume P2.1.0's actual published interfaces and the already-merged IAM Modulith allowlist; do not duplicate its JOSE/claims/ingress foundations or modify `IdentityContext`. Update production security-chain configuration only within the explicitly reviewed F0 increment, with no speculative dependency changes.
 
@@ -21,7 +21,7 @@ flowchart TD
     F1 --> G["G: Live frontend/backend acceptance + docs"]
 ```
 
-Phases A–D and the P2.1.0 foundation are accepted. E and F0 can be reviewed independently after the documentation gate, but F1 must wait for **both**: it needs real issuer/encoder beans and a correct Spring-managed security chain. No unreviewed adapter or fake credential path may be exposed through live routes.
+Phases A–E, F0 and the P2.1.0 foundation are accepted. F1 follows both reviewed prerequisites: production issuer/encoder beans and the framework-managed security chain. No unreviewed adapter or fake credential path may be exposed through live routes.
 
 ## Review and integration gates
 
@@ -78,23 +78,23 @@ Phases A–D and the P2.1.0 foundation are accepted. E and F0 can be reviewed in
 
 **Scope:** Implement the [approved-after-G5 PBKDF2 policy](specification.md#account-and-credential-policies-revised-phase-e-contract) and production `CredentialEncoder` using Spring Security's `PasswordEncoder`, plus an IAM-owned primary access-token issuer backed by **P2.1.0's actual shared JOSE signer and trusted primary profile**. Replace Phase A/D's provisional 12-character/72-byte validation in backend and frontend together. Configure trusted issuer/audience/type/keys and preserve the `sid` link to the committed session. No second decoder, claims pipeline, trusted ingress configuration or `IdentityContext` is created.
 
-- [ ] Use the implemented P2.1.0 named interfaces and `identity` allowlist. Use Spring Security PBKDF2 and the JDK provider without adding a password-specific cryptography dependency; rebuild strictly offline; dependency handoff optimization is managed separately.
-- [ ] Encode new credentials with PBKDF2-HMAC-SHA256, 600,000 iterations, 16-byte random salt and 32-byte subkey; test the fixed hex salt/subkey format, full-input verification without normalization, 8/256-code-unit boundaries, malformed Unicode, no bcrypt 72-byte limit, dummy-hash parity and rejection of incompatible formats. No hash-upgrade-on-login feature is needed for the WIP branch. Update frontend client-side validation and feedback in the same reviewed increment.
-- [ ] Validate the fixed stored-hash format and benchmark PBKDF2 CPU cost under concurrent load; external rate limiting/capacity planning remain important before public exposure. Do not add an in-process semaphore to the MVP.
-- [ ] Verify profile-bound production signing, required `iss`, `aud`, protected `typ`, UUID `sub`/`sid`, times and signer/configuration failures. Round-trip IAM-issued JWTs through P2.1.0's verifier and deny wrong-profile/issuer/key/time claims; valid JWT alone does not establish current session eligibility.
-- [ ] Verify production DI never discovers test fakes and no crypto/provider configuration weakens P2.1.0's trust/fail-closed guarantees.
+- [x] Use the implemented P2.1.0 named interfaces and `identity` allowlist. Use Spring Security PBKDF2 and the JDK provider without adding a password-specific cryptography dependency; rebuild strictly offline; dependency handoff optimization is managed separately.
+- [x] Encode new credentials with PBKDF2-HMAC-SHA256, 600,000 iterations, 16-byte random salt and 32-byte subkey; test the fixed hex salt/subkey format, full-input verification without normalization, 8/256-code-unit boundaries, malformed Unicode, no bcrypt 72-byte limit, dummy-hash parity and rejection of incompatible formats. No hash-upgrade-on-login feature is needed for the WIP branch. Update frontend client-side validation and feedback in the same reviewed increment.
+- [x] Validate the fixed stored-hash format and benchmark PBKDF2 CPU cost under concurrent load; external rate limiting/capacity planning remain important before public exposure. Do not add an in-process semaphore to the MVP.
+- [x] Verify profile-bound production signing, required `iss`, `aud`, protected `typ`, UUID `sub`/`sid`, times and signer/configuration failures. Round-trip IAM-issued JWTs through P2.1.0's verifier and deny wrong-profile/issuer/key/time claims; valid JWT alone does not establish current session eligibility.
+- [x] Verify production DI never discovers test fakes and no crypto/provider configuration weakens P2.1.0's trust/fail-closed guarantees.
 
-**Gate E (IAM-A02, A07, A10, A14; IAM-AT03/05/10/17 portions):** Production PBKDF2 encode/verify and fixed-format-validation tests, synchronized backend/frontend input policy, real signed-token round trips and negative trust/configuration tests pass. Review POM, offline cache, provider, module APIs and signing profile; fixtures are not acceptance evidence for production adapters.
+**Gate E (approved; IAM-A02, A07, A10, A14; IAM-AT03/05/10/17 portions):** Production PBKDF2 encode/verify and fixed-format-validation tests, synchronized backend/frontend input policy, real signed-token round trips and negative trust/configuration tests pass. Review POM, offline cache, provider, module APIs and signing profile; fixtures are not acceptance evidence for production adapters.
 
 ## Phase F0 - Framework-managed Spring Security HTTP chains (independently reviewable prerequisite)
 
 **Scope:** Replace P2.1.0's manually assembled `FilterChainProxy` with framework-managed **ordered `SecurityFilterChain` beans**. Add required Spring Security configuration/Boot artifacts in a reviewed POM change and refresh the offline Maven cache. Do not add registration/login/CSRF handlers in this increment.
 
-- [ ] Preserve verified bearer admission and fail-closed invalid bearer behavior, including profile, expiry, missing trust and oversized-token failures; missing bearer remains anonymous only where explicitly permitted.
-- [ ] Confirm exactly one intended Spring Security servlet proxy registration, deterministic filter-chain ordering and no duplicate/competing bearer or servlet filters. Retain existing `/api` routing, operation-input contributors and unchanged `IdentityContext`.
-- [ ] Add MockMvc/full-context tests for registered filter order, anonymous/protected request behavior, malformed bearer rejection and operation-dispatch identity continuity. Re-run P2.1.0's security regression suite.
+- [x] Preserve verified bearer admission and fail-closed invalid bearer behavior, including profile, expiry, missing trust and oversized-token failures; missing bearer remains anonymous only where explicitly permitted.
+- [x] Confirm exactly one intended Spring Security servlet proxy registration, deterministic filter-chain ordering and no duplicate/competing bearer or servlet filters. Retain existing `/api` routing, operation-input contributors and unchanged `IdentityContext`.
+- [x] Add MockMvc/full-context tests for registered filter order, anonymous/protected request behavior, malformed bearer rejection and operation-dispatch identity continuity. Re-run P2.1.0's security regression suite.
 
-**Gate F0:** Security filter chain and dependency changes pass Unit/security/Modulith regression checks and human review before any credential-changing endpoints are exposed.
+**Gate F0 (approved):** The ordered servlet security-chain migration and regression tests passed CI and human review before the F1 credential-entry implementation.
 
 ## Phase F1 - IAM HTTP, cookie/CSRF and operation-scope integration (requires E and F0)
 
@@ -104,7 +104,7 @@ Phases A–D and the P2.1.0 foundation are accepted. E and F0 can be reviewed in
 - [ ] Validate Spring Security `CookieCsrfTokenRepository`, token/header processing and masked tokens, Origin rejection, anonymous route policy, protected-route bearer versus cookie handling, clock/profile and `IdentityContext` behavior; do not invent a separate request scope or modify P2.1.0's initializer machinery.
 - [ ] MockMvc/component tests cover all status/headers/cookie/CSRF cases; real PostgreSQL HTTP E2E verifies no writes on rejected requests, committed success and transaction failures. Re-run the P2.1.0 security/DI regression suite and module verification.
 
-**Gate F1 (IAM-A03–A10, A13–A14; IAM-AT01/05/09–13/17 portions):** Human security-boundary review plus passing relevant HTTP/component, Modulith and physical PostgreSQL tests. Negative invalid-input and missing-trust tests are mandatory, not deferred to browser-only acceptance.
+**Gate F1 (open; IAM-A03–A10, A13–A14; IAM-AT01/05/09–13/17 portions):** Human security-boundary review plus passing relevant HTTP/component, Modulith and physical PostgreSQL tests. Negative invalid-input and missing-trust tests are mandatory, not deferred to browser-only acceptance.
 
 ## Phase G - Live frontend integration, regression and steady-state documentation
 
@@ -118,6 +118,6 @@ Phases A–D and the P2.1.0 foundation are accepted. E and F0 can be reviewed in
 
 ## Baseline and review discipline
 
-- Start each remaining increment from the **current post-P2.1.0, post-Phase-D approved baseline**, not from the November 20 pre-foundation snapshot. Preserve accepted Phase A–D behavior except the expressly superseded password policy. Produce incremental patches with commit subjects prefixed `P2.1a:`.
+- Start each remaining increment from the **current post-P2.1.0, post-Phase-F0 approved baseline**, not from the November 20 pre-foundation snapshot. Preserve accepted Phase A–D behavior except the expressly superseded password policy. Produce incremental patches with commit subjects prefixed `P2.1a:`.
 - Never replace published P2.1.0 contracts or move authentication semantics into `shared`. Phase E changes IAM credential/token adapters and synchronized frontend validation; F0 changes the framework-managed chain and dependency descriptor; F1 integrates HTTP/CSRF/cookies. Keep these reviews separable and revalidate their shared entry points.
 - Each gate requires the corresponding CI or real infrastructure evidence. Prefer rollback-owned Integration tests for repository composition and use disposable E2E databases only when physical commits, cross-segment state or races are part of the UUT. A revised policy/plan does not authorize implementing later phases before human review.

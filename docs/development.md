@@ -49,9 +49,9 @@ The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`;
 
 The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
 
-## Initial IAM authentication credentials (P2.1a Phase E)
+## Initial IAM authentication (P2.1a)
 
-Production IAM password encoding and access-token signing are enabled only with explicitly provisioned settings. Without `sharewise.iam.auth.enabled=true`, the production authentication services and signing codec are **not** registered; the existing bearer ingress remains fail-closed. The registration/login HTTP routes and CSRF/cookie handling are separate Phase F1 work.
+Production IAM password encoding and access-token signing are enabled only with explicitly provisioned settings. Without `sharewise.iam.auth.enabled=true`, the production authentication services and signing codec are **not** registered; the existing bearer ingress remains fail-closed. The `/api/iam/v1/auth/{register,login}` and `/api/iam/v1/csrf` HTTP routes are enabled by the same flag. Without configured trust and valid signing keys, the API rejects bearer and credential-entry requests rather than falling back to test credentials.
 
 The production password encoder uses Spring Security's `Pbkdf2PasswordEncoder` and the JDK's PBKDF2-HMAC-SHA256 provider, with **600,000 iterations, a random 16-byte (128-bit) salt, and a 32-byte (256-bit) subkey**. Its fixed, unversioned stored format is 96 lowercase hex characters (`salt || subkey`); unknown/malformed formats fail verification. Registration accepts **8–256 UTF-16 code units**, consistent with Java `String.length()` and JavaScript `string.length`; login allows shorter previously issued passwords but enforces the same maximum. Passwords are neither trimmed nor normalized, and no bcrypt-style UTF-8 byte limit or truncation applies. Unpaired UTF-16 surrogates are rejected. Hash upgrading and alternate stored profiles are outside this WIP branch.
 
@@ -70,6 +70,10 @@ sharewise.iam.auth.keys[0].private-key-file=/run/secrets/iam-2026-11-private-pkc
 ```
 
 The configured IAM issuer and audience must be the same trusted values used by bearer verification. The signed primary profile has `typ=sw-iam-access+jwt`, maximum lifetime five minutes, 30-second clock skew and 4 KiB token limit. Both issuance and verification use the same named `iamPrimaryJwtCredentialCodec` from the P2.1.0 infrastructure; a valid signature alone does not prove the current session is still eligible (P2.1d). No JWT signing key or fake credential fallback is bundled in the application image. Never log keys, raw credentials or hashes.
+
+**Browser credential entry.** `GET /api/iam/v1/csrf` returns a masked request token with `Cache-Control: no-store` and a host-only `__Host-sharewise-csrf` cookie (`Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`). Registration and login POSTs require the matching `X-XSRF-TOKEN` request header, CSRF cookie, and an exact same-origin `Origin` header. The Spring Security CSRF and Origin filters reject missing/invalid proof before the IAM operation is dispatched. Accepted registration returns `201` and login `200`, with a short-lived bearer JWT in JSON and a distinct `__Host-sharewise-refresh` cookie, also `Secure`, `HttpOnly`, `SameSite=Lax`, host-only, and `Path=/`. The refresh cookie expires no later than the committed session's idle/absolute deadline; its value is never sent in JSON. Successful authentication clears the CSRF cookie; the browser obtains a new token before any later mutation. Rejected credentials, invalid requests, and duplicate registrations never issue refresh cookies.
+
+Local HTTP test clients may inspect the `Secure` cookies, but browsers require **HTTPS** to store/send them. The production Nginx TLS terminator forwards the external origin through its trusted proxy network; Spring's production profile interprets only those proxy-provided forwarded headers. Do not enable forwarded-header trust for arbitrary untrusted client traffic. P2.1b still owns refresh, logout and rotation; no cookie-only request can authenticate a bearer-protected operation. Before public exposure, configure edge-level request size/rate limits and benchmark PBKDF2 load.
 
 ## Build, test and run
 
