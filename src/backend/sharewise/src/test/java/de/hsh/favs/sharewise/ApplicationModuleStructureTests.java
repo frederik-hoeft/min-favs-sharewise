@@ -72,6 +72,17 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
+    void groupsDeclaresExactlyItsConsumedContractsAndPublishesNoTypes() {
+        ApplicationModule groups = modules.getModuleByName("groups")
+                .orElseThrow(() -> new AssertionError("module 'groups' must exist"));
+        assertEquals(List.of("identity", "shared::result", "shared::transactions"),
+                ApplicationModuleInformation.of(groups.getBasePackage()).getDeclaredDependencies(),
+                "groups may consume only the IAM identity contract and its declared shared contracts");
+        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules, groups.getBasePackage().getName()),
+                "groups publishes no Java API until a consumer needs one");
+    }
+
+    @Test
     void implementationPackagesAreNeverPublished() {
         assertEquals(List.of(), ModulePublications.publishedTypesInInternalPackages(modules),
                 "no module may publish types declared in an internal implementation package");
