@@ -253,6 +253,7 @@ test-deployment-contract:
       done
   script:
     - python3 scripts/ci/check-script-modes.py
+    - python3 -m unittest discover -s scripts/ci/tests -p 'test_script_modes.py' -v
     - python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v
 
 # This job runs only after ALL build, test and security gates finish. The
