@@ -21,6 +21,7 @@ import java.util.Set;
  * @param trustedPrimaryProfiles permitted issuer-qualified primary profiles for subordinate binding; empty for primary
  * @param maximumLifetime maximum token lifespan between {@code iat} and {@code exp}
  * @param clockSkew tolerated difference from the verifying clock, at most one minute
+ * @param maximumTokenLength maximum compact JWT length accepted or issued for this profile
  */
 public record JwtCredentialProfile(
     String name,
@@ -30,8 +31,11 @@ public record JwtCredentialProfile(
     Kind kind,
     Set<Id> trustedPrimaryProfiles,
     Duration maximumLifetime,
-    Duration clockSkew
+    Duration clockSkew,
+    int maximumTokenLength
 ) {
+    static final int ABSOLUTE_MAXIMUM_TOKEN_LENGTH = 16_384;
+
     /**
      * Identifies a configured JWT profile by its issuing authority and local name.
      *
@@ -89,6 +93,9 @@ public record JwtCredentialProfile(
         }
         if (clockSkew.isNegative() || clockSkew.compareTo(Duration.ofMinutes(1)) > 0) {
             throw new IllegalArgumentException("JWT clock skew must be between zero and one minute");
+        }
+        if (maximumTokenLength < 1 || maximumTokenLength > ABSOLUTE_MAXIMUM_TOKEN_LENGTH) {
+            throw new IllegalArgumentException("JWT profile size limit is outside supported bounds");
         }
     }
 

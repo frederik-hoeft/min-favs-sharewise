@@ -61,7 +61,7 @@ class FullApplicationIamIngressTests {
     private static final UUID ALICE = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
     private static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
         "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
-        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
     private static final KeyPair KEY = generateKey();
 
     @Autowired MockMvc mvc;
@@ -81,6 +81,29 @@ class FullApplicationIamIngressTests {
         mvc.perform(get("/api/__test/identity/protected"))
             .andExpect(status().isUnauthorized())
             .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"));
+    }
+
+    @Test
+    void apiRootIsCoveredAndHttpBearerRejectsOtherwiseValidOversizedTokens() throws Exception {
+        // /api is matched by the enclosing /api/** security chain, not only /api/ descendants.
+        mvc.perform(get("/api").header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("invalid_credential"));
+
+        JwtCredentialProfile largeProfile = new JwtCredentialProfile(PROFILE.name(), PROFILE.issuer(),
+            PROFILE.tokenType(), PROFILE.audiences(), PROFILE.kind(), PROFILE.trustedPrimaryProfiles(),
+            PROFILE.maximumLifetime(), PROFILE.clockSkew(), 16_384);
+        JwtCredentialCodec largeCodec = new JwtCredentialCodec(largeProfile,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
+        String largeToken = largeCodec.sign(new JwtIssueRequest(ALICE, "session-a", "large-token",
+            NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180),
+            Optional.empty(), Map.of("padding", "x".repeat(6300))));
+        org.junit.jupiter.api.Assertions.assertTrue(largeToken.length() > 8192);
+        org.junit.jupiter.api.Assertions.assertTrue(largeToken.length() < 16_384);
+        mvc.perform(get("/api/__test/identity/optional")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + largeToken))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("invalid_credential"));
     }
 
     @Test
@@ -119,7 +142,7 @@ class FullApplicationIamIngressTests {
     private String wrongProfileToken() {
         JwtCredentialProfile otherProfile = new JwtCredentialProfile(
             "refresh", PROFILE.issuer(), "sw-refresh+jwt", PROFILE.audiences(),
-            JwtCredentialProfile.Kind.PRIMARY, Set.of(), PROFILE.maximumLifetime(), PROFILE.clockSkew());
+            JwtCredentialProfile.Kind.PRIMARY, Set.of(), PROFILE.maximumLifetime(), PROFILE.clockSkew(), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(otherProfile,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
         return otherCodec.sign(new JwtIssueRequest(ALICE, "session-a", "wrong-profile-token",

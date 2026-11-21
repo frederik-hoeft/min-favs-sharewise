@@ -90,7 +90,7 @@ class PhaseDIamIngressTests {
     private static final UUID BOB = UUID.fromString("87654321-4321-4432-8432-ba0987654321");
     private static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
         "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
-        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
     private static final KeyPair KEY = generateKey();
 
     @Autowired OperationIngressDispatcher httpIngress;
@@ -174,6 +174,19 @@ class PhaseDIamIngressTests {
             withoutCodec.getBeanProvider(JwtCredentialCodec.class), withoutCodec);
         assertThrows(IllegalStateException.class, verifierWithoutCodec::requireCodec);
 
+        JwtCredentialProfile tooLarge = new JwtCredentialProfile(PROFILE.name(), PROFILE.issuer(),
+            PROFILE.tokenType(), PROFILE.audiences(), PROFILE.kind(), PROFILE.trustedPrimaryProfiles(),
+            PROFILE.maximumLifetime(), PROFILE.clockSkew(), 16_384);
+        JwtCredentialCodec oversizedCodec = new JwtCredentialCodec(tooLarge,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
+        DefaultListableBeanFactory oversizedWiring = new DefaultListableBeanFactory();
+        oversizedWiring.registerSingleton("iamPrimaryJwtCredentialCodec", oversizedCodec);
+        oversizedWiring.registerBeanDefinition("iamPrimaryCredentialProvider",
+            BeanDefinitionBuilder.genericBeanDefinition(IamPrimaryCredentialProvider.class).getBeanDefinition());
+        IamCredentialVerifier verifierWithOversizedProfile = new IamCredentialVerifier(
+            oversizedWiring.getBeanProvider(JwtCredentialCodec.class), oversizedWiring);
+        assertThrows(IllegalStateException.class, verifierWithOversizedProfile::requireCodec);
+
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new IdentityController(httpIngress))
             .addFilters(new IamBearerIngressFilter(verifierWithoutProvider)).build();
         mvc.perform(get("/api/test/protected"))
@@ -202,6 +215,21 @@ class PhaseDIamIngressTests {
                 throw new UnsupportedOperationException();
             }
         };
+    }
+
+    @Test
+    void admittedNonHttpIdentityCanFlowAcrossOperationsAfterTokenExpiry() {
+        String jwt = token(ALICE, "workflow-session");
+        VerifiedJwtCredential admitted = verifier.verify(jwt);
+        JwtCredentialCodec later = new JwtCredentialCodec(PROFILE,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")),
+            Clock.offset(CLOCK, Duration.ofSeconds(400)));
+        assertThrows(JwtCredentialException.class, () -> later.verifyPrimary(jwt));
+
+        OperationIngressDispatcher continuation = new ContributingOperationDispatcher(dispatcher,
+            List.of(inputs -> inputs.add(VerifiedJwtCredential.class, admitted)));
+        assertEquals(Optional.of(ALICE), continuation.dispatch(IdentityContext.class, IdentityContext::userId));
+        assertEquals(Optional.of(ALICE), continuation.dispatch(IdentityContext.class, IdentityContext::userId));
     }
 
     @Test
@@ -328,7 +356,7 @@ class PhaseDIamIngressTests {
 
     private String wrongProfileToken() {
         JwtCredentialProfile wrong = new JwtCredentialProfile("refresh", PROFILE.issuer(), "sw-refresh+jwt",
-            PROFILE.audiences(), PROFILE.kind(), Set.of(), PROFILE.maximumLifetime(), PROFILE.clockSkew());
+            PROFILE.audiences(), PROFILE.kind(), Set.of(), PROFILE.maximumLifetime(), PROFILE.clockSkew(), 4096);
         JwtCredentialCodec other = new JwtCredentialCodec(wrong,
             new Es256JwtSignatureService(java.util.List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
         return other.sign(new JwtIssueRequest(ALICE, "wrong-profile", "refresh-token", NOW.minusSeconds(1),
@@ -466,7 +494,7 @@ class PhaseDIamIngressTests {
             JwtCredentialProfile subordinate = new JwtCredentialProfile("group-attestation",
                 "https://groups.sharewise.test", "sw-group-attestation+jwt", Set.of("finance-api"),
                 JwtCredentialProfile.Kind.SUBORDINATE, Set.of(PROFILE.id()),
-                Duration.ofMinutes(5), Duration.ofSeconds(30));
+                Duration.ofMinutes(5), Duration.ofSeconds(30), 16_384);
             return new JwtCredentialCodec(subordinate,
                 new Es256JwtSignatureService(List.of(JwtEcKey.signing("group", KEY)), Optional.of("group")), CLOCK);
         }

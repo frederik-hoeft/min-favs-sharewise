@@ -51,10 +51,10 @@ class JwtCredentialCodecTests {
 
     private static final JwtCredentialProfile IAM = new JwtCredentialProfile(
         "iam-access", IAM_ISSUER, "sw-iam-access+jwt", Set.of("sharewise-api"),
-        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
     private static final JwtCredentialProfile GROUP = new JwtCredentialProfile(
         "group-attestation", GROUP_ISSUER, "sw-group-attestation+jwt", Set.of("sharewise-finance"),
-        JwtCredentialProfile.Kind.SUBORDINATE, Set.of(IAM.id()), Duration.ofMinutes(5), Duration.ofSeconds(30));
+        JwtCredentialProfile.Kind.SUBORDINATE, Set.of(IAM.id()), Duration.ofMinutes(5), Duration.ofSeconds(30), 16_384);
 
     @Test
     void signsAndVerifiesTypedPrimaryEvidenceWithOriginAndDirectClaimProvenance() {
@@ -124,11 +124,11 @@ class JwtCredentialCodecTests {
     void enforcesIssuerAudienceProtectedTypeAndExactProfileSelection() {
         JwtCredentialCodec verifier = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD))), null);
         JwtCredentialProfile wrongIssuer = new JwtCredentialProfile("iam-access", "https://other.test",
-            IAM.tokenType(), IAM.audiences(), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew());
+            IAM.tokenType(), IAM.audiences(), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew(), 4096);
         JwtCredentialProfile wrongAudience = new JwtCredentialProfile("iam-access", IAM_ISSUER,
-            IAM.tokenType(), Set.of("other-service"), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew());
+            IAM.tokenType(), Set.of("other-service"), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew(), 4096);
         JwtCredentialProfile wrongType = new JwtCredentialProfile("iam-access", IAM_ISSUER,
-            "sw-refresh+jwt", IAM.audiences(), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew());
+            "sw-refresh+jwt", IAM.audiences(), IAM.kind(), IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew(), 4096);
         for (JwtCredentialProfile profile : List.of(wrongIssuer, wrongAudience, wrongType)) {
             JwtCredentialCodec signer = new JwtCredentialCodec(profile,
                 new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
@@ -243,7 +243,7 @@ class JwtCredentialCodecTests {
     }
 
     @Test
-    void subordinateRequiresTrustedAndStillValidPrimaryIssuer() {
+    void subordinateRequiresTrustedPrimaryProfileButDoesNotRecheckPrimaryExpiry() {
         JwtCredentialCodec iam = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         JwtCredentialCodec group = subordinate();
         VerifiedJwtCredential verified = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
@@ -254,11 +254,16 @@ class JwtCredentialCodecTests {
         JwtIssueRequest laterIssue = new JwtIssueRequest(ALICE, SESSION, "later-group",
             NOW.plusSeconds(249), NOW.plusSeconds(249), NOW.plusSeconds(330),
             Optional.of(IAM_ISSUER), Map.of("role", "member"));
-        assertRejected(() -> laterGroup.verifySubordinate(group.sign(laterIssue), verified));
+        // Both credentials were trusted at their respective admissions. Primary expiry
+        // cannot revoke an already admitted workflow's identity between operations.
+        assertEquals(ALICE, laterGroup.verifySubordinate(group.sign(laterIssue), verified).userId());
+        // The subordinate token still has its own independent admission-time expiry.
+        assertRejected(() -> laterGroup.verifySubordinate(
+            group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER)), verified));
 
         JwtCredentialProfile otherPrimary = new JwtCredentialProfile("external-identity",
             "https://other-iam.test", IAM.tokenType(), IAM.audiences(),
-            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec externalIam = new JwtCredentialCodec(otherPrimary,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
         VerifiedJwtCredential externalPrimary = externalIam.verifyPrimary(externalIam.sign(issue(ALICE, SESSION)));
@@ -270,7 +275,7 @@ class JwtCredentialCodecTests {
     void subordinateRejectsOtherPrimaryProfileEvenFromTheSameTrustedIssuer() {
         JwtCredentialProfile specialPurpose = new JwtCredentialProfile("iam-special-purpose",
             IAM_ISSUER, "sw-iam-special+jwt", Set.of("sharewise-api"),
-            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
         VerifiedJwtCredential otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
@@ -286,14 +291,14 @@ class JwtCredentialCodecTests {
     void subordinateCanExplicitlyTrustMultipleQualifiedPrimaryProfiles() {
         JwtCredentialProfile specialPurpose = new JwtCredentialProfile("iam-special-purpose",
             IAM_ISSUER, "sw-iam-special+jwt", Set.of("sharewise-api"),
-            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30));
+            JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
         VerifiedJwtCredential otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
 
         JwtCredentialProfile groupWithTwoPrimaries = new JwtCredentialProfile(
             GROUP.name(), GROUP.issuer(), GROUP.tokenType(), GROUP.audiences(), GROUP.kind(),
-            Set.of(IAM.id(), specialPurpose.id()), GROUP.maximumLifetime(), GROUP.clockSkew());
+            Set.of(IAM.id(), specialPurpose.id()), GROUP.maximumLifetime(), GROUP.clockSkew(), 16_384);
         JwtCredentialCodec group = new JwtCredentialCodec(groupWithTwoPrimaries,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("group-1", GROUP_KEY)),
                 Optional.of("group-1")), CLOCK);
@@ -308,10 +313,31 @@ class JwtCredentialCodecTests {
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile.Id(IAM_ISSUER, " "));
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile(
             GROUP.name(), GROUP.issuer(), GROUP.tokenType(), GROUP.audiences(), GROUP.kind(),
-            Set.of(), GROUP.maximumLifetime(), GROUP.clockSkew()));
+            Set.of(), GROUP.maximumLifetime(), GROUP.clockSkew(), 16_384));
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile(
             IAM.name(), IAM.issuer(), IAM.tokenType(), IAM.audiences(), IAM.kind(),
-            Set.of(IAM.id()), IAM.maximumLifetime(), IAM.clockSkew()));
+            Set.of(IAM.id()), IAM.maximumLifetime(), IAM.clockSkew(), 4096));
+    }
+
+    @Test
+    void profileSpecificCompactJwtLimitAppliesSymmetricallyToIssuanceAndVerification() {
+        JwtCredentialCodec standard = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
+        JwtCredentialProfile largeProfile = new JwtCredentialProfile(
+            IAM.name(), IAM.issuer(), IAM.tokenType(), IAM.audiences(), IAM.kind(),
+            IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew(), 16_384);
+        JwtCredentialCodec largeCodec = new JwtCredentialCodec(largeProfile,
+            new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
+        JwtIssueRequest oversized = new JwtIssueRequest(ALICE, SESSION, "oversized", NOW.minusSeconds(1),
+            NOW.minusSeconds(1), NOW.plusSeconds(100), Optional.empty(), Map.of("data", "x".repeat(6300)));
+        String largeToken = largeCodec.sign(oversized);
+        assertTrue(largeToken.length() > 8192);
+        assertTrue(largeToken.length() < 16_384);
+        assertEquals(ALICE, largeCodec.verifyPrimary(largeToken).userId());
+        assertThrows(IllegalArgumentException.class, () -> standard.sign(oversized));
+        assertRejected(() -> standard.verifyPrimary(largeToken));
+        assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile(
+            IAM.name(), IAM.issuer(), IAM.tokenType(), IAM.audiences(), IAM.kind(),
+            IAM.trustedPrimaryProfiles(), IAM.maximumLifetime(), IAM.clockSkew(), 16_385));
     }
 
     @Test
@@ -394,10 +420,10 @@ class JwtCredentialCodecTests {
     @Test
     void invalidInputsAndConfigurationFailBeforeSigningOrTrustPublication() {
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile("x", IAM_ISSUER,
-            "x+jwt", Set.of(), JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ZERO));
+            "x+jwt", Set.of(), JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ZERO, 4096));
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile("x", IAM_ISSUER,
             "x+jwt", Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY, Set.of(),
-            Duration.ofMinutes(5), Duration.ofSeconds(61)));
+            Duration.ofMinutes(5), Duration.ofSeconds(61), 4096));
         assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(), Optional.empty()));
         assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(
             JwtEcKey.verification("old", ecPublic(IAM_OLD)), JwtEcKey.verification("old", ecPublic(IAM_NEW))), Optional.empty()));

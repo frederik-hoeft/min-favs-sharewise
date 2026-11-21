@@ -18,20 +18,18 @@ public final class JwtCredentialCodec {
     private final JwtCredentialProfile profile;
     private final JwtSignatureService signature;
     private final JwtCredentialClaims claims;
-    private final Clock clock;
 
     /**
      * Configures credential validation independently from its trusted JWS implementation.
      *
      * @param profile expected issuer, protected type, audience and credential trust role
      * @param signature independently configured trusted signer/verifier
-     * @param clock trusted clock for temporal claim and primary-binding validation
+     * @param clock trusted clock for validating each newly admitted JWT
      */
     public JwtCredentialCodec(JwtCredentialProfile profile, JwtSignatureService signature, Clock clock) {
         this.profile = Objects.requireNonNull(profile, "profile");
         this.signature = Objects.requireNonNull(signature, "signature");
-        this.clock = Objects.requireNonNull(clock, "clock");
-        this.claims = new JwtCredentialClaims(profile, clock);
+        this.claims = new JwtCredentialClaims(profile, Objects.requireNonNull(clock, "clock"));
     }
 
     /**
@@ -50,7 +48,11 @@ public final class JwtCredentialCodec {
      * @return signed compact JWS
      */
     public String sign(JwtIssueRequest request) {
-        return signature.sign(profile.tokenType(), claims.issue(request));
+        String token = signature.sign(profile.tokenType(), claims.issue(request));
+        if (token.length() > profile.maximumTokenLength()) {
+            throw new IllegalArgumentException("JWT exceeds configured profile size limit");
+        }
+        return token;
     }
 
     /**
@@ -72,7 +74,7 @@ public final class JwtCredentialCodec {
      * credential profile and the current primary principal/session.
      *
      * @param token untrusted subordinate compact JWS
-     * @param primary previously verified primary evidence
+     * @param primary previously admitted primary evidence for principal/session binding
      * @return authenticated and bound subordinate proof, not a domain permission
      * @throws JwtCredentialException for invalid, expired or unbound evidence
      */
@@ -80,8 +82,7 @@ public final class JwtCredentialCodec {
         if (profile.kind() != JwtCredentialProfile.Kind.SUBORDINATE || primary == null
             || primary.kind() != JwtCredentialProfile.Kind.PRIMARY
             || !profile.trustedPrimaryProfiles().contains(new JwtCredentialProfile.Id(
-                primary.credential().origin().issuer(), primary.credential().origin().profile()))
-            || !primary.validAt(clock.instant())) {
+                primary.credential().origin().issuer(), primary.credential().origin().profile()))) {
             throw new JwtCredentialException();
         }
         return verify(token, primary);
@@ -89,6 +90,9 @@ public final class JwtCredentialCodec {
 
     private VerifiedJwtCredential verify(String token, VerifiedJwtCredential primary) {
         try {
+            if (token == null || token.length() > profile.maximumTokenLength()) {
+                throw new JwtCredentialException();
+            }
             return claims.accept(signature.verify(token, profile.tokenType()), primary);
         } catch (Exception exception) {
             // No library exceptions, untrusted content or key material cross this boundary.

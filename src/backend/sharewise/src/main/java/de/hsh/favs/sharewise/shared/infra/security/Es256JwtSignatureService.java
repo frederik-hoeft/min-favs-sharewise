@@ -34,7 +34,7 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
  */
 public final class Es256JwtSignatureService implements JwtSignatureService {
     private static final Set<String> REJECTED_HEADERS = Set.of("jku", "jwk", "x5u", "x5c", "crit");
-    private static final int MAX_TOKEN_LENGTH = 16_384;
+    private static final int MAX_TOKEN_LENGTH = JwtCredentialProfile.ABSOLUTE_MAXIMUM_TOKEN_LENGTH;
 
     private final Map<String, JwtEcKey> keys;
     private final NimbusJwtDecoder decoder;

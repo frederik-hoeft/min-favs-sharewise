@@ -24,7 +24,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public final class IamBearerIngressFilter extends OncePerRequestFilter {
 
     public static final String VERIFIED_INGRESS_ATTRIBUTE = IamBearerIngressFilter.class.getName() + ".verified";
-    private static final int MAX_TOKEN_LENGTH = 8192;
     private final IamCredentialVerifier verifier;
 
     public IamBearerIngressFilter(IamCredentialVerifier verifier) {
@@ -34,7 +33,8 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        return !path.startsWith("/api/") || "/api/system/v1/health".equals(path);
+        // The containing SecurityFilterChain owns API routing, including /api itself.
+        return "/api/system/v1/health".equals(path);
     }
 
     @Override
@@ -55,7 +55,7 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
                     throw new JwtCredentialException();
                 }
                 String token = header.substring(7);
-                if (token.isEmpty() || token.length() > MAX_TOKEN_LENGTH
+                if (token.isEmpty() || token.length() > IamCredentialVerifier.MAX_HTTP_ACCESS_TOKEN_LENGTH
                     || token.indexOf(' ') >= 0 || token.indexOf('\t') >= 0 || token.indexOf(',') >= 0) {
                     throw new JwtCredentialException();
                 }

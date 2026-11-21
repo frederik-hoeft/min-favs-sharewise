@@ -1,8 +1,6 @@
 package de.hsh.favs.sharewise.shared.infra.security;
 
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -19,15 +17,13 @@ public final class VerifiedJwtCredential {
     private final UUID userId;
     private final String sessionId;
     private final JwtCredentialProfile.Kind kind;
-    private final Duration clockSkew;
 
     VerifiedJwtCredential(AuthorizationCredential credential, UUID userId,
-                          String sessionId, JwtCredentialProfile.Kind kind, Duration clockSkew) {
+                          String sessionId, JwtCredentialProfile.Kind kind) {
         this.credential = Objects.requireNonNull(credential, "credential");
         this.userId = Objects.requireNonNull(userId, "userId");
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.kind = Objects.requireNonNull(kind, "kind");
-        this.clockSkew = Objects.requireNonNull(clockSkew, "clockSkew");
     }
 
     /**
@@ -55,15 +51,6 @@ public final class VerifiedJwtCredential {
      */
     public String sessionId() {
         return sessionId;
-    }
-
-    boolean validAt(Instant now) {
-        Instant issuedAt = credential.origin().issuedAt().orElseThrow();
-        Instant notBefore = credential.origin().notBefore().orElseThrow();
-        Instant expiresAt = credential.origin().expiresAt().orElseThrow();
-        return !now.isBefore(issuedAt.minus(clockSkew))
-            && !now.isBefore(notBefore.minus(clockSkew))
-            && now.isBefore(expiresAt.plus(clockSkew));
     }
 
     /**

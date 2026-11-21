@@ -115,7 +115,7 @@ final class JwtCredentialClaims {
             }
         });
         return new VerifiedJwtCredential(new AuthorizationCredential(origin, translated),
-            subject, session, profile.kind(), profile.clockSkew());
+            subject, session, profile.kind());
     }
 
     private void validateLifetime(Instant issuedAt, Instant notBefore, Instant expiresAt) {
