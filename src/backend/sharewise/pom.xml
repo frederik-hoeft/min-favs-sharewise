@@ -113,6 +113,13 @@
             <artifactId>spring-modulith-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Regenerates jOOQ sources against the migrated test database to verify that the
+             committed generated types are current. -->
+        <dependency>
+            <groupId>org.jooq</groupId>
+            <artifactId>jooq-codegen</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -180,11 +187,16 @@
                 <databaseTestIncludes>**/*E2E.java</databaseTestIncludes>
             </properties>
         </profile>
-        <!-- Opt-in, PostgreSQL-first jOOQ generation. Generated IAM schema sources are
-             committed under src/main/java so ordinary offline builds need no database or
-             code generation plugin. Never run this against an unmigrated schema. -->
+        <!-- Opt-in, PostgreSQL-first jOOQ generation: one execution per context schema, each
+             writing into its owning module's private persistence package. Generated sources are
+             committed under src/main/java, so ordinary builds need neither a database nor this
+             plugin. Run it only against a freshly Flyway-migrated database:
+             ./mvnw -Pjooq-codegen -Djooq.codegen.jdbc.url=... -Djooq.codegen.jdbc.user=... generate-sources
+             A single context regenerates with org.jooq:jooq-codegen-maven:generate@<execution-id>.
+             Generator settings shared by all contexts are declared once below; Maven merges them
+             into each execution, which only names its schema and target package. -->
         <profile>
-            <id>jooq-codegen-identity</id>
+            <id>jooq-codegen</id>
             <build>
                 <plugins>
                     <plugin>
@@ -209,7 +221,6 @@
                                 <name>org.jooq.codegen.JavaGenerator</name>
                                 <database>
                                     <name>org.jooq.meta.postgres.PostgresDatabase</name>
-                                    <inputSchema>identity</inputSchema>
                                     <includes>.*</includes>
                                 </database>
                                 <generate>
@@ -217,12 +228,46 @@
                                     <pojos>false</pojos>
                                     <records>true</records>
                                 </generate>
-                                <target>
-                                    <packageName>de.hsh.favs.sharewise.identity.internal.auth.persistence.generated</packageName>
-                                    <directory>${project.basedir}/src/main/java</directory>
-                                </target>
                             </generator>
                         </configuration>
+                        <executions>
+                            <execution>
+                                <id>identity</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <generator>
+                                        <database>
+                                            <inputSchema>identity</inputSchema>
+                                        </database>
+                                        <target>
+                                            <packageName>de.hsh.favs.sharewise.identity.internal.auth.persistence.generated</packageName>
+                                            <directory>${project.basedir}/src/main/java</directory>
+                                        </target>
+                                    </generator>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>groups</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <generator>
+                                        <database>
+                                            <inputSchema>groups</inputSchema>
+                                        </database>
+                                        <target>
+                                            <packageName>de.hsh.favs.sharewise.groups.internal.persistence.generated</packageName>
+                                            <directory>${project.basedir}/src/main/java</directory>
+                                        </target>
+                                    </generator>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
