@@ -38,6 +38,9 @@ and Maven 3.10.0. Toolchain archives are cached in the Git-ignored
 Output defaults to .offline-handoff-cache/sharewise-offline-deps-linux-x64.tar.gz
 inside the checkout, with original toolchain archives placed alongside it in
 toolchains/. Relative --output paths resolve against the caller's cwd.
+Maven preparation runs the real Unit build lifecycle instead of resolving every
+plugin managed by the Spring Boot parent. Optional code-generation plugins
+are not prefetched: generated sources are committed, and no database is bundled.
 Requires a network connection only for pack; verify uses strict offline builds.
 The receiving machine needs the dependency tarball and only the toolchain
 files listed in its manifest. Selective packs use distinct default filenames.
@@ -378,12 +381,17 @@ setup_env() {
     export CI=1
 }
 
+# Maven's broad go-offline goal resolves managed but unused plugins (including
+# Kotlin). Build the real lifecycle to cache only plugins it actually executes.
+# Optional code generation is deliberately outside the offline build contract.
 run_maven() {
     local bundle="$1" tools="$2" mode="$3" source="$4"
+    local -a offline_args=()
+    [[ -z "$mode" ]] || offline_args+=("$mode")
     (
         cd "$source/src/backend/sharewise"
         # Offline handoffs validate the database-independent Unit gate; Integration and E2E need PostgreSQL.
-        "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" "$mode" -Punit-tests clean verify
+        "$tools/maven/bin/mvn" -B -ntp "${offline_args[@]}" "-Dmaven.repo.local=$bundle/cache/maven" -Punit-tests clean verify
     )
 }
 
@@ -443,12 +451,8 @@ prepare_dependencies() {
     local bundle="$1" tools="$2" source="$3" selection="$4"
     setup_env "$bundle" "$tools" "$selection"
     if uses_maven "$selection"; then
-        note 'Downloading backend dependencies, transitive plugins, and build/test artifacts'
-        (
-            cd "$source/src/backend/sharewise"
-            "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" dependency:go-offline
-            "$tools/maven/bin/mvn" -B -ntp "-Dmaven.repo.local=$bundle/cache/maven" -Punit-tests clean verify
-        )
+        note 'Resolving backend dependencies through the actual Unit build lifecycle'
+        run_maven "$bundle" "$tools" '' "$source"
     fi
     if uses_node "$selection"; then
         note 'Downloading frontend dependencies (Linux x64 optional native packages included)'

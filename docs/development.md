@@ -125,7 +125,7 @@ The full backend build runs module verification. From `src/backend/sharewise`, r
 ./mvnw test -Dtest=ApplicationModuleStructureTests,ModuleVerificationFixtureTests
 ```
 
-A violation names the modules and types involved, for example `Module 'consumer' depends on module 'provider' via ...Consumer -> ...ProviderApi. Allowed targets: none.` Fix it by using the other module's published API or, when the dependency is intended, by adding it to the consumer's `allowedDependencies` for review. Do not publish internal packages or open a module merely to silence verification; `ApplicationModuleStructureTests` rejects open modules and published DI implementation types, which Spring Modulith alone accepts.
+A violation names the modules and types involved, for example `Module 'consumer' depends on module 'provider' via ...Consumer -> ...ProviderApi. Allowed targets: none.` Fix it by using the other module's published API or, when the dependency is intended, by adding it to the consumer's `allowedDependencies` for review. Do not publish internal packages or open a module merely to silence verification; `ApplicationModuleStructureTests` rejects open modules and publication from any module’s internal implementation packages, which Spring Modulith alone accepts.
 
 The verification tests also run small fixture applications under `de.hsh.favs.modulithfixtures` in the test sources, one per rule, to prove that each kind of violation is detected. They live outside the application root, so they are never part of the real application's module model or Spring context.
 
@@ -221,6 +221,8 @@ From `src/backend/sharewise`, run fake-manager transaction contract tests with `
 ## Development conventions
 
 - Use UTF-8 without BOM, LF line endings and final newlines, following repository formatting configuration. Prefer four-space indentation for Java unless an adopted formatter specifies otherwise.
+
+The repository includes a Git pre-commit hook that enforces UTF-8 without a BOM for staged tracked text (including Java, shell scripts, Maven XML, GitLab YAML and documentation). Enable it once per clone with `git config core.hooksPath .githooks`. The hook checks the **index**, so unstaged fixes are not treated as committed. The `pre-build` CI encoding job runs the same `python3 scripts/ci/check-source-encoding.py` checker against all tracked working-tree files and verifies its test fixtures; only files explicitly marked binary in `.gitattributes` are exempt from UTF-8 decoding; all other tracked files must also be NUL-free, including those covered by Git `text=auto`. Add new binary formats to `.gitattributes` explicitly rather than relying on automatic classification. Python 3 and Git are required for local execution. Line-ending normalization is handled separately by `.gitattributes`.
 - Keep application/core contracts separated from transport DTOs and persistence implementation details; refer to [architecture](architecture.md) and [domain model](data-model-design.md).
 - Use other modules only through their top-level API or named interfaces, and declare every module dependency in `allowedDependencies`; see [application modules](#application-modules).
 - Prefer constructor-injected, cohesive services and operation-specific data access. Keep operation-local mutable state out of singleton services. Follow the [operation-scope usage rules](#operation-scope-usage) and the [DI architecture](architecture/dependency-injection.md) for lifecycle ownership; singleton capture and escaped-reference misuse are reviewed rather than automatically detected by Spring.
@@ -273,6 +275,8 @@ mkdir -p deps
 tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
 ./deps/verify-offline.sh verify deps --source /path/to/sharewise
 ```
+
+The Maven cache is populated by running the actual `-Punit-tests clean verify` lifecycle, including Spring Boot repackaging and Surefire/Failsafe plugins, rather than prefetching every plugin managed by the Spring Boot parent. The opt-in `jooq-codegen-identity` profile is excluded: generated sources are already committed, and the handoff does not provide PostgreSQL. Running code generation separately requires a migrated PostgreSQL schema and its plugin dependencies.
 
 The verifier hashes the required original toolchain archives, extracts them to temporary storage, checks the selected source dependency descriptors and runs the corresponding backend tests and/or frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar` and basic Unix checksum utilities, plus Python 3 when verifying Maven builds (to unpack the original Maven ZIP), but not preinstalled language toolchains. See `README-OFFLINE.md` within the dependency archive for more information.
 
