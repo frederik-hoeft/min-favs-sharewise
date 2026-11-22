@@ -41,6 +41,9 @@ default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$deploy_dir/.env" | tai
 export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-28080}"
 export SHAREWISE_HTTPS_PORT="${SHAREWISE_SMOKE_HTTPS_PORT:-18443}"
 export COMPOSE_PROJECT_NAME="$project"
+# The disposable stack has a different HTTPS port from the normal local stack.
+# Align its token issuer with the browser-visible origin used for this test.
+export SHAREWISE_IAM_ISSUER="https://$(sed -n 's/^SHAREWISE_PUBLIC_HOST=//p' "$deploy_dir/.env" | tail -n 1):$SHAREWISE_HTTPS_PORT"
 
 cleanup_started=false
 report_failure() {
@@ -111,6 +114,14 @@ wrong_host_status="$("${compose[@]}" exec -T backend curl --silent --insecure \
     printf 'Expected HTTP 421 for mismatched SNI/Host; got %s\n' "$wrong_host_status" >&2
     exit 1
 }
+
+# Exercise the real HTTPS proxy, CSRF/Origin filters, initial authentication,
+# and signing key distribution. All account fixtures remain disposable.
+export CONTAINER_CLI="$cli"
+issuer="$SHAREWISE_IAM_ISSUER"
+audience="${SHAREWISE_IAM_AUDIENCE:-sharewise-api}"
+python3 "$deploy_dir/scripts/iam-http-smoke.py" --host "$host" --port "$https_port" \
+    --issuer "$issuer" --audience "$audience"
 
 # A psql process reads the password within its own container; no credentials
 # are passed through CLI arguments or printed into the CI/developer terminal.

@@ -32,8 +32,17 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: production
+      SHAREWISE_IAM_AUTH_ENABLED: "true"
+      SHAREWISE_IAM_AUTH_ISSUER: ${SHAREWISE_IAM_ISSUER:-https://localhost:8443}
+      SHAREWISE_IAM_AUTH_AUDIENCE: ${SHAREWISE_IAM_AUDIENCE:-sharewise-api}
+      SHAREWISE_IAM_AUTH_ACTIVE_KEY_ID: ${SHAREWISE_IAM_ACTIVE_KEY_ID:-iam-local-1}
+      SHAREWISE_IAM_AUTH_KEYS_0_ID: ${SHAREWISE_IAM_ACTIVE_KEY_ID:-iam-local-1}
+      SHAREWISE_IAM_AUTH_KEYS_0_PUBLIC_KEY_FILE: /run/iam/public/active.pem
+      SHAREWISE_IAM_AUTH_KEYS_0_PRIVATE_KEY_FILE: /run/iam/private/active.pem
     volumes:
       - backend_secrets:/run/secrets:ro
+      - iam_signing_private:/run/iam/private:ro
+      - iam_verification_public:/run/iam/public:ro
     networks:
       - edge
       - data
@@ -41,6 +50,8 @@ services:
       postgres:
         condition: service_healthy
         restart: true
+      iam-key-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent --max-time 5 http://127.0.0.1:8080/api/system/v1/health > /dev/null"]
       interval: 10s
@@ -91,6 +102,44 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # One-shot initialization runs without networking, before backend startup.
+  # Private and public keys never share a Docker volume or public export mount.
+  iam-key-init:
+    image: ${SHAREWISE_IAM_KEY_INIT_IMAGE:-sharewise-iam-key-init:local}
+    build:
+      context: iam-key-init
+    restart: "no"
+    network_mode: none
+    read_only: true
+    environment:
+      IAM_KEY_ID: ${SHAREWISE_IAM_ACTIVE_KEY_ID:-iam-local-1}
+      IAM_KEY_MODE: ${SHAREWISE_IAM_KEY_MODE:-require-existing}
+    volumes:
+      - iam_signing_private:/keys/private
+      - iam_verification_public:/keys/public
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=1m,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+
+  # Only public verification material is exposed to this operator-facing service.
+  iam-public-export:
+    profiles: [setup]
+    image: alpine:3.24
+    network_mode: none
+    read_only: true
+    volumes:
+      - iam_verification_public:/keys/public:ro
+    entrypoint: ["cat", "/keys/public/active.pem"]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   edge: {}
   data:
@@ -101,3 +150,5 @@ volumes:
   postgres_secrets: {}
   backend_secrets: {}
   tls_certs: {}
+  iam_signing_private: {}
+  iam_verification_public: {}

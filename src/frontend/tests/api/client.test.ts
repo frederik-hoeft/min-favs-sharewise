@@ -83,6 +83,29 @@ describe("createApiClient", () => {
     } satisfies Partial<ApiError>);
   });
 
+  it.each([
+    ["truncated JSON", async () => new Response('{"accessToken":', {
+      status: 201, headers: { "content-type": "application/json" },
+    })],
+    ["interrupted response body", async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.error(new DOMException("stream interrupted", "AbortError")); },
+    }), { status: 201, headers: { "content-type": "application/json" } })],
+  ])("maps a successful HTTP response with %s to an uncertain transport outcome", async (_case, response) => {
+    const client = createApiClient({}, async () => response());
+    await expect(client.post("/iam/v1/auth/register", { email: "example@example.com" })).rejects.toMatchObject({
+      name: "ApiError", status: 0, code: "invalid_response",
+    } satisfies Partial<ApiError>);
+  });
+
+  it("does not classify failed HTTP responses as uncertain transport outcomes", async () => {
+    const client = createApiClient({}, async () => new Response("{invalid json", {
+      status: 400, headers: { "content-type": "application/problem+json" },
+    }));
+    await expect(client.post("/iam/v1/auth/register", {})).rejects.toMatchObject({
+      status: 400, code: "http_error",
+    } satisfies Partial<ApiError>);
+  });
+
   it("honors the bounded 401 retry hook without retrying indefinitely", async () => {
     const onRequest = vi.fn();
     const onUnauthorized = vi.fn(async () => true);

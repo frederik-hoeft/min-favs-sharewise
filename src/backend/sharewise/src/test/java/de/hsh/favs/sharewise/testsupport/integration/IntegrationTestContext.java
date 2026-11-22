@@ -79,7 +79,35 @@ public final class IntegrationTestContext implements AutoCloseable {
             throw new IllegalArgumentException("At least one application source is required");
         }
 
+        return startConfigured(connections, preparation, WebApplicationType.NONE, Map.of(), applicationSources);
+    }
+
+    /** Starts a real servlet HTTP application backed by a disposable migrated database. */
+    public static IntegrationTestContext startServlet(
+        PostgresTestDatabase.ConnectionSettings connections,
+        DatabasePreparation preparation,
+        Map<String, Object> webProperties,
+        Class<?>... applicationSources
+    ) {
+        Objects.requireNonNull(webProperties, "webProperties");
+        return startConfigured(connections, preparation, WebApplicationType.SERVLET, webProperties, applicationSources);
+    }
+
+    private static IntegrationTestContext startConfigured(
+        PostgresTestDatabase.ConnectionSettings connections,
+        DatabasePreparation preparation,
+        WebApplicationType webType,
+        Map<String, Object> overrides,
+        Class<?>... applicationSources
+    ) {
+        Objects.requireNonNull(connections, "connections");
+        Objects.requireNonNull(preparation, "preparation");
+        Objects.requireNonNull(applicationSources, "applicationSources");
+        if (applicationSources.length == 0) {
+            throw new IllegalArgumentException("At least one application source is required");
+        }
         PostgresTestDatabase database = PostgresTestDatabase.createMigrated(connections);
+
         try {
             preparation.prepare(database);
             Map<String, Object> properties = new LinkedHashMap<>();
@@ -90,9 +118,20 @@ public final class IntegrationTestContext implements AutoCloseable {
             properties.put("spring.flyway.enabled", "false");
             properties.put("spring.jpa.hibernate.ddl-auto", "validate");
             properties.put("spring.jpa.open-in-view", "false");
+            if (webType == WebApplicationType.SERVLET) {
+                properties.put("server.port", "0");
+            }
+            // Test-specific overrides must never replace the fixture's database or role ownership.
+            for (Map.Entry<String, Object> entry : overrides.entrySet()) {
+                if (entry.getKey().startsWith("spring.datasource.")
+                        || entry.getKey().startsWith("spring.flyway.")) {
+                    throw new IllegalArgumentException("Cannot override fixture database or migration properties");
+                }
+                properties.put(entry.getKey(), entry.getValue());
+            }
 
             ConfigurableApplicationContext context = new SpringApplicationBuilder(applicationSources)
-                .web(WebApplicationType.NONE)
+                .web(webType)
                 .initializers(application -> application.getEnvironment().getPropertySources()
                     .addFirst(new MapPropertySource("isolated-postgres-fixture", properties)))
                 .run();

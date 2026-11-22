@@ -10,6 +10,8 @@ services:
       - npm-cache:/home/vscode/.npm
       - zsh-history:/home/vscode/.local/share/zsh-history
     init: true
+    environment:
+      JOOQ_CODEGEN_PASSWORD: sharewise_migrator_dev
     command: sleep infinity
     depends_on:
       postgres:
