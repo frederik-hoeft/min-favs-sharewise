@@ -197,7 +197,7 @@ From `deploy/`, run:
 ./scripts/test-compose.sh
 ```
 
-The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security, and verifies data persistence after a database restart. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
+The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security (including IAM registration, login, refresh rotation and logout), and verifies data persistence after a database restart. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
 
 For inspection after a successful run, opt out of automatic cleanup:
 
@@ -213,7 +213,7 @@ SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh 
 
 If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
 
-The disposable Compose smoke performs CSRF bootstrap, registration and login through the real HTTPS proxy, then verifies both access JWT signatures against the exported public-only IAM key. It generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Run it on a Docker host with Python 3 and OpenSSL; it complements rather than replaces PostgreSQL-backed E2E tests.
+The disposable Compose smoke performs CSRF bootstrap, registration and login through the real HTTPS proxy, rotates the refresh cookie while retaining the session ID, validates the replacement JWT against the exported public-only IAM key, and confirms that logout clears the cookie and prevents further refresh. It generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Run it on a Docker host with Python 3 and OpenSSL; it complements rather than replaces PostgreSQL-backed E2E tests. Major implementation phases must satisfy the [local smoke gate](../docs/development/ai-development-workflow.md#6-perform-local-deployment-smoke-and-manual-acceptance) before merge.
 
 For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
 

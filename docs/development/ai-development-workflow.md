@@ -15,6 +15,7 @@ The human contributor owns task scope, priorities, approval of the architectural
 | Implementation planning | Agent-written `plan.md` with implementation/migration phases, verification gates and final documentation reconciliation | Human approves the implementation sequence |
 | Iterative implementation | Focused changes, tests and updated plan state | Human reviews changes as staged in Git or accepted/applied in the IDE, then approves each increment |
 | Independent MR review | Findings against the specification and complete diff; suggested manual E2E scenarios where useful | Substantive findings are resolved or explicitly justified |
+| Local deployment smoke (major implementation phases) | Disposable-stack smoke command, tested revision, result and any coverage limitations | Successful run required before merge, unless the human explicitly approves a documented exception |
 | Manual acceptance | Human-run local end-to-end test of the affected workflow, when applicable, and recorded results | Human confirms the user-visible behavior |
 | Merge authorization | Complete diff, automated and manual test evidence, reconciled docs and outstanding risks | Human authorizes the merge |
 
@@ -77,13 +78,17 @@ Findings identify a concrete condition, its consequence and a suggested correcti
 
 An independent agent review supplements human review. The human remains responsible for acceptance and merge authorization.
 
-## 6. Perform manual end-to-end acceptance and authorize merge
+## 6. Perform local deployment smoke and manual acceptance
+
+**Local smoke gate for major implementation phases.** Before merging substantial changes to executable behavior, authentication, persistence, service integration or deployment, the human contributor runs the repository's disposable local deployment smoke (currently `cd deploy && ./scripts/test-compose.sh`) against the integrated revision. Extend the smoke with representative changed workflows when the existing probe does not exercise them; its purpose is to validate the running system behind the actual ingress, not to replace Unit, Integration or PostgreSQL E2E tests. Pure documentation and other localized changes without a meaningful deployed behavior may use proportionate verification instead.
+
+Record the tested commit, command, environment, observed result and material gaps with the task acceptance evidence or merge-request review. Re-run affected scenarios after a change that could alter their behavior. A failed or unexecuted smoke test is **not** a pass; when a meaningful local deployment is unavailable, the human must explicitly approve and record a justified exception before merging a major implementation phase, together with alternative evidence and deferred verification. Green CI alone does not waive this local gate.
 
 The human task owner performs a **manual end-to-end acceptance test** before the final merge decision. Depending on the task, this means running or deploying the application locally and exercising the affected behavior from a user's perspective, including relevant error paths and permissions. For infrastructure-only tasks without a meaningful UI journey, the human instead executes an appropriate end-to-end operational or integration workflow. This supplements automated tests and agent review.
 
 The manual test may take place **before or after the merge request has been undergone static code review**. An independent review agent may suggest scenarios, but the human performs the test and records its outcome. Fixes that affect the tested behavior require the relevant scenarios to be checked again. A task with no meaningful manual execution path records that limitation and the alternative acceptance evidence. Acceptance results are retained with the task artifacts when present, or with the change review for lightweight tasks.
 
-Final acceptance examines the complete diff, approved task specification and plan where required, automated verification, manual test results, unresolved risks, deployment or compatibility implications and reconciled steady-state documentation. Approved task artifacts remain available for traceability. The human authorizes the merge into the authoritative repository only after these conditions are satisfied.
+Final acceptance examines the complete diff, approved task specification and plan where required, automated verification, local deployment smoke evidence, manual test results, unresolved risks, deployment or compatibility implications and reconciled steady-state documentation. Approved task artifacts remain available for traceability. The human authorizes the merge into the authoritative repository only after these conditions are satisfied.
 
 ## 7. Pre-merge and Merge
 
