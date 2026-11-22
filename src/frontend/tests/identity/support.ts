@@ -56,6 +56,8 @@ export class ControlledChannels {
     listeners: Set<(event: MessageEvent) => void>;
   }>();
 
+  get activeCount(): number { return this.endpoints.size; }
+
   create = (): BroadcastChannel => {
     const endpoint = { listeners: new Set<(event: MessageEvent) => void>() };
     this.endpoints.add(endpoint);

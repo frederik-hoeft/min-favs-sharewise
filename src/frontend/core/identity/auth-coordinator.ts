@@ -7,6 +7,21 @@ import type { AuthenticationResponse, IdentityCredentials, SessionContextEvent }
 
 type AuthOperation = 'register' | 'login';
 
+interface RenewalFlight {
+    readonly controller: AbortController;
+    action: Promise<void>;
+    waiters: number;
+    submitted: boolean;
+}
+
+function requestCanceled(): ApiError {
+    return authError('request_aborted', 'Request Canceled', 'The request was canceled before completion.');
+}
+
+function assertInterested(flight: RenewalFlight): void {
+    if (flight.controller.signal.aborted) throw requestCanceled();
+}
+
 function authError(code: string, title: string, detail: string): ApiError {
     return new ApiError({ status: 0, code, title, detail });
 }
@@ -25,7 +40,7 @@ function reauthenticationRequired(): ApiError {
  */
 export class AuthCoordinator {
     private credentialSubmission = false;
-    private renewal: Promise<void> | undefined;
+    private renewal: RenewalFlight | undefined;
     private readonly unsubscribe: () => void;
 
     constructor(
@@ -46,27 +61,30 @@ export class AuthCoordinator {
     }
 
     /** Restore once, on first use of an authenticated API or workspace identity. */
-    async ensureAuthenticated(): Promise<void> {
+    async ensureAuthenticated(signal?: AbortSignal): Promise<void> {
         if (this.session.getSnapshot().status === 'context-changed') throw contextChanged();
         if (this.session.getAccessToken()) return;
-        if (this.renewal) return this.renewal;
+        if (signal?.aborted) throw requestCanceled();
+        if (this.renewal) return this.awaitRenewal(this.renewal, signal);
         const state = this.session.getSnapshot();
         if (state.status !== 'reauthentication-required' || state.reason !== 'initial') {
             throw reauthenticationRequired();
         }
         this.session.markRestoring();
-        return this.singleFlightRenewal(undefined);
+        return this.singleFlightRenewal(undefined, undefined, signal);
     }
 
     /** Recover a pre-dispatch 401 without reviving a stale tab or changing accounts. */
-    async recover(rejectedToken: string, expectedSessionId: string): Promise<void> {
+    async recover(rejectedToken: string, expectedSessionId: string, signal?: AbortSignal): Promise<void> {
+        if (signal?.aborted) throw requestCanceled();
         this.assertContext(expectedSessionId);
         const state = this.session.getSnapshot();
         if (state.status === 'reauthentication-required' && state.reason !== 'initial') {
             throw reauthenticationRequired();
         }
         if (this.session.getAccessToken() && !this.session.matchesAccessToken(rejectedToken)) return;
-        await this.singleFlightRenewal(expectedSessionId, rejectedToken);
+        await this.singleFlightRenewal(expectedSessionId, rejectedToken, signal);
+        if (signal?.aborted) throw requestCanceled();
         this.assertContext(expectedSessionId);
         if (!this.session.getAccessToken()) throw reauthenticationRequired();
     }
@@ -126,30 +144,62 @@ export class AuthCoordinator {
         }
     }
 
-    private singleFlightRenewal(expectedSessionId: string | undefined, rejectedToken?: string): Promise<void> {
+    /** A caller may stop waiting; submitted refreshes must still settle under their shared Web Lock. */
+    private singleFlightRenewal(expectedSessionId: string | undefined, rejectedToken?: string,
+        signal?: AbortSignal): Promise<void> {
+        if (signal?.aborted) return Promise.reject(requestCanceled());
         if (!this.renewal) {
-            const action = this.renewInsideLock(expectedSessionId, rejectedToken);
-            this.renewal = action;
-            void action.finally(() => {
-                if (this.renewal === action) this.renewal = undefined;
+            const flight: RenewalFlight = {
+                controller: new AbortController(), action: Promise.resolve(), waiters: 0, submitted: false,
+            };
+            this.renewal = flight;
+            flight.action = this.renewInsideLock(expectedSessionId, rejectedToken, flight);
+            void flight.action.finally(() => {
+                if (this.renewal === flight) this.renewal = undefined;
             }).catch(() => {});
         }
-        return this.renewal;
+        return this.awaitRenewal(this.renewal, signal);
     }
 
-    private async renewInsideLock(expectedSessionId: string | undefined, rejectedToken?: string): Promise<void> {
-        let refreshSubmitted = false;
+    private awaitRenewal(flight: RenewalFlight, signal?: AbortSignal): Promise<void> {
+        if (signal?.aborted) return Promise.reject(requestCanceled());
+        flight.waiters++;
+        return new Promise<void>((resolve, reject) => {
+            let completed = false;
+            const finish = () => {
+                if (completed) return false;
+                completed = true;
+                signal?.removeEventListener('abort', onAbort);
+                flight.waiters--;
+                // Abandon an unneeded renewal before refresh is submitted, never after.
+                if (flight.waiters === 0 && !flight.submitted) flight.controller.abort();
+                return true;
+            };
+            const onAbort = () => { if (finish()) reject(requestCanceled()); };
+            signal?.addEventListener('abort', onAbort, { once: true });
+            if (signal?.aborted) { onAbort(); return; }
+            void flight.action.then(
+                () => { if (finish()) resolve(); },
+                (error: unknown) => { if (finish()) reject(error); },
+            );
+        });
+    }
+
+    private async renewInsideLock(expectedSessionId: string | undefined, rejectedToken: string | undefined,
+        flight: RenewalFlight): Promise<void> {
         try {
             await this.cookieLock.runExclusive(async () => {
+                assertInterested(flight);
                 // Another request may have renewed while we waited for the lock.
                 if (expectedSessionId) this.assertContext(expectedSessionId);
                 if (this.session.getAccessToken() &&
                     (rejectedToken === undefined || !this.session.matchesAccessToken(rejectedToken))) return;
                 const csrf = await this.api.getCsrfToken();
-                let response: AuthenticationResponse;
+                assertInterested(flight);
+                if (expectedSessionId) this.assertContext(expectedSessionId);
                 try {
-                    refreshSubmitted = true;
-                    response = await this.api.refresh(expectedSessionId, csrf);
+                    flight.submitted = true;
+                    const response = await this.api.refresh(expectedSessionId, csrf);
                     // Validate the response BEFORE comparing its session to the bound request.
                     AuthSession.validateResponse(response);
                     if (expectedSessionId && response.sessionId !== expectedSessionId) {
@@ -166,12 +216,19 @@ export class AuthCoordinator {
                     }
                     throw error;
                 }
-            });
+            }, flight.controller.signal);
         } catch (error) {
             if (error instanceof ApiError && error.code === 'session_context_changed') throw error;
             if (this.session.getSnapshot().status === 'context-changed') throw contextChanged();
-            const uncertain = refreshSubmitted && error instanceof ApiError &&
-                (error.code === 'network_error' || error.code === 'invalid_response' || error.code === 'invalid_auth_response');
+            if (!flight.submitted) {
+                // No refresh generation was consumed. Retain the established bearer or allow restoration later.
+                this.session.markRestorationRetryable();
+                throw error;
+            }
+            const uncertain = error instanceof ApiError && (
+                error.status >= 500 || error.code === 'network_error' ||
+                error.code === 'invalid_response' || error.code === 'invalid_auth_response'
+            );
             this.session.invalidate(uncertain ? 'uncertain' : 'unauthorized');
             if (uncertain) throw authError('refresh_outcome_unknown', 'Refresh Outcome Unknown',
                 'The authentication response could not be confirmed. Sign in again.');

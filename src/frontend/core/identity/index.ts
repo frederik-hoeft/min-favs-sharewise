@@ -1,4 +1,4 @@
-import { createApiClient, parseErrorResponse, type ApiClient } from '@/lib/api';
+import { ApiError, createApiClient, type ApiClient } from '@/lib/api';
 import { AuthCoordinator } from './auth-coordinator.ts';
 import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';
@@ -17,6 +17,8 @@ export interface IdentityRuntime {
     readonly auth: AuthCoordinator;
     readonly cookieLock: AuthCookieLock;
     readonly session: AuthSession;
+    connect(): void;
+    disconnect(): void;
     dispose(): void;
 }
 
@@ -40,34 +42,50 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
     );
     // The hooks execute only after the runtime is fully constructed.
     const api = createApiClient({
-        async onRequest(path, headers) {
+        async onRequest(path, headers, signal) {
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || headers.has('Authorization')) return;
-            await auth.ensureAuthenticated();
+            await auth.ensureAuthenticated(signal);
             const token = session.getAccessToken();
             if (token) {
                 headers.set('Authorization', `Bearer ${token}`);
                 return session.getSessionId();
             }
         },
-        async onUnauthorized(path, response, sentHeaders, context) {
+        async onUnauthorized(path, problem, sentHeaders, context, signal) {
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || context.hasExplicitAuthorization) return false;
             const rejected = sentHeaders.get('Authorization');
             if (!rejected?.startsWith('Bearer ') || !context.sessionId) return false;
-            if (context.attempt === 'initial' && !context.replayable) return false;
+            if (!context.replayable) return false;
             // Only Spring's pre-dispatch bearer failures may affect the tab's credentials.
-            const problem = await parseErrorResponse(response.clone());
             if (!PRE_DISPATCH_401_CODES.has(problem.code)) return false;
-            if (context.attempt === 'replay') {
-                if (session.getSessionId() === context.sessionId && session.matchesAccessToken(rejected.slice(7))) {
-                    session.invalidate('unauthorized');
-                }
-                return false;
-            }
-            await auth.recover(rejected.slice(7), context.sessionId);
+            await auth.recover(rejected.slice(7), context.sessionId, signal);
             return true;
+        },
+        async onReplayUnauthorized(path, problem, sentHeaders, context) {
+            if (ANONYMOUS_IDENTITY_PATHS.has(path) || context.hasExplicitAuthorization || !context.sessionId) return;
+            const rejected = sentHeaders.get('Authorization');
+            if (!rejected?.startsWith('Bearer ')) return;
+            if (PRE_DISPATCH_401_CODES.has(problem.code) &&
+                session.getSessionId() === context.sessionId && session.matchesAccessToken(rejected.slice(7))) {
+                session.invalidate('unauthorized');
+            }
+        },
+        assertResponseContext(context) {
+            if (!context.sessionId) return;
+            if (session.getSessionId() !== context.sessionId || session.getSnapshot().status !== 'authenticated') {
+                throw new ApiError({
+                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
+                    detail: 'The active session changed before the request completed.',
+                });
+            }
         },
     }, options.fetchImpl ?? fetch);
     const identityApi = new IdentityApi(api);
     const auth = new AuthCoordinator(identityApi, session, cookieLock, channel);
-    return { api, auth, cookieLock, session, dispose: () => { auth.dispose(); channel.dispose(); session.dispose(); } };
+    return {
+        api, auth, cookieLock, session,
+        connect: () => channel.connect(),
+        disconnect: () => channel.disconnect(),
+        dispose: () => { auth.dispose(); channel.dispose(); session.dispose(); },
+    };
 }

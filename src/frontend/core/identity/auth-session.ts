@@ -67,6 +67,13 @@ export class AuthSession {
         }
     }
 
+    /** A canceled/failed pre-submission restoration has not consumed the cookie and can be tried again. */
+    markRestorationRetryable(): void {
+        if (this.state.status === 'restoring') {
+            this.update({ status: 'reauthentication-required', reason: 'initial' });
+        }
+    }
+
     /** Do not clear or revoke another tab's current cookie on a context switch. */
     markContextChanged(): void {
         this.accessToken = undefined;

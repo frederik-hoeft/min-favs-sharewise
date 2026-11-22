@@ -2,7 +2,7 @@ import { ApiError, parseErrorResponse } from './api-error.ts';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
-    /** Abort a stalled network request; 0 deliberately disables the deadline. */
+    /** Timeout for one HTTP attempt, including response reading, excluding authentication preparation. 0 disables it. */
     readonly timeoutMs?: number;
 }
 
@@ -18,15 +18,19 @@ export interface SentRequestContext {
 }
 
 export interface ApiClientHooks {
-    /** Attach the current bearer; return its session ID for stale-response protection. */
-    readonly onRequest?: (path: string, headers: Headers) => Promise<string | undefined | void> | string | undefined | void;
-    /**
-     * A caller may request one replay only after confirming pre-dispatch rejection.
-     * The HTTP client independently rejects retrying a non-repeatable body.
-     */
+    /** Prepare credentials for an attempt. The signal cancels this caller, not an already-submitted shared refresh. */
+    readonly onRequest?: (path: string, headers: Headers, signal?: AbortSignal) =>
+        Promise<string | undefined | void> | string | undefined | void;
+    /** Only the initial pre-dispatch 401 may request recovery and one replay. */
     readonly onUnauthorized?: (
-        path: string, response: Response, sentHeaders: Readonly<Headers>, context: SentRequestContext
+        path: string, failure: ApiError, sentHeaders: Readonly<Headers>, context: SentRequestContext, signal?: AbortSignal
     ) => Promise<boolean>;
+    /** Observe a replay's terminal 401; never a second recovery opportunity. */
+    readonly onReplayUnauthorized?: (
+        path: string, failure: ApiError, sentHeaders: Readonly<Headers>, context: SentRequestContext
+    ) => Promise<void> | void;
+    /** Guard successful responses against a context change while the request was in flight. */
+    readonly assertResponseContext?: (context: SentRequestContext) => void;
 }
 
 export interface ApiClient {
@@ -46,9 +50,11 @@ function normalizeApiPath(path: string): string {
 
 function prepareBody(body: unknown, headers: Headers): { body: BodyInit | undefined; replayable: boolean } {
     if (body === undefined) return { body: undefined, replayable: true };
-    if (typeof body === 'string' || body instanceof URLSearchParams || body instanceof Blob) {
-        return { body, replayable: true };
+    if (body instanceof URLSearchParams) {
+        if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/x-www-form-urlencoded;charset=UTF-8');
+        return { body: body.toString(), replayable: true };
     }
+    if (typeof body === 'string' || body instanceof Blob) return { body, replayable: true };
     if (body instanceof FormData) return { body, replayable: false };
     if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) {
         return { body, replayable: false };
@@ -57,9 +63,26 @@ function prepareBody(body: unknown, headers: Headers): { body: BodyInit | undefi
     return { body: JSON.stringify(body), replayable: true };
 }
 
+function assertNotCanceled(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+        throw new ApiError({
+            status: 0, code: 'request_aborted', title: 'Request Canceled',
+            detail: 'The request was canceled before completion.',
+        });
+    }
+}
+
+function networkError(cause: unknown): ApiError {
+    return new ApiError({
+        status: 0, code: 'network_error', title: 'Network Error',
+        detail: cause instanceof Error ? cause.message : 'Unable to reach the server.',
+    });
+}
+
 export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fetch = fetch): ApiClient {
     async function executeRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
         const targetPath = normalizeApiPath(path);
+        const requestSignal = options.signal ?? undefined;
         const initialHeaders = new Headers(options.headers);
         if (!initialHeaders.has('Accept')) initialHeaders.set('Accept', 'application/json, application/problem+json');
         const prepared = prepareBody(options.body, initialHeaders);
@@ -72,8 +95,10 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         delete requestOptions.body;
 
         async function attempt(allowRetry: boolean, boundSessionId?: string): Promise<T> {
+            assertNotCanceled(requestSignal);
             const headers = new Headers(initialHeaders);
-            const sessionId = hooks.onRequest ? await hooks.onRequest(targetPath, headers) : undefined;
+            const sessionId = hooks.onRequest ? await hooks.onRequest(targetPath, headers, requestSignal) : undefined;
+            assertNotCanceled(requestSignal);
             if (boundSessionId && sessionId !== boundSessionId) {
                 throw new ApiError({
                     status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
@@ -88,13 +113,15 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                 attempt: allowRetry ? 'initial' : 'replay',
             };
             const controller = new AbortController();
-            // Never race fetch: a caller may hold the refresh-cookie Web Lock.
-            const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
             const abort = () => controller.abort();
-            options.signal?.addEventListener('abort', abort, { once: true });
-            if (options.signal?.aborted) controller.abort();
+            requestSignal?.addEventListener('abort', abort, { once: true });
+            if (requestSignal?.aborted) controller.abort();
+            // A fetch attempt has its own timeout. Renewal may take longer, but must not inherit a stale timer.
+            const timeout = timeoutMs > 0 ? setTimeout(abort, timeoutMs) : undefined;
             let response: Response;
+            let rejection: ApiError;
             try {
+                if (controller.signal.aborted) assertNotCanceled(requestSignal);
                 try {
                     response = await fetchImpl(targetPath, {
                         ...requestOptions,
@@ -106,39 +133,59 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                         cache: options.cache ?? 'no-store',
                     });
                 } catch (cause) {
-                    throw new ApiError({
-                        status: 0,
-                        code: 'network_error',
-                        title: 'Network Error',
-                        detail: cause instanceof Error ? cause.message : 'Unable to reach the server.',
-                    });
+                    if (requestSignal?.aborted) assertNotCanceled(requestSignal);
+                    throw networkError(cause);
                 }
-
-                if (response.status === 401 && hooks.onUnauthorized && !options.signal?.aborted) {
-                    const shouldRetry = await hooks.onUnauthorized(targetPath, response, headers, context);
-                    if (shouldRetry && allowRetry && prepared.replayable && !options.signal?.aborted) {
-                        return attempt(false, sessionId || undefined);
+                if (controller.signal.aborted) {
+                    assertNotCanceled(requestSignal);
+                    throw networkError(new Error('HTTP request timed out.'));
+                }
+                if (response.status !== 401) {
+                    if (!response.ok) throw await parseErrorResponse(response);
+                    let value: T;
+                    if (response.status === 204) {
+                        value = undefined as T;
+                    } else {
+                        try {
+                            const contentType = response.headers.get('content-type') ?? '';
+                            value = contentType.includes('json')
+                                ? (await response.json()) as T
+                                : (await response.text()) as unknown as T;
+                        } catch {
+                            throw new ApiError({
+                                status: 0, code: 'invalid_response', title: 'Response Unavailable',
+                                detail: 'Unable to read the server response.',
+                            });
+                        }
                     }
+                    if (controller.signal.aborted) {
+                        assertNotCanceled(requestSignal);
+                        throw networkError(new Error('HTTP request timed out.'));
+                    }
+                    assertNotCanceled(requestSignal);
+                    hooks.assertResponseContext?.(context);
+                    return value;
                 }
-                if (!response.ok) throw await parseErrorResponse(response);
-                if (response.status === 204) return undefined as T;
-                try {
-                    const contentType = response.headers.get('content-type') ?? '';
-                    return contentType.includes('json')
-                        ? (await response.json()) as T
-                        : (await response.text()) as unknown as T;
-                } catch {
-                    throw new ApiError({
-                        status: 0,
-                        code: 'invalid_response',
-                        title: 'Response Unavailable',
-                        detail: 'Unable to read the server response.',
-                    });
+                rejection = await parseErrorResponse(response);
+                if (controller.signal.aborted) {
+                    assertNotCanceled(requestSignal);
+                    throw networkError(new Error('HTTP request timed out.'));
                 }
             } finally {
                 if (timeout !== undefined) clearTimeout(timeout);
-                options.signal?.removeEventListener('abort', abort);
+                requestSignal?.removeEventListener('abort', abort);
             }
+
+            assertNotCanceled(requestSignal);
+            if (allowRetry && hooks.onUnauthorized) {
+                const shouldRetry = await hooks.onUnauthorized(targetPath, rejection, headers, context, requestSignal);
+                assertNotCanceled(requestSignal);
+                if (shouldRetry && prepared.replayable) return attempt(false, sessionId || undefined);
+            } else if (!allowRetry) {
+                await hooks.onReplayUnauthorized?.(targetPath, rejection, headers, context);
+            }
+            assertNotCanceled(requestSignal);
+            throw rejection;
         }
         return attempt(true);
     }
@@ -165,4 +212,5 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
     };
 }
 
+/** Plain transport for anonymous/public APIs. Authenticated operations use IdentityRuntime.api. */
 export const apiClient: ApiClient = createApiClient();

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AUTH_COOKIE_LOCK, AuthCookieLock, CSRF_HEADER, createIdentityRuntime } from "@/core/identity";
-import { ApiError } from "@/lib/api";
+import { ApiError, createApiClient } from "@/lib/api";
 import {
   ControlledLocks, authenticationResponse, credentials, deferred, jsonResponse, problemResponse,
 } from "./support";
@@ -48,6 +48,15 @@ describe("Identity runtime with mock HTTP", () => {
     expect(locks.events).toEqual([
       `queued:${AUTH_COOKIE_LOCK}`, `acquired:${AUTH_COOKIE_LOCK}:exclusive`, `released:${AUTH_COOKIE_LOCK}`,
     ]);
+  });
+
+  it("keeps anonymous endpoints on the plain API client without requiring cookie restoration", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ status: 'UP' }));
+    const publicApi = createApiClient({}, fetchImpl as typeof fetch);
+    const identity = createRuntime(fetchImpl as typeof fetch, () => undefined);
+    await expect(publicApi.get('/system/v1/health')).resolves.toEqual({ status: 'UP' });
+    await expect(identity.api.get('/system/v1/health')).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("attaches the current bearer to subsequent domain requests, not anonymous auth requests", async () => {

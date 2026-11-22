@@ -5,16 +5,21 @@ export const SESSION_CONTEXT_CHANNEL = 'sharewise:iam:session-context';
 
 /** Broadcasts only non-secret login/logout context changes, never refresh rotations. */
 export class SessionContextChannel {
-    private readonly channel: BroadcastChannel | undefined;
+    private channel: BroadcastChannel | undefined;
     private readonly listeners = new Set<(event: SessionContextEvent) => void>();
 
-    constructor(factory: () => BroadcastChannel | undefined) {
+    constructor(private readonly factory: () => BroadcastChannel | undefined) {}
+
+    connect(): void {
+        if (this.channel) return;
         let channel: BroadcastChannel | undefined;
         try {
-            channel = factory();
+            channel = this.factory();
             channel?.addEventListener('message', this.receive);
         } catch {
             // BroadcastChannel is an optimization; bound refresh is authoritative.
+            try { channel?.close(); } catch { /* The channel was never connected. */ }
+            return;
         }
         this.channel = channel;
     }
@@ -32,9 +37,14 @@ export class SessionContextChannel {
         }
     }
 
-    dispose(): void {
+    disconnect(): void {
         this.channel?.removeEventListener('message', this.receive);
         this.channel?.close();
+        this.channel = undefined;
+    }
+
+    dispose(): void {
+        this.disconnect();
         this.listeners.clear();
     }
 

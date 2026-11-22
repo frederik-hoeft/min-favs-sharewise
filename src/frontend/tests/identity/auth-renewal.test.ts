@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createIdentityRuntime } from '@/core/identity';
+import { AuthCookieLock, createIdentityRuntime } from '@/core/identity';
 import {
   ControlledChannels, ControlledLocks, SESSION_ONE, SESSION_TWO,
   authenticationResponse, credentials, deferred, jsonResponse, problemResponse,
@@ -8,6 +8,7 @@ import {
 const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function runtime(fetchImpl: typeof fetch, locks = new ControlledLocks(), channels?: ControlledChannels) {
   const instance = createIdentityRuntime({ fetchImpl, locks: () => locks.manager, channel: channels?.create });
+  instance.connect();
   runtimes.push(instance);
   return instance;
 }
@@ -61,6 +62,20 @@ describe('transparent renewal and restoration', () => {
     await expect(instance.api.get(DOMAIN_PATH)).resolves.toEqual({ ok: true });
     expect(calls).toEqual([CSRF_PATH, REFRESH_PATH, DOMAIN_PATH]);
     expect(instance.session.getSessionId()).toBe(SESSION_ONE);
+  });
+
+  it.each([200, 204])('discards a late successful %i response from a replaced session', async (status) => {
+    const deferredResponse = deferred<Response>();
+    const fetchImpl = vi.fn(async () => deferredResponse.promise);
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('alice'));
+    const pending = instance.api.get(DOMAIN_PATH);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    instance.session.accept(authenticationResponse('bob', undefined, SESSION_TWO));
+    deferredResponse.resolve(status === 204 ? new Response(null, { status })
+      : jsonResponse({ account: 'alice' }));
+    await expect(pending).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(instance.session.getAccessToken()).toBe('bob');
   });
 
   it('coalesces simultaneous same-tab 401s into one refresh submission', async () => {
@@ -170,6 +185,146 @@ describe('transparent renewal and restoration', () => {
     expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'uncertain' });
     await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'reauthentication_required' });
     expect(refreshCount).toBe(1);
+  });
+});
+
+describe('renewal failure and caller cancellation', () => {
+  it('recovers from a transient Web Lock acquisition failure without submitting refresh', async () => {
+    const locks = new ControlledLocks();
+    let available = false;
+    const requests: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      requests.push(path);
+      return path === CSRF_PATH ? jsonResponse({ token: 'csrf' })
+        : path === REFRESH_PATH ? jsonResponse(authenticationResponse('restored'))
+        : jsonResponse({ ok: true });
+    });
+    const instance = createIdentityRuntime({ fetchImpl: fetchImpl as typeof fetch, locks: () => available ? locks.manager : undefined });
+    runtimes.push(instance);
+    await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
+    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'initial' });
+    expect(requests).toEqual([]);
+    available = true;
+    await expect(instance.api.get(DOMAIN_PATH)).resolves.toEqual({ ok: true });
+    expect(requests).toEqual([CSRF_PATH, REFRESH_PATH, DOMAIN_PATH]);
+  });
+
+  it('allows a later restoration after the first CSRF bootstrap fails before submission', async () => {
+    let csrfCount = 0;
+    let refreshCount = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === CSRF_PATH) {
+        csrfCount++;
+        if (csrfCount === 1) throw new TypeError('Temporary CSRF connection failure');
+        return jsonResponse({ token: 'csrf' });
+      }
+      if (path === REFRESH_PATH) {
+        refreshCount++;
+        return jsonResponse(authenticationResponse('restored'));
+      }
+      return jsonResponse({ ok: true });
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'network_error' });
+    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'initial' });
+    expect(refreshCount).toBe(0);
+    await expect(instance.api.get(DOMAIN_PATH)).resolves.toEqual({ ok: true });
+    expect(refreshCount).toBe(1);
+  });
+
+  it('preserves the established session after failed renewal preparation and retries on the next request', async () => {
+    let csrfCount = 0;
+    let refreshCount = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === CSRF_PATH) {
+        csrfCount++;
+        if (csrfCount === 1) throw new TypeError('Temporary CSRF failure');
+        return jsonResponse({ token: 'csrf' });
+      }
+      if (path === REFRESH_PATH) {
+        refreshCount++;
+        return jsonResponse(authenticationResponse('new'));
+      }
+      return (init?.headers as Headers).get('Authorization') === 'Bearer old'
+        ? problemResponse(401, 'invalid_credential') : jsonResponse({ ok: true });
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('old'));
+    await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'network_error' });
+    expect(instance.session.getSessionId()).toBe(SESSION_ONE);
+    expect(instance.session.getAccessToken()).toBe('old');
+    await expect(instance.api.get(DOMAIN_PATH)).resolves.toEqual({ ok: true });
+    expect(refreshCount).toBe(1);
+  });
+
+  it.each([502, 503])('marks a submitted refresh with gateway %i as uncertain without resubmission', async (status) => {
+    let rotations = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (path === REFRESH_PATH) { rotations++; return problemResponse(status, 'bad_gateway'); }
+      return problemResponse(401, 'invalid_credential');
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('old'));
+    await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'refresh_outcome_unknown' });
+    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'uncertain' });
+    await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'reauthentication_required' });
+    expect(rotations).toBe(1);
+  });
+
+  it('aborts a queued restoration before CSRF or refresh POST is submitted, then permits a later restore', async () => {
+    const locks = new ControlledLocks();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const blocker = new AuthCookieLock(() => locks.manager).runExclusive(async () => gate);
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      calls.push(path);
+      return path === CSRF_PATH ? jsonResponse({ token: 'csrf' })
+        : path === REFRESH_PATH ? jsonResponse(authenticationResponse('new'))
+        : jsonResponse({ ok: true });
+    });
+    const instance = runtime(fetchImpl as typeof fetch, locks);
+    const controller = new AbortController();
+    const pending = instance.api.get(DOMAIN_PATH, { signal: controller.signal });
+    await vi.waitFor(() => expect(locks.events.filter((event) => event.startsWith('queued:'))).toHaveLength(2));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'request_aborted' });
+    release();
+    await blocker;
+    await vi.waitFor(() => expect(instance.session.getSnapshot().status).toBe('reauthentication-required'));
+    expect(calls).toEqual([]);
+    await expect(instance.api.get(DOMAIN_PATH)).resolves.toEqual({ ok: true });
+    expect(calls).toEqual([CSRF_PATH, REFRESH_PATH, DOMAIN_PATH]);
+  });
+
+  it('finishes a submitted shared refresh under the lock despite one canceled caller', async () => {
+    const refresh = deferred<Response>();
+    let submitted = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (path === REFRESH_PATH) { submitted++; return refresh.promise; }
+      return (init?.headers as Headers).get('Authorization') === 'Bearer old'
+        ? problemResponse(401, 'invalid_credential') : jsonResponse({ ok: true });
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('old'));
+    const controller = new AbortController();
+    const first = instance.api.get(DOMAIN_PATH, { signal: controller.signal });
+    const second = instance.api.get(DOMAIN_PATH);
+    await vi.waitFor(() => expect(submitted).toBe(1));
+    controller.abort();
+    await expect(first).rejects.toMatchObject({ code: 'request_aborted' });
+    refresh.resolve(jsonResponse(authenticationResponse('new')));
+    await expect(second).resolves.toEqual({ ok: true });
+    expect(submitted).toBe(1);
+    expect(instance.session.getAccessToken()).toBe('new');
   });
 });
 
