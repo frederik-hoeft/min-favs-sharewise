@@ -16,9 +16,9 @@ final class AccountProfileUpdateFactory
 
     @Override
     public Result<DisplayNameUpdate, ValidationErrors> createFrom(AccountProfileUpdateRequest input) {
-        if (input == null || !input.hasValidShape()) {
-            return Result.err(ValidationErrors.single("displayName", "invalid",
-                    "Expected exactly one displayName field containing a string or null."));
+        if (input == null || input.clear() != (input.displayName() == null)) {
+            return Result.err(ValidationErrors.single("clear", "invalid",
+                    "clear must be true exactly when displayName is null."));
         }
         return DisplayNameUpdate.tryFrom(input.displayName());
     }

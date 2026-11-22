@@ -36,8 +36,7 @@ class AuthFactoryWiringTests {
                     assertEquals("one@example.org", consumer.logins.createFrom(
                             new AuthCredentialsRequest("ONE@example.org", "x"))
                             .fold(command -> command.email().normalized(), errors -> "unexpected"));
-                    AccountProfileUpdateRequest update = new AccountProfileUpdateRequest();
-                    update.setDisplayName("Alice");
+                    AccountProfileUpdateRequest update = new AccountProfileUpdateRequest("Alice", false);
                     assertEquals("Alice", consumer.updates.createFrom(update)
                             .fold(DisplayNameUpdate::value, errors -> "unexpected"));
                 });

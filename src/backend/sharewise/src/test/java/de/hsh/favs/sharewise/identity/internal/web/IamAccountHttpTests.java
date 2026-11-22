@@ -1,5 +1,7 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -14,6 +16,7 @@ import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfile;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileFailure;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileService;
+import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
@@ -34,6 +37,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -63,6 +68,7 @@ class IamAccountHttpTests {
     private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
 
     @Autowired MockMvc mvc;
+    @Autowired JsonMapper json;
     @Autowired JwtCredentialCodec iamPrimaryJwtCredentialCodec;
     @MockitoBean(name = "httpOperationIngressDispatcher", enforceOverride = true)
     OperationIngressDispatcher ingress;
@@ -72,7 +78,7 @@ class IamAccountHttpTests {
         mvc.perform(get(ACCOUNT)).andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("authentication_required"));
         mvc.perform(patch(ACCOUNT).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"displayName\":null}"))
+                .content("{\"displayName\":null,\"clear\":true}"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get(ACCOUNT).header(HttpHeaders.AUTHORIZATION, "Bearer invalid"))
                 .andExpect(status().isUnauthorized())
@@ -109,34 +115,69 @@ class IamAccountHttpTests {
     }
 
     @Test
-    void patchAcceptsOnlyOneStringOrNullFieldAndRejectsInvalidNames() throws Exception {
-        for (String body : new String[]{"{}", "{\"displayName\":4}",
-                "{\"displayName\":false}", "{\"displayName\":[]}",
-                "{\"displayName\":{}}", "{\"displayName\":\"Alice\",\"email\":\"x\"}",
-                "{\"displayName\":\" \"}", "{\"displayName\":\"\\u2028\"}"}) {
+    void patchRejectsInconsistentClearFlagAndInvalidNames() throws Exception {
+        for (String body : new String[]{"{\"clear\":true,\"displayName\":\"Alice\"}",
+                "{\"clear\":false,\"displayName\":null}",
+                "{\"displayName\":\" \",\"clear\":false}",
+                "{\"displayName\":\"\\u2028\",\"clear\":false}"}) {
             mvc.perform(patch(ACCOUNT).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer())
                     .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("validation_failed"))
-                .andExpect(jsonPath("$.fieldErrors[0].field").value("displayName"));
+                .andExpect(jsonPath("$.code").value("validation_failed"));
         }
         verifyNoInteractions(ingress);
         when(ingress.dispatch(eq(AccountProfileService.class), any()))
                 .thenReturn(Result.ok(new AccountProfile(ALICE, "alice@example.org", "<b>Safe text</b>")));
         mvc.perform(patch(ACCOUNT).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"displayName\":\"<b>Safe text</b>\"}"))
+                    .content("{\"displayName\":\"<b>Safe text</b>\",\"clear\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value("<b>Safe text</b>"))
                 .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
     }
 
     @Test
-    void nullClearIsAnExplicitValidPatchWithoutIssuingCredentials() throws Exception {
+    void patchRejectsMalformedOrUnsupportedJsonFieldsBeforeDispatch() throws Exception {
+        for (String body : new String[]{"{}", "{\"clear\":true}",
+                "{\"displayName\":\"Alice\"}",
+                "{\"displayName\":\"Alice\",\"clear\":false,\"email\":\"x\"}",
+                "{\"displayName\":4,\"clear\":false}",
+                "{\"displayName\":1.5,\"clear\":false}",
+                "{\"displayName\":false,\"clear\":false}",
+                "{\"displayName\":[],\"clear\":false}",
+                "{\"displayName\":{},\"clear\":false}",
+                "{\"displayName\":\"Alice\",\"clear\":\"false\"}",
+                "{\"displayName\":\"Alice\",\"clear\":1}",
+                "{\"displayName\":\"Alice\",\"clear\":null}"}) {
+            mvc.perform(patch(ACCOUNT).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer())
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(result -> assertEquals(400,
+                        result.getResponse().getStatus(), "Unexpected status for: " + body))
+                .andExpect(jsonPath("$.code").value("malformed_request"));
+        }
+        verifyNoInteractions(ingress);
+    }
+
+    @Test
+    void globalJsonRulesAlsoApplyToCredentialRequestDtos() throws Exception {
+        for (String body : new String[]{
+                "{\"email\":\"alice@example.org\",\"password\":\"test\",\"extra\":1}",
+                "{\"email\":42,\"password\":\"test\"}",
+                "{\"email\":\"alice@example.org\",\"password\":false}"}) {
+            assertThrows(JacksonException.class,
+                    () -> json.readValue(body, AuthCredentialsRequest.class), body);
+        }
+        assertEquals("alice@example.org",
+                json.readValue("{\"email\":\"alice@example.org\",\"password\":\"test\"}",
+                        AuthCredentialsRequest.class).email());
+    }
+
+    @Test
+    void clearFlagClearsDisplayNameWithoutIssuingCredentials() throws Exception {
         when(ingress.dispatch(eq(AccountProfileService.class), any()))
                 .thenReturn(Result.ok(new AccountProfile(ALICE, "alice@example.org", null)));
         mvc.perform(patch(ACCOUNT).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer())
-                    .contentType(MediaType.APPLICATION_JSON).content("{\"displayName\":null}"))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"displayName\":null,\"clear\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
