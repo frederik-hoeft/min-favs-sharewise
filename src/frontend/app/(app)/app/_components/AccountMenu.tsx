@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionIcon, Menu } from "@mantine/core";
-import { CaretLeftIcon, CaretRightIcon, CircleHalfIcon, UserCircleIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, CaretRightIcon, CircleHalfIcon, SignOutIcon, UserCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIdentity, useAuthState } from "@/app/identity-provider";
@@ -87,7 +87,11 @@ export function AccountMenu() {
               Appearance
             </Menu.Item>
             {state.status === "authenticated" && (
-              <Menu.Item disabled={signingOut} onClick={() => void signOut()}>
+              <Menu.Item
+                leftSection={<SignOutIcon size="1.125rem" aria-hidden="true" />}
+                disabled={signingOut}
+                onClick={() => void signOut()}
+              >
                 {signingOut ? "Signing out…" : "Sign out"}
               </Menu.Item>
             )}
