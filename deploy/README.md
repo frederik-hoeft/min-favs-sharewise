@@ -166,17 +166,15 @@ A devcontainer and the Docker host share the daemon, **not** a network namespace
 
 The default deployment keeps PostgreSQL private on the `data` Compose network. The VS Code devcontainer uses Docker-outside-of-Docker: it shares the Docker **daemon** with the deployed stack but does not share its network namespace, so a PostgreSQL connection to `localhost:5432` inside the devcontainer does not reach the deployed database. The devcontainer supplies `host.docker.internal` through Docker's `host-gateway` mapping for reaching ports published on the daemon host.
 
-For local database inspection from the devcontainer's PostgreSQL extension, enable the explicitly named [host-access Compose override](compose.postgres-host.yaml). In `deploy/.env`, add the following lines (they are commented out in [`.env.example`](.env.example)):
+On Docker Desktop, publish PostgreSQL on host loopback by uncommenting only the following setting in `deploy/.env`, which is also shown in [`.env.example`](.env.example):
 
 ```dotenv
 COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml
-SHAREWISE_POSTGRES_BIND=<daemon-host-bind-IPv4>
-SHAREWISE_POSTGRES_PORT=15432
 ```
 
-When bootstrap first creates `deploy/.env` from `.env.example`, it asks the Docker daemon for its operating system and suggests a **bind address** in the commented `SHAREWISE_POSTGRES_BIND` setting. For Docker Desktop, it suggests `127.0.0.1`, which confines published ports to the Docker Desktop host's loopback interface. For native Linux Docker Engine, it suggests the daemon's default bridge gateway, which is an interface address owned by the daemon host. If the daemon is unavailable or the address cannot be determined, the comment retains `__DOCKER_HOST_BIND_IPV4__`. Bootstrap does not enable publishing or overwrite an existing `.env`.
+The [host-access Compose override](compose.postgres-host.yaml) defaults to `127.0.0.1:15432` on the Docker host; the devcontainer reaches that published port at `host.docker.internal:15432`. This is confirmed for the local Docker Desktop setup, but Docker Desktop configurations may differ. The override stays disabled unless explicitly selected, and bootstrap preserves an existing `.env` without trying to discover network addresses.
 
-A Docker bind address is **not** the same as the address a container uses to reach the host. In particular, Docker Desktop's `host.docker.internal` can resolve to an internal routing/proxy address such as `192.168.65.254`, which cannot be used as a listening address for a published port. Do not copy that DNS result into `SHAREWISE_POSTGRES_BIND`. For Docker Desktop, first use the suggested `127.0.0.1` and verify separately that the devcontainer can establish a TCP connection to `host.docker.internal:15432`; Docker Desktop networking configurations can differ. If loopback publishing is not reachable from the devcontainer, use a dedicated shared Docker network rather than exposing PostgreSQL on the LAN just for inspection. On native Linux Docker Engine, a loopback-only bind is normally unreachable from an ordinary bridge-connected devcontainer. Never use `0.0.0.0` without explicitly accepting the broader exposure.
+On native Linux Docker Engine, loopback publishing generally cannot be reached from an ordinary bridge-networked devcontainer. Set `SHAREWISE_POSTGRES_BIND` explicitly to a suitable daemon-host bridge address (inspect it with `docker network inspect bridge`) instead. `SHAREWISE_POSTGRES_PORT` optionally changes the host port. Do not use the IP returned by resolving `host.docker.internal` as a publishing address: container-to-host destinations and host bind addresses are different concepts. Avoid `0.0.0.0` unless exposing the database on all host interfaces is intentional.
 
 From `deploy/`, validate the merged Compose configuration and recreate the affected service without deleting the database volume:
 

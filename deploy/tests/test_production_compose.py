@@ -63,9 +63,9 @@ class ProductionComposeContractTests(unittest.TestCase):
         postgres = base.split("\n  postgres:\n", 1)[1].split("\n  backend:\n", 1)[0]
         self.assertNotIn("    ports:", postgres)
         self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", example)
-        self.assertIn("# SHAREWISE_POSTGRES_BIND=__DOCKER_HOST_BIND_IPV4__", example)
+        self.assertIn("# SHAREWISE_POSTGRES_BIND=127.0.0.1", example)
         self.assertNotRegex(example, r"(?m)^COMPOSE_FILE=")
-        self.assertIn("${SHAREWISE_POSTGRES_BIND:?", override)
+        self.assertIn("${SHAREWISE_POSTGRES_BIND:-127.0.0.1}", override)
         self.assertIn("${SHAREWISE_POSTGRES_PORT:-15432}:5432", override)
         self.assertIn("- postgres_host_access", override)
         self.assertIn("  postgres_host_access: {}", override)
@@ -168,51 +168,27 @@ class ProductionComposeContractTests(unittest.TestCase):
                 self.assertNotIn(invalid, completed.stderr)
 
     @unittest.skipUnless(shutil.which("openssl"), "OpenSSL is required")
-    def test_local_env_suggests_daemon_bind_address_without_enabling_publishing(self):
-        cases = (
-            ("Docker Desktop", "192.168.65.254", "127.0.0.1"),
-            ("Ubuntu 24.04", "172.17.0.1", "172.17.0.1"),
-            ("Ubuntu 24.04", "300.19.0.1", None),
-            ("Ubuntu 24.04", "", None),
-            ("", "172.17.0.1", None),
-        )
-        for daemon_os, bridge_gateway, expected_address in cases:
-            with self.subTest(daemon_os=daemon_os, gateway=bridge_gateway), tempfile.TemporaryDirectory() as dirname:
-                root = Path(dirname)
-                deploy = root / "deploy"
-                scripts = deploy / "scripts"
-                scripts.mkdir(parents=True)
-                shutil.copy2(ROOT / "deploy/.env.example", deploy / ".env.example")
-                shutil.copy2(ROOT / "deploy/scripts/prepare-local.sh", scripts / "prepare-local.sh")
-                bin_dir = root / "bin"
-                bin_dir.mkdir()
-                docker = bin_dir / "docker"
-                docker.write_text("""#!/bin/sh
-case "$1 $2" in
-    'info --format') [ -n "$FAKE_DAEMON_OS" ] || exit 1; printf '%s\\n' "$FAKE_DAEMON_OS" ;;
-    'network inspect') [ -n "$FAKE_BRIDGE_GATEWAY" ] || exit 1; printf '%s\\n' "$FAKE_BRIDGE_GATEWAY" ;;
-    *) exit 1 ;;
-esac
-""")
-                docker.chmod(0o755)
-                environment = os.environ | {
-                    "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
-                    "FAKE_DAEMON_OS": daemon_os,
-                    "FAKE_BRIDGE_GATEWAY": bridge_gateway,
-                }
-                command = ["bash", str(scripts / "prepare-local.sh")]
-                first = subprocess.run(command, env=environment, capture_output=True, text=True)
-                self.assertEqual(first.returncode, 0, first.stderr)
-                rendered = (deploy / ".env").read_text()
-                suggested = expected_address or "__DOCKER_HOST_BIND_IPV4__"
-                self.assertIn(f"# SHAREWISE_POSTGRES_BIND={suggested}\n", rendered)
-                self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", rendered)
-                self.assertNotRegex(rendered, r"(?m)^SHAREWISE_POSTGRES_BIND=")
+    def test_local_env_keeps_optional_host_access_disabled_and_preserves_existing_settings(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            deploy = root / "deploy"
+            scripts = deploy / "scripts"
+            scripts.mkdir(parents=True)
+            shutil.copy2(ROOT / "deploy/.env.example", deploy / ".env.example")
+            shutil.copy2(ROOT / "deploy/scripts/prepare-local.sh", scripts / "prepare-local.sh")
 
-                environment["FAKE_DAEMON_OS"] = "Docker Desktop"
-                second = subprocess.run(command, env=environment, capture_output=True, text=True)
-                self.assertEqual(second.returncode, 0, second.stderr)
-                self.assertEqual((deploy / ".env").read_text(), rendered)
+            command = ["bash", str(scripts / "prepare-local.sh")]
+            first = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            rendered = (deploy / ".env").read_text()
+            self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", rendered)
+            self.assertIn("# SHAREWISE_POSTGRES_BIND=127.0.0.1", rendered)
+            self.assertNotRegex(rendered, r"(?m)^COMPOSE_FILE=")
+            self.assertNotRegex(rendered, r"(?m)^SHAREWISE_POSTGRES_BIND=")
+
+            second = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual((deploy / ".env").read_text(), rendered)
 
     @unittest.skipUnless(shutil.which("openssl"), "OpenSSL is required")
     def test_local_fixture_uses_distinct_untracked_secrets_without_newlines(self):

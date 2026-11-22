@@ -3,8 +3,9 @@
 services:
   postgres:
     ports:
-      # Bind to a specific daemon-host interface, never implicitly to every interface.
-      - "${SHAREWISE_POSTGRES_BIND:?Set SHAREWISE_POSTGRES_BIND to a Docker-host interface address}:${SHAREWISE_POSTGRES_PORT:-15432}:5432"
+      # Default to Docker Desktop host loopback; a native Linux daemon may need
+      # its bridge address instead to permit devcontainer access.
+      - "${SHAREWISE_POSTGRES_BIND:-127.0.0.1}:${SHAREWISE_POSTGRES_PORT:-15432}:5432"
     networks:
       - data
       # An additional bridge is required for host publishing from an internal-only network.
