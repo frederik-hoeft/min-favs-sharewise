@@ -27,9 +27,9 @@ The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still 
 
 ## Gate 0 - Approval and source-contract reconciliation
 
-- [ ] Review and approve the [specification](specification.md), IAM-C01–C09 contracts and IAM-CT01–CT10 tests. Confirm the display-name bound, `GET`/`PATCH /account` and `POST /auth/password` contracts, password-failure counter behavior, current-session retention and bounded JWT revocation semantics.
-- [ ] Approve this plan **separately after** specification review. Commit/push both accepted artifacts to the authoritative task branch; keep the local documentation patch unmerged until human acceptance.
-- [ ] Before Phase D, inspect the accepted P2.1b `SessionStore`/rotation/logout implementation and browser coordinator; record one shared account/session row-lock order and serialization proof. Return to the specification gate if accepted P2.1b behavior conflicts with IAM-C05–C07.
+- [x] Review and approve the [specification](specification.md), IAM-C01–C09 contracts and IAM-CT01–CT10 tests. Confirm the display-name bound, `GET`/`PATCH /account` and `POST /auth/password` contracts, password-failure counter behavior, current-session retention and bounded JWT revocation semantics.
+- [x] Approve this plan **separately after** specification review. Commit/push both accepted artifacts to the authoritative task branch; keep the local documentation patch unmerged until human acceptance.
+- [x] Before Phase D, inspect the accepted P2.1b `SessionStore`/rotation/logout implementation and browser coordinator; record one shared account/session row-lock order and serialization proof. Return to the specification gate if accepted P2.1b behavior conflicts with IAM-C05–C07.
 
 **Gate 0:** Approved and reproducible task documents, including frozen request/response/error contracts. This draft patch does not satisfy approval by itself.
 
@@ -37,9 +37,9 @@ The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still 
 
 **Scope:** Add only the IAM-owned Flyway migration for the optional profile table and its one-to-one FK/PK and approved display-name constraints. Preserve registration and existing IAM DDL; no backfill or Group schema changes.
 
-- [ ] Prepare and review the migration against the [Phase 2 ER handoff](../../integration/phase-2-foundation.md) (IAM-C02–C03), including runtime-role access through established Flyway grants.
-- [ ] **Stop at the generator handoff:** the maintainer applies the reviewed migration to PostgreSQL 18, regenerates IAM jOOQ Java sources and supplies them as a patch. Apply and validate the supplied generated code; do not hand-author generated types.
-- [ ] Test migration, FK/PK constraints, privileges and generated-schema mapping on PostgreSQL 18 (IAM-CT02–CT03).
+- [x] Prepare and review the migration against the [Phase 2 ER handoff](../../integration/phase-2-foundation.md) (IAM-C02–C03), including runtime-role access through established Flyway grants.
+- [x] **Stop at the generator handoff:** the maintainer applies the reviewed migration to PostgreSQL 18, regenerates IAM jOOQ Java sources and supplies them as a patch. Apply and validate the supplied generated code; do not hand-author generated types.
+- [x] Test migration, FK/PK constraints, privileges and generated-schema mapping on PostgreSQL 18 (IAM-CT02–CT03).
 
 **Gate A:** Reviewed migration and generated sources match, real database checks pass, and the focused schema patch is human-approved. The maintainer handoff is blocking.
 
@@ -47,9 +47,9 @@ The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still 
 
 **Scope:** Implement the IAM-private profile read/write port and application service using verified `IdentityContext`, `Transactions` and jOOQ. Expose bearer-only `GET`/`PATCH /api/iam/v1/account` with strict request validation, narrow account projections, typed outcomes and RFC 9457 errors.
 
-- [ ] Unit-test missing/disabled account, own-account scoping, absent/null profile, name validation and typed denials (IAM-C01–C03, C08; IAM-CT01–CT03).
-- [ ] Test bearer ingress, invalid issuer/type/audience, unknown/missing fields, no-store responses and absence of credential/session secrets (IAM-CT01, CT08).
-- [ ] Prove first-write upsert concurrency, FK integrity, correct data ownership and rollback against PostgreSQL (IAM-CT02–CT03); run Modulith and backend regression checks.
+- [x] Unit-test missing/disabled account, own-account scoping, absent/null profile, name validation and typed denials (IAM-C01–C03, C08; IAM-CT01–CT03).
+- [x] Test bearer ingress, invalid issuer/type/audience, unknown/missing fields, no-store responses and absence of credential/session secrets (IAM-CT01, CT08).
+- [x] Prove first-write upsert concurrency, FK integrity, correct data ownership and rollback against PostgreSQL (IAM-CT02–CT03); run Modulith and backend regression checks.
 
 **Gate B:** Profile backend Unit, HTTP, Modulith and PostgreSQL tests pass; human reviews and approves this backend slice.
 
@@ -57,9 +57,9 @@ The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still 
 
 **Scope:** Add `/app/account` to the existing workspace layout and account menu, show read-only email and edit/clear controls, and add typed profile calls under `core/identity` using `lib/api`. Keep the future password form for Phase E; do not implement a parallel auth coordinator or refresh flow.
 
-- [ ] Test load/update/clear, field errors, loading/disabled states, keyboard/screen-reader feedback, escaping and responsive layout (IAM-C03, C08–C09; profile portion of IAM-CT09).
-- [ ] Exercise authenticated HTTP profile flows and relevant failure outcomes against the Phase B backend and PostgreSQL (IAM-CT01–CT03, CT08). Verify same-origin HTTPS UI behavior and error presentation manually.
-- [ ] Test mocked session-context-change/re-authentication states without persisting credentials or replacing P2.1b's coordinator. Run frontend lint, production/test typechecks, Vitest, build and static export on the intended Node 24/npm toolchain.
+- [x] Test load/update/clear, field errors, loading/disabled states, keyboard/screen-reader feedback, escaping and responsive layout (IAM-C03, C08–C09; profile portion of IAM-CT09).
+- [x] Exercise authenticated HTTP profile flows and relevant failure outcomes against the Phase B backend and PostgreSQL (IAM-CT01–CT03, CT08). Verify same-origin HTTPS UI behavior and error presentation manually.
+- [x] Test mocked session-context-change/re-authentication states without persisting credentials or replacing P2.1b's coordinator. Run frontend lint, production/test typechecks, Vitest, build and static export on the intended Node 24/npm toolchain.
 
 **Gate C:** Human accepts the integrated profile slice. If P2.1b restoration is not yet accepted, record that browser scenario as pending for Gate E rather than claiming it was tested.
 
