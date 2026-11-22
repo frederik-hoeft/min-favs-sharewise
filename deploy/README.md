@@ -170,11 +170,11 @@ For local database inspection from the devcontainer's PostgreSQL extension, enab
 
 ```dotenv
 COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml
-SHAREWISE_POSTGRES_BIND=172.17.0.1
+SHAREWISE_POSTGRES_BIND=<resolved-Docker-host-gateway-IPv4>
 SHAREWISE_POSTGRES_PORT=15432
 ```
 
-`172.17.0.1` is only an **example for a native Linux Docker Engine**. After rebuilding/reopening the devcontainer to apply `.devcontainer/docker-compose.yml`, run `getent ahostsv4 host.docker.internal` inside it and select the Docker host-gateway IPv4 address actually reported. Configure `SHAREWISE_POSTGRES_BIND` with an address assigned to an interface on the **Docker daemon host** that the devcontainer can reach. Docker Desktop, rootless engines, remote daemons and custom bridge configurations may use a different address. Binding only to `127.0.0.1` on a native Linux host normally makes the port **unreachable from the devcontainer**; binding to `0.0.0.0` can expose it to the local network and should not be the default.
+When bootstrap first creates `deploy/.env` from `.env.example`, it looks up `host.docker.internal` and substitutes the resolved IPv4 into the **commented** `SHAREWISE_POSTGRES_BIND` suggestion. This makes enabling host access a matter of uncommenting the three settings rather than manually discovering the address. Bootstrap does not enable publishing or overwrite an existing `.env`. If the hostname cannot be resolved (for example, when bootstrap runs outside the devcontainer), the comment retains `__HOST_GATEWAY_IPV4__`; rebuild/reopen the devcontainer and replace that placeholder with the IPv4 reported by `getent ahostsv4 host.docker.internal` before uncommenting it. The suggested address must be assigned to an interface on the **Docker daemon host** that the devcontainer can reach; Docker Desktop, rootless engines, remote daemons and custom bridge configurations may require a different bind address. Binding only to `127.0.0.1` on a native Linux host normally makes the port **unreachable from the devcontainer**; binding to `0.0.0.0` can expose it to the local network and should not be the default.
 
 From `deploy/`, validate the merged Compose configuration and recreate the affected service without deleting the database volume:
 

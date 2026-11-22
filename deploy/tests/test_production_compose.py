@@ -63,6 +63,7 @@ class ProductionComposeContractTests(unittest.TestCase):
         postgres = base.split("\n  postgres:\n", 1)[1].split("\n  backend:\n", 1)[0]
         self.assertNotIn("    ports:", postgres)
         self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", example)
+        self.assertIn("# SHAREWISE_POSTGRES_BIND=__HOST_GATEWAY_IPV4__", example)
         self.assertNotRegex(example, r"(?m)^COMPOSE_FILE=")
         self.assertIn("${SHAREWISE_POSTGRES_BIND:?", override)
         self.assertIn("${SHAREWISE_POSTGRES_PORT:-15432}:5432", override)
@@ -165,6 +166,51 @@ class ProductionComposeContractTests(unittest.TestCase):
                 self.assertFalse(called.exists())
                 self.assertNotIn("a" * 64, completed.stderr)
                 self.assertNotIn(invalid, completed.stderr)
+
+    @unittest.skipUnless(shutil.which("openssl"), "OpenSSL is required")
+    def test_local_env_suggests_resolved_host_gateway_without_enabling_binding(self):
+        cases = (
+            ("172.19.0.1 STREAM host.docker.internal\n", "172.19.0.1"),
+            ("300.19.0.1 STREAM host.docker.internal\n", None),
+            ("127.0.0.1 STREAM host.docker.internal\n", None),
+            ("", None),
+        )
+        for response, expected_address in cases:
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as dirname:
+                root = Path(dirname)
+                deploy = root / "deploy"
+                scripts = deploy / "scripts"
+                scripts.mkdir(parents=True)
+                shutil.copy2(ROOT / "deploy/.env.example", deploy / ".env.example")
+                shutil.copy2(ROOT / "deploy/scripts/prepare-local.sh", scripts / "prepare-local.sh")
+                bin_dir = root / "bin"
+                bin_dir.mkdir()
+                getent = bin_dir / "getent"
+                getent.write_text("""#!/bin/sh
+[ "$1" = ahostsv4 ] && [ "$2" = host.docker.internal ] || exit 1
+[ -n "$FAKE_HOST_GATEWAY_RESPONSE" ] || exit 2
+printf '%s' "$FAKE_HOST_GATEWAY_RESPONSE"
+""")
+                getent.chmod(0o755)
+                environment = os.environ | {
+                    "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+                    "FAKE_HOST_GATEWAY_RESPONSE": response,
+                }
+                command = ["bash", str(scripts / "prepare-local.sh")]
+                first = subprocess.run(command, env=environment, capture_output=True, text=True)
+                self.assertEqual(first.returncode, 0, first.stderr)
+                rendered = (deploy / ".env").read_text()
+                suggested = expected_address or "__HOST_GATEWAY_IPV4__"
+                self.assertIn(f"# SHAREWISE_POSTGRES_BIND={suggested}\n", rendered)
+                self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", rendered)
+                self.assertNotRegex(rendered, r"(?m)^SHAREWISE_POSTGRES_BIND=")
+
+                # Even when the detected address changes, bootstrap preserves
+                # an already-created .env and its user-selected settings.
+                environment["FAKE_HOST_GATEWAY_RESPONSE"] = "10.2.3.4 STREAM host.docker.internal\n"
+                second = subprocess.run(command, env=environment, capture_output=True, text=True)
+                self.assertEqual(second.returncode, 0, second.stderr)
+                self.assertEqual((deploy / ".env").read_text(), rendered)
 
     @unittest.skipUnless(shutil.which("openssl"), "OpenSSL is required")
     def test_local_fixture_uses_distinct_untracked_secrets_without_newlines(self):
