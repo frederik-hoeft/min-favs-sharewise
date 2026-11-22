@@ -4,7 +4,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 
-/** Fixed absolute deadline, initial idle deadline, and bounded access-token lifetime. */
+/**
+ * Session lifetime policy: a fixed absolute deadline, sliding idle deadline, and access
+ * tokens whose expiration cannot exceed either session deadline.
+ *
+ * @param accessLifetime maximum access-JWT lifetime
+ * @param idleLifetime sliding inactivity allowance
+ * @param absoluteLifetime maximum duration of a session from creation
+ */
 public record SessionPolicy(Duration accessLifetime, Duration idleLifetime, Duration absoluteLifetime) {
 
     public SessionPolicy {
@@ -20,10 +27,19 @@ public record SessionPolicy(Duration accessLifetime, Duration idleLifetime, Dura
         }
     }
 
+    /**
+     * @return the default five-minute access, seven-day idle, and thirty-day absolute policy
+     */
     public static SessionPolicy initial() {
         return new SessionPolicy(Duration.ofMinutes(5), Duration.ofDays(7), Duration.ofDays(30));
     }
 
+    /**
+     * Creates the initial idle and absolute deadlines for a new session.
+     *
+     * @param now authoritative session-creation time
+     * @return initial deadlines capped by the absolute lifetime
+     */
     public Deadlines startAt(Instant now) {
         Objects.requireNonNull(now, "now");
         Instant absolute = now.plus(absoluteLifetime);
@@ -31,7 +47,15 @@ public record SessionPolicy(Duration accessLifetime, Duration idleLifetime, Dura
         return new Deadlines(now, idle, absolute);
     }
 
-    /** Renew idle eligibility without ever extending the absolute deadline or shortening idle time. */
+    /**
+     * Renews idle eligibility without moving the original absolute deadline or shortening
+     * an existing idle deadline.
+     *
+     * @param now authoritative refresh time
+     * @param current current persisted session deadlines
+     * @return deadlines with a renewed, absolute-capped idle expiration
+     * @throws IllegalStateException if the session has already expired
+     */
     public Deadlines renewAt(Instant now, Deadlines current) {
         Objects.requireNonNull(now, "now");
         Objects.requireNonNull(current, "current");
@@ -43,6 +67,14 @@ public record SessionPolicy(Duration accessLifetime, Duration idleLifetime, Dura
         return new Deadlines(current.createdAt(), nextIdle, current.absoluteExpiresAt());
     }
 
+    /**
+     * Computes the expiration of an access JWT issued for the given session.
+     *
+     * @param now authoritative issuance time
+     * @param deadlines current session eligibility deadlines
+     * @return the earliest of access lifetime, idle expiration, and absolute expiration
+     * @throws IllegalStateException if the session has already expired
+     */
     public Instant accessExpiresAt(Instant now, Deadlines deadlines) {
         Objects.requireNonNull(now, "now");
         Objects.requireNonNull(deadlines, "deadlines");
@@ -56,6 +88,13 @@ public record SessionPolicy(Duration accessLifetime, Duration idleLifetime, Dura
         return first.isBefore(second) ? first : second;
     }
 
+    /**
+     * Immutable session-creation, sliding idle, and fixed absolute deadlines.
+     *
+     * @param createdAt authoritative original session-creation time
+     * @param idleExpiresAt current sliding idle deadline
+     * @param absoluteExpiresAt fixed upper bound for this session
+     */
     public record Deadlines(Instant createdAt, Instant idleExpiresAt, Instant absoluteExpiresAt) {
         public Deadlines {
             Objects.requireNonNull(createdAt, "createdAt");
@@ -67,11 +106,19 @@ public record SessionPolicy(Duration accessLifetime, Duration idleLifetime, Dura
             }
         }
 
+        /**
+         * @return the earlier of idle and absolute expiration
+         */
         public Instant effectiveExpiresAt() {
             return earliest(idleExpiresAt, absoluteExpiresAt);
         }
 
-        /** Full seconds, rounded down; never extends a cookie past either deadline. */
+        /**
+         * Computes a cookie maximum age without extending past either session deadline.
+         *
+         * @param now authoritative time from which the cookie duration is measured
+         * @return remaining whole seconds, rounded down and never negative
+         */
         public long cookieMaxAgeSeconds(Instant now) {
             Objects.requireNonNull(now, "now");
             long seconds = Duration.between(now, effectiveExpiresAt()).getSeconds();

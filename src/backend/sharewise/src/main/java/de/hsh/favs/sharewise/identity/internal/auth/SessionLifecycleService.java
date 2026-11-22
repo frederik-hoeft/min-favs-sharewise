@@ -33,6 +33,17 @@ public final class SessionLifecycleService {
     private final AccessTokenIssuer accessTokens;
     private final Clock clock;
 
+    /**
+     * Creates the application service for refresh rotation and logout.
+     *
+     * @param transactions executes each lifecycle decision in a single transaction segment
+     * @param sessions persistence operations serialized by the owning session row
+     * @param refreshTokens allocates and stores replacement refresh generations
+     * @param credentials generates high-entropy refresh bearer credentials
+     * @param policy bounds idle, absolute, and access-token lifetimes
+     * @param accessTokens issues the replacement access JWT inside the transaction segment
+     * @param clock authoritative server-side time source
+     */
     public SessionLifecycleService(Transactions transactions, SessionLifecycleStore sessions,
             RefreshTokenStore refreshTokens, RefreshCredentialGenerator credentials,
             SessionPolicy policy, AccessTokenIssuer accessTokens, Clock clock) {
@@ -45,7 +56,16 @@ public final class SessionLifecycleService {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    /** A null expected ID is permitted only for explicitly unbound browser restoration. */
+    /**
+     * Validates and rotates a refresh generation under the owning session lock.
+     * Correct-secret reuse of a consumed generation revokes the session family; an active
+     * generation with a mismatched expected session is rejected without mutation.
+     * Credentials are returned only after transaction completion.
+     *
+     * @param cookieValue opaque refresh bearer presented by the browser; may be absent or malformed
+     * @param expectedSessionId tab-local session binding, or {@code null} only for initial restoration
+     * @return new credentials on success, or a transport-neutral refresh failure
+     */
     public Result<AuthenticationResult, SessionLifecycleFailure> refresh(
             String cookieValue, UUID expectedSessionId) {
         Optional<PresentedRefreshCredential> presented = PresentedRefreshCredential.parse(cookieValue);
@@ -91,7 +111,16 @@ public final class SessionLifecycleService {
         });
     }
 
-    /** Missing/invalid cookies are no-op logouts; a verified mismatch never clears another session. */
+    /**
+     * Revokes the session named by a verified refresh credential.
+     * Absent or invalid credentials produce an idempotent no-session result; a verified
+     * active credential with a different expected session must not revoke that session.
+     * Verified reuse of a consumed generation still revokes its family.
+     *
+     * @param cookieValue opaque refresh bearer presented by the browser; may be absent or malformed
+     * @param expectedSessionId tab-local session binding, or {@code null} for an unbound caller
+     * @return the logout outcome or a session-context mismatch that must not clear the cookie
+     */
     public Result<LogoutStatus, SessionLifecycleFailure> logout(String cookieValue, UUID expectedSessionId) {
         Optional<PresentedRefreshCredential> presented = PresentedRefreshCredential.parse(cookieValue);
         if (presented.isEmpty()) {

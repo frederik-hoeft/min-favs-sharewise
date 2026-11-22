@@ -21,7 +21,14 @@ public final class PresentedRefreshCredential {
         this.verifierHash = verifierHash.clone();
     }
 
-    /** Require the canonical UUID and unpadded 32-byte Base64URL encoding issued by IAM. */
+    /**
+     * Parses IAM's canonical {@code UUID.base64url(secret)} bearer format and hashes the secret.
+     * Parsing failures are intentionally indistinguishable from invalid credentials; detailed
+     * field-validation errors are inappropriate for an opaque authentication secret.
+     *
+     * @param cookieValue untrusted cookie value; may be {@code null}
+     * @return a selector and verifier hash, or empty for any malformed encoding
+     */
     public static Optional<PresentedRefreshCredential> parse(String cookieValue) {
         if (cookieValue == null || cookieValue.length() != SELECTOR_LENGTH + 1 + ENCODED_SECRET_LENGTH
                 || cookieValue.charAt(SELECTOR_LENGTH) != '.') {
@@ -49,11 +56,20 @@ public final class PresentedRefreshCredential {
         }
     }
 
+    /**
+     * @return the non-secret database selector extracted from the presented credential
+     */
     public UUID tokenId() {
         return tokenId;
     }
 
-    /** Constant-time comparison for fixed-length SHA-256 verifiers. */
+    /**
+     * Compares the selector and fixed-length SHA-256 verifier without comparing raw secrets.
+     * The verifier comparison uses constant-time byte comparison.
+     *
+     * @param stored persisted token generation to authenticate against
+     * @return {@code true} only if both selector and secret verifier match
+     */
     public boolean matches(RefreshTokenRecord stored) {
         Objects.requireNonNull(stored, "stored");
         return tokenId.equals(stored.id())
