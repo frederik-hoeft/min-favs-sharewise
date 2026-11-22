@@ -45,6 +45,10 @@ Organize sections by meaningful concepts, responsibilities and reader questions,
 
 Examples should illuminate a non-obvious interaction, lifecycle, configuration or invariant. Keep them small and accurate. Do not add a diagram, extensive example or exhaustive case list merely to demonstrate completeness.
 
+### Annotated reference examples
+
+For substantial architecture writing, README introductions, runbooks, or a deliberate editorial pass, consult [writing examples](references/writing-examples.md). The short excerpts show effective structure and emphasis in real project documentation; use them to calibrate prose, not as fixed templates or as technical authority for the current task. Routine factual edits do not require rereading the examples.
+
 ## Accuracy, status and documentation ownership
 
 ### Distinguish what exists from what is planned
