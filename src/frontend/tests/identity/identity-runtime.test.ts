@@ -154,7 +154,7 @@ describe("Identity runtime with mock HTTP", () => {
       request: (_name: string, options: LockOptions) =>
         new Promise((_, reject) => options.signal?.addEventListener('abort', () =>
           reject(new DOMException('Timed out', 'AbortError')), { once: true })),
-    } as LockManager;
+    } as unknown as LockManager;
     const lock = new AuthCookieLock(() => locks);
     try {
       const pending = lock.runExclusive(action);
