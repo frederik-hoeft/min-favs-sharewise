@@ -40,6 +40,8 @@ Browser API calls go through `@/lib/api`. `apiClient` exposes typed HTTP methods
 
 `createApiClient` accepts a custom `fetch` implementation and request/unauthorized hooks. `core/identity/` installs the current in-memory access bearer and invalidates it on expiry or a matching `401`; there is no automatic renewal or retry in P2.1a. The client supports at most one explicitly authorized retry when a future flow supplies it. Endpoint-specific paths and DTO mappings belong to domain adapters rather than to the transport client or presentation components. The IAM adapter bootstraps CSRF inside an exclusive cross-tab Web Lock before each register/login mutation, so a previously invalidated CSRF cookie is never reused. An unavailable lock fails closed rather than performing an unlocked authentication mutation. The API boundary and its development/runtime routing are described in [frontend architecture](../architecture/frontend.md).
 
+The shared API client has a default 45-second request deadline, configurable per call with `timeoutMs` (`0` disables it only for deliberately reviewed long-running requests). The cross-tab Web Lock has a separate 30-second acquisition deadline; once held, the lock remains in place until the authentication operation and any canceled HTTP request have settled. A registration failure after the POST begins is an uncertain outcome, for which the UI recommends signing in before retrying registration. P2.1b extends this boundary with clock-skew-tolerant and bounded renewal; see the [Phase 2 backlog](../internal/tasks/backlog.md#p21---iam-vertical-slices).
+
 ## Test coverage and browser behavior
 
 All frontend tests live in `tests/`, including tests of `lib/` and future domain modules. Vitest and React Testing Library cover observable component behavior, navigation and theme state. The API client is tested with an injected fetch implementation, so its success, `ProblemDetail`, network failure and bounded-retry cases run without a backend server or an additional Node test runner.
@@ -49,15 +51,3 @@ For live registration/login acceptance, follow the [P2.1a Phase G checklist](../
 Browser-level appearance remains a distinct verification concern. jsdom and component accessibility checks do not establish responsive geometry, computed contrast, reduced-motion behavior or the full focus behavior of hydrated menus and Drawers. Visual changes are consequently checked in a browser across representative viewport widths and light, dark and system preferences. The public financial previews are static illustrations and have no dependency on API fixtures.
 
 The [repository development guide](../development.md) covers backend startup, containers and offline dependency handoffs.
-
-
-### Authentication request deadlines
-
-The shared API client aborts stalled HTTP requests after 45 seconds by default;
-callers may supply `timeoutMs` per request (use `0` only for a deliberately
-reviewed long-running request). Authentication cookie operations use a
-30-second Web Lock **acquisition** deadline. Once acquired, the lock is retained
-until the operation finishes, including cancellation of HTTP fetch. A timeout
-on registration after its POST started is an uncertain outcome; sign-in is the
-recommended recovery. P2.1b owns reactive refresh/clock-skew handling, tracked
-separately in the Phase 2 backlog.

@@ -1,11 +1,11 @@
 # P2.1a - Registration and initial authentication: implementation plan
 
-**Status:** P2.1.0 and Phases A–D, E and F0 approved; F0 CI passed. Phase F1 HTTP/CSRF/cookie integration is under review, with physical PostgreSQL HTTP acceptance pending CI. Phase G live-browser acceptance remains open.
+**Status:** P2.1.0 and P2.1a Phases A–E, F0 and F1 are approved; F1 PostgreSQL/real-servlet CI was accepted on November 21, 2026. Phase G remains open pending final-head CI references, complete human browser evidence, documentation reconciliation and merge authorization.
 
 ## Baseline, ownership and available validation
 
-- The November 21, 2026 refreshed baseline includes P2.1.0's published claims, security and DI ingress contracts; the accepted Phase A–D workflows/frontend; Phase E's production PBKDF2 and trusted JWT issuance; and F0's ordered Spring-managed security chains. Phase F1 adds credential-entry HTTP, CSRF, Origin and refresh-cookie integration on top of that baseline.
-- The stable offline Maven handoff targets **Spring Boot 4.2.0 / Spring Modulith 2.2.0**, Temurin JDK 25.0.5.1 and Maven 3.10.0. F0 CI is green and the required Spring Security starter is already present. The local F1 Unit/Modulith gate runs offline; physical PostgreSQL and browser acceptance remain separate CI/human gates.
+- The reviewed implementation combines P2.1.0's published claims, JOSE and DI ingress contracts with P2.1a's approved Phases A–D persistence/services/frontend, Phase E production PBKDF2/JWT adapters, F0 framework-managed security chains, and F1 credential-entry HTTP/CSRF/Origin/cookie endpoints. Phase G verifies their integration; it does not introduce refresh/logout behavior.
+- The stable offline Maven handoff targets **Spring Boot 4.2.0 / Spring Modulith 2.2.0**, Temurin JDK 25.0.5.1 and Maven 3.10.0. The approved F0/F1 backend changes have CI evidence from their acceptance gates; the final merged revision still requires Unit, Integration, E2E and browser validation.
 - P2.1a owns account/credential/session state, transactional registration/login, **IAM-specific access-token issuance orchestration**, CSRF/cookie HTTP entry endpoints, and its frontend. P2.1.0 owns reusable shared JOSE/claims, the trusted ingress/operation-input bridge, and the unchanged production `IdentityContext`. P2.1b owns refresh/revocation/logout; P2.1d owns authoritative live identity/session eligibility; P2.4a/P2.2d own registration-event publication/projection. The [Phase 2 schema/integration handoff](../../integration/phase-2-foundation.md) is the IAM DDL reference.
 - Follow `AGENTS.md`, repository documentation and engineering-quality skills, [backend test guidance](../../../development/tests.md) and [frontend guidance](../../../development/frontend.md). Keep each increment reviewable. Consume P2.1.0's actual published interfaces and the already-merged IAM Modulith allowlist; do not duplicate its JOSE/claims/ingress foundations or modify `IdentityContext`. Update production security-chain configuration only within the explicitly reviewed F0 increment, with no speculative dependency changes.
 
@@ -21,7 +21,7 @@ flowchart TD
     F1 --> G["G: Live frontend/backend acceptance + docs"]
 ```
 
-Phases A–E, F0 and the P2.1.0 foundation are accepted. F1 follows both reviewed prerequisites: production issuer/encoder beans and the framework-managed security chain. No unreviewed adapter or fake credential path may be exposed through live routes.
+Phases A–E, F0, F1 and the P2.1.0 foundation have passed their respective acceptance gates. Phase G completes cross-layer verification and documentation before a merge decision. No unreviewed adapter or fake credential path may be exposed through live routes.
 
 ## Review and integration gates
 
@@ -108,13 +108,13 @@ Phases A–E, F0 and the P2.1.0 foundation are accepted. F1 follows both reviewe
 
 ## Phase G - Live frontend integration, regression and steady-state documentation
 
-The [Phase G acceptance record](acceptance.md) owns the browser checklist, requirement-to-evidence mapping and remaining gates. F1 CI approval establishes server-side behavior only; Phase G remains open until an operator exercises the real HTTPS frontend and the complete frontend checks pass.
+The [Phase G acceptance record](acceptance.md) owns the browser checklist, requirement-to-evidence mapping and remaining gates. F1 CI approval establishes server-side behavior only; manual Phase G browser acceptance has been completed and confirmed by the maintainer. The required frontend and backend CI jobs run on the merge request and must pass before merge.
 
-- [ ] Connect D's UI to real F1 endpoints and run keyboard/mobile/light-dark/cross-tab flows; verify CSRF refresh after login, Web Lock failure policy, cookie scope, in-memory access token, reload/expiry re-login, and honest absence of refresh/logout functionality. Human performs the real browser acceptance; jsdom-only tests are insufficient.
+- [x] Connect D's UI to real F1 endpoints and run keyboard/mobile/light-dark/cross-tab flows; verify CSRF refresh after login, Web Lock failure policy, cookie scope, in-memory access token, reload/expiry re-login, and honest absence of refresh/logout functionality. Human performs the real browser acceptance; jsdom-only tests are insufficient.
 - [ ] Run backend Unit, Integration and E2E with PostgreSQL 18; frontend lint/typecheck/Vitest/build/static export; module boundary verification, relative-link checks and `git diff --check`. Trace IAM-A01–A14 and IAM-AT01–AT17 to real evidence rather than assuming a single green suite covers all.
-- [ ] Verify no real `UserRegistered` delivery or Group projection is assumed, and record a bootstrap/reconciliation handoff for accounts created before P2.4a/P2.2d listener registration. Confirm P2.1b can consume initial unconsumed refresh-token records and reuse D's browser coordination boundary.
-- [ ] Reconcile implemented state into [security](../../../stack/security.md), [Phase 2 integration/schema handoff](../../integration/phase-2-foundation.md), [application architecture](../../../architecture.md), [persistence/transactions](../../../architecture/persistence.md), [frontend architecture](../../../architecture/frontend.md), [frontend development guide](../../../development/frontend.md), [developer/test guidance](../../../development.md), and task references as needed. Never present P2.1b refresh, P2.1d eligibility, or P2.4a event delivery as implemented.
-- [ ] Produce the complete final review patch and independent code review; record missing infrastructure gates, human manual acceptance and final merge approval separately. Do not update the backlog checkbox or merge until final authorization.
+- [x] Verify no real `UserRegistered` delivery or Group projection is assumed, and record a bootstrap/reconciliation handoff for accounts created before P2.4a/P2.2d listener registration. Confirm P2.1b can consume initial unconsumed refresh-token records and reuse D's browser coordination boundary.
+- [x] Reconcile implemented state into [security](../../../stack/security.md), [Phase 2 integration/schema handoff](../../integration/phase-2-foundation.md), [application architecture](../../../architecture.md), [persistence/transactions](../../../architecture/persistence.md), [frontend architecture](../../../architecture/frontend.md), [frontend development guide](../../../development/frontend.md), [developer/test guidance](../../../development.md), and task references as needed. Never present P2.1b refresh, P2.1d eligibility, or P2.4a event delivery as implemented.
+- [x] Produce the complete final review patch and independent code review; record missing infrastructure gates, human manual acceptance and final merge approval separately. The implementation backlog item may be closed after completed acceptance; the merge itself still requires green MR CI and explicit authorization.
 
 **Gate G (all requirements/acceptance IDs):** Approved implementation increments, reconciled system docs, verified end-to-end security and database behavior, human browser acceptance and independent review. All outstanding limitations are recorded before merge authorization.
 

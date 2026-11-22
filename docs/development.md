@@ -1,6 +1,6 @@
 # Development environment
 
-**Status:** Development setup guidance for the current platform foundations and frontend demonstration. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
+**Status:** Development setup for the implemented platform foundations, IAM initial authentication and frontend demonstration workspace. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
 ## VS Code Dev Containers
 
@@ -61,7 +61,9 @@ In the local production-style Compose deployment, **IAM key provisioning is auto
 
 Outside that Compose deployment, the application accepts **externally provisioned** unencrypted PKCS#8 P-256 PEM private keys and SPKI PEM public keys via `sharewise.iam.auth.keys[]`, along with the configured issuer, audience, active key ID and `sharewise.iam.auth.enabled=true`. Exactly one key is active for signing; additional configured keys may be public-only verification keys for rotation. The signer never generates production keys implicitly at application startup.
 
-The configured IAM issuer and audience must be the same trusted values used by bearer verification. The signed primary profile has `typ=sw-iam-access+jwt`, maximum lifetime five minutes, 30-second clock skew and 4 KiB token limit. Both issuance and verification use the same named `iamPrimaryJwtCredentialCodec` from the P2.1.0 infrastructure; a valid signature alone does not prove the current session is still eligible (P2.1d). No JWT signing key or fake credential fallback is bundled in the application image. Never log keys, raw credentials or hashes.
+The configured IAM issuer and audience must be the same trusted values used by bearer verification. The signed primary profile has `typ=sw-iam-access+jwt`, a default five-minute access lifetime (configurable below), 30-second clock skew and a 4 KiB token limit. The JWT profile maximum lifetime follows the configured access lifetime. Both issuance and verification use the same named `iamPrimaryJwtCredentialCodec` from the P2.1.0 infrastructure; a valid signature alone does not prove the current session is still eligible (P2.1d). No JWT signing key or fake credential fallback is bundled in the application image. Never log keys, raw credentials or hashes.
+
+Session and lockout settings are bound from `sharewise.iam.auth` and validated at startup. Defaults are `session.access-lifetime=5m`, `session.minimum-access-lifetime=1m`, `session.idle-lifetime=7d`, `session.absolute-lifetime=30d`, `lockout.threshold=5` and `lockout.duration=15m`. The minimum access lifetime may be configured but cannot fall below the two-second JWT timestamp-precision safety floor; `access-lifetime` must meet that minimum and cannot exceed one hour. The idle deadline must be at least the access lifetime and no longer than 90 days; the absolute deadline must be at least the idle lifetime and no longer than 365 days. The lockout threshold must be 1–100 and its duration greater than zero and at most one day. Invalid configuration prevents startup.
 
 **Browser credential entry.** `GET /api/iam/v1/auth/csrf` returns a masked request token with `Cache-Control: no-store` and a host-only `__Host-sharewise-csrf` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`). Registration and login POSTs require the matching `X-XSRF-TOKEN` request header, CSRF cookie, and an exact same-origin `Origin` header. The Spring Security CSRF and Origin filters reject missing/invalid proof before the IAM operation is dispatched. Accepted registration returns `201` and login `200`, with a short-lived bearer JWT in JSON and a distinct `__Host-sharewise-refresh` cookie, also `Secure`, `HttpOnly`, `SameSite=Strict`, host-only, and `Path=/`. The refresh cookie expires no later than the committed session's idle/absolute deadline; its value is never sent in JSON. Successful authentication clears the CSRF cookie; the browser obtains a new token before any later mutation. Rejected credentials, invalid requests, and duplicate registrations never issue refresh cookies.
 
@@ -279,10 +281,3 @@ The Maven cache is populated by running the actual `-Punit-tests clean verify` l
 The verifier hashes the required original toolchain archives, extracts them to temporary storage, checks the selected source dependency descriptors and runs the corresponding backend tests and/or frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar` and basic Unix checksum utilities, plus Python 3 when verifying Maven builds (to unpack the original Maven ZIP), but not preinstalled language toolchains. See `README-OFFLINE.md` within the dependency archive for more information.
 
 Ordinary source changes do **not** invalidate the handoff. Changes to the **selected** project's `pom.xml`, Maven wrapper properties, `package.json` or `package-lock.json` invalidate it conservatively. Container images, PostgreSQL and external services are not included and require separate provisioning. The frontend starter avoids build-time Google Fonts network requests.
-
-
-Initial IAM configurable policy defaults: `sharewise.iam.auth.session.access-lifetime=5m`,
-`sharewise.iam.auth.session.minimum-access-lifetime=1m` (may be lowered to 2s or raised, but
-`access-lifetime` must be at least this minimum), `sharewise.iam.auth.session.idle-lifetime=7d`, `sharewise.iam.auth.session.absolute-lifetime=30d`,
-`sharewise.iam.auth.lockout.threshold=5`, and `sharewise.iam.auth.lockout.duration=15m`.
-Invalid explicit values fail startup. The JWT profile maximum lifetime uses the configured access lifetime.

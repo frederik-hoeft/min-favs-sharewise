@@ -92,7 +92,7 @@ SHAREWISE_IAM_ISSUER=https://localhost:8443
 SHAREWISE_IAM_AUDIENCE=sharewise-api
 ```
 
-`bootstrap.sh` runs `scripts/iam-keys.sh init` after building the images. `docker compose up` also runs the job as a startup prerequisite. On subsequent runs, it **verifies** the stored key ID, P-256 algorithm and public/private match without replacing the pair. A partial fixture, changed `kid`, invalid key, symlink, or concurrent/interrupted initializer causes failure instead of an implicit rotation. The volume-local `.iam-lock` prevents two provisioning jobs from both creating a new identity; an orphaned lock or staging directory requires operator investigation before removal. The backend uses the corresponding Spring configuration via Compose environment variables, including `sharewise.iam.auth.enabled=true` and key paths `/run/iam/{private,public}/active.pem`.
+`bootstrap.sh` runs `scripts/iam-keys.sh init` after building the images. `docker compose up` also runs the job as a startup prerequisite. On subsequent runs, it **verifies** the stored key ID, P-256 algorithm and public/private match without replacing the pair. A partial fixture, changed `kid`, invalid key, symlink, or concurrent/interrupted initializer causes failure instead of an implicit rotation. The volume-local `.iam-lock` prevents two provisioning jobs from both creating a new identity; an orphaned lock or staging directory requires operator investigation before removal. The backend uses the corresponding Spring configuration via Compose environment variables, including `sharewise.iam.auth.enabled=true` and key paths `/run/iam/{private,public}/active.pem`. Externally provisioned private keys must contain exactly one unencrypted PKCS#8 PEM block with **LF line endings**; this initializer rejects CRLF-formatted PEMs even though the Java key loader accepts them. Convert line endings before placing such keys in the volume.
 
 To export a **public key only** to another host or service, from `deploy/`:
 
@@ -186,11 +186,7 @@ SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh 
 
 If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
 
-The disposable Compose smoke performs a CSRF bootstrap, registration and login
-through the real HTTPS proxy and verifies both JWT signatures against the public-only
-exported IAM key. It generates disposable credentials internally and does not print
-passwords, cookies, signing keys or bearer tokens. Run this on a Docker host with
-Python 3 and OpenSSL available; it does not replace the PostgreSQL-backed E2E suite.
+The disposable Compose smoke performs CSRF bootstrap, registration and login through the real HTTPS proxy, then verifies both access JWT signatures against the exported public-only IAM key. It generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Run it on a Docker host with Python 3 and OpenSSL; it complements rather than replaces PostgreSQL-backed E2E tests.
 
 For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
 

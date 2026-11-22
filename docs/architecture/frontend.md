@@ -38,7 +38,7 @@ This distinction also defines the React boundary: layouts and pages can remain S
 
 ## Browser API boundary
 
-`lib/api/` owns HTTP transport behavior for browser callers. The client normalizes paths beneath `/api`, uses same-origin credentials and uncached requests by default, serializes JSON request bodies, and decodes JSON or text responses. Successful `204` responses resolve without a body. HTTP failures become `ApiError` values; Spring `ProblemDetail` payloads retain their error code and optional validation-field errors. Network failures produce a typed error with status `0`.
+`lib/api/` owns HTTP transport behavior for browser callers. The client normalizes paths beneath `/api`, uses same-origin credentials and uncached requests by default, serializes JSON request bodies, and decodes JSON or text responses. Successful `204` responses resolve without a body. HTTP failures become `ApiError` values; Spring `ProblemDetail` payloads retain their error code and validated field errors. Network failures and unsuccessful consumption/parsing of an otherwise successful response body produce typed errors with status `0`, so a registration whose outcome is uncertain can offer sign-in recovery rather than assuming the account was not created.
 
 The client accepts request and unauthorized-response hooks. An unauthorized hook may authorize **one** retry after a `401`; repeated unauthorized responses do not trigger an unbounded renewal loop. The IAM boundary currently uses those hooks for a memory-only bearer token and invalidates it on expiry or unauthorized responses; it does not yet renew tokens. Authentication mutations acquire an exclusive same-origin Web Lock and fetch a fresh CSRF token inside it before sending credentials.
 

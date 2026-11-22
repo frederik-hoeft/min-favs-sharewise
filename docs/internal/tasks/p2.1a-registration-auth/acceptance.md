@@ -1,21 +1,21 @@
 # P2.1a Phase G: live acceptance and final review
 
-**Status:** F1 backend HTTP/CSRF/PostgreSQL E2E gate accepted; **Phase G open**. On November 21, 2026, the maintainer confirmed that CI was green after the real-servlet CSRF cookie-header and expiry-assertion fixes. This record distinguishes that server-side result from pending frontend verification, manual browser acceptance and final merge authorization. The task's [requirements and acceptance scenarios](specification.md#requirements-and-invariants) remain authoritative.
+**Status:** Phase G manual browser acceptance completed and confirmed by the maintainer on November 22, 2026. The F1 PostgreSQL-backed HTTP/CSRF E2E gate was accepted on November 21, 2026. Final merge remains conditional on the merge-request CI pipeline passing and explicit merge authorization. The task's [requirements and acceptance scenarios](specification.md#requirements-and-invariants) remain authoritative.
 
 ## Automated evidence and outstanding checks
 
 | Gate | Evidence or command | State |
 | --- | --- | --- |
-| Backend Unit/Modulith/package | `cd src/backend/sharewise && ./mvnw -Punit-tests clean verify` | Previously green during F1 review; rerun against final branch |
+| Backend Unit/Modulith/package | `cd src/backend/sharewise && ./mvnw -Punit-tests clean verify` | Local strict-offline run on reconstructed PR head `39b05c35` (November 22, 2026): **251 tests passed**, including module checks; MR pipeline remains the merge gate |
 | PostgreSQL-backed Integration | `./mvnw -Pintegration-tests clean verify` with PostgreSQL 18 | Prior B/C approval; rerun against final branch |
 | PostgreSQL-backed E2E | `./mvnw -Pe2e-tests clean verify` with PostgreSQL 18 | **Green in maintainer-confirmed F1 CI**; includes `IamHttpAuthenticationE2E` |
-| Frontend lint / type checks | `cd src/frontend && npm ci && npm run lint && npm run typecheck && npm run test:typecheck` | Pending Phase G final-branch evidence |
-| Frontend tests / builds | `npm run test && npm run build && npm run test:static-export` | Pending Phase G final-branch evidence |
+| Frontend lint / type checks | `cd src/frontend && npm ci && npm run lint && npm run typecheck && npm run test:typecheck` | Enforced by the merge-request pipeline; must be green before merge |
+| Frontend tests / builds | `npm run test && npm run build && npm run test:static-export` | Enforced by the merge-request pipeline; must be green before merge |
 | Source hygiene | `python3 scripts/ci/check-source-encoding.py`, `git diff --check`, repo Markdown-link validation | Required on final patch |
-| Real browser, real HTTPS backend | Procedure below, using production signing and a disposable PostgreSQL database | **Pending human acceptance** |
-| Independent code review and merge authorization | Review final diff and residual risks | **Pending** |
+| Real browser, real HTTPS backend | Procedure below, using production signing and a disposable PostgreSQL database | **Passed; maintainer confirmed completion November 22, 2026** |
+| Independent code review and merge authorization | Review final diff and residual risks | Review findings addressed; merge authorization remains pending |
 
-A green E2E CI job demonstrates backend HTTP/transaction/cookie behavior through a servlet and PostgreSQL, **not** browser cookie persistence, real Web Locks, frontend accessibility, or the reverse proxy in a production-style topology. Record the final CI job/pipeline URL and commit ID with the acceptance decision; do not infer them from a local test run.
+A green E2E CI job demonstrates backend HTTP/transaction/cookie behavior through a servlet and PostgreSQL, **not** browser cookie persistence, real Web Locks, frontend accessibility, or the reverse proxy in a production-style topology. The merge-request pipeline runs automatically and must pass at the merged candidate revision; its result is an enforced merge condition, not a prerequisite for recording completed manual acceptance.
 
 ## Manual browser acceptance: executable workflows (IAM-AT14/15)
 
@@ -23,7 +23,7 @@ Complete the checkboxes **against the running application**, not against mocks o
 
 ### Test environment and evidence
 
-Use a disposable PostgreSQL 18 database; a backend with `sharewise.iam.auth.enabled=true` and a correctly provisioned **production** ES256 issuer/audience/signing/verification profile; and the current frontend on one trusted **HTTPS origin** with same-origin `/api/*` proxying. Use an isolated browser profile without prior ShareWise cookies. Do **not** bypass TLS warnings, turn off security filters, or use fixture issuers. See [initial IAM setup](../../../development.md#initial-iam-authentication) and the [deployment guide](../../../../deploy/README.md).
+Use a disposable PostgreSQL 18 database; a backend with `sharewise.iam.auth.enabled=true` and a correctly provisioned **production** ES256 issuer/audience/signing/verification profile; and the current frontend on one trusted **HTTPS origin** with same-origin `/api/*` proxying. Use an isolated browser profile without prior ShareWise cookies. Do **not** bypass TLS warnings, turn off security filters, or use fixture issuers. See [initial IAM setup](../../../development.md#initial-iam-authentication-p21a) and the [deployment guide](../../../../deploy/README.md).
 
 - [x] Confirm the frontend is served over trusted HTTPS and that the deployed `/api/*` proxy targets the **same origin** (not a separate backend origin). The authentication workflows below will exercise `/api/iam/v1/auth/csrf`; no standalone bootstrap request is needed for setup.
 - [x] Confirm the backend uses disposable test data and the approved production IAM signing/trust configuration; avoid reusing a real account or password.
@@ -33,18 +33,14 @@ Use a disposable PostgreSQL 18 database; a backend with `sharewise.iam.auth.enab
 
 **Evidence/environment:**
 
-Browser/version: 
+Browser/version:
 
-```
+```text
 Brave 1.100.58 (Official Build) (64-bit)
 Chromium: 158.0.8127.42
 ```
 
-Commit:
-
-```
-3823f2a - P2.1a: Provision IAM signing keys through isolated Docker volumes
-```
+Recorded browser-tested revision: `3823f2a` (P2.1a IAM signing-key provisioning). The checked workflow observations were recorded at that revision, and the maintainer confirmed the overall manual acceptance complete on November 22, 2026. Subsequent changes are covered by review and the required merge-request regression pipeline; this record does not claim a separate manual browser rerun at `39b05c35`.
 
 ### Workflow 1: Validate the registration form before network submission
 
@@ -149,7 +145,7 @@ void navigator.locks.request('sharewise:iam:refresh-cookie', { mode: 'exclusive'
 - [x] Submit a syntactically valid login form. **Expected:** a visible actionable message mentioning **Web Locks**, with no CSRF GET and **no credential POST**. The form becomes usable after the error.
 - [x] **Reload** the tab to restore native `navigator.locks`; verify normal login works afterward. If your browser blocks this test override, mark it **Blocked** and rely on the existing frontend fail-closed tests instead of disabling security on the backend.
 
-**Result:** [ ] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** ____
+**Result:** [x] Pass · [ ] Fail · [ ] Blocked. **Notes/defect:** Maintainer confirmed the completed workflow on November 22, 2026.
 
 ### Workflow 9: Browser CSRF rejection with no real credentials
 
@@ -193,35 +189,35 @@ await navigator.locks.request('sharewise:iam:refresh-cookie', async () => {
 
 | Workflow | Result (Pass / Fail / Blocked) | Evidence or defect reference |
 | --- | --- | --- |
-| 1. Registration client validation | ____ | ____ |
-| 2. Real HTTP registration/cookies | ____ | ____ |
-| 3. Duplicate account | ____ | ____ |
-| 4. Generic login denial | ____ | ____ |
-| 5. Login/CSRF/cookies | ____ | ____ |
-| 6. In-memory session and expiry | ____ | ____ |
-| 7. Cross-tab Web Lock | ____ | ____ |
-| 8. Missing Web Locks API | ____ | ____ |
-| 9. CSRF negative probe and Origin observation | ____ | ____ |
-| 10. Accessibility/responsiveness/themes | ____ | ____ |
+| 1. Registration client validation | Pass | Recorded workflow result; `3823f2a` |
+| 2. Real HTTP registration/cookies | Pass | Recorded workflow result; `3823f2a` |
+| 3. Duplicate account | Pass | Recorded workflow result; `3823f2a` |
+| 4. Generic login denial | Pass | Recorded workflow result; `3823f2a` |
+| 5. Login/CSRF/cookies | Pass | Recorded workflow result; `3823f2a` |
+| 6. In-memory session and expiry | Pass | Recorded workflow result; `3823f2a` |
+| 7. Cross-tab Web Lock | Pass | Recorded workflow result; `3823f2a` |
+| 8. Missing Web Locks API | Pass | Steps recorded complete; maintainer confirmed acceptance November 22, 2026 |
+| 9. CSRF negative probe and Origin observation | Pass | Recorded workflow result; `3823f2a` |
+| 10. Accessibility/responsiveness/themes | Pass | Recorded workflow result; `3823f2a` |
 
-**Evidence rules:** Attach sanitized status/response-header *attribute* observations and screenshots of focus/layout as appropriate. Do not capture token/cookie values, signing keys, credential request bodies or real passwords. A failed/blocked required workflow remains an open Phase G gate even when CI is green.
+**Evidence rules:** Store only sanitized status/response-header *attribute* observations and focus/layout screenshots. Do not capture token/cookie values, signing keys, credential request bodies or real passwords. A future failed/blocked workflow requires reacceptance; automated CI does not replace browser evidence.
 
 **Explicitly outside browser-only acceptance:** The CI-backed PostgreSQL atomicity/lockout/race tests (IAM-AT01–AT08), cryptographic profile/issuer checks, missing/forged Origin rejection, operation-scope authorization and bearer-only Group-shaped routes, and absence of `UserRegistered`/Group-table writes must be signed off using the automated/architecture evidence below. The demo workspace currently does **not** provide a real Group API surface; do not manufacture browser evidence for it.
 
 ## Requirement-to-evidence trace
 
-| Requirements / scenarios | Strongest present evidence | Remaining Phase G action |
+| Requirements / scenarios | Strongest present evidence | Final merge verification |
 | --- | --- | --- |
-| IAM-A01–A05; IAM-AT01–AT08 | IAM domain/credential Unit tests; `IamAuthenticationIT`, `IamAuthenticationE2E`, `IamPersistenceE2E` and database constraints | Capture final-branch Unit/IT/E2E CI links |
-| IAM-A06–A09; IAM-A13; IAM-AT09–AT12 | `IamAuthenticationHttpTests`, `IamHttpAuthenticationE2E`, production JWT/credential tests | Verify actual HTTPS cookie storage, CSRF/Origin and header observations in browser |
-| IAM-A07, A10, A14; IAM-AT10, AT13, AT17 | `FullApplicationIamIngressTests`, JWT/DI/Modulith tests, production-wiring tests | Capture final-branch CI and independent trust-boundary review |
-| IAM-A11; IAM-AT14–AT15 | Frontend `identity-runtime`, `auth-session`, `authentication-form` and API tests with mocked HTTP | Complete **real browser** flows, Web Locks, accessibility and mobile/theme review |
-| IAM-A12; IAM-AT16 | Context/module verification and IAM migration/repository inspection | Review absence of `UserRegistered` publication and Group writes; sign off on reconciliation handoff below |
+| IAM-A01–A05; IAM-AT01–AT08 | IAM domain/credential Unit tests; `IamAuthenticationIT`, `IamAuthenticationE2E`, `IamPersistenceE2E` and database constraints | Required MR Unit/IT/E2E jobs must pass |
+| IAM-A06–A09; IAM-A13; IAM-AT09–AT12 | `IamAuthenticationHttpTests`, `IamHttpAuthenticationE2E`, production JWT/credential tests | Manual HTTPS/browser acceptance confirmed complete |
+| IAM-A07, A10, A14; IAM-AT10, AT13, AT17 | `FullApplicationIamIngressTests`, JWT/DI/Modulith tests, production-wiring tests | Review completed; required MR security/architecture tests must pass |
+| IAM-A11; IAM-AT14–AT15 | Frontend `identity-runtime`, `auth-session`, `authentication-form` and API tests with mocked HTTP | Manual browser, Web Locks and accessibility acceptance confirmed complete |
+| IAM-A12; IAM-AT16 | Context/module verification and IAM migration/repository inspection | Reviewed; event/bootstrap responsibility explicitly deferred to P2.4a/P2.2d |
 
 ## Bootstrap and follow-on handoff
 
 **Group identity projection:** P2.1a commits users only to `identity.users`; it does not publish `UserRegistered` events, create `groups.users`, or populate Group memberships. Consequently, a future P2.4a/P2.2d listener cannot rely on an event registry to replay accounts created **before** publication begins. That integration must provide an explicit, idempotent initial projection from an authoritative IAM account snapshot, account for registrations racing with the snapshot/cutover, and reconcile missing/stale Group identities. A suitable cutover needs a proven no-gap boundary (for example, a transactional publication/outbox boundary plus snapshot reconciliation); it is **not** safe to enable a listener and assume all historical registrations appear automatically. Do not backfill across bounded contexts from this slice or infer eligibility from a signed JWT. Account deletion ordering and reconciliation require their separately reviewed policy.
 
-**Refresh/logout:** P2.1a creates one durable, unconsumed refresh-token verifier attached to each initial session and issues the opaque cookie. P2.1b must consume/rotate it transactionally with replay detection, obey idle/absolute deadlines, and reuse `AuthCookieLock`/`AuthCoordinator`'s browser coordination policy, not create a second conflicting cookie-mutation lock. No refresh or logout endpoint is present here. P2.1d remains responsible for authoritative live account/session eligibility; currently verified access JWTs can remain accepted until expiry/skew without live introspection.
+**Refresh/logout handoff:** P2.1a creates one durable, unconsumed refresh-token verifier per initial session and issues the opaque refresh cookie. P2.1b consumes and rotates this existing token family, enforces replay/revocation and idle/absolute deadlines, and extends the current CSRF/Origin protection and `AuthCookieLock`/`AuthCoordinator` coordination instead of creating another cookie-mutation mechanism. The related [P2.1b.1 clock-skew/401 task](../backlog.md#p21---iam-vertical-slices) must replace the current `AuthSession` wall-clock rejection with backend-authoritative renewal and bounded retries, including multi-tab account mismatch protection. Neither refresh/logout nor live session eligibility exists in P2.1a; the latter remains P2.1d's responsibility.
 
-**Review gate:** Do not mark P2.1a's backlog item complete or authorize merge until the final CI references, real-browser results, independent review and any remaining exposure/operational limitations have been recorded and approved.
+**Merge gate:** Manual acceptance and independent review are complete. The implementation task can be marked complete in the backlog; merging remains conditional on successful required MR CI jobs and explicit authorization. The release/exposure limitations noted above remain follow-up work.

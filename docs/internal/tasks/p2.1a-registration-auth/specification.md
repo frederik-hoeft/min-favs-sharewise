@@ -1,6 +1,6 @@
 # P2.1a - Registration and initial authentication
 
-**Status:** P2.1.0 and P2.1a Phases A–E, F0 and F1 are approved; the maintainer confirmed green PostgreSQL/real-servlet F1 CI on November 21, 2026. Phase G live HTTPS browser acceptance, frontend checks, documentation reconciliation and final independent review remain open.
+**Status:** P2.1.0 and P2.1a Phases A–E, F0 and F1 are approved, with maintainer-confirmed PostgreSQL/real-servlet F1 CI on November 21, 2026. Phase G final-head CI evidence, the completed browser acceptance record, documentation review and final merge authorization remain open. This specification is the accepted target contract, not evidence that every Phase G gate has passed.
 
 ## Goal and scope
 
@@ -56,10 +56,10 @@ flowchart LR
 
 | Boundary | Current state | Remaining P2.1a responsibility |
 | --- | --- | --- |
-| IAM account/session policy, Flyway migrations, generated jOOQ adapters and transactional workflows | Phases A–C approved; PostgreSQL CI accepted; Phase E credential/JWT adapters reviewed | Wire the approved application services into HTTP without changing transaction and commit semantics |
-| Public register/login forms, `core/identity` API adapter, in-memory bearer state and Web Locks | Phase D approved; revised password-length validation implemented in E | Verify the live browser/HTTP flow in G |
-| Shared claims, JOSE, verified bearer admission, operation ingress and `IdentityContext` | P2.1.0 completed and approved; IAM signing adapter implemented in E | Provision trusted IAM keys/profile for deployment without introducing another codec or ingress system |
-| HTTP security, anonymous CSRF entry and refresh-cookie issuance | Framework-managed API bearer chain and public fallback in F0; no registration/login routes | Finish F0 verification/review, then implement controllers, CSRF/Origin and cookie behavior in F1 |
+| IAM account/session policy, Flyway migrations, generated jOOQ adapters and transactional workflows | Phases A–C and E approved; IAM authentication controllers dispatch the committed operations | Reconfirm final-head Unit/Integration/E2E CI evidence |
+| Public register/login forms, `core/identity` API adapter, in-memory bearer state and Web Locks | Phase D approved; revised password-length validation implemented in E | Complete final-head frontend CI and human browser acceptance |
+| Shared claims, JOSE, verified bearer admission, operation ingress and `IdentityContext` | P2.1.0 approved; IAM signer and deployment key initialization implemented | Confirm production key configuration in the final acceptance environment |
+| HTTP security, anonymous CSRF entry and refresh-cookie issuance | Ordered security chains approved in F0; endpoints and cookie/CSRF/Origin policy accepted in F1 | Verify final-head HTTPS browser behavior and real-servlet CI |
 
 The IAM encoder/issuer ports remain **private implementation seams**, with test implementations explicitly imported only in tests. Existing successful backend/CI and frontend gates establish the independent phases, not production credential issuance or live browser acceptance. An incomplete production adapter must fail closed rather than fabricate a token or silently activate test credentials.
 

@@ -22,10 +22,10 @@ The automated Unit gate verifies the Spring Boot MVC/security integration with t
 
 In particular, the API bearer path rejects missing mandatory trusted IAM wiring rather than operating with a fallback credential. Business operations must still require authenticated identity where necessary; the filter chain is not a general resource-policy enforcement layer. Temporal JWT validity is evaluated at external admission, not each internal operation dispatch. Continuations can reuse admitted evidence; any new external admission must verify its own credential, while authorization freshness for delayed work is business-owned.
 
-The current HTTP chain is manually assembled from Spring Security web primitives. Migration to framework-managed `SecurityFilterChain` beans is an explicit **P2.1a prerequisite** before introducing cookie/CSRF-backed login and refresh endpoints, and requires a refreshed Spring Security configuration dependency handoff. This Unit gate does not validate that future wiring.
+At the P2.1.0 acceptance point, the HTTP chain was assembled manually from Spring Security web primitives. The subsequent **P2.1a Phase F0** replaced it with framework-managed `SecurityFilterChain` beans before the F1 registration/login/CSRF endpoints were introduced. This historical Unit gate did not validate that later migration; see the [P2.1a acceptance record](../p2.1a-registration-auth/acceptance.md) for the later evidence and remaining browser gate.
 
 ## Acceptance history and deferred integration gates
 
 P2.1.0's independent review, human approval and baseline integration are complete. The earlier Unit evidence remains scoped to the shared claims/JOSE and ingress foundation, **not** a production IAM login or deployment acceptance.
 
-P2.1a owns the next concrete gates: real IAM signing/profile and PBKDF2 credential adapters, migration to framework-managed HTTP security chains, CSRF/refresh-cookie endpoints and real PostgreSQL/browser acceptance. Production key provisioning, network deployment and Group attestations retain their own gates; none is implied by the approval of P2.1.0.
+P2.1a subsequently implemented IAM signing/PBKDF2 adapters, framework-managed HTTP security chains and CSRF/refresh-cookie entry endpoints, with its own PostgreSQL/HTTP gates. Its final browser acceptance and deployment exposure checks remain independent. Group attestations retain a later implementation gate; none of those capabilities was established by P2.1.0 approval alone.
