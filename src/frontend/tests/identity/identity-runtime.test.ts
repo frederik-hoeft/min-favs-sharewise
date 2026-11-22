@@ -151,7 +151,7 @@ describe("Identity runtime with mock HTTP", () => {
     vi.useFakeTimers();
     const action = vi.fn(async () => undefined);
     const locks = {
-      request: (_name: string, options: LockOptions, _callback: (lock: Lock) => Promise<unknown>) =>
+      request: (_name: string, options: LockOptions) =>
         new Promise((_, reject) => options.signal?.addEventListener('abort', () =>
           reject(new DOMException('Timed out', 'AbortError')), { once: true })),
     } as LockManager;

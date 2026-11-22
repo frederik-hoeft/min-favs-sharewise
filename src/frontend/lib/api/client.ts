@@ -67,7 +67,9 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
         if (!Number.isFinite(timeoutMs) || timeoutMs < 0) throw new RangeError('Invalid HTTP request timeout');
         const hasExplicitAuthorization = initialHeaders.has('Authorization');
-        const { timeoutMs: _timeoutMs, body: _body, ...requestOptions } = options;
+        const requestOptions = { ...options };
+        delete requestOptions.timeoutMs;
+        delete requestOptions.body;
 
         async function attempt(allowRetry: boolean, boundSessionId?: string): Promise<T> {
             const headers = new Headers(initialHeaders);

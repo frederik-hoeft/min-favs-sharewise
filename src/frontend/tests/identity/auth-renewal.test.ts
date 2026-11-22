@@ -131,6 +131,26 @@ describe('transparent renewal and restoration', () => {
     expect(instance.session.getAccessToken()).toBeUndefined();
   });
 
+  it('preserves a newly renewed bearer when the replay returns an application-level 401', async () => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      calls.push(path);
+      if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (path === REFRESH_PATH) return jsonResponse(authenticationResponse('new'));
+      return (init?.headers as Headers).get('Authorization') === 'Bearer old'
+        ? problemResponse(401, 'invalid_credential')
+        : problemResponse(401, 'unauthenticated');
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('old'));
+
+    await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ status: 401, code: 'unauthenticated' });
+    expect(calls).toEqual([DOMAIN_PATH, CSRF_PATH, REFRESH_PATH, DOMAIN_PATH]);
+    expect(instance.session.getAccessToken()).toBe('new');
+    expect(instance.session.getSnapshot().status).toBe('authenticated');
+  });
+
   it.each([
     ['network loss', async () => { throw new TypeError('lost response'); }],
     ['malformed success', async () => jsonResponse({ accessToken: 'secret', tokenType: 'Bearer', expiresAt: 'bad' })],

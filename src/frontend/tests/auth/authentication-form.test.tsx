@@ -11,7 +11,11 @@ import { TestProviders } from "../support/TestProviders";
 import { ControlledLocks, authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
 
 const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
+  usePathname: () => window.location.pathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 
 const activeRuntimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function renderAuth(
@@ -245,6 +249,15 @@ describe('registration and login presentation', () => {
     const { container } = renderAuth(mode);
     const result = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(result.violations).toEqual([]);
+  });
+
+  it('preserves the current workspace page and query when offering sign-in', async () => {
+    window.history.replaceState({}, '', '/app/dummy3?tab=expenses');
+    const runtime = createIdentityRuntime({ locks: () => undefined, fetchImpl: vi.fn() as typeof fetch });
+    activeRuntimes.push(runtime);
+    render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
+    const link = await screen.findByRole('link', { name: 'Sign in' });
+    expect(link).toHaveAttribute('href', '/auth/login?next=%2Fapp%2Fdummy3%3Ftab%3Dexpenses');
   });
 
   it('restores the browser context and displays a context-change prompt without exposing the JWT', async () => {

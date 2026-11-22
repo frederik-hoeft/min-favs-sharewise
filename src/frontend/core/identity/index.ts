@@ -39,7 +39,6 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
         options.locks ?? (() => typeof navigator === 'undefined' ? undefined : navigator.locks)
     );
     // The hooks execute only after the runtime is fully constructed.
-    let auth: AuthCoordinator;
     const api = createApiClient({
         async onRequest(path, headers) {
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || headers.has('Authorization')) return;
@@ -54,21 +53,21 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || context.hasExplicitAuthorization) return false;
             const rejected = sentHeaders.get('Authorization');
             if (!rejected?.startsWith('Bearer ') || !context.sessionId) return false;
+            if (context.attempt === 'initial' && !context.replayable) return false;
+            // Only Spring's pre-dispatch bearer failures may affect the tab's credentials.
+            const problem = await parseErrorResponse(response.clone());
+            if (!PRE_DISPATCH_401_CODES.has(problem.code)) return false;
             if (context.attempt === 'replay') {
                 if (session.getSessionId() === context.sessionId && session.matchesAccessToken(rejected.slice(7))) {
                     session.invalidate('unauthorized');
                 }
                 return false;
             }
-            if (!context.replayable) return false;
-            // Only Spring's pre-dispatch bearer failures permit business-operation replay.
-            const problem = await parseErrorResponse(response.clone());
-            if (!PRE_DISPATCH_401_CODES.has(problem.code)) return false;
             await auth.recover(rejected.slice(7), context.sessionId);
             return true;
         },
     }, options.fetchImpl ?? fetch);
     const identityApi = new IdentityApi(api);
-    auth = new AuthCoordinator(identityApi, session, cookieLock, channel);
+    const auth = new AuthCoordinator(identityApi, session, cookieLock, channel);
     return { api, auth, cookieLock, session, dispose: () => { auth.dispose(); channel.dispose(); session.dispose(); } };
 }
