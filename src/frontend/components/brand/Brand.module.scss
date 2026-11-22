@@ -1,3 +1,5 @@
+@use "@/styles/breakpoints";
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -38,4 +40,10 @@
 
 .period {
   color: var(--sw-accent);
+}
+
+@include breakpoints.down(narrow) {
+  .compactOnNarrow .wordmark {
+    display: none;
+  }
 }

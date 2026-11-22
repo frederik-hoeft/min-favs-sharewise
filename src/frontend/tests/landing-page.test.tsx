@@ -30,13 +30,15 @@ describe("ShareWise landing page", () => {
     }
     const header = screen.getByRole("banner");
     expect(within(header).getByRole("link", { name: /sharewise, back to top/i })).toHaveAttribute("href", "#top");
-    const explore = within(header).getByRole("link", { name: /take a look/i });
-    expect(explore).toHaveAttribute("href", "#product");
-    expect(explore.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
-    expect(explore.textContent).toBe("Take a look");
-    const primaryAction = screen.getByRole("link", { name: /explore sharewise/i });
-    expect(primaryAction.style.getPropertyValue("--button-color")).toBe("var(--sw-action-ink)");
-    const secondaryAction = screen.getByRole("link", { name: /see how it works/i });
+    expect(within(header).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
+    expect(within(header).getByRole("link", { name: "Create account" })).toHaveAttribute("href", "/auth/register");
+    const hero = screen.getByRole("region", { name: /keep the plans.*lose the math/i });
+    const primaryAction = within(hero).getByRole("link", { name: "Get started" });
+    expect(primaryAction).toHaveAttribute("href", "/auth/register");
+    expect(primaryAction.querySelector(".mantine-Button-root")?.getAttribute("style"))
+      .toContain("--button-color: var(--sw-action-ink)");
+    const secondaryAction = screen.getByRole("link", { name: /explore the product/i });
+    expect(secondaryAction).toHaveAttribute("href", "#product");
     expect(secondaryAction.style.getPropertyValue("--button-hover"))
       .toBe("var(--mantine-color-default-hover)");
     const closing = screen.getByRole("region", { name: /better together.*clearer with sharewise/i });

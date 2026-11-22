@@ -31,8 +31,22 @@
   gap: 0.875rem;
 }
 
+.ctaLink {
+  display: inline-flex;
+  text-decoration: none;
+}
+
 .cta {
   padding-inline: 1.1875rem;
+}
+
+.login {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--sw-ink);
+  text-decoration: none;
+  white-space: nowrap;
+  &:hover { color: var(--sw-accent); }
 }
 
 @include breakpoints.down(desktop) {
@@ -52,9 +66,13 @@
 }
 
 @include breakpoints.down(mobile) {
-  .cta {
-    display: none;
-  }
+  .actions { gap: 0.5rem; }
+  .cta { padding-inline: 0.75rem; }
+}
+
+@include breakpoints.down(compact) {
+  .actions { gap: 0.375rem; }
+  .cta { padding-inline: 0.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,45 @@
+@use "@/styles/breakpoints";
+
+.container {
+  width: 100%;
+  max-width: 29rem;
+}
+
+.card {
+  padding: 2.5rem;
+  background: var(--sw-surface);
+  border-color: var(--sw-border);
+  box-shadow: 0 1.25rem 4rem -2.75rem rgba(23, 30, 54, 0.22);
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.eyebrow {
+  color: var(--sw-accent);
+  letter-spacing: 0.08em;
+}
+
+.submit { margin-top: 0.5rem; }
+
+.errorFocus:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled, currentColor);
+  outline-offset: 4px;
+  border-radius: var(--mantine-radius-md);
+}
+
+.textLink {
+  color: var(--sw-accent);
+  font-weight: 650;
+  text-decoration: none;
+  &:hover { text-decoration: underline; }
+}
+
+.secondary { margin-top: 1.5rem; }
+
+@include breakpoints.down(mobile) {
+  .card { padding: 1.75rem 1.25rem; }
+}

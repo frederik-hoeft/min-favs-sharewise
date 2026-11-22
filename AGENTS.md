@@ -4,7 +4,16 @@ ShareWise is a Java 25/Spring Boot + Next.js project at starter stage. Before ch
 
 Prefer maintainable, correct, well-factored solutions over minimal demonstrations that only pass a happy-path test. Preserve explicit invariants, transaction ordering, history immutability, module ownership, and failure semantics. Build focused DI-managed application services with immutable operation DTOs and efficient database-side projections through ports; keep JPA/jOOQ/JDBC infrastructure private to adapters. Follow the [implemented persistence architecture](docs/architecture/persistence.md) for schema ownership, migrations and data access; the [messaging design](docs/stack/messaging.md) for durable event publication, idempotency and recovery; and the [security design](docs/stack/security.md) for issuer-qualified authorization, IAM sessions, and token validation. Avoid accidental cross-context data access or synchronous distributed coupling. Each bounded context is a Spring Modulith module: use other modules only through their [published API](docs/architecture.md#module-structure-and-published-apis), and declare every module dependency in `allowedDependencies`; the backend build verifies these rules. Treat authorization and financial history as correctness-critical.
 
-For new features, refactors and reviews, use [engineering-quality](.agents/skills/engineering-quality/SKILL.md), which emphasizes proactive reuse, questioning unjustified conventions, and improving surrounding architecture when appropriate to the task. For **all documentation work**, including README, developer guides, design, reference, and task planning, use [documentation](.agents/skills/documentation/SKILL.md). The authoritative product documentation lives in `docs/`, not in an agent skill; do not duplicate it across agent configurations.
+## Repository-local skills
+
+The skill files under `.agents/skills/` are **not necessarily discovered or loaded automatically** by the agent host. Before substantial work, explicitly open and read the applicable `SKILL.md` files below; a link in `AGENTS.md` does not substitute for their contents. Consult supporting references linked from a skill when relevant, rather than loading every reference for a small change. If work spans code and documentation, apply both skills.
+
+| Work | Required skill |
+| --- | --- |
+| Implementing features, refactoring, debugging, or reviewing code | [Engineering quality](.agents/skills/engineering-quality/SKILL.md): reuse, clear ownership, architectural coherence, invariants, and testing. |
+| Writing, editing, reviewing, or updating documentation, including docs accompanying code changes | [Documentation](.agents/skills/documentation/SKILL.md): audience-focused explanations, consistent contracts, steady-state prose, and Markdown conventions. |
+
+Revisit skill selection when a task expands into another kind of work; apply the guidance proportionately to the change. Keep this table current if repository skills are added or renamed. The authoritative product documentation lives in `docs/`, not in agent skills; do not duplicate it across agent configurations.
 
 For Java code, always declare local variables and enhanced-for loop variables with **explicit types**, including in tests and try-with-resources. Do not use Java `var`; favor reviewable types over inferred declarations.
 

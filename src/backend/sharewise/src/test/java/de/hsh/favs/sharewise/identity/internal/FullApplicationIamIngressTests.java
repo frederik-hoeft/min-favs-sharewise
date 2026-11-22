@@ -1,19 +1,29 @@
 package de.hsh.favs.sharewise.identity.internal;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
+import de.hsh.favs.sharewise.identity.internal.web.IamBearerIngressFilter;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
+import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
 import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import jakarta.servlet.Filter;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -32,12 +42,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.TestComponent;
+import org.springframework.boot.web.servlet.DelegatingFilterProxyRegistrationBean;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.web.FilterChainProxy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -65,7 +83,140 @@ class FullApplicationIamIngressTests {
     private static final KeyPair KEY = generateKey();
 
     @Autowired MockMvc mvc;
+    @Autowired ApplicationContext context;
+    @Autowired FilterChainProxy securityFilterChain;
+    @Autowired org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping handlerMappings;
+    // This Unit-suite context excludes DataSource auto-configuration. Isolate the
+    // real readiness probe so this test verifies HTTP security, not database wiring.
+    @MockitoBean(name = "dataSourceReadinessIndicator", enforceOverride = true)
+    ReadinessIndicator dataSourceReadinessIndicator;
     @Autowired @Qualifier("iamPrimaryJwtCredentialCodec") JwtCredentialCodec iamPrimaryJwtCredentialCodec;
+
+    @Test
+    void bootRegistersOneOrderedSecurityProxyWithoutDuplicatingBearerVerification() {
+        assertEquals(1, context.getBeansOfType(FilterChainProxy.class).size());
+        assertSame(securityFilterChain, context.getBean("springSecurityFilterChain", FilterChainProxy.class));
+        assertEquals(1, context.getBeansOfType(DelegatingFilterProxyRegistrationBean.class).size());
+        // The ingress filter is owned by the API chain, never registered as a servlet Filter bean.
+        assertTrue(context.getBeansOfType(IamBearerIngressFilter.class).isEmpty());
+
+        List<SecurityFilterChain> chains = securityFilterChain.getFilterChains();
+        assertEquals(2, chains.size());
+        MockHttpServletRequest apiRoot = new MockHttpServletRequest("GET", "/api");
+        MockHttpServletRequest apiChild = new MockHttpServletRequest("GET", "/api/__test/identity/optional");
+        MockHttpServletRequest outside = new MockHttpServletRequest("GET", "/public");
+        assertTrue(chains.get(0).matches(apiRoot));
+        assertTrue(chains.get(0).matches(apiChild));
+        assertFalse(chains.get(0).matches(outside));
+        assertTrue(chains.get(1).matches(outside));
+
+        List<Filter> apiFilters = chains.get(0).getFilters();
+        assertEquals(1, apiFilters.stream().filter(IamBearerIngressFilter.class::isInstance).count());
+        assertTrue(apiFilters.stream().anyMatch(AuthorizationFilter.class::isInstance));
+        int ingressPosition = indexOf(apiFilters, IamBearerIngressFilter.class);
+        int authorizationPosition = indexOf(apiFilters, AuthorizationFilter.class);
+        assertTrue(ingressPosition < authorizationPosition);
+        assertEquals(0, chains.get(1).getFilters().stream()
+            .filter(IamBearerIngressFilter.class::isInstance).count());
+    }
+
+    @Test
+    void everyProductionApiControllerDeclaresItsAdmissionContract() {
+        for (java.util.Map.Entry<org.springframework.web.servlet.mvc.method.RequestMappingInfo,
+                org.springframework.web.method.HandlerMethod> mapping : handlerMappings.getHandlerMethods().entrySet()) {
+            org.springframework.web.method.HandlerMethod handler = mapping.getValue();
+            // Synthetic handlers are tested separately below; real application
+            // controllers in any bounded context must never be unclassified.
+            if (handler.getBeanType().getName().contains("Tests$")) {
+                continue;
+            }
+            if (mapping.getKey().getPatternValues().stream().noneMatch(path -> path.startsWith("/api/"))) {
+                continue;
+            }
+            de.hsh.favs.sharewise.shared.infra.web.ApiAccess declaration =
+                org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation(
+                    handler.getMethod(), de.hsh.favs.sharewise.shared.infra.web.ApiAccess.class);
+            if (declaration == null) {
+                declaration = org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation(
+                    handler.getBeanType(), de.hsh.favs.sharewise.shared.infra.web.ApiAccess.class);
+            }
+            org.junit.jupiter.api.Assertions.assertNotNull(declaration,
+                    () -> "Missing @ApiAccess: " + handler);
+            if (declaration.value() == de.hsh.favs.sharewise.shared.infra.web.ApiAccess.Mode.CUSTOM) {
+                org.junit.jupiter.api.Assertions.assertFalse(declaration.policy().isBlank());
+            } else {
+                org.junit.jupiter.api.Assertions.assertTrue(declaration.policy().isBlank());
+            }
+        }
+    }
+
+    @Test
+    void explicitlyDeclaredRouteAdmissionDeniesUnclassifiedHandlersAndEnforcesCustomPolicy() throws Exception {
+        String bearer = "Bearer " + token();
+        // An explicitly anonymous wildcard must not override the exact
+        // protected/unclassified MVC mappings, irrespective of map iteration order.
+        mvc.perform(get("/api/__test/identity/arbitrary-other-route"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.wildcard").value("true"));
+        // A new controller cannot make an endpoint public by omitting @ApiAccess.
+        mvc.perform(get("/api/__test/identity/unclassified"))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/__test/identity/unclassified")
+                .header(HttpHeaders.AUTHORIZATION, bearer))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("access_denied"));
+        mvc.perform(get("/api/__test/identity/custom"))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/__test/identity/custom")
+                .header(HttpHeaders.AUTHORIZATION, bearer))
+            .andExpect(status().isForbidden());
+        mvc.perform(get("/api/__test/identity/custom")
+                .header(HttpHeaders.AUTHORIZATION, bearer).header("X-Allowed-Test", "yes"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void applicationApiChainProtectsOtherContextsWithoutSeparateMiddlewareOrCookieCsrf() throws Exception {
+        String credential = "Bearer " + token();
+        String endpoint = "/api/groups/v1/__test/identity";
+        // Group-owned HTTP surfaces inherit IAM bearer verification from the one API chain.
+        mvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, credential))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.userId").value(ALICE.toString()));
+        mvc.perform(get(endpoint))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("invalid_credential"));
+        // Cookie CSRF/Origin requirements apply to IAM auth mutations, not bearer-only Group POSTs.
+        mvc.perform(post(endpoint).header(HttpHeaders.AUTHORIZATION, credential))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.userId").value(ALICE.toString()));
+        mvc.perform(post(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("invalid_credential"));
+    }
+
+    private static int indexOf(List<Filter> filters, Class<? extends Filter> type) {
+        for (int index = 0; index < filters.size(); index++) {
+            if (type.isInstance(filters.get(index))) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    @Test
+    void healthAndNonApiEndpointsDoNotRequireTrustedBearerEvidence() throws Exception {
+        // Health bypasses bearer validation even when a malformed bearer is supplied.
+        when(dataSourceReadinessIndicator.isReady()).thenReturn(true);
+        mvc.perform(get("/api/system/v1/health").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("UP"));
+        // Non-API routes are not intercepted by IAM's verifier; they retain their MVC status.
+        mvc.perform(get("/__test/non-api").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
+            .andExpect(status().isNotFound());
+    }
 
     @Test
     void bootRegisteredHttpSecurityBindsAuthenticatedAndAnonymousOperations() throws Exception {
@@ -168,12 +319,31 @@ class FullApplicationIamIngressTests {
             this.ingress = ingress;
         }
 
+        @ApiAccess(ApiAccess.Mode.ANONYMOUS)
+        @GetMapping("/api/__test/identity/{*rest}")
+        Map<String, String> permissiveWildcardMustNotShadowExactRoutes() {
+            return Map.of("wildcard", "true");
+        }
+
+        @ApiAccess
         @GetMapping("/api/__test/identity/protected")
         Map<String, String> protectedIdentity() {
             return ingress.dispatch(IdentityContext.class,
                 identity -> Map.of("userId", identity.requireUserId().toString()));
         }
 
+        @GetMapping("/api/__test/identity/unclassified")
+        Map<String, String> unclassified() {
+            return Map.of("shouldNeverBeReachable", "true");
+        }
+
+        @ApiAccess(value = ApiAccess.Mode.CUSTOM, policy = "test-header")
+        @GetMapping("/api/__test/identity/custom")
+        Map<String, String> custom() {
+            return Map.of("accepted", "true");
+        }
+
+        @ApiAccess(ApiAccess.Mode.ANONYMOUS)
         @GetMapping("/api/__test/identity/optional")
         Map<String, String> optionalIdentity() {
             return ingress.dispatch(IdentityContext.class,
@@ -181,12 +351,49 @@ class FullApplicationIamIngressTests {
         }
     }
 
+    @TestComponent
+    @RestController
+    static final class CrossContextProbeController {
+        private final OperationIngressDispatcher ingress;
+
+        CrossContextProbeController(OperationIngressDispatcher ingress) {
+            this.ingress = ingress;
+        }
+
+        @ApiAccess
+        @GetMapping("/api/groups/v1/__test/identity")
+        Map<String, String> getIdentity() {
+            return ingress.dispatch(IdentityContext.class,
+                identity -> Map.of("userId", identity.requireUserId().toString()));
+        }
+
+        @ApiAccess
+        @PostMapping("/api/groups/v1/__test/identity")
+        Map<String, String> postIdentity() {
+            return getIdentity();
+        }
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class Fixture {
+        @Bean
+        de.hsh.favs.sharewise.shared.infra.web.ApiCustomAccessPolicy testHeaderPolicy() {
+            return new de.hsh.favs.sharewise.shared.infra.web.ApiCustomAccessPolicy() {
+                @Override public String name() { return "test-header"; }
+                @Override public boolean allows(jakarta.servlet.http.HttpServletRequest request) {
+                    return "yes".equals(request.getHeader("X-Allowed-Test"));
+                }
+            };
+        }
         @Bean
         JwtCredentialCodec iamPrimaryJwtCredentialCodec() {
             return new JwtCredentialCodec(PROFILE,
                 new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
+        }
+
+        @Bean
+        CrossContextProbeController crossContextProbeController(OperationIngressDispatcher ingress) {
+            return new CrossContextProbeController(ingress);
         }
 
         @Bean

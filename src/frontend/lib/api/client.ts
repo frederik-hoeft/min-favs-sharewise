@@ -2,7 +2,11 @@ import { ApiError, parseErrorResponse } from './api-error.ts';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
+    /** Abort a stalled network request; 0 deliberately disables the deadline. */
+    readonly timeoutMs?: number;
 }
+
+export const DEFAULT_API_TIMEOUT_MS = 45_000;
 
 export interface ApiClientHooks {
     /**
@@ -10,10 +14,11 @@ export interface ApiClientHooks {
      */
     readonly onRequest?: (path: string, headers: Headers) => Promise<void> | void;
     /**
-     * Optional hook for Phase 2 to handle bounded 401 token renewal and single-retry.
+     * Observe unauthorized responses, clear a rejected bearer, or later perform bounded renewal.
+     * Sent headers identify the credential actually used, avoiding stale-401 races.
      * Return {@code true} to retry the request once with updated credentials.
      */
-    readonly onUnauthorized?: (path: string, response: Response) => Promise<boolean>;
+    readonly onUnauthorized?: (path: string, response: Response, sentHeaders: Readonly<Headers>) => Promise<boolean>;
 }
 
 export interface ApiClient {
@@ -71,16 +76,31 @@ export function createApiClient(
             await hooks.onRequest(targetPath, headers);
         }
 
+        const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+        if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+            throw new RangeError('Invalid HTTP request timeout');
+        }
+        const controller = new AbortController();
+        // Do not race the fetch promise. The caller may hold the cross-tab cookie
+        // lock and may only release it after fetch has actually settled/aborted.
+        const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+        const abort = () => controller.abort();
+        options.signal?.addEventListener('abort', abort, { once: true });
+        if (options.signal?.aborted) controller.abort();
         let response: Response;
         try {
+            const { timeoutMs: _timeoutMs, body: _body, ...requestOptions } = options;
             response = await fetchImpl(targetPath, {
-                ...options,
+                ...requestOptions,
+                signal: controller.signal,
                 headers,
                 body: serializedBody,
                 credentials: options.credentials ?? 'same-origin',
                 cache: options.cache ?? 'no-store',
             });
         } catch (cause) {
+            if (timeout !== undefined) clearTimeout(timeout);
+            options.signal?.removeEventListener('abort', abort);
             throw new ApiError({
                 status: 0,
                 code: 'network_error',
@@ -89,27 +109,42 @@ export function createApiClient(
             });
         }
 
-        if (response.status === 401 && allowUnauthorizedRetry && hooks.onUnauthorized) {
-            const shouldRetry = await hooks.onUnauthorized(targetPath, response);
-            if (shouldRetry) {
-                return executeRequest<T>(path, options, false);
+        try {
+            if (response.status === 401 && allowUnauthorizedRetry && hooks.onUnauthorized) {
+                const shouldRetry = await hooks.onUnauthorized(targetPath, response, headers);
+                if (shouldRetry) {
+                    return executeRequest<T>(path, options, false);
+                }
             }
-        }
 
-        if (!response.ok) {
-            throw await parseErrorResponse(response);
-        }
+            if (!response.ok) {
+                throw await parseErrorResponse(response);
+            }
 
-        if (response.status === 204) {
-            return undefined as T;
-        }
+            if (response.status === 204) {
+                return undefined as T;
+            }
 
-        const contentType = response.headers.get('content-type') ?? '';
-        if (contentType.includes('json')) {
-            return (await response.json()) as T;
+            try {
+                const contentType = response.headers.get('content-type') ?? '';
+                if (contentType.includes('json')) {
+                    return (await response.json()) as T;
+                }
+                return (await response.text()) as unknown as T;
+            } catch {
+                // Headers can arrive after a mutation commits, even if the body
+                // is lost, truncated or aborted. Surface an uncertain outcome.
+                throw new ApiError({
+                    status: 0,
+                    code: 'invalid_response',
+                    title: 'Response Unavailable',
+                    detail: 'Unable to read the server response.',
+                });
+            }
+        } finally {
+            if (timeout !== undefined) clearTimeout(timeout);
+            options.signal?.removeEventListener('abort', abort);
         }
-
-        return (await response.text()) as unknown as T;
     }
 
     return {

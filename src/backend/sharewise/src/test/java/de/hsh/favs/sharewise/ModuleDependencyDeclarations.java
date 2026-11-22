@@ -67,7 +67,8 @@ final class ModuleDependencyDeclarations {
         String normalized = dependency.replaceAll("\\s+", "");
         return normalized.endsWith("::*") || normalized.endsWith("::**")
                 || normalized.equals("shared")
-                || module.equals("system") && !normalized.equals("shared::health");
+                || module.equals("system") && !normalized.equals("shared::health")
+                        && !normalized.equals("shared::web");
     }
 
     /**

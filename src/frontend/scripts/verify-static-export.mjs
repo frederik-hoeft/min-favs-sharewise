@@ -15,6 +15,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const excluded = new Set(["node_modules", ".next", ".next-export", "out", "coverage", ".git"]);
 const routes = [
   { path: "/", text: "Keep the plans." },
+  { path: "/auth/login", text: "Welcome back." },
+  { path: "/auth/register", text: "Start sharing clearly." },
   { path: "/app", text: "Your workspace." },
   { path: "/app/dummy1", text: "This placeholder demonstrates a standard feature page" },
   { path: "/app/dummy2", text: "A second destination for validating links" },
@@ -116,6 +118,13 @@ async function main() {
           throw new Error(`Static route ${route.path}: HTTP ${response.status} or missing expected page content`);
         }
         console.log(`Static page OK: ${route.path}`);
+      }
+      // Old root-level authentication URLs must not remain exported as aliases.
+      for (const retired of ["/login", "/register"]) {
+        const response = await fetch(`${base}${retired}`);
+        if (response.status !== 404) {
+          throw new Error(`Retired route ${retired} should return 404 (got ${response.status})`);
+        }
       }
       for (const extension of [".css", ".js"]) {
         const path = await firstAsset(output, join(output, "_next/static"), extension);

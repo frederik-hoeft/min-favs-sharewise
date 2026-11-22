@@ -1,6 +1,6 @@
 # Development environment
 
-**Status:** Development setup guidance for the current platform foundations and frontend demonstration. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
+**Status:** Development setup for the implemented platform foundations, IAM initial authentication and frontend demonstration workspace. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
 ## VS Code Dev Containers
 
@@ -33,9 +33,43 @@ The application uses **PostgreSQL 18**. The [persistence architecture](architect
 
 Flyway applies the migrations in `src/main/resources/db/migration/` at startup. Each bounded context owns one schema (`identity`, `groups`, `finance`, `files`, `notifications`); the Flyway history lives in schema `flyway`. Hibernate only validates its mappings (`spring.jpa.hibernate.ddl-auto=validate`). Migration files follow `db/migration/<context>/V<yyyyMMddHHmm>__<context>_<description>.sql` (cross-cutting migrations such as the schema baseline use `db/migration/platform/`) and are immutable once committed and pushed; local work-in-progress migrations may be edited after resetting the local database.
 
+The IAM persistence adapters use committed jOOQ schema classes generated against **migrated PostgreSQL**, not handwritten table definitions. After a Flyway schema change, regenerate them from the development container with the database running and migrated:
+
+```bash
+cd src/backend/sharewise
+./mvnw -Pjooq-codegen-identity \
+  -Djooq.codegen.jdbc.url=jdbc:postgresql://postgres:5432/sharewise \
+  -Djooq.codegen.jdbc.user=sharewise_migrator \
+  org.jooq:jooq-codegen-maven:generate
+```
+
+The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role. Review and commit the generated sources under `identity/internal/auth/persistence/generated/` alongside the Flyway change. Ordinary Maven builds use those checked-in sources and do not contact PostgreSQL for code generation. The generator profile is opt-in and requires its plugin artifacts, which are not included in the Maven-only offline handoff; CI generation-freshness checking is still planned.
+
 `application.properties` contains dev-only defaults for the dev-container database. The production image uses the `production` profile and required password files via the [Compose runtime configuration](development/production-compose.md). Other non-production environments may override the dev values with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
 The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
+
+## Initial IAM authentication (P2.1a)
+
+Production IAM password encoding and access-token signing are enabled only with explicitly provisioned settings. Without `sharewise.iam.auth.enabled=true`, the production authentication services and signing codec are **not** registered; the existing bearer ingress remains fail-closed. The `/api/iam/v1/auth/{register,login}` and `/api/iam/v1/auth/csrf` HTTP routes are enabled by the same flag. Without configured trust and valid signing keys, the API rejects bearer and credential-entry requests rather than falling back to test credentials.
+
+The production password encoder uses Spring Security's `Pbkdf2PasswordEncoder` and the JDK's PBKDF2-HMAC-SHA256 provider, with **600,000 iterations, a random 16-byte (128-bit) salt, and a 32-byte (256-bit) subkey**. Its fixed, unversioned stored format is 96 lowercase hex characters (`salt || subkey`); unknown/malformed formats fail verification. Registration accepts **8–256 UTF-16 code units**, consistent with Java `String.length()` and JavaScript `string.length`; login allows shorter previously issued passwords but enforces the same maximum. Passwords are neither trimmed nor normalized, and no bcrypt-style UTF-8 byte limit or truncation applies. Unpaired UTF-16 surrogates are rejected. Hash upgrading and alternate stored profiles are outside this WIP branch.
+
+The demo does not provision a common-password blocklist or implement an in-process hashing semaphore. PBKDF2 requires CPU time per verification, not Argon2-style working memory; benchmark concurrency before public exposure. Source/edge throttling or rate limiting can be supplied by a reverse proxy/WAF; account lockout remains implemented by IAM. Do not silently lower the configured PBKDF2 work factor to address load.
+
+In the local production-style Compose deployment, **IAM key provisioning is automated** by the one-shot `iam-key-init` service: it generates a P-256 ES256 key into a protected Docker private-key volume if explicitly permitted, stores the corresponding public key in an independent public-only volume, and blocks backend startup on missing or mismatched keys. Public verification material can be exported for other services without mounting or exporting the private volume. See [the deployment IAM key runbook](../deploy/README.md#iam-jwt-signing-key-provisioning-and-distribution) for first-use provisioning, production `require-existing` mode, export, permissions, backup and rotation constraints.
+
+Outside that Compose deployment, the application accepts **externally provisioned** unencrypted PKCS#8 P-256 PEM private keys and SPKI PEM public keys via `sharewise.iam.auth.keys[]`, along with the configured issuer, audience, active key ID and `sharewise.iam.auth.enabled=true`. Exactly one key is active for signing; additional configured keys may be public-only verification keys for rotation. The signer never generates production keys implicitly at application startup.
+
+The configured IAM issuer and audience must be the same trusted values used by bearer verification. The signed primary profile has `typ=sw-iam-access+jwt`, a default five-minute access lifetime (configurable below), 30-second clock skew and a 4 KiB token limit. The JWT profile maximum lifetime follows the configured access lifetime. Both issuance and verification use the same named `iamPrimaryJwtCredentialCodec` from the P2.1.0 infrastructure; a valid signature alone does not prove the current session is still eligible (P2.1d). No JWT signing key or fake credential fallback is bundled in the application image. Never log keys, raw credentials or hashes.
+
+Session and lockout settings are bound from `sharewise.iam.auth` and validated at startup. Defaults are `session.access-lifetime=5m`, `session.minimum-access-lifetime=1m`, `session.idle-lifetime=7d`, `session.absolute-lifetime=30d`, `lockout.threshold=5` and `lockout.duration=15m`. The minimum access lifetime may be configured but cannot fall below the two-second JWT timestamp-precision safety floor; `access-lifetime` must meet that minimum and cannot exceed one hour. The idle deadline must be at least the access lifetime and no longer than 90 days; the absolute deadline must be at least the idle lifetime and no longer than 365 days. The lockout threshold must be 1–100 and its duration greater than zero and at most one day. Invalid configuration prevents startup.
+
+**Browser credential entry.** `GET /api/iam/v1/auth/csrf` returns a masked request token with `Cache-Control: no-store` and a host-only `__Host-sharewise-csrf` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`). Registration and login POSTs require the matching `X-XSRF-TOKEN` request header, CSRF cookie, and an exact same-origin `Origin` header. The Spring Security CSRF and Origin filters reject missing/invalid proof before the IAM operation is dispatched. Accepted registration returns `201` and login `200`, with a short-lived bearer JWT in JSON and a distinct `__Host-sharewise-refresh` cookie, also `Secure`, `HttpOnly`, `SameSite=Strict`, host-only, and `Path=/`. The refresh cookie expires no later than the committed session's idle/absolute deadline; its value is never sent in JSON. Successful authentication clears the CSRF cookie; the browser obtains a new token before any later mutation. Rejected credentials, invalid requests, and duplicate registrations never issue refresh cookies.
+
+Local HTTP test clients may inspect the `Secure` cookies, but Phase G browser acceptance uses a real **HTTPS** origin so storage/sending of the host-prefixed cookies is verified rather than assumed. The production Nginx TLS terminator forwards the external origin through its trusted proxy network; Spring's production profile interprets only those proxy-provided forwarded headers. Do not enable forwarded-header trust for arbitrary untrusted client traffic. P2.1b still owns refresh, logout and rotation; no cookie-only request can authenticate a bearer-protected operation. Before public exposure, configure edge-level request size/rate limits and benchmark PBKDF2 load.
+
+For real-browser registration/login acceptance and evidence collection, use the [P2.1a Phase G acceptance checklist](internal/tasks/p2.1a-registration-auth/acceptance.md).
 
 ## Build, test and run
 

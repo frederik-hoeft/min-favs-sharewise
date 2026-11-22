@@ -1,33 +1,69 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
 import de.hsh.favs.sharewise.identity.internal.IamCredentialVerifier;
+import de.hsh.favs.sharewise.identity.transport.IamApiSecurityContribution;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.Optional;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.web.DefaultSecurityFilterChain;
-import org.springframework.security.web.FilterChainProxy;
-import org.springframework.security.web.context.SecurityContextHolderFilter;
-import org.springframework.security.web.context.NullSecurityContextRepository;
-import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfException;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
 
 /**
- * Minimal Spring Security HTTP filter chain for verified primary bearer ingress.
- *
- * <p>URL authorization and login/refresh/cookie flows remain separate tasks. The
- * verifier rejects invalid supplied bearers before MVC dispatch, but protected
- * application operations must still require an authenticated {@code IdentityContext}.
- *
- * <p>The verifier filter is owned only by this chain, never registered a second
- * time as an ordinary servlet filter.
+ * IAM-owned HTTP authentication policy contributed to the application-wide API chain.
+ * The host composes the chains; IAM owns primary bearer verification and the
+ * cookie-backed credential-entry protections.
  */
 @Configuration(proxyBeanMethods = false)
 public class IamHttpSecurityConfiguration {
 
     @Bean
-    FilterChainProxy iamSecurityFilterChain(IamCredentialVerifier verifier) {
-        return new FilterChainProxy(new DefaultSecurityFilterChain(
-            PathPatternRequestMatcher.pathPattern("/api/**"),
-            new SecurityContextHolderFilter(new NullSecurityContextRepository()),
-            new IamBearerIngressFilter(verifier)));
+    CsrfTokenRepository iamCsrfTokenRepository() {
+        CookieCsrfTokenRepository repository = new CookieCsrfTokenRepository();
+        repository.setCookieName("__Host-sharewise-csrf");
+        repository.setHeaderName("X-XSRF-TOKEN");
+        repository.setCookieCustomizer(cookie -> cookie.path("/").secure(true).httpOnly(true).sameSite("Strict"));
+        return repository;
     }
 
+    @Bean
+    IamApiSecurityContribution iamApiSecurityContribution(IamCredentialVerifier verifier,
+            CsrfTokenRepository iamCsrfTokenRepository) {
+        return new IamApiSecurityContribution() {
+            @Override
+            public boolean hasVerifiedIdentity(HttpServletRequest request) {
+                Object evidence = request.getAttribute(IamBearerIngressFilter.VERIFIED_INGRESS_ATTRIBUTE);
+                return evidence instanceof Optional<?> verified && verified.isPresent();
+            }
+
+            @Override
+            public void contribute(HttpSecurity http) {
+                http.csrf(csrf -> csrf.csrfTokenRepository(iamCsrfTokenRepository)
+                .csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler())
+                .requireCsrfProtectionMatcher(IamCredentialEntryFilter::isAuthMutation))
+            .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
+                if (hasVerifiedIdentity(request)) {
+                    IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
+                            "access_denied", "Access Denied");
+                } else {
+                    response.setHeader(org.springframework.http.HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+                    IamHttpProblemWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED,
+                            "authentication_required", "IAM Authentication Required");
+                }
+            }).accessDeniedHandler((request, response, exception) -> {
+                boolean csrfFailure = exception instanceof CsrfException;
+                IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
+                        csrfFailure ? "csrf_invalid" : "access_denied",
+                        csrfFailure ? "CSRF Validation Failed" : "Access Denied");
+            }))
+            .addFilterBefore(new IamBearerIngressFilter(verifier), CsrfFilter.class)
+            .addFilterAfter(new IamCredentialEntryFilter(), IamBearerIngressFilter.class);
+            }
+        };
+    }
 }

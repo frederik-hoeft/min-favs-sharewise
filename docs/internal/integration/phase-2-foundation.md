@@ -1,6 +1,6 @@
 # Phase 2 implementation foundation: IAM and Group Management
 
-**Status:** Phase 2 design handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). This describes intended Phase 2 business tables and integration contracts, **not deployed DDL or completed IAM/Group features**. The PostgreSQL namespaces and transaction infrastructure exist; feature-owned migrations, durable event delivery, and production account/session authentication flows remain subsequent work; the primary bearer verification and operation identity foundation is implemented.
+**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login now exist under P2.1a. Group business tables, IAM-to-Group event delivery, projection bootstrap and refresh/logout remain future work. The schema descriptions below retain ER provenance; check the committed IAM Flyway migration for implemented physical DDL.
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
@@ -35,7 +35,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
     dispatcher.dispatch(GroupOperation.class, GroupOperation::run));
 ```
 
-The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary credentials within the operation scope; login/session state remains future work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
+The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login/session creation is implemented, but live session eligibility and renewal remain P2.1d/P2.1b work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
 Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 
@@ -69,7 +69,7 @@ The [ER PDF](../../assets/er-data-model.pdf) and [SVG](../../assets/er-data-mode
 
 **Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../../data-model-design.md); **Security** comes from [security.md](../../stack/security.md); **Messaging** comes from [messaging.md](../../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
 
-P1.2 has created the PostgreSQL 18 `identity` and `groups` namespaces, plus other context namespaces and Flyway history, with a migration role and restricted application role. **No IAM/Group business tables or framework publication registry are yet implemented.** The reference below is therefore the expected migration design, not a claim about deployed tables.
+P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a subsequently added the `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables and the committed IAM jOOQ model. **`identity.user_profiles`, Group business tables and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM DDL.
 
 ### IAM: `identity.users`
 

@@ -1,6 +1,6 @@
 # P2.1.0 foundation: validation and review handoff
 
-**Status:** Phases A–D approved; Phase E documentation and automated validation available for review. Independent security review, human acceptance and final merge remain pending. This is a task acceptance record, not the authoritative description of the running architecture.
+**Status:** P2.1.0 completed, independently reviewed, approved and incorporated into the current baseline. This acceptance record preserves the automated evidence and its limits; the deferred framework-managed HTTP-chain migration belongs to P2.1a, not to P2.1.0's completion gate.
 
 The implemented system is described in [verified credentials and operation identity](../../../architecture/authorization.md) and [operation-scoped dependency injection](../../../architecture/dependency-injection.md). Remaining IAM login/session and Group-attestation designs stay in the [security design](../../../stack/security.md) and [domain-context proposal](../../../stack/claims-context-proposal.md).
 
@@ -22,11 +22,10 @@ The automated Unit gate verifies the Spring Boot MVC/security integration with t
 
 In particular, the API bearer path rejects missing mandatory trusted IAM wiring rather than operating with a fallback credential. Business operations must still require authenticated identity where necessary; the filter chain is not a general resource-policy enforcement layer. Temporal JWT validity is evaluated at external admission, not each internal operation dispatch. Continuations can reuse admitted evidence; any new external admission must verify its own credential, while authorization freshness for delayed work is business-owned.
 
-The current HTTP chain is manually assembled from Spring Security web primitives. Migration to framework-managed `SecurityFilterChain` beans is an explicit **P2.1a prerequisite** before introducing cookie/CSRF-backed login and refresh endpoints, and requires a refreshed Spring Security configuration dependency handoff. This Unit gate does not validate that future wiring.
+At the P2.1.0 acceptance point, the HTTP chain was assembled manually from Spring Security web primitives. The subsequent **P2.1a Phase F0** replaced it with framework-managed `SecurityFilterChain` beans before the F1 registration/login/CSRF endpoints were introduced. This historical Unit gate did not validate that later migration; see the [P2.1a acceptance record](../p2.1a-registration-auth/acceptance.md) for the later evidence and remaining browser gate.
 
-## Remaining human gates
+## Acceptance history and deferred integration gates
 
-- Review the Phase E steady-state architecture against the deployed/runtime configuration and verify it does not claim planned IAM or Group flows are implemented.
-- Arrange the **independent security-sensitive code review** required by the P2.1.0 plan; this authoring and test pass is not a substitute for an independent reviewer.
-- Perform applicable manual infrastructure acceptance when trusted IAM key provisioning and the relevant deployed HTTP path are available. Record the result separately from Unit tests.
-- Approve and merge Phase E only after its review; authorize final P2.1.0 acceptance separately.
+P2.1.0's independent review, human approval and baseline integration are complete. The earlier Unit evidence remains scoped to the shared claims/JOSE and ingress foundation, **not** a production IAM login or deployment acceptance.
+
+P2.1a subsequently implemented IAM signing/PBKDF2 adapters, framework-managed HTTP security chains and CSRF/refresh-cookie entry endpoints, with its own PostgreSQL/HTTP gates. Its final browser acceptance and deployment exposure checks remain independent. Group attestations retain a later implementation gate; none of those capabilities was established by P2.1.0 approval alone.

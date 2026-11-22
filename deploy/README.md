@@ -12,7 +12,7 @@ From the repository root:
 ./deploy/scripts/bootstrap.sh
 ```
 
-This **idempotent** one-time bootstrap creates `deploy/.env` and protected, ignored `deploy/.local/` credentials/certificates if absent, then imports them into service-specific Docker-managed volumes and builds the three images. It does **not** start the application. It preserves existing passwords, configuration, certificates, and database volumes. It rejects incomplete fixtures, certificate-hostname mismatches, or attempts to silently change stored volume credentials. New test certificates are self-signed, valid for **365 days**, and cover `localhost` and `127.0.0.1` (DNS and IP subject alternative names respectively).
+This **idempotent** bootstrap creates `deploy/.env` and protected, ignored `deploy/.local/` database credentials/TLS certificates if absent, imports them into service-specific Docker-managed volumes, builds the images, and initializes the IAM ES256 signing key directly in its Docker volume. It does **not** start the application. It preserves existing passwords, configuration, certificates, IAM signing keys, and database volumes. It rejects incomplete fixtures, certificate-hostname mismatches, or attempts to silently change stored volume credentials. New test certificates are self-signed, valid for **365 days**, and cover `localhost` and `127.0.0.1` (DNS and IP subject alternative names respectively).
 
 Then operate directly from `deploy/`, with no extra Compose file, environment file, or project arguments:
 
@@ -58,9 +58,94 @@ docker compose up -d
 
 `cleanup.sh tls` requires confirmation (or explicit `--yes`). Certificates are scoped to the public hostname; merely changing `.env` cannot update an existing certificate or the TLS Docker volume. When using a custom hostname, set `SHAREWISE_PUBLIC_HOST` in `.env` and supply a matching certificate. Nginx rejects unknown TLS hostnames, including mismatched SNI, rather than falling back to an unrelated certificate.
 
+## Ingress request-body limits
+
+The HTTPS Nginx edge is the **only** request-body size enforcement point in the shipped deployment. Its global default is **1 MiB** (`client_max_body_size 1m` in `src/frontend/nginx/production.conf.template`), returning HTTP `413` before proxying oversized requests, including chunked bodies without `Content-Length`. Larger or streaming endpoints require a deliberately reviewed per-location Nginx override; the backend has no independently configured request-body limit. Keep the Spring Boot service private behind this ingress. Any alternative/public backend ingress must enforce an equivalent limit in its own proxy or gateway before exposure.
+
+## IAM JWT signing-key provisioning and distribution
+
+The local stack enables P2.1a production IAM by default. Its reusable **`iam-key-init` one-shot container** provisions an ES256/NIST P-256 pair using OpenSSL. The backend starts only after the provisioning job exits successfully (`service_completed_successfully`). Keys are **not** in the application image, repository, `.env`, or `deploy/.local` host fixtures.
+
+The signing identity has a stable `kid` (default `iam-local-1`, set by `SHAREWISE_IAM_ACTIVE_KEY_ID`). Two independent Docker volumes isolate private material from public verification material:
+
+| Volume | Contents | Access |
+| --- | --- | --- |
+| `iam_signing_private` | `active.pem` (unencrypted PKCS#8 private key), `key-id` | Key-init writes; backend UID/GID `10001` reads through a read-only mount; no other service mounts it |
+| `iam_verification_public` | `active.pem` (SPKI PEM public key), `key-id` | Key-init writes; backend and public-key exporter read; future verifiers on the same Docker daemon may mount read-only |
+
+The job runs with no network access, a read-only container filesystem, and temporary work within the private-key volume. Its private key never passes through Docker image layers, Compose environment variables, logs, or host paths. **Docker daemon administrators and anyone with access to the private volume can still extract the key**; a volume is not an HSM or an OS-level boundary against the Docker administrator. Back up and protect the private volume accordingly.
+
+The standalone key initializer and the Compose fallback default to `require-existing`.
+The **local-only** `deploy/.env.example` deliberately opts into `generate-if-absent`:
+copying this local template into a persistent or production installation also opts into
+implicit regeneration if both volumes are lost. For durable installations, set
+`SHAREWISE_IAM_KEY_MODE=require-existing` after the single authorized provisioning run.
+The key-init container drops all Linux capabilities except `CHOWN` (needed to grant
+backend GID `10001` read access), and runs without networking or a writable root filesystem.
+
+The default `deploy/.env.example` specifies:
+
+```dotenv
+SHAREWISE_IAM_KEY_MODE=generate-if-absent
+SHAREWISE_IAM_ACTIVE_KEY_ID=iam-local-1
+SHAREWISE_IAM_ISSUER=https://localhost:8443
+SHAREWISE_IAM_AUDIENCE=sharewise-api
+```
+
+`bootstrap.sh` runs `scripts/iam-keys.sh init` after building the images. `docker compose up` also runs the job as a startup prerequisite. On subsequent runs, it **verifies** the stored key ID, P-256 algorithm and public/private match without replacing the pair. A partial fixture, changed `kid`, invalid key, symlink, or concurrent/interrupted initializer causes failure instead of an implicit rotation. The volume-local `.iam-lock` prevents two provisioning jobs from both creating a new identity; an orphaned lock or staging directory requires operator investigation before removal. The backend uses the corresponding Spring configuration via Compose environment variables, including `sharewise.iam.auth.enabled=true` and key paths `/run/iam/{private,public}/active.pem`. Externally provisioned private keys must contain exactly one unencrypted PKCS#8 PEM block with **LF line endings**; this initializer rejects CRLF-formatted PEMs even though the Java key loader accepts them. Convert line endings before placing such keys in the volume.
+
+To export a **public key only** to another host or service, from `deploy/`:
+
+```sh
+./scripts/iam-keys.sh export > ../iam-local-1-public.pem
+openssl pkey -pubin -in ../iam-local-1-public.pem -noout
+```
+
+The exporter mounts **only `iam_verification_public`**. The PEM may be distributed through configuration management to future extracted microservices; each verifier must explicitly bind the trusted public key to the approved `kid`, issuer, audience, algorithm and token profile. There is no public JWKS endpoint or automated cross-host trust distribution yet. A future local container can instead mount `iam_verification_public` read-only, but must never mount `iam_signing_private`.
+
+**Production reuse.** The local Compose stack is not a hardened public-host deployment. Production orchestrators can build/publish `deploy/iam-key-init/Dockerfile` and run its entrypoint as a one-shot job using persistent, independent private/public volumes, supplying `IAM_KEY_ID`, `IAM_KEY_MODE`, and the two mount paths (`/keys/private` and `/keys/public`). Gate signer startup on successful job completion, mount both keys read-only into the IAM signer and **only the public key** into other services. The provisioning interface is the same as the local container, so no key-generation shell script needs to be copied into the Spring image.
+
+For a production Compose deployment, the essential service wiring is:
+
+```yaml
+services:
+  iam-key-init:
+    image: registry.example.invalid/sharewise/iam-key-init:<approved-version>
+    restart: "no"
+    network_mode: none
+    read_only: true
+    environment:
+      IAM_KEY_ID: ${SHAREWISE_IAM_ACTIVE_KEY_ID:?}
+      IAM_KEY_MODE: ${SHAREWISE_IAM_KEY_MODE:?}
+    volumes:
+      - iam_signing_private:/keys/private
+      - iam_verification_public:/keys/public
+    tmpfs: [/tmp]
+  backend:
+    depends_on:
+      iam-key-init:
+        condition: service_completed_successfully
+    volumes:
+      - iam_signing_private:/run/iam/private:ro
+      - iam_verification_public:/run/iam/public:ro
+    # Configure IAM issuer, audience, active kid and trusted key paths explicitly.
+  # A separate public-only export job or read-only verifier mount provides distribution.
+volumes:
+  iam_signing_private: {}
+  iam_verification_public: {}
+```
+
+This is the **key-lifecycle portion**, not a standalone production stack: connect it to the existing backend, network, secrets and ingress definitions, pin a reviewed image digest, and supply real issuer/trust settings. The source image and entrypoint are reusable; the project does not currently ship a production-wide orchestration or automated signing-key rotation system.
+
+For a production installation, keep **`SHAREWISE_IAM_KEY_MODE=require-existing`** after provisioning. This refuses startup if the signing volumes disappear, rather than silently creating a different identity. On the *first* approved provisioning only, set `generate-if-absent` and run the key job. Then switch to `require-existing` and rerun the idempotent check. Alternatively pre-provision the exact files and matching `key-id` metadata in the designated volumes under an independently controlled secret-management procedure. Do not use the local sample issuer or `kid` for public deployments; configure a stable, explicit issuer and audience, and independently manage TLS, backups, access controls and service images.
+
+Changing `SHAREWISE_IAM_ACTIVE_KEY_ID` is **not rotation**: the job rejects it against a populated volume. Rotation requires provisioning a new identity separately, distributing its public key to all verifiers **before cutover**, retaining the old public key during token-lifetime overlap, and updating the active signer plus `sharewise.iam.auth.keys[]` trust entries together. Back up the original private volume and its `kid` alongside recoverable authentication state. **Do not destroy the private-key volume while PostgreSQL/session data survives**; losing the signer can invalidate outstanding access tokens. Emergency revocation and staged rotation are separate operational procedures, not implemented by this bootstrapper.
+
+When changing `SHAREWISE_PUBLIC_HOST` or the exposed HTTPS port, also set `SHAREWISE_IAM_ISSUER` to the exact intended stable origin. The disposable Compose acceptance script substitutes its separate HTTPS port for the IAM issuer so tests do not accidentally inherit the normal local origin.
+
 ## Configuration, secrets and Docker-outside-of-Docker
 
-The local `deploy/.env` is based on [`.env.example`](.env.example) and is loaded automatically by Docker Compose when invoked in `deploy/`. It contains public hostname, loopback bind addresses, host ports, project name and optional image overrides; **no passwords**. Exported shell variables take precedence over `.env`, so avoid conflicting `SHAREWISE_PUBLIC_HOST`, `SHAREWISE_HTTPS_PORT`, or `COMPOSE_PROJECT_NAME` overrides. The bootstrap script preserves any existing `.env` rather than changing user-selected ports or hostnames.
+The local `deploy/.env` is based on [`.env.example`](.env.example) and is loaded automatically by Docker Compose when invoked in `deploy/`. It contains public hostname, loopback bind addresses, host ports, project name, IAM issuer/audience/key-ID/mode and optional image overrides; **no passwords or signing-key bytes**. Exported shell variables take precedence over `.env`, so avoid conflicting `SHAREWISE_PUBLIC_HOST`, `SHAREWISE_HTTPS_PORT`, or `COMPOSE_PROJECT_NAME` overrides. The bootstrap script preserves any existing `.env` rather than changing user-selected ports or hostnames.
 
 Private input files live under ignored `deploy/.local/secrets/` and `deploy/.local/tls/`, with restrictive file modes. The import helper streams them over the Docker API into named volumes, rather than using bind mounts that require the same source paths on the Docker daemon host. The PostgreSQL initialization script is copied into the database image, not mounted from the developer's workspace.
 
@@ -70,8 +155,10 @@ Private input files live under ignored `deploy/.local/secrets/` and `deploy/.loc
 | `postgres_secrets` | PostgreSQL admin, migrator and application passwords |
 | `backend_secrets` | Application/migrator passwords, but **not** administrator password |
 | `tls_certs` | Nginx certificate and private key |
+| `iam_signing_private` | IAM ES256 private key and key ID; backend read-only |
+| `iam_verification_public` | IAM ES256 public key and key ID; exportable independently |
 
-The importer is idempotent when files are unchanged; it rejects changed passwords in existing volumes. Password rotation on persistent PostgreSQL data requires separate, coordinated database and application changes. Local generated passwords and private keys must never be committed. The Docker socket confers extensive control of the host and is appropriate only for trusted local development and acceptance.
+The database/TLS importer is idempotent when files are unchanged; it rejects changed passwords in existing volumes. IAM keys are provisioned by the separate one-shot container, not imported from host files. Password rotation on persistent PostgreSQL data requires separate, coordinated database and application changes. Local generated passwords and private keys must never be committed. The Docker socket confers extensive control of the host and is appropriate only for trusted local development and acceptance.
 
 A devcontainer and the Docker host share the daemon, **not** a network namespace. Open the published HTTPS URL from the daemon host browser/terminal. The acceptance script communicates through Compose service DNS inside the deployment networks, so it does not depend on `localhost` from the devcontainer.
 
@@ -99,6 +186,8 @@ SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh 
 
 If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
 
+The disposable Compose smoke performs CSRF bootstrap, registration and login through the real HTTPS proxy, then verifies both access JWT signatures against the exported public-only IAM key. It generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Run it on a Docker host with Python 3 and OpenSSL; it complements rather than replaces PostgreSQL-backed E2E tests.
+
 For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
 
 ## Cleanup and resetting local state
@@ -113,6 +202,6 @@ For independent production-image smoke checks, use `./scripts/test-images.sh`. F
 ./scripts/cleanup.sh local               # DANGER: delete local database + ALL local configuration
 ```
 
-`local` removes the normal Compose project's data/credential/certificate volumes and ignored `deploy/.env`/`.local` state, so the next bootstrap starts completely fresh. `tests` discovers projects by Docker's Compose project labels and the reserved test prefix, including orphaned test volumes. It does not target the normal local project. The `tls` mode stops the normal stack and removes just its TLS volume and local certificate files, preserving PostgreSQL data, database passwords and `.env`. Bootstrap and start again afterward.
+`local` removes the normal Compose project's data/credential/certificate/**IAM signing-key** volumes and ignored `deploy/.env`/`.local` state, so the next bootstrap starts completely fresh. `tests` discovers projects by Docker's Compose project labels and the reserved test prefix, including orphaned test volumes. It does not target the normal local project. The `tls` mode stops the normal stack and removes just its TLS volume and local certificate files, preserving PostgreSQL data, database passwords and `.env`. Bootstrap and start again afterward.
 
 If `docker compose up` fails due to a host-port conflict, choose free loopback ports in `.env`; this does not require regenerating secrets or rebuilding images. Inspect `docker compose ps` and `docker compose logs` for startup failures. Database role initialization happens **only on an empty database volume**; do not delete that volume to retry a persistent installation. A backend readiness failure may indicate unavailable PostgreSQL, migration failure or a missing required secret.
