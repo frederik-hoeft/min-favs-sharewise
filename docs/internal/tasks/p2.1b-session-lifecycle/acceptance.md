@@ -4,7 +4,7 @@
 
 ## Environment and scope
 
-The maintainer exercised the locally deployed ShareWise frontend and IAM backend through the same-origin HTTPS deployment with a PostgreSQL instance. The application workspace currently consists of demonstration pages rather than authenticated Group/Finance operations, so a protected business request cannot yet drive bearer-expiration recovery in an ordinary browser journey. The frontend's mocked transport tests and the backend's PostgreSQL/HTTP tests cover many of those transitions independently, but do not substitute for a live protected-operation check.
+The maintainer exercised the locally deployed ShareWise frontend and IAM backend through the same-origin HTTPS deployment with a PostgreSQL instance. The application workspace currently consists of demonstration pages rather than protected business operations, so a protected request cannot yet drive bearer-expiration recovery in an ordinary browser journey. The deferred real-browser scenarios are tracked as P2.1c.1 in the [backlog](../backlog.md), dependent on P2.1c authenticated profile operations. The frontend's mocked transport tests and the backend's PostgreSQL/HTTP tests cover many of those transitions independently, but do not substitute for a live protected-operation check.
 
 Browser version, tested application commit and complete final CI pipeline identifiers were not provided for this P2.1b smoke pass. [P2.1a's live acceptance record](../p2.1a-registration-auth/acceptance.md) documents earlier trusted-HTTPS and refresh-cookie attribute inspection. The maintainer reconfirmed that the refresh cookie's attributes still appear correct during P2.1b testing, without performing a new comprehensive cookie/credential-storage audit.
 
@@ -35,6 +35,6 @@ The absence of a refresh cookie is intentionally indistinguishable to frontend J
 | Independent security and architecture review | **Pending** | Review complete IAM rotation/HTTP/browser call paths, race ordering, ambiguous outcomes and token/cookie handling; record and resolve findings. |
 | Final merge approval | **Pending** | Maintainer reviews the full integrated diff, evidence and accepted limitations, then explicitly authorizes merge. |
 
-The remaining manual cases may be revisited when Group or another real protected API becomes available. This does not require adding a production-only test endpoint or relaxing bearer ingress rules to make the demo pass. Scheduled refresh-history cleanup, device/session-management UI, stateful access-JWT admission and optional introspection remain outside P2.1b.
+The blocked protected-operation browser cases and remaining partial account-switching variants are explicitly deferred to P2.1c.1 once a real authenticated profile API exists; they are neither failures nor verified passes in this smoke-test record. This does not require adding a production-only test endpoint or relaxing bearer ingress rules to make the demo pass. Scheduled refresh-history cleanup, device/session-management UI, stateful access-JWT admission and optional introspection remain outside P2.1b.
 
 **Acceptance decision:** The observed Phase E functional **smoke-test stage is accepted**, with the explicitly blocked and untested cases retained as limitations. This acceptance does not itself close P2.1b/P2.1b.1 or authorize their final merge.
