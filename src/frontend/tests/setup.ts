@@ -20,6 +20,14 @@ if (typeof window !== "undefined") {
     }),
   });
 
+  // jsdom has no CSS Font Loading API; Mantine's autosizing Textarea listens for font loads.
+  if (!("fonts" in document)) {
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: new EventTarget(),
+    });
+  }
+
   afterEach(() => {
     cleanup();
     window.localStorage.clear();

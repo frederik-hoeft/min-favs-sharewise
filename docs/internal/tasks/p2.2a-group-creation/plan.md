@@ -1,6 +1,6 @@
 # P2.2a - Group creation and overview: implementation plan
 
-**Status:** Approved plan (November 21, 2026). Phase A is approved; Phase B is implemented and awaits the jOOQ generation reconciliation after P2.1a merges; Phase C waits for that merge; Phase D proceeds independently (November 22, 2026). It implements the approved [P2.2a specification](specification.md). **Execution gate:** each phase requires human review and approval before the next phase begins, following the [AI development workflow](../../../development/ai-development-workflow.md). A checked box means implemented, validated **and** approved.
+**Status:** Approved plan (November 21, 2026). Phase A is approved; Phase B is implemented and awaits the jOOQ generation reconciliation after P2.1a merges; Phase C waits for that merge; Phase D is approved (November 22, 2026). It implements the approved [P2.2a specification](specification.md). **Execution gate:** each phase requires human review and approval before the next phase begins, following the [AI development workflow](../../../development/ai-development-workflow.md). A checked box means implemented, validated **and** approved.
 
 ## Baseline and prerequisites
 
@@ -51,10 +51,10 @@
 
 This phase depends only on the HTTP contract from the specification. If useful, it can be developed in parallel with Phases B and C, but it is still reviewed and approved as its own increment.
 
-- [ ] Add `core/groups/`: typed models matching the API, `GroupsApi` over an injected `ApiClient`, and the single client-selection hook (S5). If P2.1a has merged, the hook returns `useIdentity().api`; otherwise it returns the plain client.
-- [ ] Add the **Groups** navigation entry and the `/app/groups`, `/app/groups/new` and `/app/groups/view?id=…` pages with Mantine components and SCSS Modules, including empty, loading and error states and administrator-only editing with `409` handling.
-- [ ] Frontend tests GM-FT01–GM-FT04 with a mocked client, including axe checks.
-- [ ] Run `npm ci`, `npm run lint`, `npm run typecheck`, `npm run test:typecheck`, `npm test`, `npm run build` and `npm run test:static-export` in `src/frontend`.
+- [x] Add `core/groups/`: typed models matching the API, `GroupsApi` over an injected `ApiClient`, and the single client-selection hook (S5). If P2.1a has merged, the hook returns `useIdentity().api`; otherwise it returns the plain client.
+- [x] Add the **Groups** navigation entry and the `/app/groups`, `/app/groups/new` and `/app/groups/view?id=…` pages with Mantine components and SCSS Modules, including empty, loading and error states and administrator-only editing with `409` handling.
+- [x] Frontend tests GM-FT01–GM-FT04 with a mocked client, including axe checks.
+- [x] Run `npm ci`, `npm run lint`, `npm run typecheck`, `npm run test:typecheck`, `npm test`, `npm run build` and `npm run test:static-export` in `src/frontend`.
 
 **Gate D:** The human reviews the pages at narrow and wide widths in a local dev server (against mocked or real API responses) and the component code. All frontend checks pass.
 

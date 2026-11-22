@@ -1,0 +1,67 @@
+import { vi } from "vitest";
+import type { GroupDetails, GroupSummary } from "@/core/groups";
+import { createApiClient, type ApiClient } from "@/lib/api";
+
+export interface RecordedRequest {
+  readonly method: string;
+  readonly path: string;
+  readonly body: unknown;
+}
+
+export type FakeResponse = Response | Error | (() => Response | Error);
+
+/**
+ * A real `ApiClient` over a scripted fetch, so tests exercise ProblemDetail parsing too.
+ * Responses are queued per "METHOD /path"; every request is recorded.
+ */
+export function scriptedClient() {
+  const queues = new Map<string, FakeResponse[]>();
+  const requests: RecordedRequest[] = [];
+  const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    const path = String(input);
+    requests.push({ method, path, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
+    const next = queues.get(`${method} ${path}`)?.shift();
+    if (!next) throw new Error(`Unexpected request ${method} ${path}`);
+    const outcome = typeof next === "function" ? next() : next;
+    if (outcome instanceof Error) throw outcome;
+    return outcome;
+  });
+  const client: ApiClient = createApiClient({}, fetchImpl);
+  return {
+    client,
+    requests,
+    respond(method: string, path: string, ...responses: FakeResponse[]) {
+      const key = `${method} ${path}`;
+      queues.set(key, [...(queues.get(key) ?? []), ...responses]);
+    },
+  };
+}
+
+export function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+export function problem(status: number, code: string, extra: Record<string, unknown> = {}): Response {
+  return new Response(JSON.stringify({ status, code, title: "Problem", detail: `Problem ${code}`, ...extra }), {
+    status,
+    headers: { "content-type": "application/problem+json" },
+  });
+}
+
+export const GROUP_ID = "0193a5c4-7e1f-7c2a-9b3d-5e6f7a8b9c0d";
+
+export function summary(overrides: Partial<GroupSummary> = {}): GroupSummary {
+  return {
+    id: GROUP_ID,
+    name: "Flat share",
+    description: "Rent and groceries",
+    memberCount: 3,
+    callerRole: "admin",
+    ...overrides,
+  };
+}
+
+export function details(overrides: Partial<GroupDetails> = {}): GroupDetails {
+  return { ...summary(), createdAt: "2026-11-20T10:15:00Z", version: 0, ...overrides };
+}
