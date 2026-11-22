@@ -20,7 +20,7 @@ final class IamCredentialEntryFilter extends OncePerRequestFilter {
     static final String CSRF_PATH = "/api/iam/v1/auth/csrf";
 
     // Cookie-backed authentication operations only. Bearer-only domain and IAM APIs
-    // remain outside the CSRF boundary; future refresh/logout use this same path.
+    // remain outside this CSRF boundary.
     private static final RequestMatcher AUTH_ROUTES = PathPatternRequestMatcher.withDefaults()
             .matcher("/api/iam/v1/auth/**");
 

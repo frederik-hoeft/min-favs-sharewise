@@ -30,6 +30,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -124,6 +126,147 @@ class IamHttpAuthenticationE2E {
             assertEquals(2, count(fixture, "identity.sessions"));
             assertEquals(2, count(fixture, "identity.refresh_tokens"));
         }
+    }
+
+    @Test
+    void committedRefreshAndLogoutHonorSessionBindingReplayAndCookieSecurity() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp256r1"));
+        KeyPair pair = generator.generateKeyPair();
+        Path publicKey = keysDirectory.resolve("lifecycle-public.pem");
+        Path privateKey = keysDirectory.resolve("lifecycle-private.pem");
+        writePem(publicKey, "PUBLIC KEY", pair.getPublic().getEncoded());
+        writePem(privateKey, "PRIVATE KEY", pair.getPrivate().getEncoded());
+        Map<String, Object> settings = Map.of(
+                "sharewise.iam.auth.enabled", "true",
+                "sharewise.iam.auth.issuer", "https://iam.sharewise.test",
+                "sharewise.iam.auth.audience", "sharewise-api",
+                "sharewise.iam.auth.active-key-id", "e2e",
+                "sharewise.iam.auth.keys[0].id", "e2e",
+                "sharewise.iam.auth.keys[0].public-key-file", publicKey.toString(),
+                "sharewise.iam.auth.keys[0].private-key-file", privateKey.toString());
+        try (IntegrationTestContext fixture = IntegrationTestContext.startServlet(
+                PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> { }, settings,
+                ShareWiseApplication.class, ProductionEntityScanConfiguration.class);
+             HttpClient client = HttpClient.newHttpClient()) {
+            int port = ((ServletWebServerApplicationContext) fixture.context()).getWebServer().getPort();
+            String base = "http://127.0.0.1:" + port;
+            String credentials = "{\"email\":\"lifecycle@example.com\",\"password\":\"correct-password\"}";
+            HttpResponse<String> login = post(client, base, base, "/api/iam/v1/auth/register",
+                    credentials, csrf(client, base), true, true);
+            assertEquals(201, login.statusCode(), login.body());
+            String sessionId = JsonPath.read(login.body(), "$.sessionId");
+            String loginCookie = findCookie(login, "__Host-sharewise-refresh").split(";", 2)[0];
+            String binding = "{\"expectedSessionId\":\"" + sessionId + "\"}";
+
+            HttpResponse<String> mismatch = postLifecycle(client, base, "/api/iam/v1/auth/refresh",
+                    "{\"expectedSessionId\":\"00000000-0000-0000-0000-000000000001\"}",
+                    csrf(client, base), loginCookie);
+            assertEquals(409, mismatch.statusCode(), mismatch.body());
+            assertEquals("session_context_changed", JsonPath.read(mismatch.body(), "$.code"));
+            assertTrue(mismatch.headers().allValues("Set-Cookie").isEmpty());
+            assertEquals(1, count(fixture, "identity.refresh_tokens"));
+
+            int secretPosition = loginCookie.lastIndexOf('.') + 1;
+            char replacement = loginCookie.charAt(secretPosition) == 'A' ? 'B' : 'A';
+            String wrongSecretCookie = loginCookie.substring(0, secretPosition) + replacement
+                    + loginCookie.substring(secretPosition + 1);
+            HttpResponse<String> wrongSecret = postLifecycle(client, base, "/api/iam/v1/auth/refresh",
+                    binding, csrf(client, base), wrongSecretCookie);
+            assertEquals(401, wrongSecret.statusCode(), wrongSecret.body());
+            assertEquals("refresh_unavailable", JsonPath.read(wrongSecret.body(), "$.code"));
+            assertTrue(wrongSecret.headers().allValues("Set-Cookie").isEmpty());
+            assertEquals(1, count(fixture, "identity.refresh_tokens"));
+
+            HttpResponse<String> refresh = postLifecycle(client, base, "/api/iam/v1/auth/refresh",
+                    binding, csrf(client, base), loginCookie);
+            assertEquals(200, refresh.statusCode(), refresh.body());
+            assertEquals(sessionId, JsonPath.read(refresh.body(), "$.sessionId"));
+            String renewedBearer = JsonPath.read(refresh.body(), "$.accessToken");
+            assertEquals("https://iam.sharewise.test", fixture.context()
+                    .getBean("iamPrimaryJwtCredentialCodec", JwtCredentialCodec.class)
+                    .verifyPrimary(renewedBearer).credential().origin().issuer());
+            String rotatedCookie = findCookie(refresh, "__Host-sharewise-refresh").split(";", 2)[0];
+            assertNotEquals(loginCookie, rotatedCookie);
+            assertDeletedCookie(refresh, "__Host-sharewise-csrf");
+            assertEquals(2, count(fixture, "identity.refresh_tokens"));
+
+            HttpResponse<String> replay = postLifecycle(client, base, "/api/iam/v1/auth/refresh",
+                    binding, csrf(client, base), loginCookie);
+            assertEquals(401, replay.statusCode(), replay.body());
+            assertEquals("refresh_unavailable", JsonPath.read(replay.body(), "$.code"));
+            assertTrue(replay.headers().allValues("Set-Cookie").isEmpty());
+            HttpResponse<String> revoked = postLifecycle(client, base, "/api/iam/v1/auth/refresh",
+                    binding, csrf(client, base), rotatedCookie);
+            assertEquals(401, revoked.statusCode(), revoked.body());
+
+            HttpResponse<String> secondLogin = post(client, base, base, "/api/iam/v1/auth/login",
+                    credentials, csrf(client, base), true, true);
+            assertEquals(200, secondLogin.statusCode(), secondLogin.body());
+            String secondSession = JsonPath.read(secondLogin.body(), "$.sessionId");
+            String secondCookie = findCookie(secondLogin, "__Host-sharewise-refresh").split(";", 2)[0];
+            HttpResponse<String> wrongLogout = postLifecycle(client, base, "/api/iam/v1/auth/logout",
+                    binding, csrf(client, base), secondCookie);
+            assertEquals(409, wrongLogout.statusCode(), wrongLogout.body());
+            assertTrue(wrongLogout.headers().allValues("Set-Cookie").isEmpty());
+
+            String secondBinding = "{\"expectedSessionId\":\"" + secondSession + "\"}";
+            HttpResponse<String> logout = postLifecycle(client, base, "/api/iam/v1/auth/logout",
+                    secondBinding, csrf(client, base), secondCookie);
+            assertEquals(204, logout.statusCode(), logout.body());
+            assertDeletedCookie(logout, "__Host-sharewise-refresh");
+            assertDeletedCookie(logout, "__Host-sharewise-csrf");
+            HttpResponse<String> afterLogout = postLifecycle(client, base, "/api/iam/v1/auth/refresh",
+                    secondBinding, csrf(client, base), secondCookie);
+            assertEquals(401, afterLogout.statusCode(), afterLogout.body());
+            HttpResponse<String> repeatedLogout = postLifecycle(client, base, "/api/iam/v1/auth/logout",
+                    "{}", csrf(client, base), null);
+            assertEquals(204, repeatedLogout.statusCode(), repeatedLogout.body());
+            assertDeletedCookie(repeatedLogout, "__Host-sharewise-refresh");
+
+            HttpResponse<String> thirdLogin = post(client, base, base, "/api/iam/v1/auth/login",
+                    credentials, csrf(client, base), true, true);
+            assertEquals(200, thirdLogin.statusCode(), thirdLogin.body());
+            String thirdSession = JsonPath.read(thirdLogin.body(), "$.sessionId");
+            String thirdBinding = "{\"expectedSessionId\":\"" + thirdSession + "\"}";
+            String thirdCookie = findCookie(thirdLogin, "__Host-sharewise-refresh").split(";", 2)[0];
+            HttpRequest first = lifecycleRequest(base, "/api/iam/v1/auth/refresh",
+                    thirdBinding, csrf(client, base), thirdCookie);
+            HttpRequest second = lifecycleRequest(base, "/api/iam/v1/auth/refresh",
+                    thirdBinding, csrf(client, base), thirdCookie);
+            CompletableFuture<HttpResponse<String>> firstResponse =
+                    client.sendAsync(first, HttpResponse.BodyHandlers.ofString());
+            CompletableFuture<HttpResponse<String>> secondResponse =
+                    client.sendAsync(second, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> winner = firstResponse.get(20, TimeUnit.SECONDS);
+            HttpResponse<String> loser = secondResponse.get(20, TimeUnit.SECONDS);
+            assertTrue((winner.statusCode() == 200 && loser.statusCode() == 401)
+                    || (winner.statusCode() == 401 && loser.statusCode() == 200));
+            assertEquals(3, count(fixture, "identity.sessions"));
+            assertEquals(5, count(fixture, "identity.refresh_tokens"));
+            HttpResponse<String> winningResponse = winner.statusCode() == 200 ? winner : loser;
+            String successorCookie = findCookie(winningResponse, "__Host-sharewise-refresh").split(";", 2)[0];
+            HttpResponse<String> afterReplay = postLifecycle(client, base, "/api/iam/v1/auth/refresh",
+                    thirdBinding, csrf(client, base), successorCookie);
+            assertEquals(401, afterReplay.statusCode(), afterReplay.body());
+        }
+    }
+
+    private static HttpResponse<String> postLifecycle(HttpClient client, String base, String path,
+            String body, CsrfPair csrf, String refreshCookie) throws Exception {
+        return client.send(lifecycleRequest(base, path, body, csrf, refreshCookie),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static HttpRequest lifecycleRequest(String base, String path,
+            String body, CsrfPair csrf, String refreshCookie) {
+        return HttpRequest.newBuilder(URI.create(base + path))
+                .timeout(Duration.ofSeconds(20))
+                .header("Content-Type", "application/json")
+                .header("Origin", base)
+                .header("X-XSRF-TOKEN", csrf.token())
+                .header("Cookie", csrf.cookie() + (refreshCookie == null ? "" : "; " + refreshCookie))
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
     }
 
     private static CsrfPair csrf(HttpClient client, String base) throws Exception {

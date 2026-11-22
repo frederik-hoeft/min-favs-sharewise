@@ -1,6 +1,6 @@
 # P2.1b - Refresh, logout and session lifecycle: implementation plan
 
-**Status:** Specification and plan approved; Phases A and B accepted and merged into the local development baseline, including CI test parallelism. Phase C is implemented on a separate review branch, with frontend toolchain validation pending. The maintainer verified the complete PostgreSQL test suite with sequential and four-worker execution before accepting Phase B. Checkboxes are marked only after verification **and** human review of the corresponding patch.
+**Status:** Specification and plan approved; Phases A, B and C accepted and merged into the local development baseline, including CI test parallelism. Phase D is in implementation review; its PostgreSQL HTTP E2E acceptance gate remains pending. The maintainer verified the complete PostgreSQL test suite with sequential and four-worker execution before accepting Phase B and confirmed green frontend CI for Phase C. Checkboxes are marked only after verification **and** human review of the corresponding patch.
 
 ## Baseline, scope and team boundaries
 
@@ -58,10 +58,10 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 
 **Scope:** Extend `AuthSession`, `AuthCoordinator`, `IdentityApi` and the shared `createApiClient` hooks against the approved mock HTTP contract. Keep JWTs tab-local and treat `expiresAt` as advisory. Add stable session context, in-tab single-flight, shared-cookie Web Lock, minimal `BroadcastChannel` notification, typed terminal states and protected-route navigation behavior. No generic CoR registry or frontend backend/proxy endpoint.
 
-- [ ] Accept successful server-issued JWTs regardless of an ahead client clock; attach tokens to requests, classify only confirmed pre-dispatch 401s and permit one replay of a repeatable request (IAM-B07–B08, IAM-BT08, BT13).
-- [ ] Restore lazily when a tab first needs identity (including reloaded workspace); bind later refresh/logout to the known `sessionId`, coalesce simultaneous requests, exclude cookie-backed endpoints from bearer attachment/recursive recovery, recheck token/session after acquiring the lock, and bootstrap CSRF inside it (IAM-B05, B08, B10).
-- [ ] Broadcast non-secret session changes only, suspend a stale tab with a reload prompt, distinguish revoked/expired from context changed, handle uncertain refresh responses without re-submission, and validate `next` redirects (IAM-B09–B10).
-- [ ] Test skewed clocks, parallel in-tab requests, asynchronous/missed broadcasts, rotated cookies in other tabs, unknown responses, non-replayable bodies, lock failure, redirects and no credential persistence (IAM-BT08–BT13).
+- [x] Accept successful server-issued JWTs regardless of an ahead client clock; attach tokens to requests, classify only confirmed pre-dispatch 401s and permit one replay of a repeatable request (IAM-B07–B08, IAM-BT08, BT13).
+- [x] Restore lazily when a tab first needs identity (including reloaded workspace); bind later refresh/logout to the known `sessionId`, coalesce simultaneous requests, exclude cookie-backed endpoints from bearer attachment/recursive recovery, recheck token/session after acquiring the lock, and bootstrap CSRF inside it (IAM-B05, B08, B10).
+- [x] Broadcast non-secret session changes only, suspend a stale tab with a reload prompt, distinguish revoked/expired from context changed, handle uncertain refresh responses without re-submission, and validate `next` redirects (IAM-B09–B10).
+- [x] Test skewed clocks, parallel in-tab requests, asynchronous/missed broadcasts, rotated cookies in other tabs, unknown responses, non-replayable bodies, lock failure, redirects and no credential persistence (IAM-BT08–BT13).
 
 **Gate C (also P2.1b.1 code review):** Frontend lint, typecheck, Vitest and static build/export pass with the actual Node 24/npm toolchain; human reviews focused mocked-transport tests and patch. It cannot claim end-to-end refresh acceptance without D/E.
 
