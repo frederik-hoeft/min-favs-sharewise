@@ -1,6 +1,6 @@
 # P2.1b - Refresh, logout and session lifecycle: implementation plan
 
-**Status:** Specification and plan approved; Phases A, B and C accepted and merged into the local development baseline, including CI test parallelism. Phase D is in implementation review; its PostgreSQL HTTP E2E acceptance gate remains pending. The maintainer verified the complete PostgreSQL test suite with sequential and four-worker execution before accepting Phase B and confirmed green frontend CI for Phase C. Checkboxes are marked only after verification **and** human review of the corresponding patch.
+**Status:** Specification and plan approved. Phases A–C are accepted; Phase D HTTP integration is reviewed and its connection-pool follow-up needs final integrated CI evidence. The maintainer accepted Phase E's **manual browser smoke stage** on November 22, 2026, with protected-operation and adversarial cases recorded as blocked or not exercised. Final independent security review, complete CI reconciliation and separate merge authorization remain open. See [the acceptance record](acceptance.md). Checkboxes represent completed, verified and approved activities, not inferred coverage.
 
 ## Baseline, scope and team boundaries
 
@@ -28,9 +28,9 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 
 **Scope:** Review the exact route payloads, `sessionId` response addition, conditional `expectedSessionId` semantics, `refresh_unavailable`/`session_context_changed` outcomes, safe pre-dispatch 401 allowlist, and logout's no-cookie idempotency. Align the session-core port contract and lock/replay ordering with the actual `identity` tables; choose one row-lock acquisition order for refresh/logout. No implementation yet.
 
-- [ ] Confirm the token-secret validation and correct-secret-before-family-revocation rule, plus one-transaction consumption/successor insertion/idle extension and commit-before-credential-release semantics (IAM-B01–B05).
-- [ ] Confirm how pre-dispatch `invalid_credential`/`authentication_required` is evidenced, body replayability and the boundary with application-generated `unauthenticated` (IAM-B08, IAM-BT13).
-- [ ] Confirm the browser FSM's context-change, restoration and lost-response classification; add adversarial tests before the first code patch if a contract gap is found (IAM-B07–B10).
+- [x] Confirm the token-secret validation and correct-secret-before-family-revocation rule, plus one-transaction consumption/successor insertion/idle extension and commit-before-credential-release semantics (IAM-B01–B05).
+- [x] Confirm how pre-dispatch `invalid_credential`/`authentication_required` is evidenced, body replayability and the boundary with application-generated `unauthenticated` (IAM-B08, IAM-BT13).
+- [x] Confirm the browser FSM's context-change, restoration and lost-response classification; add adversarial tests before the first code patch if a contract gap is found (IAM-B07–B10).
 
 **Gate 0:** Human approves specification and this phase plan; the approved artifacts are committed and pushed to the task branch. Later contract changes return to this gate.
 
@@ -69,19 +69,21 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 
 **Scope:** Add `/refresh` and `/logout` through IAM's existing Spring-managed security contribution and operation ingress. Extend login/register JSON with `sessionId`; preserve the existing refresh-cookie attributes, strict `Origin` check, masked CSRF bootstrap and response non-caching. Response cookie issuance and deletion occur only after correct completed operations.
 
-- [ ] Implement request/response validation, stable problems, `session_context_changed` without cookie mutation, generic credential rejection, and idempotent missing-cookie logout (IAM-B05–B06).
-- [ ] Exercise the actual filter chain and security entry points: CSRF/Origin, missing versus invalid bearers, pre-dispatch versus operation 401, JWT issuer/type/audience and refresh cookie not authenticating other APIs (IAM-BT07, BT13).
-- [ ] Run real-servlet PostgreSQL E2E for rotation/logout success after COMMIT, rollback, replay and concurrent requests; confirm the `Set-Cookie` operations preserve CSRF-cookie clearing (IAM-BT01–BT07).
+- [x] Implement request/response validation, stable problems, `session_context_changed` without cookie mutation, generic credential rejection, and idempotent missing-cookie logout (IAM-B05–B06).
+- [x] Exercise the actual filter chain and security entry points: CSRF/Origin, missing versus invalid bearers, pre-dispatch versus operation 401, JWT issuer/type/audience and refresh cookie not authenticating other APIs (IAM-BT07, BT13).
+- [ ] Confirm the final CI execution of real-servlet PostgreSQL E2E for rotation/logout success after COMMIT, rollback, replay and concurrent requests; confirm the `Set-Cookie` operations preserve CSRF-cookie clearing (IAM-BT01–BT07).
 
 **Gate D:** Unit, real PostgreSQL Integration/E2E and HTTP security regression tests pass; no known incorrect state transition remains; human approves the complete backend patch.
 
 ## Phase E - Full flow, independent review and documentation
 
-**Scope:** Integrate C and D without weakening B's server-side guarantees, replace temporary workspace auth notices with an accurate user experience, and reconcile the steady-state documentation only after executable behavior is accepted.
+**Scope:** Verify the integrated browser/server lifecycle, record the maintainer's observed smoke-test results and limits, reconcile authoritative documentation, and complete independent review before final merge authorization. Further frontend/backend implementation is limited to defects found during acceptance or review.
 
-- [ ] Verify real HTTPS same-origin browser login/register, reload restoration, same-session multi-tab refresh, different-session prompt, logout propagation, protected-route return path and expiry/CSRF behavior (IAM-BT09–BT14).
-- [ ] Exercise failures: lost/reordered response, fast account switching, concurrent requests, absent Web Locks, repeat 401, invalid Origin/CSRF and revoked/expired cookie. Human records the manual acceptance outcome; mock/browser automation is supplementary.
-- [ ] Run repository source-encoding and Markdown-link checks, `git diff --check`, backend module/Unit/Integration/E2E CI and frontend lint/typecheck/tests/build/static-export; record limits separately.
-- [ ] **Final implementation step:** reconcile [security](../../../stack/security.md), [frontend architecture](../../../architecture/frontend.md), [development guide](../../../development.md), test guidance and backlog to match **verified implemented behavior**, not speculative task text. Record the independent security review, resolve findings and produce final review patch; retain the approved task specification and plan.
+- [x] Record the maintainer-accepted HTTPS browser smoke test for login, reload/new-tab restoration, browser-profile separation, logout and reauthentication, cross-tab logout propagation and explicit session-context reload (IAM-BT09–BT14). The [acceptance record](acceptance.md) distinguishes successful observations from blocked or partial scenarios.
+- [ ] Verify protected-operation renewal/retry, repeated rotation and return-path navigation in a live application when a production protected API is available; the current workspace exposes demo routes, not protected business APIs.
+- [ ] Complete or explicitly disposition remaining adversarial manual scenarios; rely on existing automated tests for database races, replay, clock skew and uncertain HTTP responses, but do not claim they were all manually exercised.
+- [ ] Reconcile final backend Unit/Integration/E2E CI (including the 16-worker disposable-pool follow-up) and frontend lint/typecheck/Vitest/build/static-export evidence at the same integrated revision.
+- [ ] Approve this reconciliation of [security](../../../stack/security.md), [frontend architecture](../../../architecture/frontend.md), [development guide](../../../development.md), frontend test guidance and backlog with implemented contracts; retain the approved specification and this plan.
+- [ ] Record independent security review findings and their resolution, then obtain final human approval for the complete merge-request diff.
 
-**Gate E:** Human confirms manual end-to-end acceptance and independent review findings, examines the full diff and CI/DB/browser evidence, and separately authorizes merge. Only after this approval are P2.1b/P2.1b.1 marked complete and merged into the approved baseline.
+**Gate E:** The maintainer has accepted the **smoke-test stage**, not a claim that every originally proposed manual scenario passed. Independent review, final CI reconciliation and explicit merge authorization remain required before P2.1b/P2.1b.1 can be marked complete in the backlog.
