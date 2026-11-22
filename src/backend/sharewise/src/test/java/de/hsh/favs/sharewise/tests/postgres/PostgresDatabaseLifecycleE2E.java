@@ -5,6 +5,7 @@ import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfigurat
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -14,6 +15,8 @@ import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.IsolatedPostgresPool;
+import com.zaxxer.hikari.HikariDataSource;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
@@ -52,6 +55,9 @@ class PostgresDatabaseLifecycleE2E {
             assertNotEquals(firstName, secondName);
             assertNotSame(first.context(), second.context());
             assertNotSame(first.dataSource(), second.dataSource());
+            HikariDataSource firstPool = assertInstanceOf(HikariDataSource.class, first.dataSource());
+            assertEquals(IsolatedPostgresPool.MAX_CONNECTIONS, firstPool.getMaximumPoolSize());
+            assertEquals(IsolatedPostgresPool.MIN_IDLE_CONNECTIONS, firstPool.getMinimumIdle());
             assertEquals("first", labels(first));
             assertEquals("second", labels(second));
 

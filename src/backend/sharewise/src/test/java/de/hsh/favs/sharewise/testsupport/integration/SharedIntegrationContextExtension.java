@@ -47,7 +47,7 @@ public final class SharedIntegrationContextExtension implements BeforeAllCallbac
         private final IntegrationTestContext fixture;
 
         private SharedFixture() {
-            fixture = IntegrationTestContext.start(
+            fixture = IntegrationTestContext.startShared(
                 PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> {
                     try (Connection migrator = database.connectAsMigrator();
                          Statement statement = migrator.createStatement()) {
