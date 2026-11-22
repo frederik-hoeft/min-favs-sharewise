@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ActionIcon, Menu } from "@mantine/core";
 import { CaretLeftIcon, CaretRightIcon, CircleHalfIcon, UserCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
@@ -56,6 +57,14 @@ export function AccountMenu() {
         {screen === "account" ? (
           <>
             <Menu.Label>Account</Menu.Label>
+            <Menu.Item
+              component={Link}
+              href="/app/account"
+              leftSection={<UserCircleIcon size="1.125rem" aria-hidden="true" />}
+              onClick={() => updateOpened(false)}
+            >
+              Account details
+            </Menu.Item>
             <Menu.Item
               ref={appearanceRef}
               leftSection={<CircleHalfIcon size="1.125rem" aria-hidden="true" />}

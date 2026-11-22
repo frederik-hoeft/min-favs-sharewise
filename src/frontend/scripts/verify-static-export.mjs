@@ -18,6 +18,7 @@ const routes = [
   { path: "/auth/login", text: "Welcome back." },
   { path: "/auth/register", text: "Start sharing clearly." },
   { path: "/app", text: "Your workspace." },
+  { path: "/app/account", text: "Your account" },
   { path: "/app/dummy1", text: "This placeholder demonstrates a standard feature page" },
   { path: "/app/dummy2", text: "A second destination for validating links" },
   { path: "/app/dummy3", text: "This is an illustrative route for checking long breadcrumbs" },

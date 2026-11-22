@@ -1,5 +1,5 @@
 import { ApiError, type ApiClient } from '@/lib/api';
-import type { AuthenticationResponse, IdentityCredentials } from './models.ts';
+import type { AccountProfile, AuthenticationResponse, IdentityCredentials } from './models.ts';
 
 const ROOT = '/iam/v1';
 /** Confirm against the actual Spring CsrfTokenRepository/header policy in Phase F. */
@@ -35,6 +35,18 @@ export class IdentityApi {
         return this.client.post<AuthenticationResponse>(`${ROOT}/auth/register`, credentials, {
             headers: { [CSRF_HEADER]: csrfToken },
         });
+    }
+
+    getAccount(options?: { readonly signal?: AbortSignal }): Promise<AccountProfile> {
+        return this.client.get<AccountProfile>(`${ROOT}/account`, options);
+    }
+
+    setDisplayName(displayName: string): Promise<AccountProfile> {
+        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName, clear: false });
+    }
+
+    clearDisplayName(): Promise<AccountProfile> {
+        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName: null, clear: true });
     }
 
     login(credentials: IdentityCredentials, csrfToken: string): Promise<AuthenticationResponse> {

@@ -7,12 +7,13 @@ import { ANONYMOUS_IDENTITY_PATHS, IdentityApi } from './identity-api.ts';
 export { AUTH_COOKIE_LOCK, AuthCookieLock } from './auth-cookie-lock.ts';
 export { AuthSession } from './auth-session.ts';
 export { CSRF_HEADER, IdentityApi } from './identity-api.ts';
-export type { AuthenticationResponse, AuthState, IdentityCredentials } from './models.ts';
+export type { AccountProfile, AuthenticationResponse, AuthState, IdentityCredentials } from './models.ts';
 
 export interface IdentityRuntime {
     /** Use this client for subsequent authenticated domain API operations. */
     readonly api: ApiClient;
     readonly auth: AuthCoordinator;
+    readonly account: Pick<IdentityApi, 'getAccount' | 'setDisplayName' | 'clearDisplayName'>;
     readonly cookieLock: AuthCookieLock;
     readonly session: AuthSession;
     dispose(): void;
@@ -55,5 +56,5 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
         options.locks ?? (() => typeof navigator === 'undefined' ? undefined : navigator.locks)
     );
     const auth = new AuthCoordinator(identityApi, session, cookieLock);
-    return { api, auth, cookieLock, session, dispose: () => session.dispose() };
+    return { api, auth, account: identityApi, cookieLock, session, dispose: () => session.dispose() };
 }

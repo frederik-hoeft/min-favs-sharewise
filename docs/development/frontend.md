@@ -21,6 +21,7 @@ npm run typecheck
 npm run test
 npm run test:typecheck
 npm run build
+npm run build:static
 npm run test:static-export
 ```
 
@@ -38,7 +39,7 @@ The checked-in [Mantine reference](../../.agents/references/frontend-mantine-llm
 
 Browser API calls go through `@/lib/api`. `apiClient` exposes typed HTTP methods, normalizes both `/groups/v1/...` and `/api/groups/v1/...` beneath `/api`, and uses same-origin credentials. It returns decoded response bodies and raises `ApiError` for HTTP or network failures. Error details include HTTP status, a machine-readable code and any validation field errors carried by Spring's `ProblemDetail` response. Empty `204` responses resolve to `undefined`.
 
-`createApiClient` accepts a custom `fetch` implementation and request/unauthorized hooks. `core/identity/` installs the current in-memory access bearer and invalidates it on expiry or a matching `401`; there is no automatic renewal or retry in P2.1a. The client supports at most one explicitly authorized retry when a future flow supplies it. Endpoint-specific paths and DTO mappings belong to domain adapters rather than to the transport client or presentation components. The IAM adapter bootstraps CSRF inside an exclusive cross-tab Web Lock before each register/login mutation, so a previously invalidated CSRF cookie is never reused. An unavailable lock fails closed rather than performing an unlocked authentication mutation. The API boundary and its development/runtime routing are described in [frontend architecture](../architecture/frontend.md).
+`createApiClient` accepts a custom `fetch` implementation and request/unauthorized hooks. `core/identity/` installs the current in-memory access bearer and invalidates it on expiry or a matching `401`; there is no automatic renewal or retry in P2.1a. The client supports at most one explicitly authorized retry when a future flow supplies it. Endpoint-specific paths and DTO mappings belong to domain adapters rather than to the transport client or presentation components. The Account page calls `core/identity` for the bearer-authorized own-account GET/PATCH operations and uses the resulting `ApiError` status, code and field errors without interpreting message text. The Account page intentionally does not attempt bearer renewal or tab restoration before P2.1b. The IAM adapter bootstraps CSRF inside an exclusive cross-tab Web Lock before each register/login mutation, so a previously invalidated CSRF cookie is never reused. An unavailable lock fails closed rather than performing an unlocked authentication mutation. The API boundary and its development/runtime routing are described in [frontend architecture](../architecture/frontend.md).
 
 The shared API client has a default 45-second request deadline, configurable per call with `timeoutMs` (`0` disables it only for deliberately reviewed long-running requests). The cross-tab Web Lock has a separate 30-second acquisition deadline; once held, the lock remains in place until the authentication operation and any canceled HTTP request have settled. A registration failure after the POST begins is an uncertain outcome, for which the UI recommends signing in before retrying registration. P2.1b extends this boundary with clock-skew-tolerant and bounded renewal; see the [Phase 2 backlog](../internal/tasks/backlog.md#p21---iam-vertical-slices).
 
