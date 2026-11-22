@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Card, Group, Loader, Stack, Text, Title } from "@mantine/core";
-import { ArrowClockwiseIcon, ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowLeftIcon, SignInIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import type { GroupProblem } from "@/core/groups";
 import { groupRoutes } from "../../_components/app-routes";
@@ -42,6 +42,11 @@ export function GroupProblemState({ problem, onRetry }: { problem: GroupProblem;
         {kind === "unavailable" && onRetry ? (
           <Button variant="light" leftSection={<ArrowClockwiseIcon aria-hidden="true" />} onClick={onRetry}>
             Try again
+          </Button>
+        ) : null}
+        {kind === "unauthenticated" ? (
+          <Button component={Link} href="/auth/login" variant="light" leftSection={<SignInIcon aria-hidden="true" />}>
+            Sign in
           </Button>
         ) : null}
         {kind === "not_found" ? (

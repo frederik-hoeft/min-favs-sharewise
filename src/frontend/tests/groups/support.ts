@@ -30,6 +30,7 @@ export function scriptedClient() {
   const client: ApiClient = createApiClient({}, fetchImpl);
   return {
     client,
+    fetchImpl: fetchImpl as unknown as typeof fetch,
     requests,
     respond(method: string, path: string, ...responses: FakeResponse[]) {
       const key = `${method} ${path}`;

@@ -7,9 +7,9 @@ import { useState } from "react";
 import {
   classifyGroupProblem,
   normalizedDescription,
-  useGroupsApi,
   type MetadataInput,
 } from "@/core/groups";
+import { useGroupsApi } from "./use-groups-api";
 import { groupRoutes, groupViewHref } from "../../_components/app-routes";
 import {
   clientFieldMessages,

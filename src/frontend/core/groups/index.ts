@@ -20,4 +20,3 @@ export {
     type GroupSummary,
     type ReplaceGroupMetadataRequest,
 } from './models.ts';
-export { useGroupsApi } from './use-groups-api.ts';

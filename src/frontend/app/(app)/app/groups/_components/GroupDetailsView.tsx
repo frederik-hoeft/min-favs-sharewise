@@ -8,11 +8,11 @@ import {
   classifyGroupProblem,
   isGroupId,
   normalizedDescription,
-  useGroupsApi,
   type GroupDetails,
   type GroupProblem,
   type MetadataInput,
 } from "@/core/groups";
+import { useGroupsApi } from "./use-groups-api";
 import {
   clientFieldMessages,
   GroupMetadataForm,

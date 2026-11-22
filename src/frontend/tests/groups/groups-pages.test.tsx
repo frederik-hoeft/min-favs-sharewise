@@ -2,11 +2,13 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import type { ReactElement } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GroupsApi } from "@/core/groups";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { IdentityProvider } from "@/app/identity-provider";
+import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
 import GroupsPage from "@/app/(app)/app/groups/page";
 import NewGroupPage from "@/app/(app)/app/groups/new/page";
 import GroupViewPage from "@/app/(app)/app/groups/view/page";
+import { authenticationResponse } from "../identity/support";
 import { TestProviders } from "../support/TestProviders";
 import { GROUP_ID, details, json, problem, scriptedClient, summary } from "./support";
 
@@ -14,14 +16,11 @@ const LIST = "/api/groups/v1/groups";
 const GROUP = `${LIST}/${GROUP_ID}`;
 
 let fake = scriptedClient();
-let api = new GroupsApi(fake.client);
+// Pages obtain their client from the identity runtime, as in production; its transport is scripted.
+let runtime: IdentityRuntime = createIdentityRuntime({ fetchImpl: fake.fetchImpl });
 let search = "";
 const push = vi.fn();
 
-vi.mock("@/core/groups/use-groups-api.ts", () => ({
-  // Stable per test, as the production hook memoizes its instance.
-  useGroupsApi: () => api,
-}));
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
   usePathname: () => "/app/groups",
@@ -31,13 +30,15 @@ vi.mock("next/navigation", async (importOriginal) => ({
 
 beforeEach(() => {
   fake = scriptedClient();
-  api = new GroupsApi(fake.client);
+  runtime = createIdentityRuntime({ fetchImpl: fake.fetchImpl });
   search = "";
   push.mockReset();
 });
 
+afterEach(() => runtime.dispose());
+
 function renderPage(page: ReactElement) {
-  return render(<TestProviders>{page}</TestProviders>);
+  return render(<TestProviders><IdentityProvider runtime={runtime}>{page}</IdentityProvider></TestProviders>);
 }
 
 /** Mantine associates field errors through aria-describedby and marks the input invalid. */
@@ -83,12 +84,23 @@ describe("GM-FT01 group list", () => {
     fake.respond("GET", LIST, problem(401, "unauthenticated"));
     const first = renderPage(<GroupsPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Sign in required");
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
     first.unmount();
 
     fake.respond("GET", LIST, problem(403, "group_user_unknown"));
     renderPage(<GroupsPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Account not yet available");
     expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
+  it("sends the tab's IAM bearer with Group requests once signed in", async () => {
+    runtime.session.accept(authenticationResponse("group-access-token"));
+    fake.respond("GET", LIST, json(200, { items: [] }));
+    renderPage(<GroupsPage />);
+
+    expect(await screen.findByRole("heading", { name: "No groups yet" })).toBeInTheDocument();
+    const [, init] = vi.mocked(fake.fetchImpl).mock.calls[0];
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer group-access-token");
   });
 
   it("offers a retry after a network error", async () => {
