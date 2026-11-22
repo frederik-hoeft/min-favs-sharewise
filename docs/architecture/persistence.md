@@ -2,7 +2,7 @@
 
 ShareWise uses PostgreSQL as its relational database and Flyway migrations as the authority for the physical schema. Spring Boot configures an application `DataSource` and a separate Flyway migration connection with schema-changing privileges. jOOQ and JPA/Hibernate are integrated with Spring's explicit transaction segments through operation-scoped persistence accessors.
 
-The implemented persistence layer provides the shared infrastructure foundation and IAM-owned authentication tables and jOOQ adapters. Other contexts have schema namespaces but do not yet own business tables. The [application architecture](../architecture.md) describes the intended module interaction model; [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
+The implemented persistence layer provides the shared infrastructure foundation, IAM-owned authentication tables and Group Management's group and membership tables, each with context-owned jOOQ adapters. Other contexts have schema namespaces but do not yet own business tables. The [application architecture](../architecture.md) describes the intended module interaction model; [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
 
 ## Database topology and ownership
 
@@ -10,7 +10,7 @@ A single PostgreSQL database contains the following schemas:
 
 | Schema | Current responsibility |
 | --- | --- |
-| `identity`, `groups`, `finance`, `files`, `notifications` | Bounded-context schemas. `identity` contains the IAM account, session and refresh-token tables; the remaining context schemas do not yet contain business tables. |
+| `identity`, `groups`, `finance`, `files`, `notifications` | Bounded-context schemas. `identity` contains the IAM account, session and refresh-token tables. `groups` contains Group Management's registry of locally known IAM user IDs, groups and memberships. The remaining context schemas do not yet contain business tables. |
 | `flyway` | Flyway's migration history, separate from the context namespaces. |
 
 Schema boundaries make ownership visible in the physical layout, but do not provide database-enforced isolation between contexts: the single runtime database role has privileges across all five context schemas. The backend's [Spring Modulith boundaries](../architecture.md#module-structure-and-published-apis) govern dependencies between application modules; schema separation does not authorize cross-context data access.
@@ -61,4 +61,4 @@ jOOQ statements execute against the active transaction, while Hibernate may buff
 
 The backend's [test architecture](tests.md) separates database-free Unit tests, PostgreSQL Integration tests with rollback-only physical transactions, and E2E tests using independently provisioned databases for real commits. PostgreSQL tests exercise the migration/role setup, guarded jOOQ/JPA access, transaction visibility and failure behavior. Rollback-isolated tests cannot establish durable commit behavior; E2E tests cover that boundary.
 
-The shared foundation owns schema provisioning, role separation and transaction-bound persistence access. IAM owns its authentication schema, data mapping and generated jOOQ metadata; further context-owned persistence work is described in the [persistence stack plan](../stack/persistence.md).
+The shared foundation owns schema provisioning, role separation and transaction-bound persistence access. IAM and Group Management each own their schema's migrations, data mapping and generated jOOQ metadata. One opt-in generation profile covers both contexts, and an Integration test requires the committed generated sources to match the migrated schema. Further context-owned persistence work is described in the [persistence stack plan](../stack/persistence.md).

@@ -1,6 +1,6 @@
 # P2.2a - Group creation and overview: implementation plan
 
-**Status:** Approved plan (November 21, 2026). Phases A–D are approved (Phase D and Phase C on November 22, 2026); P2.1a has merged and the branch is rebased onto `main`; Phase E is in progress. It implements the approved [P2.2a specification](specification.md). **Execution gate:** each phase requires human review and approval before the next phase begins, following the [AI development workflow](../../../development/ai-development-workflow.md). A checked box means implemented, validated **and** approved.
+**Status:** Approved plan (November 21, 2026). Phases A–D are approved (Phase D and Phase C on November 22, 2026); P2.1a has merged and the branch is rebased onto `main`; Phase E is implemented and awaits Gate E approval. It implements the approved [P2.2a specification](specification.md). **Execution gate:** each phase requires human review and approval before the next phase begins, following the [AI development workflow](../../../development/ai-development-workflow.md). A checked box means implemented, validated **and** approved.
 
 ## Baseline and prerequisites
 
@@ -70,9 +70,13 @@ This phase depends only on the HTTP contract from the specification. If useful, 
 ## Phase E - Developer procedure, documentation and acceptance readiness
 
 - [ ] Document the S3 developer procedure for provisioning `groups.users` with an explicit IAM user ID (Q1 default), including how to find one's own ID, in the [development guide](../../../development.md). It uses the application role and is clearly marked as a temporary stand-in for P2.2d.
+    - The [development guide](../../../development.md#provision-local-group-users) explains how to read the user ID from the access token's `sub` and insert it as `sharewise_app`, plus an optional membership row for member-role tests. The decode command and both statements were run against the dev-container database (the membership insert in a rolled-back transaction).
 - [ ] Reconcile the steady-state documentation listed in the specification: application architecture, persistence architecture, Phase 2 handoff (implemented Group tables and the `version` extension), frontend architecture and development guide. Update this plan's status and record the validation evidence.
+    - Application architecture: status and the `groups` module layout and dependencies. Persistence architecture: the `groups` tables and the shared generation check. Phase 2 handoff: implemented Group tables, the `version` row, caller admission and the group mutation protocol. Frontend architecture and frontend development guide: the Groups routes, `core/groups/` and how pages obtain the authenticated client. The backend testing guide gained the authenticated-callers section in Phase C.
 - [ ] If P2.1a has merged, switch the client-selection hook to the authenticated client (if not done in Phase D), link the sign-in-required state to `/auth/login`, and rerun the frontend checks.
+    - Phase D had kept the plain client. `useGroupsApi` now returns a `GroupsApi` over `useIdentity().api` and lives in the Groups route components, because `core/` adapters must not depend on the app-level identity provider. The sign-in-required state links to `/auth/login`. The page tests render through `IdentityProvider` with a scripted transport instead of mocking the hook, and check that a signed-in tab sends its bearer.
 - [ ] Run all backend and frontend checks, `git diff --check` and a relative-link check of the touched documents.
+    - Backend: Unit (294), Integration (55) and E2E (70) pass against PostgreSQL 18. Frontend: `npm ci`, `lint` (three warnings that predate P2.2a, in `lib/api/client.ts` and `tests/identity/identity-runtime.test.ts`), `typecheck`, `test:typecheck`, `test` (109), `build` and `test:static-export` pass. `git diff --check` is clean, and a relative-link and anchor check of every Markdown file changed on the branch finds no broken links.
 
 **Gate E:** Documentation matches the implemented system; the human approves the complete change for independent review.
 

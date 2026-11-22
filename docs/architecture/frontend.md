@@ -2,7 +2,7 @@
 
 ShareWise's frontend has two independent responsibilities: it presents the product and workspace through Next.js routes, and it provides a browser-side boundary to the Spring API. Route structure determines where an experience is presented; it does not define business ownership. The backend remains authoritative for identities, group membership, expenses, balances, settlements and financial history.
 
-The implemented frontend is a foundation for those workflows. The public site uses static financial illustrations, and the application workspace contains demonstration routes rather than protected business data. The standalone authentication pages call the implemented production IAM registration/login/CSRF endpoints through the shared API client when the backend is configured with IAM signing trust. Automated browser-side identity tests use an injected mock transport; the real HTTPS browser flow is a separate acceptance gate. A shared browser HTTP client and same-origin development API forwarding provide the transport boundary.
+The implemented frontend is a foundation for those workflows. The public site uses static financial illustrations. The application workspace contains the Groups pages, which show and edit the signed-in user's groups through the Group Management API, alongside demonstration routes without business data. The standalone authentication pages call the implemented production IAM registration/login/CSRF endpoints through the shared API client when the backend is configured with IAM signing trust. Automated browser-side identity tests use an injected mock transport; the real HTTPS browser flow is a separate acceptance gate. A shared browser HTTP client and same-origin development API forwarding provide the transport boundary.
 
 ## Route composition and UI ownership
 
@@ -24,6 +24,7 @@ app/
     └── app/
         ├── layout.tsx         Workspace AppShell
         ├── page.tsx           /app
+        ├── groups/            /app/groups, /app/groups/new, /app/groups/view?id=…
         ├── dummy1/page.tsx    /app/dummy1
         ├── dummy2/page.tsx    /app/dummy2
         ├── dummy3/            Nested breadcrumb demo and ancestor routes
@@ -46,7 +47,9 @@ The client is independent of the page that invokes it: callers supply an API pat
 
 ## Domain ownership and extension boundary
 
-The application structure uses `core/<domain>/` outside the route tree for presentation-independent models, endpoint adapters and application operations. The initial `core/identity/` boundary owns login/registration orchestration and ephemeral bearer state. Its domain-first organization reflects backend business boundaries, while allowing several routes to consume the same domain-facing functionality without importing one another's page code.
+The application structure uses `core/<domain>/` outside the route tree for presentation-independent models, endpoint adapters and application operations. The `core/identity/` boundary owns login/registration orchestration and ephemeral bearer state. `core/groups/` owns the Group Management request and response models, problem classification, the client-side mirror of the metadata rules and `GroupsApi`, an endpoint adapter over an injected `ApiClient`. The domain-first organization reflects backend business boundaries, while allowing several routes to consume the same domain-facing functionality without importing one another's page code.
+
+A `core/` adapter does not choose how its requests are authenticated. The Groups route components obtain `GroupsApi` through one hook, which constructs it over the identity runtime's client from the app-level identity provider, so requests carry the tab's IAM bearer when one exists. The group detail route addresses a group through the `id` query parameter because the static export cannot pre-render unknown group IDs as path segments. The pages show the backend's decisions rather than re-deriving them: edit controls appear only for the `admin` role reported for the caller, `401`, `403 group_user_unknown` and `404` responses have dedicated states, and a `409` conflict offers to reload the current metadata without discarding the user's input. The backend still enforces every Group authorization rule.
 
 The dependency direction is from routes and reusable UI toward domain-facing operations, and from domain HTTP adapters toward `lib/api/`. Transport-wide mechanics remain in `lib/api/`; domain-specific endpoint paths and data contracts belong to the domain adapter. A direct adapter is sufficient when an operation has no additional application behavior; a separate service represents real orchestration, not automatic delegation. UI state, navigation and display formatting remain presentation concerns. The Spring backend continues to evaluate authorization and financial semantics rather than relying on browser calculations.
 

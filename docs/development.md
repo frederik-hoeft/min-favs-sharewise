@@ -73,6 +73,25 @@ Local HTTP test clients may inspect the `Secure` cookies, but Phase G browser ac
 
 For real-browser registration/login acceptance and evidence collection, use the [P2.1a Phase G acceptance checklist](internal/tasks/p2.1a-registration-auth/acceptance.md).
 
+## Provision local Group users
+
+Group Management admits a caller only if their IAM user ID is in its local `groups.users` registry; otherwise every Group request returns `403 group_user_unknown` and the Groups pages show "Account not yet available". Nothing fills that registry automatically yet: IAM-to-Group event delivery (P2.2d) and the lookup on a local miss (P2.2e) are planned. Until then, provision the accounts you test with explicitly. This procedure is a **temporary development stand-in for P2.2d**. It is not a production path and not a Flyway migration, and it becomes unnecessary once registration events reach Group Management.
+
+First find the account's IAM user ID. Run the backend with IAM authentication enabled (see the previous section), then register or sign in. The `/api/iam/v1/auth/register` and `/login` responses carry an `accessToken` whose `sub` claim is the user ID; in the browser, copy it from the response in the developer tools' Network tab. Decode it in the dev container:
+
+```bash
+TOKEN='<accessToken>'
+python3 -c 'import base64, json, sys; p = sys.argv[1].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))["sub"])' "$TOKEN"
+```
+
+Then insert the ID as the **application role** `sharewise_app`, which holds the DML privileges on Group tables; the migration role is reserved for schema changes. In the dev container's PostgreSQL extension, connect to server `postgres`, database `sharewise`, user `sharewise_app` with password `sharewise_app_dev`, and run:
+
+```sql
+INSERT INTO groups.users (id) VALUES ('<user-id>') ON CONFLICT DO NOTHING;
+```
+
+The statement is idempotent, matching the provisioning operation that P2.2d will call. Provision each test account separately: every registration creates a new user ID, and resetting the database volume removes all provisioned rows. Member management arrives with P2.2b; to test another account as a plain member, add a membership row the same way, for example `INSERT INTO groups.group_members (group_id, user_id, role) VALUES ('<group-id>', '<user-id>', 'member');` for an already provisioned user.
+
 ## Build, test and run
 
 Backend, from the repository root (`clean verify` without a profile runs all three when PostgreSQL is available). See [Backend testing](development/tests.md) for prerequisites, focused execution and troubleshooting:

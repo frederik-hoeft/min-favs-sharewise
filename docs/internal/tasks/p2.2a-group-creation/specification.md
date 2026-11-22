@@ -1,6 +1,6 @@
 # P2.2a - Group creation and overview
 
-**Status:** Approved specification (November 21, 2026), following the task discussion and specification gate of the [AI development workflow](../../../development/ai-development-workflow.md). **Nothing described here is implemented yet.** **Backlog item:** [P2.2a](../backlog.md#p22---group-management-vertical-slices).
+**Status:** Approved specification (November 21, 2026), following the task discussion and specification gate of the [AI development workflow](../../../development/ai-development-workflow.md). It is implemented by the [implementation plan](plan.md), which records deviations and validation evidence; the steady-state documentation describes the resulting system. **Backlog item:** [P2.2a](../backlog.md#p22---group-management-vertical-slices).
 
 The [domain model](../../../data-model-design.md) owns Group invariants, the [Phase 2 IAM/Group handoff](../../integration/phase-2-foundation.md) owns the reviewed column-level ER for `groups.*`, the [application architecture](../../../architecture.md) owns module and port conventions, and the [security design](../../../stack/security.md) owns the trust model. This specification fixes the P2.2a contracts against those documents and records where it deliberately extends them.
 
