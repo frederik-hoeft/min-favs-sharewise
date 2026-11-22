@@ -18,7 +18,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 /**
  * Per-test ownership of a disposable migrated database, production context, and committed writes.
  * Concurrent methods are safe because JUnit creates a separate test instance and fixture per method;
- * execution remains sequential unless JUnit parallel execution is explicitly enabled.
+ * JUnit uses a single worker by default. A concrete test class can opt out of concurrent
+ * methods with {@code @Execution(ExecutionMode.SAME_THREAD)}.
  */
 @Tag("e2e")
 @Execution(ExecutionMode.CONCURRENT)

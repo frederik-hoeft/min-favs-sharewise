@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import javax.sql.DataSource;
+import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -131,6 +132,8 @@ public final class IntegrationTestContext implements AutoCloseable {
             }
 
             ConfigurableApplicationContext context = new SpringApplicationBuilder(applicationSources)
+                .bannerMode(Banner.Mode.OFF)
+                .logStartupInfo(false)
                 .web(webType)
                 .initializers(application -> application.getEnvironment().getPropertySources()
                     .addFirst(new MapPropertySource("isolated-postgres-fixture", properties)))

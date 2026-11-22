@@ -5,6 +5,7 @@ import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfigurat
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -23,16 +24,21 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 
 /** PostgreSQL-backed Phase C acceptance for owned databases and uncached application contexts. */
 @org.junit.jupiter.api.Tag("e2e")
+// The fixture-concurrency scenario already starts two full Spring contexts in parallel.
+@Execution(ExecutionMode.SAME_THREAD)
 class PostgresDatabaseLifecycleE2E {
 
     @Test
@@ -68,13 +74,21 @@ class PostgresDatabaseLifecycleE2E {
     void parallelFixturesRemainIndependentAndReleaseBothDatabases() throws Exception {
         CountDownLatch bothStarted = new CountDownLatch(2);
         try (ExecutorService workers = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<String> first = workers.submit(() -> concurrentFixture("parallel-first", bothStarted));
-            Future<String> second = workers.submit(() -> concurrentFixture("parallel-second", bothStarted));
-            String firstName = first.get(90, TimeUnit.SECONDS);
-            String secondName = second.get(90, TimeUnit.SECONDS);
-            assertNotEquals(firstName, secondName);
-            assertDatabaseAbsent(firstName);
-            assertDatabaseAbsent(secondName);
+            ExecutorCompletionService<String> completions = new ExecutorCompletionService<>(workers);
+            try {
+                completions.submit(() -> concurrentFixture("parallel-first", bothStarted));
+                completions.submit(() -> concurrentFixture("parallel-second", bothStarted));
+                // Observe whichever fixture completes (or fails) first. A startup failure in
+                // one worker must not be hidden by the other worker's latch timeout.
+                String firstName = awaitFixture(completions);
+                String secondName = awaitFixture(completions);
+                assertNotEquals(firstName, secondName);
+                assertDatabaseAbsent(firstName);
+                assertDatabaseAbsent(secondName);
+            } catch (Exception | Error failure) {
+                workers.shutdownNow();
+                throw failure;
+            }
         }
     }
 
@@ -144,6 +158,12 @@ class PostgresDatabaseLifecycleE2E {
                     }
                 });
             }, ShareWiseApplication.class, ProductionEntityScanConfiguration.class);
+    }
+
+    private static String awaitFixture(ExecutorCompletionService<String> completions) throws Exception {
+        Future<String> completed = completions.poll(90, TimeUnit.SECONDS);
+        assertNotNull(completed, "parallel fixture did not complete within 90 seconds");
+        return completed.get();
     }
 
     private static String concurrentFixture(String value, CountDownLatch bothStarted) throws Exception {
