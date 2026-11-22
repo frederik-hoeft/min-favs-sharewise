@@ -50,6 +50,31 @@ class ProductionComposeContractTests(unittest.TestCase):
         self.assertNotIn("sharewise_migrator_dev", yaml)
         self.assertNotIn("postgres_dev", yaml)
 
+    def test_postgres_host_access_is_explicit_and_scoped_to_local_override(self):
+        override = (ROOT / "deploy/compose.postgres-host.yaml").read_text()
+        base = COMPOSE.read_text()
+        example = (ROOT / "deploy/.env.example").read_text()
+        devcontainer = (ROOT / ".devcontainer/docker-compose.yml").read_text()
+        smoke = (ROOT / "deploy/scripts/test-compose.sh").read_text()
+        cleanup = (ROOT / "deploy/scripts/cleanup.sh").read_text()
+
+        # No default database host publishing; the optional override is never
+        # selected by the checked-in .env template without explicit editing.
+        postgres = base.split("\n  postgres:\n", 1)[1].split("\n  backend:\n", 1)[0]
+        self.assertNotIn("    ports:", postgres)
+        self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", example)
+        self.assertNotRegex(example, r"(?m)^COMPOSE_FILE=")
+        self.assertIn("${SHAREWISE_POSTGRES_BIND:?", override)
+        self.assertIn("${SHAREWISE_POSTGRES_PORT:-15432}:5432", override)
+        self.assertIn("- postgres_host_access", override)
+        self.assertIn("  postgres_host_access: {}", override)
+        self.assertIn("    internal: true", base)
+        self.assertIn("host.docker.internal:host-gateway", devcontainer)
+
+        # Disposable test stacks must not inherit local host publication.
+        self.assertIn("export COMPOSE_FILE=compose.yaml", smoke)
+        self.assertIn("export COMPOSE_FILE=compose.yaml", cleanup)
+
     def test_local_deployment_ports_do_not_overlap_explicit_development_forwards(self):
         devcontainer = json.loads((ROOT / ".devcontainer/devcontainer.json").read_text())
         forwarded = set(devcontainer["forwardPorts"])

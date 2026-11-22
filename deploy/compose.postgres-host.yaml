@@ -1,0 +1,14 @@
+# Optional local-only override. Enable via COMPOSE_FILE in deploy/.env.
+# This is deliberately separate from compose.yaml: PostgreSQL has no host port by default.
+services:
+  postgres:
+    ports:
+      # Bind to a specific daemon-host interface, never implicitly to every interface.
+      - "${SHAREWISE_POSTGRES_BIND:?Set SHAREWISE_POSTGRES_BIND to a Docker-host interface address}:${SHAREWISE_POSTGRES_PORT:-15432}:5432"
+    networks:
+      - data
+      # An additional bridge is required for host publishing from an internal-only network.
+      - postgres_host_access
+
+networks:
+  postgres_host_access: {}

@@ -1,6 +1,6 @@
 # Local Docker deployment
 
-This directory contains the single-host production-style ShareWise stack for local acceptance: static Next.js via HTTPS Nginx, Spring Boot, and PostgreSQL 18. Only Nginx publishes host ports. This is **not** public-host provisioning, production certificate management, backups, or automated rollout (P2.6c/d).
+This directory contains the single-host production-style ShareWise stack for local acceptance: static Next.js via HTTPS Nginx, Spring Boot, and PostgreSQL 18. Only Nginx publishes host ports by default; PostgreSQL can be explicitly published for local devcontainer inspection. This is **not** public-host provisioning, production certificate management, backups, or automated rollout (P2.6c/d).
 
 ## First-time setup
 
@@ -34,7 +34,7 @@ For stronger reproducibility, a reviewed follow-up should resolve **current, ver
 
 ## Local browser URLs and TLS
 
-By default, open **https://localhost:8443/** in a browser on the **Docker daemon host**. The HTTP URL, http://localhost:18080/, redirects to HTTPS. Both host ports bind to `127.0.0.1`; neither Spring nor PostgreSQL is published. These distinct ports avoid conflict with the devcontainer's `3000`/`8080` development forwards.
+By default, open **https://localhost:8443/** in a browser on the **Docker daemon host**. The HTTP URL, http://localhost:18080/, redirects to HTTPS. Both host ports bind to `127.0.0.1`; neither Spring nor PostgreSQL is published by default. These distinct ports avoid conflict with the devcontainer's `3000`/`8080` development forwards.
 
 The TLS certificate is self-signed and **not automatically trusted** by Chrome or your operating system. Trust it explicitly for browser acceptance, or use a certificate already trusted by your machine. Chrome's `ERR_SSL_UNRECOGNIZED_NAME_ALERT` means Nginx rejected the TLS SNI hostname, which can happen when `SHAREWISE_PUBLIC_HOST` does not match the URL you opened. It is different from a certificate-authority warning. Use the hostname configured in `deploy/.env`; for the default setup that is `localhost`.
 
@@ -161,6 +161,33 @@ Private input files live under ignored `deploy/.local/secrets/` and `deploy/.loc
 The database/TLS importer is idempotent when files are unchanged; it rejects changed passwords in existing volumes. IAM keys are provisioned by the separate one-shot container, not imported from host files. Password rotation on persistent PostgreSQL data requires separate, coordinated database and application changes. Local generated passwords and private keys must never be committed. The Docker socket confers extensive control of the host and is appropriate only for trusted local development and acceptance.
 
 A devcontainer and the Docker host share the daemon, **not** a network namespace. Open the published HTTPS URL from the daemon host browser/terminal. The acceptance script communicates through Compose service DNS inside the deployment networks, so it does not depend on `localhost` from the devcontainer.
+
+## Optional PostgreSQL access from the devcontainer
+
+The default deployment keeps PostgreSQL private on the `data` Compose network. The VS Code devcontainer uses Docker-outside-of-Docker: it shares the Docker **daemon** with the deployed stack but does not share its network namespace, so a PostgreSQL connection to `localhost:5432` inside the devcontainer does not reach the deployed database. The devcontainer supplies `host.docker.internal` through Docker's `host-gateway` mapping for reaching ports published on the daemon host.
+
+For local database inspection from the devcontainer's PostgreSQL extension, enable the explicitly named [host-access Compose override](compose.postgres-host.yaml). In `deploy/.env`, add the following lines (they are commented out in [`.env.example`](.env.example)):
+
+```dotenv
+COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml
+SHAREWISE_POSTGRES_BIND=172.17.0.1
+SHAREWISE_POSTGRES_PORT=15432
+```
+
+`172.17.0.1` is only an **example for a native Linux Docker Engine**. After rebuilding/reopening the devcontainer to apply `.devcontainer/docker-compose.yml`, run `getent ahostsv4 host.docker.internal` inside it and select the Docker host-gateway IPv4 address actually reported. Configure `SHAREWISE_POSTGRES_BIND` with an address assigned to an interface on the **Docker daemon host** that the devcontainer can reach. Docker Desktop, rootless engines, remote daemons and custom bridge configurations may use a different address. Binding only to `127.0.0.1` on a native Linux host normally makes the port **unreachable from the devcontainer**; binding to `0.0.0.0` can expose it to the local network and should not be the default.
+
+From `deploy/`, validate the merged Compose configuration and recreate the affected service without deleting the database volume:
+
+```bash
+docker compose config
+docker compose up -d --force-recreate postgres
+```
+
+In the devcontainer's PostgreSQL extension, connect to host `host.docker.internal`, port `15432` (or `SHAREWISE_POSTGRES_PORT`), database `sharewise`, user `sharewise_app`, and the application-role password held in ignored `deploy/.local/secrets/sharewise.database.app-password`. Prefer this least-privileged role for inspection; use `sharewise_migrator` only when migration privileges are genuinely necessary. The deployed PostgreSQL instance is separate from the devcontainer's `postgres` service and its development database.
+
+The override adds a second, non-internal Docker bridge to PostgreSQL so Docker can publish its host port while retaining its existing internal `data` network for the backend. **Enabling it reduces network isolation:** other containers that can reach the bound host interface may connect to PostgreSQL, subject to database authentication. Use it only for a trusted local acceptance environment; never enable this override on a public or production host. The disposable `test-compose.sh` stack always uses the base private topology regardless of this local setting.
+
+To disable host access, remove or comment out `COMPOSE_FILE` and the PostgreSQL bind/port variables in `deploy/.env`, then run `docker compose up -d --force-recreate postgres` from `deploy/`. This recreates the container without the published port and preserves the existing database volume. Verify with `docker compose ps` and `docker compose port postgres 5432` (which should report no published binding).
 
 ## Disposable end-to-end acceptance
 
