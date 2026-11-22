@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayNameUpdate;
+import de.hsh.favs.sharewise.identity.internal.web.dto.AccountProfileUpdateRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
 import org.junit.jupiter.api.Test;
@@ -18,10 +20,11 @@ class AuthFactoryWiringTests {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withBean(PasswordPolicy.class, PasswordPolicy::initial)
-            .withUserConfiguration(RegistrationCommandFactory.class, LoginCommandFactory.class);
+            .withUserConfiguration(RegistrationCommandFactory.class, LoginCommandFactory.class,
+                    AccountProfileUpdateFactory.class);
 
     @Test
-    void enabledAuthenticationPublishesBothTypedInputFactories() {
+    void enabledAuthenticationPublishesTypedInputFactories() {
         runner.withPropertyValues("sharewise.iam.auth.enabled=true")
                 .withBean(FactoryConsumer.class)
                 .run(context -> {
@@ -33,6 +36,10 @@ class AuthFactoryWiringTests {
                     assertEquals("one@example.org", consumer.logins.createFrom(
                             new AuthCredentialsRequest("ONE@example.org", "x"))
                             .fold(command -> command.email().normalized(), errors -> "unexpected"));
+                    AccountProfileUpdateRequest update = new AccountProfileUpdateRequest();
+                    update.setDisplayName("Alice");
+                    assertEquals("Alice", consumer.updates.createFrom(update)
+                            .fold(DisplayNameUpdate::value, errors -> "unexpected"));
                 });
     }
 
@@ -41,20 +48,25 @@ class AuthFactoryWiringTests {
         runner.run(context -> {
             assertFalse(context.containsBean("registrationCommandFactory"));
             assertFalse(context.containsBean("loginCommandFactory"));
+            assertFalse(context.containsBean("accountProfileUpdateFactory"));
         });
     }
 
     static final class FactoryConsumer {
         final DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations;
         final DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins;
+        final DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates;
 
         FactoryConsumer(
                 @Qualifier("registrationCommandFactory")
                 DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations,
                 @Qualifier("loginCommandFactory")
-                DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins) {
+                DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins,
+                @Qualifier("accountProfileUpdateFactory")
+                DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates) {
             this.registrations = registrations;
             this.logins = logins;
+            this.updates = updates;
         }
     }
 }

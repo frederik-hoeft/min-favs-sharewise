@@ -111,7 +111,8 @@ class IamAccountHttpTests {
     @Test
     void patchAcceptsOnlyOneStringOrNullFieldAndRejectsInvalidNames() throws Exception {
         for (String body : new String[]{"{}", "{\"displayName\":4}",
-                "{\"displayName\":false}", "{\"displayName\":\"Alice\",\"email\":\"x\"}",
+                "{\"displayName\":false}", "{\"displayName\":[]}",
+                "{\"displayName\":{}}", "{\"displayName\":\"Alice\",\"email\":\"x\"}",
                 "{\"displayName\":\" \"}", "{\"displayName\":\"\\u2028\"}"}) {
             mvc.perform(patch(ACCOUNT).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer())
                     .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -181,7 +182,7 @@ class IamAccountHttpTests {
 
         @Bean
         IamAccountController accountController(OperationIngressDispatcher ingress) {
-            return new IamAccountController(ingress);
+            return new IamAccountController(ingress, new AccountProfileUpdateFactory());
         }
 
         @Bean("iamPrimaryJwtCredentialCodec")

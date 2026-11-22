@@ -1,16 +1,18 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
-import tools.jackson.databind.JsonNode;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfile;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileFailure;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileService;
 import de.hsh.favs.sharewise.identity.internal.profile.DisplayNameUpdate;
+import de.hsh.favs.sharewise.identity.internal.web.dto.AccountProfileUpdateRequest;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
+import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
 import java.util.Objects;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -30,9 +32,13 @@ import org.springframework.web.bind.annotation.RestController;
 final class IamAccountController {
 
     private final OperationIngressDispatcher ingress;
+    private final DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates;
 
-    IamAccountController(OperationIngressDispatcher ingress) {
+    IamAccountController(OperationIngressDispatcher ingress,
+            @Qualifier("accountProfileUpdateFactory")
+            DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates) {
         this.ingress = Objects.requireNonNull(ingress, "ingress");
+        this.updates = Objects.requireNonNull(updates, "updates");
     }
 
     @GetMapping
@@ -43,23 +49,12 @@ final class IamAccountController {
     }
 
     @PatchMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<?> update(@RequestBody JsonNode input) {
-        DisplayNameUpdate command = parse(input);
+    ResponseEntity<?> update(@RequestBody AccountProfileUpdateRequest input) {
+        DisplayNameUpdate command = updates.createFrom(input).fold(
+                validated -> validated, errors -> { throw RequestValidationException.from(errors); });
         Result<AccountProfile, AccountProfileFailure> result = ingress.dispatch(
                 AccountProfileService.class, service -> service.setDisplayName(command));
         return response(result);
-    }
-
-    private static DisplayNameUpdate parse(JsonNode input) {
-        if (input == null || !input.isObject() || !input.has("displayName")
-                || input.size() != 1 || !(input.get("displayName").isTextual()
-                    || input.get("displayName").isNull())) {
-            throw RequestValidationException.ofSingleField("displayName", "invalid",
-                    "Expected exactly one displayName field containing a string or null.");
-        }
-        String value = input.get("displayName").isNull() ? null : input.get("displayName").textValue();
-        return DisplayNameUpdate.tryFrom(value).fold(
-                command -> command, errors -> { throw RequestValidationException.from(errors); });
     }
 
     private static ResponseEntity<?> response(Result<AccountProfile, AccountProfileFailure> result) {
