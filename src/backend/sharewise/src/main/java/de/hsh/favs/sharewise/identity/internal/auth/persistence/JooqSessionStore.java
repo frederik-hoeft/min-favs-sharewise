@@ -37,6 +37,11 @@ class JooqSessionStore implements SessionStore {
                         dbTime(deadlines.absoluteExpiresAt()))
                 .returning()
                 .fetchSingle();
+        return session(row);
+    }
+
+    /** Keep session row mapping consistent for initial issuance and locked lifecycle reads. */
+    static LoginSession session(SessionsRecord row) {
         SessionPolicy.Deadlines persistedDeadlines = new SessionPolicy.Deadlines(
                 instant(row.getCreatedAt()), instant(row.getIdleExpiresAt()),
                 instant(row.getAbsoluteExpiresAt()));

@@ -1,6 +1,6 @@
 # P2.1b - Refresh, logout and session lifecycle: implementation plan
 
-**Status:** Proposed plan for human review. Its phases depend on approval of the [P2.1b specification](specification.md) and then separate approval of this plan; no implementation phase has begun. Checkboxes are marked only after verification **and** human review of the corresponding patch.
+**Status:** Specification and plan approved; Phase A accepted and merged into the local development baseline. Phase B persistence is under review, with its PostgreSQL execution gate still pending. Checkboxes are marked only after verification **and** human review of the corresponding patch.
 
 ## Baseline, scope and team boundaries
 
@@ -38,9 +38,9 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 
 **Scope:** Introduce focused, DI-managed IAM refresh/logout operations using the existing time source, transaction outcome pattern, credential generator and signing infrastructure. Separate validated credential parsing, session policy and typed business outcomes from HTTP/cookie transport. No new `shared` authentication service or parallel crypto implementation.
 
-- [ ] Add constant-time secret-verifier checks, generic invalid-secret denial, verified-consumed reuse handling, expected-session mismatch before mutation, and eligibility/deadline rules (IAM-B01, B03–B05).
-- [ ] Extend session/refresh ports only where required; express the atomic single-segment operation, reuse revocation, logout and failure outcomes; keep output credentials private until commit completes (IAM-B02, B06).
-- [ ] Unit-test correct and incorrect secret, consumed token, expiry boundaries, disabled/revoked account, context mismatch, clock limits, rollback/issuer failures and no credential leakage (IAM-BT01, BT03–BT05).
+- [x] Add constant-time secret-verifier checks, generic invalid-secret denial, verified-consumed reuse handling, expected-session mismatch before mutation, and eligibility/deadline rules (IAM-B01, B03–B05).
+- [x] Extend session/refresh ports only where required; express the atomic single-segment operation, reuse revocation, logout and failure outcomes; keep output credentials private until commit completes (IAM-B02, B06).
+- [x] Unit-test correct and incorrect secret, consumed token, expiry boundaries, disabled/revoked account, context mismatch, clock limits, rollback/issuer failures and no credential leakage (IAM-BT01, BT03–BT05).
 
 **Gate A:** Unit and module verification pass offline, application/transaction semantics are reviewed, and the phase patch is approved. PostgreSQL concurrency remains unproven until B.
 
