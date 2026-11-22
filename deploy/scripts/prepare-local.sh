@@ -18,18 +18,24 @@ if [[ ! -e "$deploy_dir/.env" && ! -L "$deploy_dir/.env" ]]; then
         echo 'Imported legacy .local/compose.env into deploy/.env; previous file retained.'
     else
         cp "$deploy_dir/.env.example" "$deploy_dir/.env"
-        # Suggest the devcontainer's Docker host gateway in the optional, still
-        # commented PostgreSQL binding. Never enable host publishing implicitly.
-        # This name may not resolve when bootstrap is run outside the devcontainer.
-        if command -v getent >/dev/null 2>&1; then
-            gateway="$(getent ahostsv4 host.docker.internal 2>/dev/null |
-                awk '$2 == "STREAM" { print $1; exit }' || true)"
-            if [[ "$gateway" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-                IFS=. read -r octet1 octet2 octet3 octet4 <<< "$gateway"
-                if (( 10#$octet1 > 0 && 10#$octet1 != 127 &&
-                      10#$octet1 <= 255 && 10#$octet2 <= 255 &&
-                      10#$octet3 <= 255 && 10#$octet4 <= 255 )); then
-                    sed -i "s/^# SHAREWISE_POSTGRES_BIND=__HOST_GATEWAY_IPV4__$/# SHAREWISE_POSTGRES_BIND=$gateway/" "$deploy_dir/.env"
+        # Published-port bind addresses belong to the Docker daemon host, not
+        # to the devcontainer's DNS/routing namespace. Docker Desktop publishes
+        # through its host-side port proxy; native Linux uses the daemon bridge.
+        # Keep this suggestion commented: host access must remain opt-in.
+        if command -v docker >/dev/null 2>&1; then
+            daemon_os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || true)"
+            suggested_bind=""
+            if [[ "$daemon_os" == *"Docker Desktop"* ]]; then
+                suggested_bind="127.0.0.1"
+            elif [[ -n "$daemon_os" ]]; then
+                suggested_bind="$(docker network inspect bridge \
+                    --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null || true)"
+            fi
+            if [[ "$suggested_bind" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                IFS=. read -r octet1 octet2 octet3 octet4 <<< "$suggested_bind"
+                if (( 10#$octet1 > 0 && 10#$octet1 <= 255 &&
+                      10#$octet2 <= 255 && 10#$octet3 <= 255 && 10#$octet4 <= 255 )); then
+                    sed -i "s/^# SHAREWISE_POSTGRES_BIND=__DOCKER_HOST_BIND_IPV4__$/# SHAREWISE_POSTGRES_BIND=$suggested_bind/" "$deploy_dir/.env"
                 fi
             fi
         fi
