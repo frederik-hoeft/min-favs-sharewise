@@ -23,23 +23,15 @@ import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
-import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
-import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
-import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
-import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
 import jakarta.servlet.http.Cookie;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.spec.ECGenParameterSpec;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +39,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -241,6 +234,7 @@ class IamAuthenticationHttpTests {
     }
 
     @TestConfiguration(proxyBeanMethods = false)
+    @Import(TestAccessTokenConfiguration.class)
     static class Fixture {
         @Bean
         IamAuthenticationController controller(OperationIngressDispatcher ingress,
@@ -248,18 +242,6 @@ class IamAuthenticationHttpTests {
             PasswordPolicy policy = PasswordPolicy.initial();
             return new IamAuthenticationController(ingress, new RegistrationCommandFactory(policy),
                     new LoginCommandFactory(policy), repository, CLOCK);
-        }
-
-        @Bean
-        JwtCredentialCodec iamPrimaryJwtCredentialCodec() throws Exception {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
-            generator.initialize(new ECGenParameterSpec("secp256r1"));
-            KeyPair pair = generator.generateKeyPair();
-            JwtCredentialProfile profile = new JwtCredentialProfile("iam-access", "https://iam.sharewise.test",
-                    "sw-iam-access+jwt", Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY,
-                    Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
-            return new JwtCredentialCodec(profile,
-                    new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", pair)), Optional.of("test")), CLOCK);
         }
     }
 }

@@ -33,23 +33,17 @@ import de.hsh.favs.sharewise.identity.internal.web.IamHttpSecurityConfiguration;
 import de.hsh.favs.sharewise.identity.internal.web.IamIdentityExceptionHandler;
 import de.hsh.favs.sharewise.identity.internal.web.HttpIamInputContributor;
 import org.springframework.security.web.FilterChainProxy;
-import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
-import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
-import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
 import de.hsh.favs.sharewise.testsupport.configuration.OperationScopeTestComponents;
+import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
+import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokens;
 import jakarta.servlet.ServletException;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.spec.ECGenParameterSpec;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -86,14 +80,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
     PhaseDIamIngressTests.Fixture.class})
 class PhaseDIamIngressTests {
 
-    private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
-    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    private static final Clock CLOCK = TestAccessTokens.CLOCK;
     private static final UUID ALICE = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
     private static final UUID BOB = UUID.fromString("87654321-4321-4432-8432-ba0987654321");
-    private static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
-        "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
-        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
-    private static final KeyPair KEY = generateKey();
+    private static final JwtCredentialProfile PROFILE = TestAccessTokens.PROFILE;
 
     @Autowired OperationIngressDispatcher httpIngress;
     @Autowired FilterChainProxy filter;
@@ -179,8 +169,7 @@ class PhaseDIamIngressTests {
         JwtCredentialProfile tooLarge = new JwtCredentialProfile(PROFILE.name(), PROFILE.issuer(),
             PROFILE.tokenType(), PROFILE.audiences(), PROFILE.kind(), PROFILE.trustedPrimaryProfiles(),
             PROFILE.maximumLifetime(), PROFILE.clockSkew(), 16_384);
-        JwtCredentialCodec oversizedCodec = new JwtCredentialCodec(tooLarge,
-            new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
+        JwtCredentialCodec oversizedCodec = TestAccessTokens.codec(tooLarge, CLOCK);
         DefaultListableBeanFactory oversizedWiring = new DefaultListableBeanFactory();
         oversizedWiring.registerSingleton("iamPrimaryJwtCredentialCodec", oversizedCodec);
         oversizedWiring.registerBeanDefinition("iamPrimaryCredentialProvider",
@@ -223,9 +212,7 @@ class PhaseDIamIngressTests {
     void admittedNonHttpIdentityCanFlowAcrossOperationsAfterTokenExpiry() {
         String jwt = token(ALICE, "workflow-session");
         VerifiedJwtCredential admitted = verifier.verify(jwt);
-        JwtCredentialCodec later = new JwtCredentialCodec(PROFILE,
-            new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")),
-            Clock.offset(CLOCK, Duration.ofSeconds(400)));
+        JwtCredentialCodec later = TestAccessTokens.codec(PROFILE, Clock.offset(CLOCK, Duration.ofSeconds(400)));
         assertThrows(JwtCredentialException.class, () -> later.verifyPrimary(jwt));
 
         OperationIngressDispatcher continuation = new ContributingOperationDispatcher(dispatcher,
@@ -347,32 +334,15 @@ class PhaseDIamIngressTests {
     }
 
     private String token(UUID user, String session) {
-        return codec.sign(new JwtIssueRequest(user, session, "test-token", NOW.minusSeconds(1),
-            NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of("device", "test")));
+        return TestAccessTokens.accessToken(user, session);
     }
 
     private String expiredToken() {
-        return codec.sign(new JwtIssueRequest(ALICE, "expired", "expired-token", NOW.minusSeconds(240),
-            NOW.minusSeconds(240), NOW.minusSeconds(31), Optional.empty(), Map.of()));
+        return TestAccessTokens.expiredAccessToken(ALICE);
     }
 
     private String wrongProfileToken() {
-        JwtCredentialProfile wrong = new JwtCredentialProfile("refresh", PROFILE.issuer(), "sw-refresh+jwt",
-            PROFILE.audiences(), PROFILE.kind(), Set.of(), PROFILE.maximumLifetime(), PROFILE.clockSkew(), 4096);
-        JwtCredentialCodec other = new JwtCredentialCodec(wrong,
-            new Es256JwtSignatureService(java.util.List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
-        return other.sign(new JwtIssueRequest(ALICE, "wrong-profile", "refresh-token", NOW.minusSeconds(1),
-            NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
-    }
-
-    private static KeyPair generateKey() {
-        try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
-            generator.initialize(new ECGenParameterSpec("secp256r1"));
-            return generator.generateKeyPair();
-        } catch (java.security.GeneralSecurityException exception) {
-            throw new ExceptionInInitializerError(exception);
-        }
+        return TestAccessTokens.wrongProfileAccessToken(ALICE);
     }
 
     record AdditionalInput(String value) { }
@@ -467,7 +437,7 @@ class PhaseDIamIngressTests {
     @Import({IamOperationSecurityConfiguration.class, IamIngressInitializer.class,
         IamPrimaryCredentialProvider.class, IamCredentialVerifier.class,
         ApiHttpSecurityConfiguration.class, IamHttpSecurityConfiguration.class, HttpIamInputContributor.class, IamIdentityExceptionHandler.class,
-        DefaultIdentityContext.class})
+        DefaultIdentityContext.class, TestAccessTokenConfiguration.class})
     static class Fixture {
         // This legacy ingress test builds standalone MockMvc controllers outside the
         // Spring mapping registry; global MVC endpoint admission is exercised in
@@ -496,11 +466,6 @@ class PhaseDIamIngressTests {
             return new ContributionEntry(identity, additional);
         }
 
-        @Bean
-        JwtCredentialCodec iamPrimaryJwtCredentialCodec() {
-            return new JwtCredentialCodec(PROFILE,
-                new Es256JwtSignatureService(java.util.List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
-        }
         // A second issuer codec must not make primary IAM trust selection ambiguous.
         @Bean
         JwtCredentialCodec unrelatedCredentialCodec() {
@@ -508,8 +473,7 @@ class PhaseDIamIngressTests {
                 "https://groups.sharewise.test", "sw-group-attestation+jwt", Set.of("finance-api"),
                 JwtCredentialProfile.Kind.SUBORDINATE, Set.of(PROFILE.id()),
                 Duration.ofMinutes(5), Duration.ofSeconds(30), 16_384);
-            return new JwtCredentialCodec(subordinate,
-                new Es256JwtSignatureService(List.of(JwtEcKey.signing("group", KEY)), Optional.of("group")), CLOCK);
+            return TestAccessTokens.codec(subordinate, "group", CLOCK);
         }
         @Bean @Scope("operation")
         ConsumerA consumerA(IdentityContext identity, AuthorizationContext authorization) {
