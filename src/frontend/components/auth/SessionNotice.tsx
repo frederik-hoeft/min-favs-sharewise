@@ -10,7 +10,7 @@ import { useAuthState, useIdentity } from "@/app/identity-provider";
 /** Preserve the current page and query without effect-driven derived state. */
 function LoginReturnLink() {
   const pathname = usePathname();
-  const search = useSearchParams().toString();
+  const search = useSearchParams()?.toString() ?? "";
   const next = safeAppReturnPath(`${pathname}${search ? `?${search}` : ""}`);
   return <Link href={`/auth/login?next=${encodeURIComponent(next)}`}>Sign in</Link>;
 }

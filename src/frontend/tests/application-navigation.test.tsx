@@ -11,9 +11,11 @@ import DummyOnePage from "@/app/(app)/app/dummy1/page";
 import { TestProviders } from "./support/TestProviders";
 
 let pathname = "/app/dummy1";
+let searchParams: URLSearchParams | null = null;
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
   usePathname: () => pathname,
+  useSearchParams: () => searchParams,
   useRouter: () => ({ replace: vi.fn() }),
 }));
 
@@ -27,9 +29,25 @@ function renderApp() {
 
 beforeEach(() => {
   pathname = "/app/dummy1";
+  searchParams = null;
 });
 
 describe("Application route shell", () => {
+  it("offers the current workspace page as the login return path when search parameters are unavailable", async () => {
+    pathname = "/app/dummy3";
+    renderApp();
+    expect(await screen.findByRole("link", { name: "Sign in" }))
+      .toHaveAttribute("href", "/auth/login?next=%2Fapp%2Fdummy3");
+  });
+
+  it("includes available query parameters in the login return path", async () => {
+    pathname = "/app/dummy3";
+    searchParams = new URLSearchParams("tab=expenses");
+    renderApp();
+    expect(await screen.findByRole("link", { name: "Sign in" }))
+      .toHaveAttribute("href", "/auth/login?next=%2Fapp%2Fdummy3%3Ftab%3Dexpenses");
+  });
+
   it("provides semantic content, desktop navigation, active route and relative breadcrumbs", () => {
     renderApp();
     expect(screen.getAllByRole("main")).toHaveLength(1);
