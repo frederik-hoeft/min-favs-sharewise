@@ -115,6 +115,6 @@ describe("createApiClient", () => {
     await expect(client.get("/api/groups")).rejects.toBeInstanceOf(ApiError);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(onRequest).toHaveBeenCalledTimes(2);
-    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).toHaveBeenCalledTimes(2);
   });
 });

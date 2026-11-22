@@ -1,21 +1,18 @@
 import { ApiError } from '@/lib/api';
 import type { AuthenticationResponse, AuthState } from './models.ts';
 
-const MAX_TIMEOUT_MS = 2_147_483_647;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * Tab-local bearer storage. Only status and expiry are observable; the JWT never
- * enters React state, browser storage, or server-rendered data.
+ * Tab-local access bearer and session binding. Timestamps are advisory: only
+ * server ingress decides whether an issued JWT has expired.
  */
 export class AuthSession {
     private accessToken: string | undefined;
-    private expiresAt = 0;
-    private expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    private sessionId: string | undefined;
     private readonly listeners = new Set<() => void>();
     private state: AuthState = { status: 'reauthentication-required', reason: 'initial' };
-
-    constructor(private readonly now: () => number = Date.now) {}
 
     readonly subscribe = (listener: () => void): (() => void) => {
         this.listeners.add(listener);
@@ -24,29 +21,30 @@ export class AuthSession {
 
     readonly getSnapshot = (): AuthState => this.state;
 
-    /** Never returns an expired token, even when a background timer was throttled. */
+    /** Never persists or exposes the bearer through observable React state. */
     getAccessToken(): string | undefined {
-        if (this.accessToken && this.now() >= this.expiresAt) {
-            this.invalidate('expired');
-        }
         return this.accessToken;
     }
 
-    /** Compare without accessing or invalidating the active token; used by 401 handling. */
+    /** Remains bound to the original session even when recovery is suspended. */
+    getSessionId(): string | undefined {
+        return this.sessionId;
+    }
+
     matchesAccessToken(token: string): boolean {
         return this.accessToken !== undefined && this.accessToken === token;
     }
 
-    accept(response: AuthenticationResponse): void {
+    /** Validate before publishing credentials or interpreting the response session. */
+    static validateResponse(response: AuthenticationResponse): void {
         const expiresAt = typeof response?.expiresAt === 'string' && ISO_INSTANT.test(response.expiresAt)
             ? Date.parse(response.expiresAt)
             : NaN;
-
         if (
             typeof response?.accessToken !== 'string' || !response.accessToken.trim() ||
-            response.tokenType !== 'Bearer' || !Number.isFinite(expiresAt) || expiresAt <= this.now()
+            response.tokenType !== 'Bearer' || !Number.isFinite(expiresAt) ||
+            typeof response.sessionId !== 'string' || !SESSION_ID_PATTERN.test(response.sessionId)
         ) {
-            // Do not include response data: it may contain a raw bearer credential.
             throw new ApiError({
                 status: 0,
                 code: 'invalid_auth_response',
@@ -54,48 +52,49 @@ export class AuthSession {
                 detail: 'The server returned an unusable authentication response. Please sign in again.',
             });
         }
-
-        this.clearTimer();
-        this.accessToken = response.accessToken;
-        this.expiresAt = expiresAt;
-        this.update({ status: 'authenticated', expiresAt: response.expiresAt });
-        this.scheduleExpiry();
     }
 
-    invalidate(reason: 'expired' | 'unauthorized'): void {
-        this.clearTimer();
+    accept(response: AuthenticationResponse): void {
+        AuthSession.validateResponse(response);
+        this.accessToken = response.accessToken;
+        this.sessionId = response.sessionId;
+        this.update({ status: 'authenticated', expiresAt: response.expiresAt });
+    }
+
+    markRestoring(): void {
+        if (this.state.status === 'reauthentication-required' && this.state.reason === 'initial') {
+            this.update({ status: 'restoring' });
+        }
+    }
+
+    /** Do not clear or revoke another tab's current cookie on a context switch. */
+    markContextChanged(): void {
         this.accessToken = undefined;
-        this.expiresAt = 0;
+        this.update({ status: 'context-changed' });
+    }
+
+    invalidate(reason: 'expired' | 'unauthorized' | 'uncertain'): void {
+        this.accessToken = undefined;
         if (this.state.status !== 'reauthentication-required' || this.state.reason !== reason) {
             this.update({ status: 'reauthentication-required', reason });
         }
     }
 
+    /** Discard a confirmed logged-out context without touching the browser cookie. */
+    clear(): void {
+        this.sessionId = undefined;
+        this.invalidate('unauthorized');
+    }
+
     dispose(): void {
-        this.clearTimer();
         this.listeners.clear();
         this.accessToken = undefined;
-        this.expiresAt = 0;
+        this.sessionId = undefined;
         this.state = { status: 'reauthentication-required', reason: 'initial' };
     }
 
     private update(next: AuthState): void {
         this.state = next;
         for (const listener of this.listeners) listener();
-    }
-
-    private clearTimer(): void {
-        if (this.expiryTimer !== undefined) clearTimeout(this.expiryTimer);
-        this.expiryTimer = undefined;
-    }
-
-    private scheduleExpiry(): void {
-        const remaining = this.expiresAt - this.now();
-        if (remaining <= 0) {
-            this.invalidate('expired');
-            return;
-        }
-        // Timers are advisory: checks at the API boundary also enforce expiry.
-        this.expiryTimer = setTimeout(() => this.scheduleExpiry(), Math.min(remaining, MAX_TIMEOUT_MS));
     }
 }

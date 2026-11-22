@@ -5,6 +5,7 @@ import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { theme, cssVariablesResolver } from "@/lib/theme";
 import { ApplicationShell } from "@/app/(app)/app/_components/ApplicationShell";
+import { IdentityProvider } from "@/app/identity-provider";
 import { appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
 import DummyOnePage from "@/app/(app)/app/dummy1/page";
 import { TestProviders } from "./support/TestProviders";
@@ -13,12 +14,13 @@ let pathname = "/app/dummy1";
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
   usePathname: () => pathname,
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 function renderApp() {
   return render(
     <TestProviders>
-      <ApplicationShell><DummyOnePage /></ApplicationShell>
+      <IdentityProvider><ApplicationShell><DummyOnePage /></ApplicationShell></IdentityProvider>
     </TestProviders>,
   );
 }

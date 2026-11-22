@@ -1,6 +1,6 @@
 # P2.1b - Refresh, logout and session lifecycle: implementation plan
 
-**Status:** Specification and plan approved; Phases A and B accepted and merged into the local development baseline. The maintainer verified the complete PostgreSQL test suite with sequential and four-worker execution before accepting Phase B. Checkboxes are marked only after verification **and** human review of the corresponding patch.
+**Status:** Specification and plan approved; Phases A and B accepted and merged into the local development baseline, including CI test parallelism. Phase C is implemented on a separate review branch, with frontend toolchain validation pending. The maintainer verified the complete PostgreSQL test suite with sequential and four-worker execution before accepting Phase B. Checkboxes are marked only after verification **and** human review of the corresponding patch.
 
 ## Baseline, scope and team boundaries
 

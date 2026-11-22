@@ -98,6 +98,7 @@ describe("Identity runtime with mock HTTP", () => {
       new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () =>
         reject(new DOMException('Aborted', 'AbortError')), { once: true })));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => locks.manager);
+    runtime.session.accept(authenticationResponse());
     try {
       const pending = runtime.api.get('/groups/v1/groups', { timeoutMs: 150 });
       const result = expect(pending).rejects.toMatchObject({ status: 0, code: 'network_error' });
@@ -226,24 +227,17 @@ describe("Identity runtime with mock HTTP", () => {
     expect(secondTab.session.getAccessToken()).toBe("second");
   });
 
-  it("does not attach an expired bearer when making a subsequent API request", async () => {
-    let now = Date.parse("2026-11-20T12:00:00Z");
+  it("retains an access bearer despite client clock skew and lets server ingress reject it", async () => {
     const observed: Array<string | null> = [];
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       observed.push((init?.headers as Headers).get("Authorization"));
-      return problemResponse(401, "missing_credentials");
+      return problemResponse(401, "unauthenticated");
     });
-    const runtime = createIdentityRuntime({
-      fetchImpl: fetchImpl as typeof fetch,
-      locks: () => undefined,
-      now: () => now,
-    });
-    runtimes.push(runtime);
-    runtime.session.accept(authenticationResponse("short-lived", "2026-11-20T12:00:01Z"));
-    now += 2000;
-    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ status: 401 });
-    expect(observed).toEqual([null]);
-    expect(runtime.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "expired" });
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => undefined);
+    runtime.session.accept(authenticationResponse("short-lived", "2020-11-20T12:00:01Z"));
+    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ status: 401, code: 'unauthenticated' });
+    expect(observed).toEqual(['Bearer short-lived']);
+    expect(runtime.session.getSnapshot().status).toBe('authenticated');
   });
 
   it("rejects an invalid successful authentication body without storing it", async () => {
@@ -266,11 +260,11 @@ describe("Identity runtime with mock HTTP", () => {
     expect(runtime.session.getAccessToken()).toBe("existing-token");
   });
 
-  it("a protected 401 invalidates the active bearer without retrying the request", async () => {
-    const fetchImpl = vi.fn(async () => problemResponse(401, "expired_access_token"));
+  it("a pre-dispatch 401 without Web Locks fails closed before any cookie mutation", async () => {
+    const fetchImpl = vi.fn(async () => problemResponse(401, "invalid_credential"));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => undefined);
     runtime.session.accept(authenticationResponse("active"));
-    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ status: 401 });
+    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(runtime.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
   });

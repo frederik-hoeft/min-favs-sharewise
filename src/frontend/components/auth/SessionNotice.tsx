@@ -1,27 +1,45 @@
 "use client";
 
-import { Alert, Text } from "@mantine/core";
+import { Alert, Button, Text } from "@mantine/core";
+import { useEffect, useState } from "react";
+import { safeAppReturnPath } from "@/lib/navigation/return-path";
 import Link from "next/link";
-import { useAuthState } from "@/app/identity-provider";
+import { useAuthState, useIdentity } from "@/app/identity-provider";
 
-/** The workspace is illustrative, not a protected account or finance experience. */
+/** The demonstration routes remain public; identity is restored only for display. */
 export function SessionNotice() {
   const state = useAuthState();
+  const { auth } = useIdentity();
+  const [loginHref, setLoginHref] = useState("/auth/login");
+
+  useEffect(() => {
+    const next = safeAppReturnPath(window.location.pathname + window.location.search);
+    setLoginHref(`/auth/login?next=${encodeURIComponent(next)}`);
+    void auth.ensureAuthenticated().catch(() => {
+      // The coordinator publishes the terminal state; no component-level refresh policy.
+    });
+  }, [auth]);
+
   if (state.status === 'authenticated') {
+    return <Alert title="Signed in" color="indigo">Your sign-in is active in this tab. Authentication will renew automatically when needed.</Alert>;
+  }
+  if (state.status === 'context-changed') {
     return (
-      <Alert title="Signed in for this tab" color="indigo">
-        Your temporary browser session is active. This workspace is still a demo and does not display account data. Reloading or opening a new tab requires signing in again until session renewal is implemented.
+      <Alert color="yellow" title="Your sign-in changed in another tab" role="alert">
+        <Text size="sm" mb="sm">Reload this page to use the browser's current sign-in. Unsaved edits on this page may be lost.</Text>
+        <Button size="xs" onClick={() => window.location.reload()}>Reload page</Button>
       </Alert>
     );
   }
-  const message = state.reason === 'expired'
-    ? 'Your session has expired. Sign in again to continue.'
-    : state.reason === 'unauthorized'
-      ? 'Your session was rejected. Please sign in again.'
-      : 'No active sign-in in this tab. You can explore this demonstration workspace without an account.';
+  if (state.status === 'restoring' || state.reason === 'initial') {
+    return <Alert title="Checking sign-in" color="gray">Restoring the browser's current session, if available.</Alert>;
+  }
+  const message = state.reason === 'uncertain'
+    ? 'The last renewal could not be confirmed. For safety, sign in again.'
+    : 'No active sign-in is available in this tab.';
   return (
     <Alert title="Demonstration workspace" color="gray">
-      <Text size="sm">{message} <Link href="/auth/login">Sign in</Link> or <Link href="/auth/register">create an account</Link>.</Text>
+      <Text size="sm">{message} <Link href={loginHref}>Sign in</Link> or <Link href="/auth/register">create an account</Link>. You can still explore this demo.</Text>
     </Alert>
   );
 }

@@ -3,11 +3,18 @@
 import { ActionIcon, Menu } from "@mantine/core";
 import { CaretLeftIcon, CaretRightIcon, CircleHalfIcon, UserCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useIdentity, useAuthState } from "@/app/identity-provider";
 import { AppearanceMenuItems } from "@/components/theme/AppearanceMenuItems";
 
 /** A two-level Mantine menu; the secondary view fits narrow/mobile viewports. */
 export function AccountMenu() {
   const [opened, setOpened] = useState(false);
+  const { auth } = useIdentity();
+  const state = useAuthState();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
   const [screen, setScreen] = useState<"account" | "appearance">("account");
   const appearanceRef = useRef<HTMLButtonElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
@@ -33,6 +40,21 @@ export function AccountMenu() {
     if (!nextOpened) {
       restoreKeyboardFocus.current = false;
       setScreen("account");
+    }
+  }
+
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError(false);
+    try {
+      await auth.logout();
+      updateOpened(false);
+      router.replace("/auth/login");
+    } catch {
+      setSignOutError(true);
+    } finally {
+      setSigningOut(false);
     }
   }
 
@@ -64,6 +86,12 @@ export function AccountMenu() {
             >
               Appearance
             </Menu.Item>
+            {state.status === "authenticated" && (
+              <Menu.Item disabled={signingOut} onClick={() => void signOut()}>
+                {signingOut ? "Signing out…" : "Sign out"}
+              </Menu.Item>
+            )}
+            {signOutError && <Menu.Label>Could not confirm sign-out. Try again or sign in anew.</Menu.Label>}
           </>
         ) : (
           <>
