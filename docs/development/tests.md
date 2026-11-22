@@ -33,6 +33,31 @@ To run a focused class instead of a full suite, use Surefire's `-Dtest` or Fails
 
 Maven Surefire selects the Unit `*Test`/`*Tests` classes; Failsafe selects `*IT` or `*E2E` under the corresponding PostgreSQL profile. Each database-backed profile skips Unit execution; the Unit profile skips the database-backed suites. Plain `./mvnw clean verify` runs all three when PostgreSQL is available. The three selectors are implemented in the backend `pom.xml`, not separate Maven modules.
 
+### Optional parallel E2E execution
+
+E2Es extending `E2ETestBase` own a separate database, Spring application context, and
+JUnit test instance per method. Their methods can run concurrently with an **opt-in**, bounded
+JUnit worker pool (two workers by default):
+
+```bash
+./mvnw -B -ntp -Pe2e-tests,parallel-e2e-tests clean verify
+# Tune for the database/server's available memory and connection capacity:
+./mvnw -B -ntp -Pe2e-tests,parallel-e2e-tests -De2eTestParallelism=3 clean verify
+```
+
+The normal `-Pe2e-tests` suite remains sequential. The parallel profile configures **Failsafe's
+JUnit execution only**, not Maven forks. It enables concurrent methods for tests explicitly
+marked `@Execution(CONCURRENT)` (inherited from `E2ETestBase`); other E2Es remain sequential.
+PostgreSQL role bootstrap is serialized with an advisory lock, while each E2E's subsequent
+migration and application context are independent. This can reduce wall time, but increases
+simultaneous Spring contexts, migrations, JDBC connections and database load. Start with two
+workers and compare timings and stability on the actual CI/development PostgreSQL host.
+
+**Do not enable concurrent Integration (`*IT`) tests wholesale.** They share one database
+and Spring context; rollback isolation alone does not prove that their write keys, test
+singletons, and other shared resources cannot conflict. Individual ITs may opt in only after
+an isolation audit and concurrency validation. Existing CI execution remains sequential.
+
 An offline development environment can run the Unit gate with cached Maven dependencies:
 
 ```bash

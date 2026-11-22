@@ -166,6 +166,31 @@
                 <skipDatabaseTests>true</skipDatabaseTests>
             </properties>
         </profile>
+        <!-- Opt-in bounded concurrency only for E2E tests explicitly marked @Execution(CONCURRENT).
+             Other E2Es and shared-database Integration tests retain JUnit's sequential default. -->
+        <profile>
+            <id>parallel-e2e-tests</id>
+            <properties>
+                <e2eTestParallelism>2</e2eTestParallelism>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <systemPropertyVariables>
+                                <junit.jupiter.execution.parallel.enabled>true</junit.jupiter.execution.parallel.enabled>
+                                <junit.jupiter.execution.parallel.mode.default>same_thread</junit.jupiter.execution.parallel.mode.default>
+                                <junit.jupiter.execution.parallel.config.strategy>fixed</junit.jupiter.execution.parallel.config.strategy>
+                                <junit.jupiter.execution.parallel.config.fixed.parallelism>${e2eTestParallelism}</junit.jupiter.execution.parallel.config.fixed.parallelism>
+                                <junit.jupiter.execution.parallel.config.fixed.max-pool-size>${e2eTestParallelism}</junit.jupiter.execution.parallel.config.fixed.max-pool-size>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>integration-tests</id>
             <properties>

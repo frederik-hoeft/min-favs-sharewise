@@ -2,6 +2,7 @@ package de.hsh.favs.sharewise.identity.internal.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -38,6 +39,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 
@@ -268,21 +270,28 @@ class SessionLifecycleE2E extends E2ETestBase {
             UUID sessionId = initial.sessionId();
             UUID tokenId = initial.refreshCredential().tokenId();
 
-            assertThrows(IllegalStateException.class, () -> dispatcher.dispatch(PersistenceProbe.class,
-                    probe -> probe.transactions().execute(() -> {
-                        probe.lifecycle().lockSession(sessionId).orElseThrow();
-                        probe.lifecycle().consume(tokenId, NOW);
-                        probe.lifecycle().consume(tokenId, NOW);
-                        return TransactionOutcome.commit(null);
-                    })));
+            // Spring's @Repository proxy translates adapter contract violations to DAO exceptions.
+            InvalidDataAccessApiUsageException duplicate = assertThrows(
+                    InvalidDataAccessApiUsageException.class, () -> dispatcher.dispatch(PersistenceProbe.class,
+                            probe -> probe.transactions().execute(() -> {
+                                probe.lifecycle().lockSession(sessionId).orElseThrow();
+                                probe.lifecycle().consume(tokenId, NOW);
+                                probe.lifecycle().consume(tokenId, NOW);
+                                return TransactionOutcome.commit(null);
+                            })));
+            assertEquals("Refresh generation was not active when consumed",
+                    assertInstanceOf(IllegalStateException.class, duplicate.getCause()).getMessage());
             assertFalse(consumed(fixture, tokenId));
 
-            assertThrows(IllegalStateException.class, () -> dispatcher.dispatch(PersistenceProbe.class,
-                    probe -> probe.transactions().execute(() -> {
-                        probe.lifecycle().lockSession(sessionId).orElseThrow();
-                        probe.lifecycle().extendIdle(sessionId, NOW.plusSeconds(1));
-                        return TransactionOutcome.commit(null);
-                    })));
+            InvalidDataAccessApiUsageException regression = assertThrows(
+                    InvalidDataAccessApiUsageException.class, () -> dispatcher.dispatch(PersistenceProbe.class,
+                            probe -> probe.transactions().execute(() -> {
+                                probe.lifecycle().lockSession(sessionId).orElseThrow();
+                                probe.lifecycle().extendIdle(sessionId, NOW.plusSeconds(1));
+                                return TransactionOutcome.commit(null);
+                            })));
+            assertEquals("Locked session could not extend its idle deadline",
+                    assertInstanceOf(IllegalStateException.class, regression.getCause()).getMessage());
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens"));
             assertNull(revokedAt(fixture, sessionId));
             assertTrue(refresh(dispatcher, initial.refreshCredential().cookieValue(), sessionId).isSuccess());
