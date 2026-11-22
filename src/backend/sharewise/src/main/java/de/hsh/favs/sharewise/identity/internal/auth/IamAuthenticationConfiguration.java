@@ -17,6 +17,9 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileService;
+import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileStore;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -145,4 +148,12 @@ class IamAuthenticationConfiguration {
         return new LoginService(transactions, accounts, credentials, authentication, lockouts,
                 clock, dummy.encoded());
     }
+
+    @Bean
+    @Scope("operation")
+    AccountProfileService iamAccountProfileService(IdentityContext identity, Transactions transactions,
+            AccountProfileStore profiles) {
+        return new AccountProfileService(identity, transactions, profiles);
+    }
+
 }
