@@ -1,6 +1,6 @@
 # P2.2a - Group creation and overview: implementation plan
 
-**Status:** Approved plan (November 21, 2026). It implements the approved [P2.2a specification](specification.md). **Execution gate:** each phase requires human review and approval before the next phase begins, following the [AI development workflow](../../../development/ai-development-workflow.md). A checked box means implemented, validated **and** approved.
+**Status:** Approved plan (November 21, 2026). Phase A is approved; Phase B is implemented and awaits the jOOQ generation reconciliation after P2.1a merges; Phase C waits for that merge; Phase D proceeds independently (November 22, 2026). It implements the approved [P2.2a specification](specification.md). **Execution gate:** each phase requires human review and approval before the next phase begins, following the [AI development workflow](../../../development/ai-development-workflow.md). A checked box means implemented, validated **and** approved.
 
 ## Baseline and prerequisites
 
@@ -12,32 +12,37 @@
 
 ## Phase A - Module, domain values and application services
 
-- [ ] Create the `groups` module `package-info.java` with the declared dependencies from the specification. Publish `shared.infra.transactions` and `shared.infra.persistence.jooq` as the named interfaces `shared::transactions` and `shared::jooq`, using the same declarations as P2.1a so the later merge is identical on both sides (S4, GM-11).
-- [ ] Implement `GroupName`, `GroupDescription` and `GroupRole` with the normalization and validation rules (code points, trimming, control characters) and their unit tests (GM-09, GM-T05 domain part).
-- [ ] Define the application contracts: commands/queries, `GroupDetails`/`GroupSummary`, typed failures (`UNKNOWN_USER`, `GROUP_NOT_FOUND`, `ADMIN_REQUIRED`, `VERSION_CONFLICT`, validation) and the use-case-oriented ports for user registry, creation, reads and metadata replacement.
-- [ ] Implement caller admission as the single admission service and the four operation-scoped application services. Each performs its work in one `Transactions.execute(...)` segment and follows the check order and group mutation protocol from the specification (GM-02, GM-03, GM-05–GM-08, S2, S6).
-- [ ] Unit-test the services through the real operation scope with `IdentityTestFixture` and in-memory port fakes: admission outcomes, authorization order, `404` equivalence for missing and non-member groups, version handling and rollback on every expected failure. The fakes stay in test sources.
-- [ ] Run `./mvnw -B -ntp -Punit-tests clean verify`, including `ApplicationModuleStructureTests`.
+- [x] Create the `groups` module `package-info.java` with the declared dependencies from the specification. Publish `shared.infra.transactions` and `shared.infra.persistence.jooq` as the named interfaces `shared::transactions` and `shared::jooq`, using the same declarations as P2.1a so the later merge is identical on both sides (S4, GM-11).
+- [x] Implement `GroupName`, `GroupDescription` and `GroupRole` with the normalization and validation rules (code points, trimming, control characters) and their unit tests (GM-09, GM-T05 domain part).
+- [x] Define the application contracts: commands/queries, `GroupDetails`/`GroupSummary`, typed failures (`UNKNOWN_USER`, `GROUP_NOT_FOUND`, `ADMIN_REQUIRED`, `VERSION_CONFLICT`, validation) and the use-case-oriented ports for user registry, creation, reads and metadata replacement.
+- [x] Implement caller admission as the single admission service and the four operation-scoped application services. Each performs its work in one `Transactions.execute(...)` segment and follows the check order and group mutation protocol from the specification (GM-02, GM-03, GM-05–GM-08, S2, S6).
+- [x] Unit-test the services through the real operation scope with `IdentityTestFixture` and in-memory port fakes: admission outcomes, authorization order, `404` equivalence for missing and non-member groups, version handling and rollback on every expected failure. The fakes stay in test sources.
+- [x] Run `./mvnw -B -ntp -Punit-tests clean verify`, including `ApplicationModuleStructureTests`.
 
 **Gate A:** The human reviews the module declaration, the named-interface publication, domain values, contracts and service logic. The Unit suite passes. No migration, adapter, controller or frontend code exists yet, and no test fake is reachable from main sources.
 
 ## Phase B - Schema, generated types and persistence adapters
 
 - [ ] Before starting, decide the jOOQ generation path from P2.1a's state (S4). If P2.1a has merged, extend its mechanism with the `groups` schema. Otherwise, generalize the profile to several context schemas and agree the shape with the P2.1a owner before committing. Either way, exactly one generation mechanism exists.
-- [ ] Add `db/migration/groups/V<timestamp>__groups_core_tables.sql`: `groups.group_role`, `groups.users`, `groups.groups` (including `version`, D4) and `groups.group_members` with the specified keys, checks, unique constraint and index. Verify that the migration and application roles have the expected privileges.
-- [ ] Generate and commit the jOOQ types for `groups`, and add the generated-schema check (GM-12, GM-T15).
-- [ ] Implement the jOOQ adapters: idempotent provisioning and existence check for `groups.users`; creation of group plus `admin` membership with `RETURNING`; the list and detail projections with caller role and member count in single statements, using the specified ordering; metadata replacement using the group row lock, membership re-read and versioned update.
-- [ ] Add a test-only Group fixture for seeding `groups.users` (through the provisioning port) and additional memberships (direct SQL, because member management is P2.2b).
-- [ ] Integration tests: GM-T02, GM-T06, GM-T07 (adapter level) and GM-T16. E2E tests: GM-T12 (concurrent replacements) and GM-T13 (lock ordering with a concurrent demotion).
-- [ ] Run the Unit, Integration and E2E Maven profiles against PostgreSQL 18.
+  - The task branch generalizes the profile to `jooq-codegen` with one execution per context schema. P2.1a adds a separate `jooq-codegen-identity` profile, the only textual merge conflict with P2.1a. After the merge, move the `identity` configuration into an `identity` execution of `jooq-codegen`, remove the separate profile, regenerate both schemas without source changes, and rerun the three Maven profiles.
+- [x] Add `db/migration/groups/V<timestamp>__groups_core_tables.sql`: `groups.group_role`, `groups.users`, `groups.groups` (including `version`, D4) and `groups.group_members` with the specified keys, checks, unique constraint and index. Verify that the migration and application roles have the expected privileges.
+- [x] Generate and commit the jOOQ types for `groups`, and add the generated-schema check (GM-12, GM-T15).
+- [x] Implement the jOOQ adapters: idempotent provisioning and existence check for `groups.users`; creation of group plus `admin` membership with `RETURNING`; the list and detail projections with caller role and member count in single statements, using the specified ordering; metadata replacement using the group row lock, membership re-read and versioned update.
+- [x] Add a test-only Group fixture for seeding `groups.users` (through the provisioning port) and additional memberships (direct SQL, because member management is P2.2b).
+- [x] Integration tests: GM-T02, GM-T06, GM-T07 (adapter level) and GM-T16. E2E tests: GM-T12 (concurrent replacements) and GM-T13 (lock ordering with a concurrent demotion).
+- [x] Run the Unit, Integration and E2E Maven profiles against PostgreSQL 18.
 
 **Gate B:** The human reviews the migration against the handoff ER and the `version` extension, the generation setup, and the SQL of each adapter. All three test profiles pass on real PostgreSQL, from the dev container or CI.
 
 ## Phase C - HTTP API
 
-- [ ] Extract a reusable, explicitly imported test-token fixture into `testsupport` from the existing IAM ingress tests. Switch those tests to it without changing their assertions.
+**Sequencing:** this phase starts after P2.1a has merged and the task branch is rebased onto `main`. P2.1a replaces the bearer ingress with application-composed Spring Security chains (`ApiHttpSecurityConfiguration`) and rewrites the IAM ingress tests that the test-token fixture is extracted from, so building this phase on the earlier ingress would be reworked at the merge.
+
+- [ ] Extract a reusable, explicitly imported test-token fixture into `testsupport` from the merged IAM ingress tests (`PhaseDIamIngressTests`, `FullApplicationIamIngressTests`). Switch those tests to it without changing their assertions.
 - [ ] Implement the `groups.api.v1` controller and request/response DTOs for the four endpoints. Dispatch through `OperationIngressDispatcher`; add a Group exception/result mapping that produces the specified status codes and `code` values on top of `ApiProblems`.
-- [ ] HTTP tests through the real bearer ingress and PostgreSQL: GM-T01, GM-T03, GM-T04, GM-T05 (HTTP part), GM-T07 (HTTP part), GM-T08–GM-T11 and GM-T14. Include the `Location` header and byte-identical `404` bodies.
+  - The API chain denies any mapped endpoint without an explicit admission requirement. Annotate the controller with `@ApiAccess` (authenticated IAM admission) and declare `shared::web` in the `groups` module's `allowedDependencies`. Group authorization stays in the operations.
+  - Map request input and `GroupFailure.InvalidMetadata` to `shared::validation`'s `ValidationErrors` and produce the `400` response through `RequestValidationException.from(...)`, following the IAM command factories, instead of a Group-specific field-error mapping.
+- [ ] HTTP tests through the real bearer ingress and PostgreSQL, using `IntegrationTestContext.startServlet(...)`: GM-T01, GM-T03, GM-T04, GM-T05 (HTTP part), GM-T07 (HTTP part), GM-T08–GM-T11 and GM-T14. Include the `Location` header, byte-identical `404` bodies and the rejection of an unauthenticated request by route admission.
 - [ ] Run the three Maven profiles.
 
 **Gate C:** The human reviews the endpoint contract, status-code mapping and test-token fixture. A demonstration request sequence (create, list, get, replace, stale replace) runs against a locally started backend with a test-signed token, or that limitation is recorded if no PostgreSQL is reachable. Backend acceptance tests GM-T01–GM-T16 are covered.
