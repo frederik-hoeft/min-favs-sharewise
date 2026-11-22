@@ -1,18 +1,25 @@
 package de.hsh.favs.sharewise.identity.internal.auth.persistence;
 
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.Tables.USER_PROFILES;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.Keys;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.UUID;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -54,8 +61,16 @@ class IamProfileSchemaE2E extends E2ETestBase {
                 insertProfile(app, userId, null);
                 assertEquals(1, countProfiles(app, userId));
                 assertNull(displayName(app, userId));
+                assertEquals(Keys.USER_PROFILES_PKEY, USER_PROFILES.getPrimaryKey());
+                assertEquals(List.of(Keys.USER_PROFILES__USER_PROFILES_USER_ID_FKEY),
+                    USER_PROFILES.getReferences());
+                assertEquals(userId, DSL.using(app, SQLDialect.POSTGRES)
+                    .select(USER_PROFILES.USER_ID)
+                    .from(USER_PROFILES)
+                    .where(USER_PROFILES.USER_ID.eq(userId))
+                    .fetchSingle(USER_PROFILES.USER_ID));
             }
-        });
+        }, ProductionEntityScanConfiguration.class);
     }
 
     @Test
@@ -74,7 +89,7 @@ class IamProfileSchemaE2E extends E2ETestBase {
                 assertEquals(1, countProfiles(app, firstUser));
                 assertEquals(0, countProfiles(app, secondUser));
             }
-        });
+        }, ProductionEntityScanConfiguration.class);
     }
 
     @Test
@@ -84,6 +99,11 @@ class IamProfileSchemaE2E extends E2ETestBase {
                 UUID userId = insertUser(app, "unicode@example.com");
                 insertProfile(app, userId, "🌍 Alice");
                 assertEquals("🌍 Alice", displayName(app, userId));
+                assertEquals("🌍 Alice", DSL.using(app, SQLDialect.POSTGRES)
+                    .select(USER_PROFILES.DISPLAY_NAME)
+                    .from(USER_PROFILES)
+                    .where(USER_PROFILES.USER_ID.eq(userId))
+                    .fetchSingle(USER_PROFILES.DISPLAY_NAME));
 
                 updateDisplayName(app, userId, "x".repeat(80));
                 assertEquals("x".repeat(80), displayName(app, userId));
@@ -99,7 +119,7 @@ class IamProfileSchemaE2E extends E2ETestBase {
                 updateDisplayName(app, userId, null);
                 assertNull(displayName(app, userId));
             }
-        });
+        }, ProductionEntityScanConfiguration.class);
     }
 
     private static UUID insertUser(Connection app, String email) throws SQLException {
