@@ -23,6 +23,7 @@ import org.jooq.meta.jaxb.Configuration;
 import org.jooq.meta.jaxb.Database;
 import org.jooq.meta.jaxb.Generate;
 import org.jooq.meta.jaxb.Generator;
+import org.jooq.meta.jaxb.OnError;
 import org.jooq.meta.jaxb.Target;
 import org.jooq.meta.postgres.PostgresDatabase;
 import org.junit.jupiter.api.Tag;
@@ -99,7 +100,7 @@ class GeneratedJooqSchemasIT extends IntegrationTestBase {
         try (Connection migrator = fixture().database().connectAsMigrator()) {
             GenerationTool generator = new GenerationTool();
             generator.setConnection(migrator);
-            generator.run(new Configuration().withGenerator(new Generator()
+            generator.run(new Configuration().withOnMetadataProblem(OnError.FAIL).withGenerator(new Generator()
                 .withName(JavaGenerator.class.getName())
                 .withDatabase(new Database()
                     .withName(PostgresDatabase.class.getName())

@@ -190,7 +190,7 @@
         <!-- Opt-in, PostgreSQL-first jOOQ generation: one execution per context schema, each
              writing into its owning module's private persistence package. Generated sources are
              committed under src/main/java, so ordinary builds need neither a database nor this
-             plugin. Run it only against a freshly Flyway-migrated database:
+             plugin. Run it only against a Flyway-migrated database; a missing schema fails the run:
              ./mvnw -Pjooq-codegen -Djooq.codegen.jdbc.url=... -Djooq.codegen.jdbc.user=... generate-sources
              A single context regenerates with org.jooq:jooq-codegen-maven:generate@<execution-id>.
              Generator settings shared by all contexts are declared once below; Maven merges them
@@ -211,6 +211,11 @@
                             </dependency>
                         </dependencies>
                         <configuration>
+                            <!-- An unmigrated database has no context schema. jOOQ would treat the
+                                 schema as empty and delete the committed sources of its package
+                                 while reporting success; failing on metadata problems aborts the
+                                 run before any file is written or removed. -->
+                            <onMetadataProblem>FAIL</onMetadataProblem>
                             <jdbc>
                                 <driver>org.postgresql.Driver</driver>
                                 <url>${jooq.codegen.jdbc.url}</url>
