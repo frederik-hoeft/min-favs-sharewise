@@ -30,12 +30,19 @@ public final class RefreshCredentialGenerator {
         try {
             random.nextBytes(secret);
             String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
-            byte[] verifier = MessageDigest.getInstance("SHA-256").digest(secret);
-            return new GeneratedCredential(tokenId, tokenId + "." + encoded, verifier);
-        } catch (NoSuchAlgorithmException failure) {
-            throw new IllegalStateException("Required SHA-256 provider is unavailable", failure);
+            return new GeneratedCredential(tokenId, tokenId + "." + encoded, verifierFor(secret));
         } finally {
             Arrays.fill(secret, (byte) 0);
+        }
+    }
+
+    /** Shared SHA-256 verifier computation for initial issuance and subsequent verification. */
+    static byte[] verifierFor(byte[] secret) {
+        Objects.requireNonNull(secret, "secret");
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(secret);
+        } catch (NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Required SHA-256 provider is unavailable", failure);
         }
     }
 

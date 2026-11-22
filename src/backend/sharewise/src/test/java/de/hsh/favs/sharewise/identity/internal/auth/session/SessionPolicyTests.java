@@ -35,6 +35,19 @@ class SessionPolicyTests {
     }
 
     @Test
+    void renewalAdvancesOnlyIdleExpirationAndNeverMovesAbsoluteDeadline() {
+        SessionPolicy policy = SessionPolicy.initial();
+        SessionPolicy.Deadlines original = policy.startAt(now.minusSeconds(3600));
+        SessionPolicy.Deadlines extended = policy.renewAt(now, original);
+        assertEquals(now.plus(Duration.ofDays(7)), extended.idleExpiresAt());
+        assertEquals(original.absoluteExpiresAt(), extended.absoluteExpiresAt());
+        assertEquals(original.createdAt(), extended.createdAt());
+        assertEquals(extended, policy.renewAt(now, extended));
+        assertThrows(IllegalStateException.class,
+                () -> policy.renewAt(extended.idleExpiresAt(), extended));
+    }
+
+    @Test
     void invalidConfigurationsAndDeadlinesAreRejected() {
         assertThrows(IllegalArgumentException.class,
                 () -> new SessionPolicy(Duration.ZERO, Duration.ofDays(1), Duration.ofDays(30)));

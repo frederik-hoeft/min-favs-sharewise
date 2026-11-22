@@ -31,6 +31,18 @@ public record SessionPolicy(Duration accessLifetime, Duration idleLifetime, Dura
         return new Deadlines(now, idle, absolute);
     }
 
+    /** Renew idle eligibility without ever extending the absolute deadline or shortening idle time. */
+    public Deadlines renewAt(Instant now, Deadlines current) {
+        Objects.requireNonNull(now, "now");
+        Objects.requireNonNull(current, "current");
+        if (!now.isBefore(current.effectiveExpiresAt())) {
+            throw new IllegalStateException("Session expired");
+        }
+        Instant proposed = earliest(now.plus(idleLifetime), current.absoluteExpiresAt());
+        Instant nextIdle = proposed.isAfter(current.idleExpiresAt()) ? proposed : current.idleExpiresAt();
+        return new Deadlines(current.createdAt(), nextIdle, current.absoluteExpiresAt());
+    }
+
     public Instant accessExpiresAt(Instant now, Deadlines deadlines) {
         Objects.requireNonNull(now, "now");
         Objects.requireNonNull(deadlines, "deadlines");
