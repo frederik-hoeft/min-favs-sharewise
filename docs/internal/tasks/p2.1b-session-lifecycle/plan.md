@@ -1,6 +1,6 @@
 # P2.1b - Refresh, logout and session lifecycle: implementation plan
 
-**Status:** Specification and plan approved; Phase A accepted and merged into the local development baseline. Phase B persistence is under review, with its PostgreSQL execution gate still pending. Checkboxes are marked only after verification **and** human review of the corresponding patch.
+**Status:** Specification and plan approved; Phases A and B accepted and merged into the local development baseline. The maintainer verified the complete PostgreSQL test suite with sequential and four-worker execution before accepting Phase B. Checkboxes are marked only after verification **and** human review of the corresponding patch.
 
 ## Baseline, scope and team boundaries
 
@@ -48,9 +48,9 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 
 **Scope:** Implement IAM-private physical persistence for the A contract. Reuse the current partial unique index and generated jOOQ schema metadata; add migrations only if a proven invariant cannot be enforced with existing tables. Keep the stored verifier/history representation unchanged unless a reviewed migration is essential.
 
-- [ ] Select and lock the affected session deterministically, re-evaluate the presented generation after acquiring the lock, and atomically consume, insert, extend or revoke as the operation requires (IAM-B02–B05).
-- [ ] Verify exactly one winner for concurrent use of the same generation and durable family revocation after genuine reuse; test parallel refresh/logout, independent connections, expired sessions, rollback and incorrect-secret non-revocation (IAM-BT01–BT06).
-- [ ] Preserve migration/role ownership and generated-schema workflow; avoid runtime DDL and multi-transaction issuance paths.
+- [x] Select and lock the affected session deterministically, re-evaluate the presented generation after acquiring the lock, and atomically consume, insert, extend or revoke as the operation requires (IAM-B02–B05).
+- [x] Verify exactly one winner for concurrent use of the same generation and durable family revocation after genuine reuse; test parallel refresh/logout, independent connections, expired sessions, rollback and incorrect-secret non-revocation (IAM-BT01–BT06).
+- [x] Preserve migration/role ownership and generated-schema workflow; avoid runtime DDL and multi-transaction issuance paths.
 
 **Gate B:** Real PostgreSQL 18 Integration/E2E tests establish SQL, transaction and concurrency semantics. Unit mocks and local Maven packaging do not satisfy this gate. Human reviews the persistence patch before D integration.
 
