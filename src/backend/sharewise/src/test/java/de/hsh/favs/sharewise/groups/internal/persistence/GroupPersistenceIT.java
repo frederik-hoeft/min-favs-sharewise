@@ -117,7 +117,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 UUID alpha = creation.createWithAdministrator(alice, metadata("Alpha", null)).id();
                 UUID gamma = creation.createWithAdministrator(bob, metadata("Gamma", null)).id();
                 creation.createWithAdministrator(bob, metadata("Bob only", null));
-                GroupMembershipFixture.addMember(jooq.dsl(), gamma, alice, GroupRole.MEMBER);
+                GroupTestFixture.addMember(jooq.dsl(), gamma, alice, GroupRole.MEMBER);
                 List<GroupSummary> aliceGroups = reads.listForMember(alice);
                 assertEquals(List.of(alpha, beta, gamma), aliceGroups.stream().map(GroupSummary::id).toList());
                 return TransactionOutcome.commit(List.of(aliceGroups, reads.listForMember(loner)));
@@ -168,7 +168,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 users.provision(member);
                 users.provision(stranger);
                 GroupDetails created = creation.createWithAdministrator(admin, TRIP);
-                GroupMembershipFixture.addMember(jooq.dsl(), created.id(), member, GroupRole.MEMBER);
+                GroupTestFixture.addMember(jooq.dsl(), created.id(), member, GroupRole.MEMBER);
 
                 GroupDetails seenByMember = reads.findForMember(created.id(), member).orElseThrow();
                 assertEquals(GroupRole.MEMBER, seenByMember.callerRole());
@@ -200,7 +200,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 users.provision(member);
                 users.provision(stranger);
                 UUID group = creation.createWithAdministrator(admin, metadata("Trip", "Old")).id();
-                GroupMembershipFixture.addMember(jooq.dsl(), group, member, GroupRole.MEMBER);
+                GroupTestFixture.addMember(jooq.dsl(), group, member, GroupRole.MEMBER);
 
                 assertEquals(Optional.empty(), mutations.lockGroup(UUID.randomUUID()));
                 LockedGroup locked = mutations.lockGroup(group).orElseThrow();

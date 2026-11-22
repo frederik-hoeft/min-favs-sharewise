@@ -12,7 +12,6 @@ import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMetadataService;
 import de.hsh.favs.sharewise.groups.internal.application.GroupQueryService;
-import de.hsh.favs.sharewise.groups.internal.application.GroupUserRegistry;
 import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
@@ -43,9 +42,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.function.Function;
-import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Tag;
@@ -67,7 +64,7 @@ class GroupOperationsE2E extends E2ETestBase {
     @Test
     void creationCommitsTheGroupWithItsCreatorAsOnlyAdministrator() {
         runTest(fixture -> {
-            provision(fixture, ALICE);
+            GroupTestFixture.provision(fixture, ALICE);
 
             GroupDetails created = ok(create(fixture, ALICE, "Flat share"));
 
@@ -96,7 +93,7 @@ class GroupOperationsE2E extends E2ETestBase {
     @Test
     void administratorReplacementIsCommittedAndReadBack() {
         runTest(fixture -> {
-            provision(fixture, ALICE);
+            GroupTestFixture.provision(fixture, ALICE);
             UUID group = ok(create(fixture, ALICE, "Trip")).id();
 
             GroupDetails replaced = ok(replace(fixture, ALICE, group, "Summer trip", 0));
@@ -113,9 +110,9 @@ class GroupOperationsE2E extends E2ETestBase {
     @Test
     void concurrentReplacementsWithTheSameVersionSerializeOnTheGroupLock() {
         runTest(fixture -> {
-            provision(fixture, ALICE, BOB);
+            GroupTestFixture.provision(fixture, ALICE, BOB);
             UUID group = ok(create(fixture, ALICE, "Trip")).id();
-            seed(fixture, db -> GroupMembershipFixture.addMember(db, group, BOB, GroupRole.ADMIN));
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
 
             List<Result<GroupDetails, GroupFailure>> results = new ArrayList<>();
             try (Connection holder = lockGroup(fixture, group);
@@ -140,9 +137,9 @@ class GroupOperationsE2E extends E2ETestBase {
     @Test
     void replacementWaitingForTheLockObservesAConcurrentlyCommittedDemotion() {
         runTest(fixture -> {
-            provision(fixture, ALICE, BOB);
+            GroupTestFixture.provision(fixture, ALICE, BOB);
             UUID group = ok(create(fixture, ALICE, "Trip")).id();
-            seed(fixture, db -> GroupMembershipFixture.addMember(db, group, BOB, GroupRole.ADMIN));
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
 
             Result<GroupDetails, GroupFailure> result;
             try (Connection holder = lockGroup(fixture, group);
@@ -150,7 +147,7 @@ class GroupOperationsE2E extends E2ETestBase {
                 Future<Result<GroupDetails, GroupFailure>> replacement =
                     callers.submit(() -> replace(fixture, ALICE, group, "Renamed", 0));
                 awaitLockWaiters(fixture, 1);
-                GroupMembershipFixture.changeRole(DSL.using(holder, SQLDialect.POSTGRES), group, ALICE, GroupRole.MEMBER);
+                GroupTestFixture.changeRole(DSL.using(holder, SQLDialect.POSTGRES), group, ALICE, GroupRole.MEMBER);
                 holder.commit();
                 result = replacement.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
             }
@@ -171,24 +168,6 @@ class GroupOperationsE2E extends E2ETestBase {
         ReplaceGroupMetadataCommand command = new ReplaceGroupMetadataCommand(group, name, null, expectedVersion);
         return withUser(caller, () -> dispatcher(fixture).dispatch(GroupMetadataService.class,
             service -> service.replace(command)));
-    }
-
-    /** Local users are seeded through the production provisioning port in a committed segment. */
-    private static void provision(IntegrationTestContext fixture, UUID... users) {
-        inOperation(fixture, scope -> {
-            GroupUserRegistry registry = scope.resolve(GroupUserRegistry.class);
-            return scope.resolve(Transactions.class).execute(() -> {
-                for (UUID user : users) {
-                    registry.provision(user);
-                }
-                return TransactionOutcome.commit(users.length);
-            });
-        });
-    }
-
-    private static void seed(IntegrationTestContext fixture, Consumer<DSLContext> seed) throws SQLException {
-        IntegrationTestContext.seedCommitted(fixture.database(),
-            connection -> seed.accept(DSL.using(connection, SQLDialect.POSTGRES)));
     }
 
     /** Holds the group row lock on an independent connection until the caller commits it. */
