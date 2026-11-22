@@ -57,22 +57,24 @@ describe("Account profile page", () => {
     expect(within(form).getByRole("textbox", { name: "Email address" })).toHaveAttribute("readonly");
     expect(within(form).getByDisplayValue(initial.email)).toBeInTheDocument();
     expect(nameInput()).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Clear display name" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save display name" })).toBeDisabled();
+    expect(nameInput()).toHaveAttribute("placeholder", "No display name");
+    // HTML measures UTF-16 units, so its upper bound is twice the API's scalar limit.
+    expect(nameInput()).toHaveAttribute("maxlength", "160");
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Clear display name" })).not.toBeInTheDocument();
 
     const user = userEvent.setup();
     const text = "  <img src=x onerror=alert(1)> 🦊  ";
     await user.type(nameInput(), text);
-    await user.click(screen.getByRole("button", { name: "Save display name" }));
-    await screen.findByText("Display name saved.");
+    await user.click(screen.getByRole("button", { name: "Update display name" }));
+    await screen.findByText("Display name updated.");
     expect(nameInput()).toHaveValue(text);
     expect(document.querySelector("img[src='x']")).toBeNull();
     const patch = fetchImpl.mock.calls.find(([, options]) => options?.method === "PATCH");
     expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: text, clear: false });
-    expect(screen.getByRole("button", { name: "Clear display name" })).toBeEnabled();
   });
 
-  it("clears an existing display name explicitly and uses the returned null projection", async () => {
+  it.each(["", "  \t  "])("clears an existing display name by updating a blank entry %j", async (blank) => {
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       expect(String(path)).toBe("/api/iam/v1/account");
       return jsonResponse(init?.method === "PATCH" ? initial : { ...initial, displayName: "Alice" });
@@ -80,26 +82,71 @@ describe("Account profile page", () => {
     renderAccount(fetchImpl as typeof fetch);
     await screen.findByDisplayValue("Alice");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Clear display name" }));
+    await user.clear(nameInput());
+    if (blank) fireEvent.change(nameInput(), { target: { value: blank } });
+    await user.click(screen.getByRole("button", { name: "Update display name" }));
     await screen.findByText("Display name cleared.");
     expect(nameInput()).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Clear display name" })).toBeDisabled();
     const patch = fetchImpl.mock.calls.find(([, options]) => options?.method === "PATCH");
     expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: null, clear: true });
   });
 
-  it.each([" ", "\n", "A\u0001B", "\u2028", "\ud800", "a".repeat(81)])(
-    "rejects invalid display name %j before sending a mutation", async (invalid) => {
+  it.each(["A\u0001B", "A\u2028", "\ud800"])(
+    "rejects invalid nonblank display name %j before sending a mutation", async (invalid) => {
       const fetchImpl = vi.fn(async () => jsonResponse({ ...initial, displayName: "Alice" }));
       renderAccount(fetchImpl as typeof fetch);
       await screen.findByDisplayValue("Alice");
       fireEvent.change(nameInput(), { target: { value: invalid } });
-      fireEvent.click(screen.getByRole("button", { name: "Save display name" }));
-      expect(await screen.findByText(/Use 1–80 Unicode characters/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Update display name" }));
+      expect(await screen.findByText(/Enter a name containing non-whitespace text/)).toBeInTheDocument();
       expect(nameInput()).toHaveFocus();
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("does not send a no-op clear when an unset display name contains only whitespace", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(initial));
+    renderAccount(fetchImpl as typeof fetch);
+    await loadedForm();
+    fireEvent.change(nameInput(), { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
+    fireEvent.submit(screen.getByRole("form", { name: "Account profile" }));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts 80 astral Unicode characters and rejects a pasted 81st scalar", async () => {
+    const fetchImpl = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) =>
+      jsonResponse(init?.method === "PATCH" ? { ...initial, displayName: JSON.parse(String(init.body)).displayName } : initial));
+    renderAccount(fetchImpl as typeof fetch);
+    await loadedForm();
+    const exactLimit = "🦊".repeat(80);
+    fireEvent.change(nameInput(), { target: { value: exactLimit } });
+    expect(nameInput()).toHaveValue(exactLimit);
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeEnabled();
+    fireEvent.change(nameInput(), { target: { value: exactLimit + "A" } });
+    expect(nameInput()).toHaveValue(exactLimit);
+    expect(await screen.findByText("Enter at most 80 characters.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
+    fireEvent.change(nameInput(), { target: { value: exactLimit.slice(0, -2) } });
+    expect(screen.queryByText("Enter at most 80 characters.")).not.toBeInTheDocument();
+    fireEvent.change(nameInput(), { target: { value: exactLimit } });
+    fireEvent.click(screen.getByRole("button", { name: "Update display name" }));
+    await screen.findByText("Display name updated.");
+    const patch = fetchImpl.mock.calls.find(([, options]) => options?.method === "PATCH");
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: exactLimit, clear: false });
+  });
+
+  it("rejects overlong ASCII paste without mutating the accepted entry", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(initial));
+    renderAccount(fetchImpl as typeof fetch);
+    await loadedForm();
+    fireEvent.change(nameInput(), { target: { value: "Bob" } });
+    fireEvent.change(nameInput(), { target: { value: "A".repeat(81) } });
+    expect(nameInput()).toHaveValue("Bob");
+    expect(await screen.findByText("Enter at most 80 characters.")).toBeInTheDocument();
+    fireEvent.submit(screen.getByRole("form", { name: "Account profile" }));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 
   it("surfaces backend field errors by code and keeps local text after a rejected update", async () => {
     const fetchImpl = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => init?.method === "PATCH"
@@ -110,7 +157,7 @@ describe("Account profile page", () => {
     const user = userEvent.setup();
     await user.clear(nameInput());
     await user.type(nameInput(), "Bob");
-    await user.click(screen.getByRole("button", { name: "Save display name" }));
+    await user.click(screen.getByRole("button", { name: "Update display name" }));
     expect(await screen.findByText("Not an allowed name.")).toBeInTheDocument();
     expect(nameInput()).toHaveValue("Bob");
     expect(screen.getByText("Check your display name.")).toBeInTheDocument();
@@ -126,11 +173,10 @@ describe("Account profile page", () => {
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(nameInput()).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save display name" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Clear display name" })).toBeDisabled();
     await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
     await act(async () => pending.resolve(jsonResponse({ ...initial, displayName: "Bob" })));
-    await screen.findByText("Display name saved.");
+    await screen.findByText("Display name updated.");
     expect(nameInput()).toHaveValue("Bob");
   });
 
@@ -144,9 +190,9 @@ describe("Account profile page", () => {
     renderAccount(fetchImpl as typeof fetch);
     await screen.findByDisplayValue("Alice");
     fireEvent.change(nameInput(), { target: { value: "Bob" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save display name" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update display name" }));
     expect(await screen.findByText(/could not confirm the update/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save display name" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
     expect(nameInput()).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Reload account" }));
     await screen.findByDisplayValue("Bob");
@@ -202,14 +248,14 @@ describe("Account profile page", () => {
     const { runtime } = renderAccount(fetchImpl as typeof fetch);
     await screen.findByDisplayValue("Alice");
     fireEvent.change(nameInput(), { target: { value: "X" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save display name" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update display name" }));
     await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
     await act(async () => runtime.session.accept(authenticationResponse("second-bearer")));
     await screen.findByDisplayValue("bob@example.com");
     await act(async () => pending.resolve(jsonResponse({ ...initial, displayName: "X" })));
     expect(nameInput()).toHaveValue("Bob");
     expect(screen.getByDisplayValue("bob@example.com")).toBeInTheDocument();
-    expect(screen.queryByText("Display name saved.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Display name updated.")).not.toBeInTheDocument();
   });
 
   it("has no detectable structural accessibility violations in the loaded profile view", async () => {

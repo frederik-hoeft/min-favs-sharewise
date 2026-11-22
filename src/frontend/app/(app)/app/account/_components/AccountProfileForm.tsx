@@ -6,7 +6,7 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { useAuthState, useIdentity } from "@/app/identity-provider";
 import type { AccountProfile, AuthState } from "@/core/identity";
-import { validateDisplayName } from "@/core/identity/display-name";
+import { MAX_DISPLAY_NAME_CHARACTERS, validateDisplayName, withinDisplayNameLimit } from "@/core/identity/display-name";
 import { ApiError } from "@/lib/api";
 
 type ProfileView =
@@ -97,13 +97,16 @@ export function AccountProfileForm() {
 
   const currentView = view?.context === authState && view.attempt === reloadCount ? view : undefined;
   const currentFeedback = feedback?.context === authState ? feedback : undefined;
+  // An empty or whitespace-only entry clears the optional name; otherwise preserve it exactly.
+  const nextDisplayName = draft.trim().length === 0 ? null : draft;
 
-  async function mutate(kind: "save" | "clear") {
+  async function mutate() {
     if (currentView?.status !== "ready" || session.getSnapshot() !== authState ||
-        inFlight.current === authState || currentFeedback?.reloadRequired) return;
+        inFlight.current === authState || currentFeedback?.reloadRequired || fieldError ||
+        nextDisplayName === currentView.profile.displayName) return;
 
-    if (kind === "save") {
-      const error = validateDisplayName(draft);
+    if (nextDisplayName !== null) {
+      const error = validateDisplayName(nextDisplayName);
       setFieldError(error);
       if (error) {
         inputRef.current?.focus();
@@ -116,11 +119,11 @@ export function AccountProfileForm() {
     setFieldError(undefined);
     setFeedback(undefined);
     try {
-      const profile = kind === "clear" ? await account.clearDisplayName() : await account.setDisplayName(draft);
+      const profile = nextDisplayName === null ? await account.clearDisplayName() : await account.setDisplayName(nextDisplayName);
       if (session.getSnapshot() !== context) return;
       setView({ context, attempt: reloadCount, status: "ready", profile });
       setDraft(profile.displayName ?? "");
-      setFeedback({ context, kind: "success", message: kind === "clear" ? "Display name cleared." : "Display name saved." });
+      setFeedback({ context, kind: "success", message: nextDisplayName === null ? "Display name cleared." : "Display name updated." });
     } catch (error) {
       if (session.getSnapshot() !== context) return;
       if (error instanceof ApiError && error.status === 403 && error.code === "account_unavailable") {
@@ -139,7 +142,7 @@ export function AccountProfileForm() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void mutate("save");
+    void mutate();
   }
 
   if (authState.status === "reauthentication-required") {
@@ -175,6 +178,7 @@ export function AccountProfileForm() {
   }
 
   const profile = currentView.profile;
+  const unchanged = nextDisplayName === profile.displayName;
   return (
     <Card withBorder padding="xl" radius="lg">
       <Stack gap="lg">
@@ -201,17 +205,29 @@ export function AccountProfileForm() {
               ref={inputRef}
               label="Display name"
               name="displayName"
-              description="Optional, up to 80 Unicode characters. Use Clear display name to remove it."
+              description="Leave blank to remove your display name."
+              placeholder="No display name"
+              // A safe native UTF-16 bound plus a scalar-aware guard preserves all 80-character Unicode names.
+              maxLength={MAX_DISPLAY_NAME_CHARACTERS * 2}
               value={draft}
-              onChange={(event) => { setDraft(event.currentTarget.value); setFieldError(undefined); setFeedback(undefined); }}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                if (!withinDisplayNameLimit(value)) {
+                  setFieldError("Enter at most 80 characters.");
+                  setFeedback(undefined);
+                  return;
+                }
+                setDraft(value);
+                setFieldError(undefined);
+                setFeedback(undefined);
+              }}
               error={fieldError}
               disabled={pending || currentFeedback?.reloadRequired}
               autoComplete="nickname"
             />
             <Group gap="sm" wrap="wrap">
-              <Button type="submit" loading={pending} disabled={pending || Boolean(currentFeedback?.reloadRequired) || draft === (profile.displayName ?? "")}>Save display name</Button>
-              <Button type="button" variant="default" onClick={() => void mutate("clear")}
-                disabled={pending || Boolean(currentFeedback?.reloadRequired) || profile.displayName === null}>Clear display name</Button>
+              <Button type="submit" loading={pending}
+                disabled={pending || Boolean(currentFeedback?.reloadRequired) || Boolean(fieldError) || unchanged}>Update display name</Button>
             </Group>
           </Stack>
         </form>
