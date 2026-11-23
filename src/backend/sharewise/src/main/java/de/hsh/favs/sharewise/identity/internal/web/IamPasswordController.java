@@ -54,33 +54,23 @@ final class IamPasswordController {
     }
 
     private static ResponseEntity<ProblemDetail> denied(PasswordChangeFailure failure) {
-        HttpStatus status = switch (failure) {
-            case CURRENT_PASSWORD_INVALID -> HttpStatus.BAD_REQUEST;
-            case CREDENTIAL_CHANGED -> HttpStatus.CONFLICT;
-            case ACCOUNT_UNAVAILABLE -> HttpStatus.FORBIDDEN;
-            case SESSION_UNAVAILABLE -> HttpStatus.UNAUTHORIZED;
+        ProblemDetail problem = switch (failure) {
+            case CURRENT_PASSWORD_INVALID -> ApiProblems.of(
+                    HttpStatus.BAD_REQUEST, "current_password_invalid", "Current Password Invalid",
+                    "The current password is invalid or the account is temporarily locked.");
+            case CREDENTIAL_CHANGED -> ApiProblems.of(
+                    HttpStatus.CONFLICT, "credential_changed", "Credentials Changed",
+                    "The account credentials changed. Sign in and try again.");
+            case ACCOUNT_UNAVAILABLE -> ApiProblems.of(
+                    HttpStatus.FORBIDDEN, "account_unavailable", "Account Unavailable",
+                    "This account is unavailable.");
+            case SESSION_UNAVAILABLE -> ApiProblems.of(
+                    HttpStatus.UNAUTHORIZED, "session_unavailable", "Session Unavailable",
+                    "This session is unavailable. Sign in again to continue.");
         };
-        String code = switch (failure) {
-            case CURRENT_PASSWORD_INVALID -> "current_password_invalid";
-            case CREDENTIAL_CHANGED -> "credential_changed";
-            case ACCOUNT_UNAVAILABLE -> "account_unavailable";
-            case SESSION_UNAVAILABLE -> "session_unavailable";
-        };
-        String title = switch (failure) {
-            case CURRENT_PASSWORD_INVALID -> "Current Password Invalid";
-            case CREDENTIAL_CHANGED -> "Credentials Changed";
-            case ACCOUNT_UNAVAILABLE -> "Account Unavailable";
-            case SESSION_UNAVAILABLE -> "Session Unavailable";
-        };
-        String detail = switch (failure) {
-            case CURRENT_PASSWORD_INVALID -> "The current password is invalid or the account is temporarily locked.";
-            case CREDENTIAL_CHANGED -> "The account credentials changed. Sign in and try again.";
-            case ACCOUNT_UNAVAILABLE -> "This account is unavailable.";
-            case SESSION_UNAVAILABLE -> "This session is unavailable. Sign in again to continue.";
-        };
-        return ResponseEntity.status(status)
+        return ResponseEntity.status(problem.getStatus())
                 .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                .body(ApiProblems.of(status, code, title, detail));
+                .body(problem);
     }
 }
