@@ -8,9 +8,9 @@
 
 The implemented `AuthorizationContext` preserves individually verified credentials, their claim origins and per-credential grouping. Its providers must validate the trust and primary-identity/session binding required by their source before publishing evidence. Neither the context nor a successful signature check decides whether a resource operation is allowed.
 
-The proposed **domain-specific `<Concept>Context` pattern** gives application services semantic operations backed by verified evidence and, when necessary, authoritative domain state. `IdentityContext` is the implemented IAM example: it interprets the verified primary credential as an optional stable user ID. A `GroupAuthorizationContext` is a candidate Group-owned contract for downstream consumers, not a current published Group API or a required common interface for all contexts.
+The proposed **domain-specific `<Concept>Context` pattern** gives application services semantic access to admitted evidence. `IdentityContext` is the implemented IAM example: it interprets the verified primary credential as the caller's user and session identity when present. A `GroupAuthorizationContext` is a candidate Group-owned contract for downstream consumers, not a current published Group API or a required common interface for all contexts.
 
-A domain context might expose membership or permission checks such as `isMember(groupId)` or `requireAdmin(groupId)` after their policy and failure semantics have been reviewed. It must select claims belonging to an appropriate trusted issuer/profile and **the same authorization credential**, so unrelated credentials cannot contribute a group ID and an administrator role to one fabricated grant. Contextual authorization also interprets the resource and requested action; the generic evidence layer does not.
+A domain authorization context might expose evidence-based membership or permission checks such as `isMember(groupId)` or `requireAdmin(groupId)` after their policy and failure semantics have been reviewed. It must select claims belonging to an appropriate trusted issuer/profile and **the same authorization credential**, so unrelated credentials cannot contribute a group ID and an administrator role to one fabricated grant. Contextual authorization also interprets the resource and requested action; the generic evidence layer does not. Where a consumer requires current authority-owned state rather than admitted evidence, a separate synchronous `<Concept>Port` supplies that decision, following the [security design](security.md#revocation-distributed-services-and-verification).
 
 ## JWT profiles and proposed Group claim mapping
 
@@ -64,7 +64,7 @@ For example, consider two individually valid attestations carried in one operati
 | Credential A | Group A | `admin` |
 | Credential B | Group B | `member` |
 
-A request to administer Group B must not combine the `admin` claim from A with the group identifier from B. The policy examines a single credential containing both the requested group and qualifying role, applies the resource/operation rules, and checks any current authority-owned state required for the decision. A valid attestation bound to a **different IAM session** is rejected even earlier, during source verification, and never reaches the domain context.
+A request to administer Group B must not combine the `admin` claim from A with the group identifier from B. The policy examines a single credential containing both the requested group and qualifying role and applies the resource/operation rules to that evidence. A valid attestation bound to a **different IAM session** is rejected even earlier, during source verification, and never reaches the domain context.
 
 ```mermaid
 flowchart LR
@@ -74,10 +74,9 @@ flowchart LR
     Policy --> Evidence["AuthorizationContext"]
     Evidence --> A["Credential A · group A"]
     Evidence --> B["Credential B · group B"]
-    Policy --> Owned["Current Group-owned state when authoritative"]
 ```
 
-The proposed `<Concept>Context` convention is deliberately **semantic, not an inheritance hierarchy**. `IdentityContext` exposes primary caller identity; a Group-owned `GroupAuthorizationContext` would offer reviewed domain-specific operations rather than a generic role-check API. Group Management authorizes its own membership mutations against current owned state. A downstream consumer such as Finance may use a short-lived attestation as evidence while separately enforcing its financial invariants.
+The proposed `<Concept>Context` convention is deliberately **semantic, not an inheritance hierarchy**. `IdentityContext` exposes primary caller identity; a Group-owned `GroupAuthorizationContext` would offer reviewed domain-specific operations rather than a generic role-check API. Group Management authorizes its own membership mutations against current owned state. A downstream consumer such as Finance may use a short-lived attestation as evidence, consult a Group authority port when it needs a fresher permission decision, and separately enforce its financial invariants.
 
 ## Ownership and extension boundaries
 
@@ -90,6 +89,6 @@ The remaining design/review work belongs to the relevant vertical slices:
 - **P2.5a:** Group-specific provider and trusted JWT profile, binding and resource/operation policies, semantic context contract, negative tests for cross-group and cross-session confusion.
 - **P2.5b:** Group attestation issuance from current authoritative membership and role state, with audited lifetimes and token contracts.
 - **P2.2:** Group-owned membership mutation policies and current-state authorization; these do not rely on previously issued Group attestations.
-- **P2.1d and P2.2e:** Current IAM account/session eligibility checks and local-projection miss handling where stronger freshness is required.
+- **P2.2e:** Local-projection miss handling using the [published IAM verification port](../architecture/authorization.md#synchronous-authority-verification).
 
 The implemented evidence and identity boundaries are authoritative in [the architecture documentation](../architecture/authorization.md). This proposal cannot extend their trust guarantees merely by introducing another semantic context.

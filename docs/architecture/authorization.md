@@ -6,18 +6,19 @@ A verified credential is therefore **evidence**, not an authorization grant. Its
 
 ## Responsibilities and trust boundaries
 
-The architecture separates four related questions, each answered at a different boundary:
+The architecture separates five related questions, each answered at a different boundary:
 
 | Responsibility | Question answered | Owner |
 | --- | --- | --- |
 | **Credential verification** | Is this credential authentic, intended for the expected audience and profile, currently valid, and, where necessary, bound to the primary principal? | Trusted source-specific verification and credential providers |
 | **Evidence access** | Which verified assertions and their origins are available to this operation? | Operation-scoped `AuthorizationContext` |
 | **Semantic interpretation** | What application concept does that evidence establish, such as the caller's IAM identity? | Context-owned semantic services such as `IdentityContext` |
+| **Authority-state verification** | Is the admitted caller still eligible according to current authority-owned state? | IAM through `IdentityPort` |
 | **Business authorization** | May the caller perform this action on this resource in its current state? | The resource-owning application context |
 
 This division matters whenever multiple authorities can assert facts about a caller. Claims may have identical names while referring to different resources, sessions, or issuers, so a generic list of claim values would be insufficient for reliable interpretation. Instead, the shared security infrastructure preserves the boundaries between credentials, and semantic contexts interpret those credentials in their own domain. In particular, the IAM identity derived from a primary credential does not also establish Group membership or authorize mutations in another context.
 
-The published contracts follow the same division: `shared::security` provides JWT verification and signing, `shared::claims` exposes accepted evidence, and `shared::di` supplies the operation lifetime. IAM publishes `identity.IdentityContext` as the consumer-facing interpretation of primary identity. Application services can therefore depend on semantic contracts without introducing transport or cryptographic concerns into their domain logic.
+The published contracts follow the same division: `shared::security` provides JWT verification and signing, `shared::claims` exposes accepted evidence, and `shared::di` supplies the operation lifetime. IAM publishes `identity.IdentityContext` for interpreting primary identity and `identity.IdentityPort` for synchronous verification against its current state. Application services can therefore depend on semantic contracts without introducing transport or cryptographic concerns into their domain logic.
 
 ## Credential evidence model
 
@@ -93,13 +94,13 @@ Identity and evidence remain stable throughout one application operation, even w
 
 ### Synchronous authority verification
 
-`IdentityPort.verifyCurrent()` is the IAM-published synchronous authority contract. Unlike `IdentityContext`, it does not merely expose admitted evidence: it checks the current account and session identified by that evidence against IAM-owned PostgreSQL state. The operation-scoped local adapter obtains the user/session pair from `IdentityContext`; callers cannot choose another identity. An anonymous caller is rejected through the existing authentication exception. The port returns `Result<VerifiedIdentity, IdentityVerificationFailure>`; success carries the checked user and session IDs and the evaluation instant, while `INELIGIBLE` and `UNAVAILABLE` distinguish authoritative denial from inability to obtain a reliable decision.
+Credential admission and current IAM eligibility answer different questions. `IdentityContext` identifies the caller from evidence accepted for the operation; `IdentityPort` synchronously verifies that same caller against IAM's authoritative account and session state. Application services can request a fresh decision for the admitted caller without supplying another identity, repeating credential verification or accessing IAM's persistence.
 
-IAM evaluates account enablement and matching session ownership, creation time, revocation, and both exclusive expiration deadlines in one database-side `EXISTS` query. Login lockout alone does not revoke a session. The query does not update session expiry, inspect refresh credentials or acquire row write locks. The injected IAM clock supplies the evaluation instant; comparisons with PostgreSQL's microsecond-precision timestamps preserve the exact deadline semantics even when the clock has nanosecond precision.
+IAM confirms that the account exists and is enabled and that the admitted session belongs to it and is active: the session has been created, has not been revoked and has reached neither its idle nor its absolute expiration deadline. Login lockout restricts password authentication rather than invalidating existing sessions. Verification is read-only and does not renew the session.
 
-The authority service owns a complete read segment with an `ABSTAIN` outcome. Recognized query infrastructure failures (connection errors, query cancellation, lock timeout and database shutdown/unavailability) produce `UNAVAILABLE` only after confirmed physical rollback; other database or transaction-completion failures propagate. Callers must fail closed on either failure result or an exception. The authority call belongs outside an active consumer transaction segment; the same operation-scoped coordinator can execute independent consumer segments before and after the IAM check. See [transaction boundaries](transactions.md#architectural-boundaries).
+A successful verification returns the checked user and session identifiers together with the evaluation instant. `INELIGIBLE` means IAM denied eligibility; `UNAVAILABLE` means a reliable decision could not be obtained. Anonymous callers are rejected, and unexpected errors or transaction-completion failures propagate. Consumers requiring fresh verification fail closed unless it succeeds. IAM completes its own read transaction before returning a result, following the [transaction boundaries](transactions.md#architectural-boundaries) for synchronous authority calls.
 
-The result describes eligibility in the observed database snapshot at call time, not a new credential admission, a revocation-proof lease, or authorization of a resource mutation. A session can be revoked or an account disabled immediately afterward. Consumers remain responsible for their own resource authorization and for revalidating mutable local preconditions when opening a subsequent write segment.
+The decision establishes **call-time domain validity**, not a new credential admission or a guarantee of continuing eligibility. Account or session state can change after verification. The resource-owning context remains responsible for authorizing its own operation.
 
 ## Failure and enforcement boundaries
 
