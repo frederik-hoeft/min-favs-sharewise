@@ -1,4 +1,4 @@
-﻿# ShareWise implementation backlog
+# ShareWise implementation backlog
 
 **Status:** Active implementation roadmap. Phases are ordered by technical and functional dependencies, **not** by calendar sprints or team capacity. Each phase is a reviewable milestone that may be decomposed into smaller requirements/plan/implementation patches. Completion requires the listed acceptance gate, review, and an update to the authoritative documentation.
 

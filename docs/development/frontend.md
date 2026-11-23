@@ -1,4 +1,4 @@
-﻿# Frontend development
+# Frontend development
 
 ShareWise's frontend is built with Next.js App Router, React, TypeScript, Mantine, SCSS Modules and Phosphor icons. This guide describes the development environment and the conventions that make feature work compatible with the existing foundation. The [frontend architecture](../architecture/frontend.md) defines ownership and data flow; the [visual design foundation](../design/sharewise-design-foundation.md) defines the shared visual language.
 

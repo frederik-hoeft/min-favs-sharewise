@@ -1,4 +1,4 @@
-﻿import { ApiError, createApiClient, type ApiClient } from '@/lib/api';
+import { ApiError, createApiClient, type ApiClient } from '@/lib/api';
 import { AuthCoordinator } from './auth-coordinator.ts';
 import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';

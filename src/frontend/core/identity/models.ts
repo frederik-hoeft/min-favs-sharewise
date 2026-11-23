@@ -1,4 +1,4 @@
-﻿/** The refresh credential is exclusively an HttpOnly cookie and never appears in these DTOs. */
+/** The refresh credential is exclusively an HttpOnly cookie and never appears in these DTOs. */
 export interface IdentityCredentials {
     readonly email: string;
     readonly password: string;
