@@ -71,7 +71,7 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 
 - [x] Implement request/response validation, stable problems, `session_context_changed` without cookie mutation, generic credential rejection, and idempotent missing-cookie logout (IAM-B05–B06).
 - [x] Exercise the actual filter chain and security entry points: CSRF/Origin, missing versus invalid bearers, pre-dispatch versus operation 401, JWT issuer/type/audience and refresh cookie not authenticating other APIs (IAM-BT07, BT13).
-- [ ] Confirm the final CI execution of real-servlet PostgreSQL E2E for rotation/logout success after COMMIT, rollback, replay and concurrent requests; confirm the `Set-Cookie` operations preserve CSRF-cookie clearing (IAM-BT01–BT07).
+- [x] Confirm the final CI execution of real-servlet PostgreSQL E2E for rotation/logout success after COMMIT, rollback, replay and concurrent requests; confirm the `Set-Cookie` operations preserve CSRF-cookie clearing (IAM-BT01–BT07).
 
 **Gate D:** Unit, real PostgreSQL Integration/E2E and HTTP security regression tests pass; no known incorrect state transition remains; human approves the complete backend patch.
 
@@ -82,8 +82,8 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 - [x] Record the maintainer-accepted HTTPS browser smoke test for login, reload/new-tab restoration, browser-profile separation, logout and reauthentication, cross-tab logout propagation and explicit session-context reload (IAM-BT09–BT14). The [acceptance record](acceptance.md) distinguishes successful observations from blocked or partial scenarios.
 - [x] Defer protected-operation renewal/retry, repeated rotation, return-path navigation and related browser failure scenarios to **P2.1c.1** in the [backlog](../backlog.md), when P2.1c provides authenticated profile operations. These scenarios remain unverified for P2.1b, not accepted as passes.
 - [x] Record the remaining manual scenarios as unexercised or dependent on P2.1c.1 in the [acceptance record](acceptance.md). Use automated evidence for database races, replay, clock skew and uncertain HTTP responses; do not claim these were manually exercised.
-- [ ] Reconcile final backend Unit/Integration/E2E CI (including the 16-worker disposable-pool follow-up) and frontend lint/typecheck/Vitest/build/static-export evidence at the same integrated revision.
-- [ ] Approve this reconciliation of [security](../../../stack/security.md), [frontend architecture](../../../architecture/frontend.md), [development guide](../../../development.md), frontend test guidance and backlog with implemented contracts; retain the approved specification and this plan.
-- [ ] Record independent security review findings and their resolution, then obtain final human approval for the complete merge-request diff.
+- [x] Reconcile final backend Unit/Integration/E2E CI (including the 16-worker disposable-pool follow-up) and frontend lint/typecheck/Vitest/build/static-export evidence at the same integrated revision.
+- [x] Approve this reconciliation of [security](../../../stack/security.md), [frontend architecture](../../../architecture/frontend.md), [development guide](../../../development.md), frontend test guidance and backlog with implemented contracts; retain the approved specification and this plan.
+- [x] Record independent security review findings and their resolution, then obtain final human approval for the complete merge-request diff.
 
 **Gate E:** The maintainer has accepted the **smoke-test stage**, not a claim that every originally proposed manual scenario passed. Independent review, final CI reconciliation and explicit merge authorization remain required before P2.1b/P2.1b.1 can be marked complete in the backlog.
