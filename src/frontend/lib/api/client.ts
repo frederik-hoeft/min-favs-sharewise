@@ -89,6 +89,9 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         const requestSignal = options.signal ?? undefined;
         const initialHeaders = new Headers(options.headers);
         if (!initialHeaders.has('Accept')) initialHeaders.set('Accept', 'application/json, application/problem+json');
+        // Capture before body serialization or asynchronous credential preparation.
+        // First-use restoration may establish the binding when none exists yet.
+        const initiatingSessionId = hooks.captureSessionId?.(targetPath, initialHeaders);
         const prepared = prepareBody(options.body, initialHeaders);
         const method = (options.method ?? 'GET').toUpperCase();
         const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
@@ -98,9 +101,6 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         delete requestOptions.timeoutMs;
         delete requestOptions.expectedStatus;
         delete requestOptions.body;
-
-        // A first-use restoration may establish the binding; an existing session must never be replaced.
-        const initiatingSessionId = hooks.captureSessionId?.(targetPath, initialHeaders);
 
         function assertBinding(expected: string | undefined, actual: string | undefined): void {
             if (expected !== undefined && expected !== actual) {
@@ -218,6 +218,21 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         return attempt(true, initiatingSessionId);
     }
 
+    return createApiMethods(executeRequest);
+}
+
+/** Expose the same transport through a narrower request lifetime. */
+export function scopeApiClient(client: ApiClient, assertRequest: (path: string, headers: Headers) => void): ApiClient {
+    return createApiMethods(async <T>(path: string, options?: ApiRequestOptions): Promise<T> => {
+        const normalizedPath = normalizeApiPath(path);
+        const headers = new Headers(options?.headers);
+        const scopedOptions = { ...options, headers };
+        assertRequest(normalizedPath, headers);
+        return client.request<T>(normalizedPath, scopedOptions);
+    });
+}
+
+function createApiMethods(executeRequest: <T>(path: string, options?: ApiRequestOptions) => Promise<T>): ApiClient {
     return {
         request<T>(path: string, options?: ApiRequestOptions): Promise<T> {
             return executeRequest<T>(path, options);
@@ -240,5 +255,5 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
     };
 }
 
-/** Plain transport for anonymous/public APIs. Authenticated operations use IdentityRuntime.api. */
+/** Plain transport for anonymous/public APIs. Authenticated operations use the workspace scope. */
 export const apiClient: ApiClient = createApiClient();

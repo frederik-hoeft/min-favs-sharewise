@@ -4,7 +4,7 @@ import { Alert, Button, Card, Group, PasswordInput, SimpleGrid, Stack, Text, Tit
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useIdentity } from "@/app/identity-provider";
+import { useAuthenticatedApis } from "@/app/identity-provider";
 import { validatePasswordChange } from "@/core/identity/password-validation";
 import type { PasswordChangeErrors } from "@/core/identity/password-validation";
 import { ApiError } from "@/lib/api";
@@ -56,7 +56,7 @@ function failureFor(error: unknown): Failure {
 }
 
 export function AccountPasswordForm() {
-  const { security } = useIdentity();
+  const { security } = useAuthenticatedApis();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [errors, setErrors] = useState<PasswordChangeErrors>({});

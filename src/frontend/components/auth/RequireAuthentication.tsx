@@ -2,8 +2,8 @@
 
 import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { usePathname, useRouter } from "next/navigation";
-import { Fragment, useEffect, type ReactNode } from "react";
-import { useAuthState, useIdentity } from "@/app/identity-provider";
+import { useEffect, type ReactNode } from "react";
+import { AuthenticatedApisProvider, useAuthState, useIdentity } from "@/app/identity-provider";
 import { safeAppReturnPath } from "@/lib/navigation/return-path";
 
 /**
@@ -12,7 +12,7 @@ import { safeAppReturnPath } from "@/lib/navigation/return-path";
  * identity state, but never redirects or treats every application 401 as logout.
  */
 export function RequireAuthentication({ children }: Readonly<{ children: ReactNode }>) {
-  const { auth } = useIdentity();
+  const { auth, session } = useIdentity();
   const state = useAuthState();
   const pathname = usePathname();
   const router = useRouter();
@@ -32,7 +32,7 @@ export function RequireAuthentication({ children }: Readonly<{ children: ReactNo
   }, [pathname, router, state]);
 
   // The entire workspace owns one lifetime per login, not per access-token generation.
-  if (state.status === "authenticated") return <Fragment key={state.sessionId}>{children}</Fragment>;
+  if (state.status === "authenticated") return <AuthenticatedApisProvider key={session.getAuthenticatedLifetime()} sessionId={state.sessionId}>{children}</AuthenticatedApisProvider>;
 
   if (state.status === "context-changed") {
     return (

@@ -1,4 +1,4 @@
-import { ApiError, createApiClient, type ApiClient } from '@/lib/api';
+import { ApiError, createApiClient, scopeApiClient, type ApiClient } from '@/lib/api';
 import { AuthCoordinator } from './auth-coordinator.ts';
 import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';
@@ -11,12 +11,17 @@ export { CSRF_HEADER, IdentityApi } from './identity-api.ts';
 export { SessionContextChannel, SESSION_CONTEXT_CHANNEL } from './session-context-channel.ts';
 export type { AccountProfile, AuthenticationResponse, AuthState, ChangePasswordRequest, IdentityCredentials, SessionContextEvent } from './models.ts';
 
-export interface IdentityRuntime {
-    /** Use this client for authenticated domain API operations. */
+export interface AuthenticatedApis {
     readonly api: ApiClient;
-    readonly auth: AuthCoordinator;
     readonly account: Pick<IdentityApi, 'getAccount' | 'setDisplayName' | 'clearDisplayName'>;
     readonly security: Pick<IdentityApi, 'changePassword'>;
+}
+
+export interface IdentityRuntime {
+    /** Unscoped transport for identity infrastructure; workspace callers use forSession. */
+    readonly api: ApiClient;
+    readonly auth: AuthCoordinator;
+    forSession(sessionId: string): AuthenticatedApis;
     readonly cookieLock: AuthCookieLock;
     readonly session: AuthSession;
     connect(): void;
@@ -73,10 +78,10 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || context.hasExplicitAuthorization) return false;
             const rejected = sentHeaders.get('Authorization');
             if (!rejected?.startsWith('Bearer ') || !context.sessionId) return false;
-            // A confirmed post-dispatch session denial is terminal but must NEVER replay
-            // the mutation; ordinary application-level 401s leave the bearer intact.
+            // A confirmed post-dispatch session denial concerns the entire session,
+            // not the bearer generation. Never replay the mutation.
             if (isPasswordSessionDenial(path, context.method, problem.code)) {
-                if (session.getSessionId() === context.sessionId && session.matchesAccessToken(rejected.slice(7))) {
+                if (session.getSessionId() === context.sessionId) {
                     session.invalidate('unauthorized');
                 }
                 return false;
@@ -91,9 +96,9 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || context.hasExplicitAuthorization || !context.sessionId) return;
             const rejected = sentHeaders.get('Authorization');
             if (!rejected?.startsWith('Bearer ')) return;
-            if ((PRE_DISPATCH_401_CODES.has(problem.code) ||
-                isPasswordSessionDenial(path, context.method, problem.code)) &&
-                session.getSessionId() === context.sessionId && session.matchesAccessToken(rejected.slice(7))) {
+            if (session.getSessionId() === context.sessionId &&
+                (isPasswordSessionDenial(path, context.method, problem.code) ||
+                    (PRE_DISPATCH_401_CODES.has(problem.code) && session.matchesAccessToken(rejected.slice(7))))) {
                 session.invalidate('unauthorized');
             }
         },
@@ -108,7 +113,22 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
     const auth = new AuthCoordinator(identityApi, session, cookieLock, channel);
     return {
         api, auth, cookieLock, session,
-		account: identityApi, security: identityApi,
+        forSession(sessionId) {
+            const lifetime = session.getSessionId() === sessionId ? session.getAuthenticatedLifetime() : undefined;
+            const scopedApi = scopeApiClient(api, (path, headers) => {
+                if (!lifetime || session.getAuthenticatedLifetime() !== lifetime) {
+                    throw sessionContextChanged();
+                }
+                if (ANONYMOUS_IDENTITY_PATHS.has(path) || headers.has('Authorization')) {
+                    throw new ApiError({
+                        status: 0, code: 'invalid_request_context', title: 'Invalid Request Context',
+                        detail: 'Workspace APIs require the current session bearer.',
+                    });
+                }
+            });
+            const scopedIdentity = new IdentityApi(scopedApi);
+            return { api: scopedApi, account: scopedIdentity, security: scopedIdentity };
+        },
         connect: () => channel.connect(),
         disconnect: () => channel.disconnect(),
         dispose: () => { auth.dispose(); channel.dispose(); session.dispose(); },

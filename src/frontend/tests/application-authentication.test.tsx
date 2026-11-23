@@ -1,11 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { IdentityProvider } from "@/app/identity-provider";
+import { IdentityProvider, useAuthenticatedApis } from "@/app/identity-provider";
 import AppLayout from "@/app/(app)/app/layout";
 import { createIdentityRuntime } from "@/core/identity";
 import { TestProviders } from "./support/TestProviders";
-import { ControlledLocks, SESSION_TWO, authenticationResponse, jsonResponse, problemResponse } from "./identity/support";
+import { ControlledLocks, SESSION_TWO, authenticationResponse, deferred, jsonResponse, problemResponse } from "./identity/support";
 
 const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
 let pathname = "/app/account";
@@ -91,6 +91,64 @@ describe("authenticated workspace layout", () => {
     await act(async () => runtime.session.accept(authenticationResponse("replacement", undefined, SESSION_TWO)));
     expect(draft).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Workspace draft" })).toHaveValue("");
+  });
+
+  it.each([false, true])("rejects a suspended old workspace workflow before dispatch (prior request: %s)", async (priorRequest) => {
+    const pause = deferred<void>();
+    const reachedPause = deferred<void>();
+    const completed = deferred<unknown>();
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    function Workflow() {
+      const { api } = useAuthenticatedApis();
+      async function execute() {
+        try {
+          if (priorRequest) await api.get("/finance/v1/draft");
+          reachedPause.resolve();
+          await pause.promise;
+          await api.post("/finance/v1/expenses", { draft: "old account data" });
+          completed.resolve("unexpected success");
+        } catch (error) {
+          completed.resolve(error);
+        }
+      }
+      return <button onClick={() => void execute()}>Start workflow</button>;
+    }
+    const runtime = createIdentityRuntime({ fetchImpl: fetchImpl as typeof fetch });
+    runtime.session.accept(authenticationResponse("first"));
+    mount(runtime, <Workflow />);
+    fireEvent.click(screen.getByRole("button", { name: "Start workflow" }));
+    await reachedPause.promise;
+    await act(async () => runtime.session.accept(authenticationResponse("replacement", undefined, SESSION_TWO)));
+    pause.resolve();
+    expect(await completed.promise).toMatchObject({ code: "session_context_changed" });
+    expect(fetchImpl).toHaveBeenCalledTimes(priorRequest ? 1 : 0);
+  });
+
+  it("keeps a retained workspace API stable across bearer rotation and uses the renewed bearer", async () => {
+    const pause = deferred<void>();
+    const completed = deferred<unknown>();
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ ok: true }));
+    const observed: Array<ReturnType<typeof useAuthenticatedApis>> = [];
+    function Workflow() {
+      const apis = useAuthenticatedApis();
+      observed.push(apis);
+      async function execute() {
+        await pause.promise;
+        try { completed.resolve(await apis.api.post("/finance/v1/expenses", {})); }
+        catch (error) { completed.resolve(error); }
+      }
+      return <button onClick={() => void execute()}>Start workflow</button>;
+    }
+    const runtime = createIdentityRuntime({ fetchImpl: fetchImpl as typeof fetch });
+    runtime.session.accept(authenticationResponse("first"));
+    mount(runtime, <Workflow />);
+    fireEvent.click(screen.getByRole("button", { name: "Start workflow" }));
+    await act(async () => runtime.session.accept(authenticationResponse("renewed")));
+    pause.resolve();
+    expect(await completed.promise).toEqual({ ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect((fetchImpl.mock.calls[0][1]?.headers as Headers).get("Authorization")).toBe("Bearer renewed");
+    expect(observed.every((apis) => apis === observed[0])).toBe(true);
   });
 
   it("preserves an app-local return path, including query, for terminal reauthentication", async () => {

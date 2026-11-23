@@ -3,7 +3,7 @@
 import { Alert, Button, Card, Group, Loader, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useIdentity } from "@/app/identity-provider";
+import { useAuthenticatedApis } from "@/app/identity-provider";
 import type { AccountProfile } from "@/core/identity";
 import { MAX_DISPLAY_NAME_CHARACTERS, validateDisplayName, withinDisplayNameLimit } from "@/core/identity/display-name";
 import { ApiError } from "@/lib/api";
@@ -43,7 +43,7 @@ function updateFailure(error: unknown): { message: string; field?: string; reloa
 }
 
 export function AccountProfileForm() {
-  const { account } = useIdentity();
+  const { account } = useAuthenticatedApis();
   const [view, setView] = useState<ProfileView>();
   const [draft, setDraft] = useState("");
   const [fieldError, setFieldError] = useState<string>();
