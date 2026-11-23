@@ -133,6 +133,30 @@ class SessionLifecycleServiceTests {
     }
 
     @Test
+    void rejectsRefreshBeforeConsumptionWhenLessThanTwoSecondsRemain() {
+        for (Duration remaining : new Duration[] {Duration.ofMillis(900), Duration.ofMillis(1999)}) {
+            Rig rig = new Rig();
+            Instant deadline = NOW.plus(remaining);
+            rig.store.setDeadlines(new SessionPolicy.Deadlines(NOW.minus(Duration.ofDays(1)),
+                    deadline, deadline));
+            assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
+                    rig.service.refresh(rig.cookie, SESSION));
+            assertNull(rig.store.tokens.get(rig.original.tokenId()).consumedAt());
+            assertEquals(1, rig.store.tokens.size());
+            assertEquals(0, rig.issuer.issued);
+            assertEquals(0, rig.transactions.commits);
+        }
+
+        Rig boundary = new Rig();
+        Instant deadline = NOW.plusSeconds(2);
+        boundary.store.setDeadlines(new SessionPolicy.Deadlines(NOW.minus(Duration.ofDays(1)),
+                deadline, deadline));
+        AuthenticationResult result = success(boundary.service.refresh(boundary.cookie, SESSION));
+        assertEquals(deadline, result.refreshExpiresAt());
+        assertEquals(1, boundary.transactions.commits);
+    }
+
+    @Test
     void disabledRevokedAndFutureIssuedTokensDoNotRenew() {
         Rig disabled = new Rig();
         disabled.store.disabled = true;

@@ -200,10 +200,10 @@ final class IamAuthenticationController {
             HttpServletRequest request, HttpServletResponse response) {
         // This is reached only when Transactions.execute has returned after confirmed commit.
         Instant now = clock.instant();
-        long maxAge = Math.max(0, Duration.between(now, result.refreshExpiresAt()).getSeconds());
-        if (maxAge == 0) {
-            throw new IllegalStateException("Committed IAM session has expired before cookie issuance");
-        }
+        // A slow response can cross the deadline after the transaction committed.
+        // Still deliver the successor instead of failing after consumption; IAM
+        // rejects it once the authoritative session deadline has passed.
+        long maxAge = Math.max(1, Duration.between(now, result.refreshExpiresAt()).getSeconds());
         ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, result.refreshCredential().cookieValue())
                 .httpOnly(true).secure(true).sameSite("Strict").path("/")
                 .maxAge(Duration.ofSeconds(maxAge)).build();

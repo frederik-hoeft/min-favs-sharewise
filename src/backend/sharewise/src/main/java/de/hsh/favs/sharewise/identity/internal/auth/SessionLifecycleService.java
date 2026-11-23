@@ -25,6 +25,10 @@ import java.util.UUID;
  */
 public final class SessionLifecycleService {
 
+    // JWT exp and cookie Max-Age have whole-second precision. Avoid consuming a
+    // generation when the session cannot survive even a minimal HTTP round trip.
+    private static final long MIN_REFRESH_REMAINING_SECONDS = 2;
+
     private final Transactions transactions;
     private final SessionLifecycleStore sessions;
     private final RefreshTokenStore refreshTokens;
@@ -85,7 +89,7 @@ public final class SessionLifecycleService {
             }
             LoginSession session = match.state().session();
             if (match.state().userDisabled() || session.revokedAt() != null
-                    || !now.isBefore(session.deadlines().effectiveExpiresAt())
+                    || now.plusSeconds(MIN_REFRESH_REMAINING_SECONDS).isAfter(session.deadlines().effectiveExpiresAt())
                     || now.isBefore(match.token().issuedAt())) {
                 return unavailable();
             }

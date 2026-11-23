@@ -234,6 +234,30 @@ class IamAuthenticationHttpTests {
     }
 
     @Test
+    void postCommitExpiryRoundingNeverLosesTheReplacementCookie() throws Exception {
+        // The service required a viable lifetime at its decision point, but response
+        // rendering can race with the same deadline after the transaction committed.
+        AuthenticationResult issued = success();
+        for (Instant deadline : new Instant[] {NOW.plusMillis(500), NOW.minusMillis(500)}) {
+            AuthenticationResult nearDeadline = new AuthenticationResult(issued.userId(),
+                    issued.sessionId(), new IssuedAccessToken("signed-token", deadline),
+                    issued.refreshCredential(), deadline);
+            when(ingress.dispatch(eq(SessionLifecycleService.class), any())).thenReturn(Result.ok(nearDeadline));
+            MvcResult bootstrap = csrfBootstrap();
+            String csrf = com.jayway.jsonpath.JsonPath.read(bootstrap.getResponse().getContentAsString(), "$.token");
+            MvcResult response = mvc.perform(sameOrigin(post(REFRESH).contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .cookie(requireCookie(bootstrap), new Cookie("__Host-sharewise-refresh", "presented"))
+                        .header("X-XSRF-TOKEN", csrf)))
+                .andExpect(status().isOk())
+                .andReturn();
+            assertTrue(response.getResponse().getHeaders(HttpHeaders.SET_COOKIE).stream()
+                    .anyMatch(cookie -> cookie.startsWith("__Host-sharewise-refresh=")
+                            && cookie.contains("Max-Age=1")));
+        }
+    }
+
+    @Test
     void invalidRefreshAndContextMismatchNeverChangeCookies() throws Exception {
         MvcResult bootstrap = csrfBootstrap();
         String token = com.jayway.jsonpath.JsonPath.read(bootstrap.getResponse().getContentAsString(), "$.token");
