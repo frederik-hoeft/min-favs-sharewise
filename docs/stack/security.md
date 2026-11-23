@@ -1,4 +1,4 @@
-﻿# Identity and authorization design
+# Identity and authorization design
 
 **Status:** JWT/JOSE verification, operation-scoped identity, IAM registration/login, account profiles, password changes, durable sessions, transactional refresh rotation and logout are implemented. Authoritative live account/session eligibility for other contexts and domain attestation issuance/authorization remain proposed; their sections describe target contracts rather than deployed behavior. The [implemented identity architecture](../architecture/authorization.md), [application architecture](../architecture.md), [domain model](../data-model-design.md) and [persistence architecture](../architecture/persistence.md) own their respective contracts. See [security alternatives](security-alternatives.md) for the selection rationale.
 
