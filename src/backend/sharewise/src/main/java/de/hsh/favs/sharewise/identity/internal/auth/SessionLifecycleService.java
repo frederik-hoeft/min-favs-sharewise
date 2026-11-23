@@ -89,7 +89,7 @@ public final class SessionLifecycleService {
             }
             LoginSession session = match.state().session();
             if (match.state().userDisabled() || session.revokedAt() != null
-                    || now.plusSeconds(MIN_REFRESH_REMAINING_SECONDS).isAfter(session.deadlines().effectiveExpiresAt())
+                    || !now.isBefore(session.deadlines().effectiveExpiresAt())
                     || now.isBefore(match.token().issuedAt())) {
                 return unavailable();
             }
@@ -98,6 +98,11 @@ public final class SessionLifecycleService {
             }
 
             SessionPolicy.Deadlines nextDeadlines = policy.renewAt(now, session.deadlines());
+            // Sliding idle expiry is renewable while still active; only the successor's
+            // effective deadline must leave enough time to issue a usable cookie.
+            if (now.plusSeconds(MIN_REFRESH_REMAINING_SECONDS).isAfter(nextDeadlines.effectiveExpiresAt())) {
+                return unavailable();
+            }
             // All three writes and signing execute in one segment; errors roll back everything.
             sessions.consume(match.token().id(), now);
             sessions.extendIdle(session.id(), nextDeadlines.idleExpiresAt());

@@ -157,6 +157,24 @@ class SessionLifecycleServiceTests {
     }
 
     @Test
+    void refreshCanExtendNearExpiredIdleDeadlineWhenAbsoluteExpiryIsDistant() {
+        for (Duration remaining : new Duration[] {Duration.ofMillis(500), Duration.ofMillis(1999)}) {
+            Rig rig = new Rig();
+            SessionPolicy.Deadlines current = rig.store.session.deadlines();
+            rig.store.setDeadlines(new SessionPolicy.Deadlines(current.createdAt(),
+                    NOW.plus(remaining), current.absoluteExpiresAt()));
+
+            AuthenticationResult result = success(rig.service.refresh(rig.cookie, SESSION));
+            assertEquals(NOW.plus(Duration.ofDays(7)), result.refreshExpiresAt());
+            assertEquals(result.refreshExpiresAt(), rig.store.session.deadlines().idleExpiresAt());
+            assertEquals(current.absoluteExpiresAt(), rig.store.session.deadlines().absoluteExpiresAt());
+            assertEquals(NOW, rig.store.tokens.get(rig.original.tokenId()).consumedAt());
+            assertEquals(2, rig.store.tokens.size());
+            assertEquals(1, rig.transactions.commits);
+        }
+    }
+
+    @Test
     void disabledRevokedAndFutureIssuedTokensDoNotRenew() {
         Rig disabled = new Rig();
         disabled.store.disabled = true;
