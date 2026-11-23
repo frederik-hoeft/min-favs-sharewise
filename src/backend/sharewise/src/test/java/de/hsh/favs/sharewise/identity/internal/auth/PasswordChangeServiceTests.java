@@ -141,18 +141,6 @@ class PasswordChangeServiceTests {
     }
 
     @Test
-    void passwordChangesRejectNoncanonicalOrInvalidSessionKeysBeforePersistence() {
-        for (String invalid : new String[] {"session-alice", CALLER.toString().toUpperCase()}) {
-            Rig rig = new Rig();
-            rig.sessionId = invalid;
-            assertThrows(IllegalStateException.class, () -> rig.service.change(command(OLD, NEW)));
-            assertEquals("encoded:" + OLD, rig.accounts.hash);
-            assertNull(rig.sessions.sessions.get(OTHER).revokedAt());
-            assertEquals(0, rig.transactions.commits);
-        }
-    }
-
-    @Test
     void primaryIdentityCannotChooseAnotherAccountsSessions() {
         Rig rig = new Rig();
         rig.userId = UUID.randomUUID();
@@ -171,10 +159,10 @@ class PasswordChangeServiceTests {
         final FakeTransactions transactions = new FakeTransactions(accounts, sessions);
         final Encoder encoder = new Encoder(accounts);
         UUID userId = USER;
-        String sessionId = CALLER.toString();
+        UUID sessionId = CALLER;
         final IdentityContext identity = new IdentityContext() {
             @Override public Optional<UUID> userId() { return Optional.of(Rig.this.userId); }
-            @Override public Optional<String> sessionId() { return Optional.of(Rig.this.sessionId); }
+            @Override public Optional<UUID> sessionId() { return Optional.of(Rig.this.sessionId); }
         };
         final PasswordChangeService service = new PasswordChangeService(identity, transactions,
                 accounts, sessions, encoder, LoginLockoutPolicy.initial(), Clock.fixed(NOW, ZoneOffset.UTC));

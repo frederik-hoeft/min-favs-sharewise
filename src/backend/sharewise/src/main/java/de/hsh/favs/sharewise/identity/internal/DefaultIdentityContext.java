@@ -32,10 +32,10 @@ final class DefaultIdentityContext implements IdentityContext {
             UUID subject = parseSubject(origin);
             List<Claim> sessions = credential.claims().stream()
                 .filter(claim -> "sid".equals(claim.type())).toList();
-            if (sessions.size() != 1 || sessions.getFirst().value().isBlank()) {
+            if (sessions.size() != 1) {
                 throw new IllegalStateException("Invalid primary IAM session evidence");
             }
-            selected = Optional.of(new Caller(subject, sessions.getFirst().value()));
+            selected = Optional.of(new Caller(subject, parseSessionId(sessions.getFirst().value())));
         }
         if (selected.isEmpty() && !authorization.credentials().isEmpty()) {
             throw new IllegalStateException("Authorization evidence without a primary IAM credential");
@@ -56,15 +56,27 @@ final class DefaultIdentityContext implements IdentityContext {
         }
     }
 
+    private static UUID parseSessionId(String value) {
+        try {
+            UUID id = UUID.fromString(value);
+            if (id.toString().equals(value)) {
+                return id;
+            }
+        } catch (IllegalArgumentException invalid) {
+            // A verified JWT may contain a non-UUID sid; it is not a valid IAM session identity.
+        }
+        throw new IllegalStateException("Invalid primary IAM session evidence");
+    }
+
     @Override
     public Optional<UUID> userId() {
         return caller.map(Caller::userId);
     }
 
     @Override
-    public Optional<String> sessionId() {
+    public Optional<UUID> sessionId() {
         return caller.map(Caller::sessionId);
     }
 
-    private record Caller(UUID userId, String sessionId) { }
+    private record Caller(UUID userId, UUID sessionId) { }
 }

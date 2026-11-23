@@ -42,15 +42,17 @@ class DefaultIdentityContextTests {
     void primaryEvidenceProvidesUserAndSessionFromOneCredential() {
         DefaultIdentityContext identity = context(List.of(primary(USER.toString(), SESSION.toString())));
         assertEquals(USER, identity.requireUserId());
-        assertEquals(SESSION.toString(), identity.requireSessionId());
+        assertEquals(SESSION, identity.requireSessionId());
+        assertEquals(Optional.of(SESSION), identity.sessionId());
     }
 
     @Test
-    void opaqueSessionBindingsArePreservedAndBlankValuesAreRejected() {
-        assertEquals("session-alice", context(List.of(primary(USER.toString(), "session-alice")))
-                .requireSessionId());
-        assertThrows(IllegalStateException.class,
-                () -> context(List.of(primary(USER.toString(), ""))));
+    void noncanonicalAndInvalidSessionClaimsFailClosed() {
+        for (String invalid : List.of("", "session-alice", SESSION.toString().toUpperCase(),
+                "1-1-1-1-1", "00000000-0000-0000-0000-00000000000g")) {
+            assertThrows(IllegalStateException.class,
+                    () -> context(List.of(primary(USER.toString(), invalid))), invalid);
+        }
     }
 
     @Test

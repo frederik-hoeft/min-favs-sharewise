@@ -17,7 +17,7 @@ public class IdentityTestConfiguration {
         Optional<UUID> identity = IdentityTestFixture.currentUserId();
         return new IdentityContext() {
             @Override public Optional<UUID> userId() { return identity; }
-            @Override public Optional<String> sessionId() { return identity.map(UUID::toString); }
+            @Override public Optional<UUID> sessionId() { return identity; }
         };
     }
 }

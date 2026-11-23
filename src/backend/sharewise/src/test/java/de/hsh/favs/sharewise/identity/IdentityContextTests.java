@@ -19,13 +19,13 @@ class IdentityContextTests {
         UUID sessionId = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be138");
         IdentityContext context = new IdentityContext() {
             @Override public Optional<UUID> userId() { return Optional.of(userId); }
-            @Override public Optional<String> sessionId() { return Optional.of(sessionId.toString()); }
+            @Override public Optional<UUID> sessionId() { return Optional.of(sessionId); }
         };
         GroupLikeConsumer consumer = new GroupLikeConsumer(context);
 
         assertEquals(Optional.of(userId), context.userId());
-        assertEquals(Optional.of(sessionId.toString()), context.sessionId());
-        assertEquals(sessionId.toString(), context.requireSessionId());
+        assertEquals(Optional.of(sessionId), context.sessionId());
+        assertEquals(sessionId, context.requireSessionId());
         assertTrue(context.isAuthenticated());
         assertEquals(userId, context.requireUserId());
         assertEquals(userId, consumer.currentUserId());
@@ -35,7 +35,7 @@ class IdentityContextTests {
     void anonymousCallerIsDistinctFromAuthorizationDenial() {
         IdentityContext context = new IdentityContext() {
             @Override public Optional<UUID> userId() { return Optional.empty(); }
-            @Override public Optional<String> sessionId() { return Optional.empty(); }
+            @Override public Optional<UUID> sessionId() { return Optional.empty(); }
         };
 
         assertEquals(Optional.empty(), context.userId());
@@ -50,7 +50,7 @@ class IdentityContextTests {
         IllegalStateException failure = new IllegalStateException("Invalid credential");
         IdentityContext context = new IdentityContext() {
             @Override public Optional<UUID> userId() { throw failure; }
-            @Override public Optional<String> sessionId() { throw failure; }
+            @Override public Optional<UUID> sessionId() { throw failure; }
         };
 
         assertSame(failure, assertThrows(IllegalStateException.class, context::userId));

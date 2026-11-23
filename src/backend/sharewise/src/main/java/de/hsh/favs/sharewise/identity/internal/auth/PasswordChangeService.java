@@ -50,7 +50,7 @@ public final class PasswordChangeService {
     public Result<PasswordChangeStatus, PasswordChangeFailure> change(ChangePasswordCommand command) {
         Objects.requireNonNull(command, "command");
         UUID userId = identity.requireUserId();
-        UUID sessionId = parseSessionId(identity.requireSessionId());
+        UUID sessionId = identity.requireSessionId();
         Optional<AccountSnapshot> snapshot = transactions.execute(() ->
                 TransactionOutcome.abstain(accounts.findById(userId)));
         if (snapshot.isEmpty()) {
@@ -92,18 +92,6 @@ public final class PasswordChangeService {
             sessions.revokeOtherSessions(userId, sessionId, now);
             return TransactionOutcome.commit(Result.ok(PasswordChangeStatus.CHANGED));
         });
-    }
-
-    private static UUID parseSessionId(String rawSessionId) {
-        try {
-            UUID id = UUID.fromString(rawSessionId);
-            if (id.toString().equals(rawSessionId)) {
-                return id;
-            }
-        } catch (IllegalArgumentException invalid) {
-            // Only canonical IAM session keys may be used for credential mutations.
-        }
-        throw new IllegalStateException("Invalid verified primary IAM session evidence");
     }
 
     private static boolean eligible(SessionLifecycleStore.LockedSession locked,

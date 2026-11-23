@@ -94,7 +94,7 @@ class AccountProfileServiceTests {
     private static AccountProfileService service(Optional<UUID> userId, Transactions tx, Store store) {
         IdentityContext identity = new IdentityContext() {
             @Override public Optional<UUID> userId() { return userId; }
-            @Override public Optional<String> sessionId() { return userId.map(UUID::toString); }
+            @Override public Optional<UUID> sessionId() { return userId; }
         };
         return new AccountProfileService(identity, tx, store);
     }

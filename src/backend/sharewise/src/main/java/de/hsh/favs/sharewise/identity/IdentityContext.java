@@ -21,13 +21,13 @@ public interface IdentityContext {
     /**
      * Returns the authenticated IAM session binding from the same verified primary
      * credential as {@link #userId()}. Anonymous operations have neither value.
-     * A session ID identifies a session but is not a credential or a grant of
-     * current session eligibility.
+     * The binding is a canonical IAM session UUID, but it is not a credential
+     * or a grant of current session eligibility.
      */
-    Optional<String> sessionId();
+    Optional<UUID> sessionId();
 
     /** Returns the current session ID or fails when no authenticated caller is present. */
-    default String requireSessionId() {
+    default UUID requireSessionId() {
         return sessionId().orElseThrow(UnauthenticatedCallerException::new);
     }
 

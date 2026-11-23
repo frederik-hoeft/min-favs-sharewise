@@ -361,7 +361,7 @@ class PasswordChangeE2E extends E2ETestBase {
             if (session == null) { throw new IllegalStateException("Missing test primary session evidence"); }
             return new IdentityContext() {
                 @Override public java.util.Optional<UUID> userId() { return java.util.Optional.of(session.userId()); }
-                @Override public java.util.Optional<String> sessionId() { return java.util.Optional.of(session.sessionId().toString()); }
+                @Override public java.util.Optional<UUID> sessionId() { return java.util.Optional.of(session.sessionId()); }
             };
         }
         @Bean

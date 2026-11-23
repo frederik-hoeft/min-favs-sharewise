@@ -77,6 +77,7 @@ class FullApplicationIamIngressTests {
     private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final UUID ALICE = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
+    private static final UUID SESSION = UUID.fromString("12345678-1234-4123-8123-1234567890ac");
     private static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
         "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
         JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
@@ -250,7 +251,7 @@ class FullApplicationIamIngressTests {
             PROFILE.maximumLifetime(), PROFILE.clockSkew(), 16_384);
         JwtCredentialCodec largeCodec = new JwtCredentialCodec(largeProfile,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
-        String largeToken = largeCodec.sign(new JwtIssueRequest(ALICE, "session-a", "large-token",
+        String largeToken = largeCodec.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "large-token",
             NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180),
             Optional.empty(), Map.of("padding", "x".repeat(6300))));
         org.junit.jupiter.api.Assertions.assertTrue(largeToken.length() > 8192);
@@ -285,12 +286,12 @@ class FullApplicationIamIngressTests {
     }
 
     private String token() {
-        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, "session-a", "test-token",
+        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "test-token",
             NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
     }
 
     private String expiredToken() {
-        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, "session-a", "expired-token",
+        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "expired-token",
             NOW.minusSeconds(240), NOW.minusSeconds(240), NOW.minusSeconds(35), Optional.empty(), Map.of()));
     }
 
@@ -300,7 +301,7 @@ class FullApplicationIamIngressTests {
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), PROFILE.maximumLifetime(), PROFILE.clockSkew(), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(otherProfile,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
-        return otherCodec.sign(new JwtIssueRequest(ALICE, "session-a", "wrong-profile-token",
+        return otherCodec.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "wrong-profile-token",
             NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
     }
 
