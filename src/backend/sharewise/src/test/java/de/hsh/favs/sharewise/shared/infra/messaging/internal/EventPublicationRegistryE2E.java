@@ -19,11 +19,15 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,10 +40,10 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * P2.4a Phase A: verifies the Spring Modulith publication registry with the production
- * {@code Transactions}, operation dispatch and PostgreSQL configuration before any business
- * event relies on it. Uses a test-only event, listener and projection table.
+ * {@code Transactions}, operation dispatch, executor and PostgreSQL configuration before any
+ * business event relies on it. Uses a test-only event, listener and projection table.
  */
-@org.junit.jupiter.api.Tag("e2e")
+@Tag("e2e")
 class EventPublicationRegistryE2E extends E2ETestBase {
 
     static final String LISTENER_ID = "test.registry-probe.v1";
@@ -63,37 +67,49 @@ class EventPublicationRegistryE2E extends E2ETestBase {
     }
 
     @Test
-    void committedPublicationIsDeliveredInASeparateAnonymousOperationAndThenDeleted() {
+    void publicationCommitsWithTheProducerIsDeliveredAsynchronouslyAndThenDeleted() {
         UUID id = UUID.randomUUID();
-        publish(id, true);
+        behavior.holdNextDelivery();
 
+        assertEquals(1, publish(id, true), "publication is written inside the producer transaction");
+
+        // The consumer is held, so the committed row is observable on an independent connection.
+        await("delivery started", () -> behavior.invocations() == 1);
+        Publication pending = publication(id).orElseThrow(
+            () -> new AssertionError("committed publication must exist before delivery completes"));
+        assertEquals(LISTENER_ID, pending.listenerId());
+        assertFalse(projected(id));
+
+        behavior.release();
         await("projection row", () -> projected(id));
         await("publication deletion", () -> publication(id).isEmpty());
-        assertEquals(1, behavior.invocations());
         assertTrue(behavior.lastOperationWasAnonymous(), "listener operations carry no caller evidence");
+        assertTrue(behavior.lastThreadName().startsWith("sharewise-async-"),
+            "listener runs on the bounded application executor, was " + behavior.lastThreadName());
     }
 
     @Test
-    void rolledBackProducerLeavesNoPublicationAndNoDelivery() throws InterruptedException {
+    void rolledBackProducerLeavesNoPublicationAndNoDelivery() {
         UUID id = UUID.randomUUID();
-        publish(id, false);
 
-        Thread.sleep(1_000);
+        assertEquals(1, publish(id, false), "publication is written inside the producer transaction");
+
         assertTrue(publication(id).isEmpty(), "rolled-back publication must not persist");
         assertFalse(projected(id));
-        assertEquals(0, behavior.invocations());
+        assertEquals(0, behavior.invocations(), "rolled-back events are never handed to the listener");
     }
 
     @Test
-    void failingConsumerKeepsAFailedPublicationThatResubmissionCompletes() {
+    void consumerRollbackKeepsAFailedPublicationThatResubmissionCompletes() {
         UUID id = UUID.randomUUID();
-        behavior.plan(Mode.THROW, Mode.APPLY);
+        behavior.plan(Mode.THROW_AFTER_WRITE, Mode.APPLY);
         publish(id, true);
 
         await("failed publication", () -> publication(id).map(p -> "FAILED".equals(p.status())).orElse(false));
         Publication failed = publication(id).orElseThrow();
         assertEquals(LISTENER_ID, failed.listenerId());
-        assertFalse(projected(id));
+        assertTrue(failed.completionAttempts() >= 1, "failed attempt is counted");
+        assertFalse(projected(id), "the consumer write rolled back with its exception");
 
         context().getBean(FailedEventPublications.class).resubmit(ResubmissionOptions.defaults());
 
@@ -113,11 +129,9 @@ class EventPublicationRegistryE2E extends E2ETestBase {
         assertFalse(projected(id), "the deferred constraint rolled back the consumer write");
     }
 
-    private void publish(UUID id, boolean commit) {
-        dispatcher.dispatch(ProbeProducer.class, producer -> {
-            producer.publish(id, commit);
-            return null;
-        });
+    /** Returns the number of registry rows visible inside the producer transaction. */
+    private int publish(UUID id, boolean commit) {
+        return dispatcher.dispatch(ProbeProducer.class, producer -> producer.publish(id, commit));
     }
 
     private boolean projected(UUID id) {
@@ -137,7 +151,7 @@ class EventPublicationRegistryE2E extends E2ETestBase {
     private Optional<Publication> publication(UUID id) {
         try (Connection connection = fixture().connectAsApplication();
              PreparedStatement statement = connection.prepareStatement("""
-                 select listener_id, status from messaging.event_publication
+                 select listener_id, status, completion_attempts from messaging.event_publication
                  where event_type = ? and serialized_event like ?
                  """)) {
             statement.setString(1, ProbeEvent.class.getName());
@@ -146,7 +160,7 @@ class EventPublicationRegistryE2E extends E2ETestBase {
                 if (!rows.next()) {
                     return Optional.empty();
                 }
-                Publication found = new Publication(rows.getString(1), rows.getString(2));
+                Publication found = new Publication(rows.getString(1), rows.getString(2), rows.getInt(3));
                 assertFalse(rows.next(), "exactly one publication per event and listener");
                 return Optional.of(found);
             }
@@ -171,27 +185,50 @@ class EventPublicationRegistryE2E extends E2ETestBase {
         fail("Timed out waiting for " + description);
     }
 
-    record Publication(String listenerId, String status) { }
+    record Publication(String listenerId, String status, int completionAttempts) { }
 
     /** Test-only integration fact; serialized into the registry like a real event. */
     record ProbeEvent(UUID id) { }
 
-    enum Mode { APPLY, THROW, FAIL_AT_COMMIT }
+    enum Mode { APPLY, THROW_AFTER_WRITE, FAIL_AT_COMMIT }
 
     /** Thread-safe scripted consumer behavior shared between the test and the async listener. */
     static final class ProbeBehavior {
         private final Deque<Mode> planned = new ArrayDeque<>();
         private final AtomicInteger invocations = new AtomicInteger();
         private final AtomicInteger finished = new AtomicInteger();
+        private volatile CountDownLatch gate = new CountDownLatch(0);
         private volatile boolean lastAnonymous;
+        private volatile String lastThreadName = "";
 
         synchronized void plan(Mode... modes) {
             planned.clear();
-            planned.addAll(java.util.List.of(modes));
+            planned.addAll(List.of(modes));
+        }
+
+        void holdNextDelivery() {
+            gate = new CountDownLatch(1);
+        }
+
+        void release() {
+            gate.countDown();
+        }
+
+        /** Called on the listener thread before the consumer operation is dispatched. */
+        void enter() {
+            lastThreadName = Thread.currentThread().getName();
+            invocations.incrementAndGet();
+            try {
+                if (!gate.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Probe delivery was never released");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while holding the probe delivery", interrupted);
+            }
         }
 
         synchronized Mode next() {
-            invocations.incrementAndGet();
             Mode mode = planned.pollFirst();
             return mode == null ? Mode.APPLY : mode;
         }
@@ -215,14 +252,21 @@ class EventPublicationRegistryE2E extends E2ETestBase {
         boolean lastOperationWasAnonymous() {
             return lastAnonymous;
         }
+
+        String lastThreadName() {
+            return lastThreadName;
+        }
     }
 
     /** Producer operation: publishes inside its own segment and commits or rolls back. */
-    record ProbeProducer(Transactions transactions, ApplicationEventPublisher events) {
-        void publish(UUID id, boolean commit) {
-            transactions.execute(() -> {
+    record ProbeProducer(Transactions transactions, JooqAccess jooq, ApplicationEventPublisher events) {
+        int publish(UUID id, boolean commit) {
+            return transactions.execute(() -> {
                 events.publishEvent(new ProbeEvent(id));
-                return commit ? TransactionOutcome.commit(null) : TransactionOutcome.rollback(null);
+                int visible = ((Number) jooq.dsl().fetchValue(
+                    "select count(*) from messaging.event_publication where serialized_event like ?",
+                    "%" + id + "%")).intValue();
+                return commit ? TransactionOutcome.commit(visible) : TransactionOutcome.rollback(visible);
             });
         }
     }
@@ -233,13 +277,13 @@ class EventPublicationRegistryE2E extends E2ETestBase {
         void apply(ProbeEvent event) {
             behavior.recordAnonymous(authorization.credentials().isEmpty());
             Mode mode = behavior.next();
-            if (mode == Mode.THROW) {
-                throw new IllegalStateException("Simulated consumer failure");
-            }
             UUID parent = mode == Mode.FAIL_AT_COMMIT ? UUID.randomUUID() : null;
             transactions.execute(() -> {
                 jooq.dsl().execute("insert into groups.event_registry_probe (id, parent_id) values (?, ?)",
                     event.id(), parent);
+                if (mode == Mode.THROW_AFTER_WRITE) {
+                    throw new IllegalStateException("Simulated consumer failure after a write");
+                }
                 return TransactionOutcome.commit(null);
             });
         }
@@ -259,6 +303,7 @@ class EventPublicationRegistryE2E extends E2ETestBase {
         @TransactionalEventListener(id = LISTENER_ID)
         public void on(ProbeEvent event) {
             try {
+                behavior.enter();
                 dispatcher.dispatch(ProbeConsumer.class, consumer -> {
                     consumer.apply(event);
                     return null;
@@ -283,8 +328,8 @@ class EventPublicationRegistryE2E extends E2ETestBase {
 
         @Bean
         @Scope("operation")
-        ProbeProducer probeProducer(Transactions transactions, ApplicationEventPublisher events) {
-            return new ProbeProducer(transactions, events);
+        ProbeProducer probeProducer(Transactions transactions, JooqAccess jooq, ApplicationEventPublisher events) {
+            return new ProbeProducer(transactions, jooq, events);
         }
 
         @Bean

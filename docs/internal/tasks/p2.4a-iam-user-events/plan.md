@@ -23,32 +23,37 @@ flowchart LR
 
 **Scope:** D1, D2, D3, D8, D12; answers Q3. No business event yet.
 
-- [ ] Add the Spring Modulith JDBC event registry dependencies (managed by the existing 2.2.0 BOM) and the Jackson serializer required by the registry.
-- [ ] Add the Flyway migration `platform/V<timestamp>__platform_event_publication_registry.sql`: create schema `messaging`, the current Spring Modulith 2.2 PostgreSQL `event_publication` table and both indexes verbatim, grant `USAGE` on the schema and `SELECT, INSERT, UPDATE, DELETE` on the table to `sharewise_app`.
-- [ ] Configure `spring.modulith.events.jdbc.schema=messaging`, `spring.modulith.events.jdbc.schema-initialization.enabled=false`, `spring.modulith.events.completion-mode=delete`.
-- [ ] Add one bounded async executor and `@EnableAsync` in shared infrastructure (D12), with graceful shutdown.
-- [ ] **Framework verification E2E (test sources only):** a test-local event, publisher operation and listener (`@Async @TransactionalEventListener(id = …)`) that dispatches an operation through `OperationDispatcher` **without inputs** and commits via `Transactions`. Establish and record:
-  - publication row is written in the producer transaction and absent after producer rollback;
+- [x] Add the Spring Modulith JDBC event registry dependencies (managed by the existing 2.2.0 BOM) and the Jackson serializer required by the registry.
+- [x] Add the Flyway migration `platform/V<timestamp>__platform_event_publication_registry.sql`: create schema `messaging`, the current Spring Modulith 2.2 PostgreSQL `event_publication` table and both indexes verbatim, grant `USAGE` on the schema and `SELECT, INSERT, UPDATE, DELETE` on the table to `sharewise_app`.
+- [x] Configure `spring.modulith.events.jdbc.schema=messaging`, `spring.modulith.events.jdbc.schema-initialization.enabled=false`, `spring.modulith.events.completion-mode=delete`.
+- [x] Bound Boot's application task executor (core = max, bounded queue, graceful shutdown) and add `@EnableAsync` in shared infrastructure (D12).
+- [x] **Framework verification E2E (test sources only):** a test-local event, publisher operation and listener (`@Async @TransactionalEventListener(id = …)`) that dispatches an operation through `OperationDispatcher` **without inputs** and commits via `Transactions`. Establish and record:
+  - the publication row is visible inside the producer transaction, committed with it (observed on an independent connection while delivery is held) and absent after producer rollback;
   - after a successful consumer commit, the row is deleted;
-  - when the consumer throws, the row remains and is marked failed;
-  - when the consumer's **commit** fails, the row remains (decides `spring.modulith.events.completion`, D8);
+  - when the consumer throws after a write, its write rolls back and the row remains `FAILED` with `completion_attempts` ≥ 1; resubmission completes it;
+  - when the consumer's **commit** fails (deferred constraint), the row remains `FAILED`;
   - stored `listener_id` equals the explicit ID;
-  - dispatch without identity inputs yields an anonymous operation (Q3).
-- [ ] Pin the verified `spring.modulith.events.completion` value with a comment explaining the evidence.
-- [ ] Confirm existing Unit tests do not start the registry without a datasource, and Integration tests (rollback-only) never trigger after-commit delivery.
+  - dispatch without identity inputs yields an anonymous operation (Q3);
+  - the listener runs on the bounded executor (thread name prefix `sharewise-async-`).
+- [x] Pin `spring.modulith.events.completion=in-interceptor` with a comment explaining the mechanism (D8).
+- [x] Exclude the registry auto-configurations from the two database-free component tests (`FullApplicationIamIngressTests`, `IamAuthenticationHttpTests`); rollback-only Integration tests never commit and therefore never deliver.
 
-**Gate A:** `./mvnw verify` green; migration reviewed; framework verification evidence recorded in this plan; completion setting decided.
+**Phase A evidence (2026-11-22):** `./mvnw verify` green in the dev container against PostgreSQL 18 with the first version of `EventPublicationRegistryE2E`. The independent review confirmed the migration matches the non-legacy Spring Modulith 2.2 schema, the property names, grants and listener-ID handling, and found that in-listener completion only applies to `@Transactional` listeners, so the setting does not change behavior for our listener (D8 rewritten, value pinned). The review round strengthened the E2E (producer-transaction visibility, held delivery, exception after a write, attempt count, executor thread) and must be re-verified.
+
+**Gate A:** `./mvnw verify` green with the review-round test; human review of the migration and D8.
 
 ## Phase B - IAM producer
 
 **Scope:** D4, D5, D11 (producer side); EV-01, EV-02, EV-07; TC-02, TC-03, TC-08 (payload part).
 
-- [ ] Create package `de.hsh.favs.sharewise.identity.events` with `@NamedInterface("events")` and the record `UserRegisteredV1(UUID eventId, UUID userId, Instant occurredAt)`.
-- [ ] Add an IAM-internal port `UserEventPublisher` and a Spring adapter over `ApplicationEventPublisher`; wire it into `RegistrationService` and publish only on the `COMMIT` path, inside the existing segment. `eventId` is generated once at publication.
-- [ ] Unit tests: `RegistrationService` publishes exactly one event on success and none on `EMAIL_UNAVAILABLE`.
-- [ ] E2E (with a test-only listener, since the Group consumer arrives in Phase C): committed registration produces one publication row whose payload holds only the three fields; duplicate email and forced rollback produce none.
+- [x] Create package `de.hsh.favs.sharewise.identity.events` with `@NamedInterface("events")` and the record `UserRegisteredV1(UUID eventId, UUID userId, Instant occurredAt)`.
+- [x] Add an IAM-internal port `UserEventPublisher` and a Spring adapter over `ApplicationEventPublisher`; wire it into `RegistrationService` and publish only on the `COMMIT` path, inside the existing segment. `eventId` is generated once at publication.
+- [x] Unit tests: `RegistrationService` publishes exactly one event on success and none on `EMAIL_UNAVAILABLE`.
+- [x] E2E (with a test-only listener, since the Group consumer arrives in Phase C): committed registration produces one publication row whose payload holds only the three fields; duplicate email and forced rollback produce none.
 
 **Gate B:** `./mvnw verify` green; event contract reviewed (it becomes a persisted format).
+
+**Phase B notes:** `UserRegisteredPublicationE2E` holds a test-only listener, inspects the committed row (listener ID, user ID, no email/credential/session data), and covers ABSTAIN, a signer failure before publication and an injected failure just before the physical commit after publication (TC-02, TC-03, TC-08). `IamAuthenticationIT` uses a no-op publisher because its rollback-only transactions never deliver.
 
 ## Phase C - Group consumer (after P2.2a merge)
 
@@ -68,10 +73,14 @@ flowchart LR
 
 **Scope:** D9, D10; EV-06, EV-10; TC-07, TC-09.
 
-- [ ] Configure `republish-outstanding-events-on-restart=true` and the staleness durations; document the single-instance assumption next to the property.
-- [ ] Add a small scheduled `FailedEventPublications` resubmitter (configurable interval, minimum age, batch size) with structured log lines; keep `abandon-after-attempts=-1`.
-- [ ] Add the Flyway data migration copying existing `identity.users.id` into `groups.users` with `ON CONFLICT DO NOTHING`, versioned after the registry and both feature migrations.
-- [ ] E2E: TC-07 (pending publication survives context restart and is delivered), TC-09 (bootstrap migration on a database with pre-existing accounts; idempotent).
+- [ ] Configure `republish-outstanding-events-on-restart=true` and the staleness durations (`staleness.published` above the worst-case queue wait); document the single-instance assumption next to the property.
+- [ ] Add `@EnableScheduling` once in shared infrastructure; the staleness monitor and the resubmitter depend on it.
+- [ ] Add a scheduled `FailedEventPublications` resubmitter that runs outside any transaction, with backoff (filter on `lastResubmissionDate`/`completionAttempts`, exponential and capped), `withMaxInFlight`, configurable interval and structured log lines.
+- [ ] Never abandon: keep `abandon-after-attempts=-1`, add a context test asserting that no `AbandonPolicy` bean exists and document that `applyAbandonPolicy()` must not be called (DELETE mode would delete abandoned publications).
+- [ ] E2E: a publication stuck in `PUBLISHED` becomes `FAILED` through the staleness monitor and is then delivered by the resubmitter.
+- [ ] Add the Flyway data migration copying existing `identity.users.id` into `groups.users` with `ON CONFLICT DO NOTHING`, versioned after the registry and both feature migrations; document the stop → migrate → start precondition (D10).
+- [ ] E2E: TC-07 (pending publication survives context restart and is delivered), TC-09 (bootstrapped database migrated to the version before the bootstrap, seeded, then migrated fully; idempotent).
+- [ ] Document the operator procedure for renamed or removed listeners (specification failure table).
 
 **Gate D:** `./mvnw verify` green; retry/staleness defaults approved (Q4).
 

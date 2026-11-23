@@ -40,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 
@@ -237,10 +238,14 @@ class IamAuthenticationE2E extends E2ETestBase {
                 RefreshCredentialGenerator generator, SessionPolicy policy, FakeIssuer issuer) {
             return new InitialAuthentication(sessions, tokens, generator, policy, issuer);
         }
+        @Bean UserEventPublisher userEventPublisher(ApplicationEventPublisher events) {
+            return new SpringUserEventPublisher(events);
+        }
         @Bean @Scope("operation")
         RegistrationService registrationService(Transactions transactions, AccountStore accounts,
-                FakeEncoder encoder, InitialAuthentication authentication, Clock clock) {
-            return new RegistrationService(transactions, accounts, encoder, authentication, clock);
+                FakeEncoder encoder, InitialAuthentication authentication, UserEventPublisher events,
+                Clock clock) {
+            return new RegistrationService(transactions, accounts, encoder, authentication, events, clock);
         }
         @Bean @Scope("operation")
         LoginService loginService(Transactions transactions, AccountStore accounts,

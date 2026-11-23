@@ -10,6 +10,9 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * {@code spring.task.execution.*}. Durability does not depend on this executor: the Spring
  * Modulith publication registry keeps every publication until its listener succeeds, so a
  * rejected or interrupted hand-off is recovered rather than lost.
+ *
+ * <p>Spring Modulith also enables async processing conditionally; declaring it here keeps the
+ * requirement explicit and independent of that framework detail.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableAsync

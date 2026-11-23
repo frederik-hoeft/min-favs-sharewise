@@ -60,6 +60,8 @@ class AuthenticationWorkflowTests {
         assertTrue(authentication.refreshCredential().cookieValue().startsWith(
                 authentication.refreshCredential().tokenId().toString() + "."));
         assertFalse(authentication.toString().contains(authentication.refreshCredential().cookieValue()));
+        assertEquals(List.of(authentication.userId()), rig.events.registered);
+        assertEquals(List.of(NOW), rig.events.registeredAt);
     }
 
     @Test
@@ -74,6 +76,7 @@ class AuthenticationWorkflowTests {
         assertEquals(1, rig.issuer.issued);
         assertEquals(1, rig.transactions.commits);
         assertEquals(1, rig.transactions.rollbacks);
+        assertEquals(1, rig.events.registered.size(), "an unavailable email publishes no registration");
     }
 
     @Test
@@ -155,6 +158,7 @@ class AuthenticationWorkflowTests {
         Rig signing = new Rig();
         signing.issuer.fail = true;
         assertThrows(IllegalStateException.class, () -> signing.register.register(registration()));
+        assertTrue(signing.events.registered.isEmpty(), "failure before the account is complete publishes nothing");
         assertEquals(0, signing.accounts.created);
         assertTrue(signing.sessions.created.isEmpty());
         assertTrue(signing.tokens.created.isEmpty());
@@ -214,12 +218,26 @@ class AuthenticationWorkflowTests {
         final InitialAuthentication initial = new InitialAuthentication(sessions, tokens,
                 new RefreshCredentialGenerator(), SessionPolicy.initial(), issuer);
         final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        final RegistrationService register = new RegistrationService(transactions, accounts, encoder, initial, clock);
+        final RecordingUserEvents events = new RecordingUserEvents();
+        final RegistrationService register = new RegistrationService(transactions, accounts, encoder, initial,
+                events, clock);
         final LoginService login = new LoginService(transactions, accounts, encoder, initial,
                 LoginLockoutPolicy.initial(), clock, "dummy-verifier");
 
         Rig() {
             transactions.state = this;
+        }
+    }
+
+    /** Records publication calls; transactional atomicity is covered by UserRegisteredPublicationE2E. */
+    private static final class RecordingUserEvents implements UserEventPublisher {
+        final List<UUID> registered = new ArrayList<>();
+        final List<Instant> registeredAt = new ArrayList<>();
+
+        @Override
+        public void userRegistered(UUID userId, Instant at) {
+            registered.add(userId);
+            registeredAt.add(at);
         }
     }
 
