@@ -52,7 +52,8 @@ describe("IAM password-change transport", () => {
       await expect(instance.security.changePassword(request, SESSION_ONE)).rejects.toMatchObject({ status, code } satisfies Partial<ApiError>);
     }
     expect(fetchImpl).toHaveBeenCalledTimes(5);
-    expect(instance.session.getAccessToken()).toBe("current-bearer");
+    expect(instance.session.getAccessToken()).toBeUndefined();
+    expect(instance.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
   });
 
   it("refuses a password POST if auth switches between initiation and HTTP dispatch", async () => {
@@ -69,7 +70,8 @@ describe("IAM password-change transport", () => {
     const instance = runtime(fetchImpl as typeof fetch);
     await expect(instance.security.changePassword(request, SESSION_ONE)).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(instance.session.getAccessToken()).toBe("current-bearer");
+    expect(instance.session.getAccessToken()).toBeUndefined();
+    expect(instance.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
   });
 
   it("renews only after a recognized pre-dispatch 401, then replays once on the same session", async () => {

@@ -4,8 +4,15 @@ import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider } from "@/app/identity-provider";
 import AccountPage from "@/app/(app)/app/account/page";
+import AccountLayout from "@/app/(app)/app/account/layout";
 import { createIdentityRuntime } from "@/core/identity";
 import { TestProviders } from "../support/TestProviders";
+
+const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
+  usePathname: () => "/app/account",
+}));
 import { SESSION_TWO, authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
 
 const profile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: "Alice" };
@@ -20,11 +27,11 @@ function mount(passwordResponse: () => Promise<Response> = async () => new Respo
   runtimes.push(runtime);
   if (signedIn) runtime.session.accept(authenticationResponse("alice-bearer"));
   const result = render(
-    <TestProviders><IdentityProvider runtime={runtime}><AccountPage /></IdentityProvider></TestProviders>,
+    <TestProviders><IdentityProvider runtime={runtime}><AccountLayout><AccountPage /></AccountLayout></IdentityProvider></TestProviders>,
   );
   return { runtime, requests, fetchImpl, ...result };
 }
-afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); });
+afterEach(() => { replace.mockReset(); for (const runtime of runtimes.splice(0)) runtime.dispose(); });
 
 function passwordForm() { return screen.getByRole("form", { name: "Change password" }); }
 function currentInput() { return within(passwordForm()).getByLabelText("Current password") as HTMLInputElement; }
@@ -65,7 +72,7 @@ describe("Account password-change page", () => {
     const { requests, runtime } = mount();
     const user = await enterPasswords();
     await user.click(changeButton());
-    expect(await screen.findByText(/This session stays signed in; all other sessions must sign in again/)).toBeInTheDocument();
+    expect(await screen.findByText(/This session stays signed in. Other sessions may remain active until their current access tokens expire/)).toBeInTheDocument();
     expect(currentInput()).toHaveValue("");
     expect(newInput()).toHaveValue("");
     expect(runtime.session.getAccessToken()).toBe("alice-bearer");
@@ -132,7 +139,6 @@ describe("Account password-change page", () => {
   it.each([
     [409, "credential_changed", /credentials changed during this request/, true],
     [403, "account_unavailable", /This account is unavailable/, false],
-    [401, "session_unavailable", /session is no longer available/, true],
   ] as const)("handles a confirmed %i %s denial without replaying", async (status, code, message, signIn) => {
     const { requests } = mount(async () => problemResponse(status, code));
     const user = await enterPasswords();
@@ -175,7 +181,7 @@ describe("Account password-change page", () => {
     fireEvent.submit(passwordForm());
     expect(passwordPosts(requests)).toHaveLength(1);
     await act(async () => reply.resolve(new Response(null, { status: 204 })));
-    expect(await screen.findByText(/other sessions must sign in again/)).toBeInTheDocument();
+    expect(await screen.findByText(/they cannot refresh and must then sign in again/)).toBeInTheDocument();
   });
 
   it("unmounts password fields on logout/context change and never applies a late old-session result", async () => {
@@ -195,15 +201,25 @@ describe("Account password-change page", () => {
     expect(currentInput()).toHaveValue("");
     await act(async () => runtime.session.invalidate("expired"));
     expect(screen.queryByRole("form", { name: "Change password" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Your session has expired/)).toBeInTheDocument();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/auth/login?next=%2Fapp%2Faccount"));
   });
 
-  it("does not render credentials controls for unauthenticated or restoring sessions", async () => {
-    const { runtime, requests } = mount(undefined, false);
+  it("does not render credentials controls during initial restoration", async () => {
+    const { runtime } = mount(undefined, false);
     expect(screen.queryByRole("form", { name: "Change password" })).not.toBeInTheDocument();
-    expect(screen.getByText(/You're not signed in/)).toBeInTheDocument();
-    expect(requests).toHaveLength(0);
+    expect(replace).not.toHaveBeenCalled();
     await act(async () => runtime.session.markRestoring());
     expect(screen.queryByRole("form", { name: "Change password" })).not.toBeInTheDocument();
   });
+
+  it("redirects when password change confirms the session was revoked, without replay", async () => {
+    const { requests, runtime } = mount(async () => problemResponse(401, "session_unavailable"));
+    const user = await enterPasswords();
+    await user.click(changeButton());
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/auth/login?next=%2Fapp%2Faccount"));
+    expect(runtime.session.getAccessToken()).toBeUndefined();
+    expect(screen.queryByRole("form", { name: "Change password" })).not.toBeInTheDocument();
+    expect(passwordPosts(requests)).toHaveLength(1);
+  });
+
 });

@@ -57,8 +57,16 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || context.hasExplicitAuthorization) return false;
             const rejected = sentHeaders.get('Authorization');
             if (!rejected?.startsWith('Bearer ') || !context.sessionId) return false;
+            // A confirmed post-dispatch session denial is terminal but must NEVER replay
+            // the mutation; ordinary application-level 401s leave the bearer intact.
+            if (problem.code === 'session_unavailable') {
+                if (session.getSessionId() === context.sessionId && session.matchesAccessToken(rejected.slice(7))) {
+                    session.invalidate('unauthorized');
+                }
+                return false;
+            }
             if (!context.replayable) return false;
-            // Only Spring's pre-dispatch bearer failures may affect the tab's credentials.
+            // Only Spring's pre-dispatch bearer failures are eligible for renewal.
             if (!PRE_DISPATCH_401_CODES.has(problem.code)) return false;
             await auth.recover(rejected.slice(7), context.sessionId, signal);
             return true;
@@ -67,7 +75,7 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
             if (ANONYMOUS_IDENTITY_PATHS.has(path) || context.hasExplicitAuthorization || !context.sessionId) return;
             const rejected = sentHeaders.get('Authorization');
             if (!rejected?.startsWith('Bearer ')) return;
-            if (PRE_DISPATCH_401_CODES.has(problem.code) &&
+            if ((PRE_DISPATCH_401_CODES.has(problem.code) || problem.code === 'session_unavailable') &&
                 session.getSessionId() === context.sessionId && session.matchesAccessToken(rejected.slice(7))) {
                 session.invalidate('unauthorized');
             }

@@ -1,0 +1,59 @@
+"use client";
+
+import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
+import { useAuthState, useIdentity } from "@/app/identity-provider";
+import { safeAppReturnPath } from "@/lib/navigation/return-path";
+
+/**
+ * Route-level guard for pages backed by authenticated APIs. Keep navigation in
+ * the presentation layer: the HTTP client owns recovery and publishes terminal
+ * identity state, but never redirects or treats every application 401 as logout.
+ */
+export function RequireAuthentication({ children }: Readonly<{ children: ReactNode }>) {
+  const { auth } = useIdentity();
+  const state = useAuthState();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    void auth.ensureAuthenticated().catch(() => {
+      // The coordinator owns the restoration outcome and publishes the session state.
+    });
+  }, [auth]);
+
+  useEffect(() => {
+    if (state.status === "reauthentication-required" &&
+      (state.reason === "expired" || state.reason === "unauthorized" || state.reason === "uncertain")) {
+      const next = safeAppReturnPath(`${pathname}${window.location.search}`);
+      router.replace(`/auth/login?next=${encodeURIComponent(next)}`);
+    }
+  }, [pathname, router, state]);
+
+  if (state.status === "authenticated") return children;
+
+  if (state.status === "context-changed") {
+    return (
+      <Alert title="Sign-in changed" color="gray" role="alert">
+        <Stack gap="sm" align="flex-start">
+          <Text size="sm">Another sign-in changed the browser session. Reload this page to use the current sign-in.</Text>
+          <Button component="a" href={pathname} variant="light">Reload page</Button>
+        </Stack>
+      </Alert>
+    );
+  }
+
+  if (state.status === "reauthentication-required" && state.reason === "retryable") {
+    return (
+      <Alert title="Unable to check sign-in" color="gray" role="alert">
+        <Stack gap="sm" align="flex-start">
+          <Text size="sm">The session check could not be completed. Check your connection and retry.</Text>
+          <Button variant="light" onClick={() => void auth.ensureAuthenticated().catch(() => {})}>Retry session check</Button>
+        </Stack>
+      </Alert>
+    );
+  }
+
+  return <Group role="status" gap="sm"><Loader size="sm" /><Text>Checking sign-in…</Text></Group>;
+}

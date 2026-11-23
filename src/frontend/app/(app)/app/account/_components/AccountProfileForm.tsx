@@ -3,7 +3,6 @@
 import { Alert, Button, Card, Group, Loader, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import Link from "next/link";
 import { useAuthState, useIdentity } from "@/app/identity-provider";
 import type { AccountProfile, AuthState } from "@/core/identity";
 import { MAX_DISPLAY_NAME_CHARACTERS, validateDisplayName, withinDisplayNameLimit } from "@/core/identity/display-name";
@@ -145,29 +144,8 @@ export function AccountProfileForm() {
     void mutate();
   }
 
-  if (authState.status === "context-changed") {
-    return (
-      <Alert title="Account context changed" color="gray" role="alert">
-        <Stack gap="sm" align="flex-start">
-          <Text size="sm">Another sign-in changed the browser session. Reload to view the current account.</Text>
-          <Button component="a" href="/app/account" variant="light">Reload account</Button>
-        </Stack>
-      </Alert>
-    );
-  }
-
-  if (authState.status === "reauthentication-required") {
-    const reason = authState.reason === "expired" ? "Your session has expired." :
-      authState.reason === "unauthorized" ? "Your session was rejected." : "You're not signed in.";
-    return (
-      <Alert title="Sign in required" color="gray">
-        <Stack gap="sm" align="flex-start">
-          <Text size="sm">{reason} Sign in to view or change your account details.</Text>
-          <Button component={Link} href="/auth/login" variant="light">Sign in</Button>
-        </Stack>
-      </Alert>
-    );
-  }
+  // A route-level guard owns sign-in navigation; do not render stale profile data.
+  if (authState.status !== "authenticated") return null;
 
   if (!currentView || currentView.status === "loading") {
     return <Group role="status" aria-label="Loading account" gap="sm"><Loader size="sm" /><Text>Loading account details…</Text></Group>;

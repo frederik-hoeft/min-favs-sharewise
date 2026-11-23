@@ -4,9 +4,16 @@ import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider } from "@/app/identity-provider";
 import AccountPage from "@/app/(app)/app/account/page";
+import AccountLayout from "@/app/(app)/app/account/layout";
 import { createIdentityRuntime } from "@/core/identity";
 import type { AccountProfile } from "@/core/identity";
 import { TestProviders } from "../support/TestProviders";
+
+const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
+  usePathname: () => "/app/account",
+}));
 import { authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
 
 const initial: AccountProfile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: null };
@@ -16,11 +23,11 @@ function renderAccount(fetchImpl: typeof fetch = vi.fn(async () => jsonResponse(
   active.push(runtime);
   if (signedIn) runtime.session.accept(authenticationResponse("first-bearer"));
   const result = render(
-    <TestProviders><IdentityProvider runtime={runtime}><AccountPage /></IdentityProvider></TestProviders>,
+    <TestProviders><IdentityProvider runtime={runtime}><AccountLayout><AccountPage /></AccountLayout></IdentityProvider></TestProviders>,
   );
   return { runtime, fetchImpl, ...result };
 }
-afterEach(() => { for (const runtime of active.splice(0)) runtime.dispose(); });
+afterEach(() => { replace.mockReset(); for (const runtime of active.splice(0)) runtime.dispose(); });
 
 async function loadedForm() {
   return screen.findByRole("form", { name: "Account profile" });
@@ -31,19 +38,14 @@ function nameInput() {
 }
 
 describe("Account profile page", () => {
-  it("requires authentication before issuing any request, and explains expired/rejected sessions", async () => {
+  it("redirects when an established session is rejected, without exposing account details", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(initial));
-    const { runtime } = renderAccount(fetchImpl as typeof fetch, false);
-    expect(screen.getByText(/You're not signed in/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
-    expect(fetchImpl).not.toHaveBeenCalled();
-    await act(async () => runtime.session.accept(authenticationResponse()));
+    const { runtime } = renderAccount(fetchImpl as typeof fetch);
     await loadedForm();
     await act(async () => runtime.session.invalidate("expired"));
-    expect(screen.getByText(/Your session has expired/)).toBeInTheDocument();
     expect(screen.queryByDisplayValue(initial.email)).not.toBeInTheDocument();
-    await act(async () => runtime.session.invalidate("unauthorized"));
-    expect(screen.getByText(/Your session was rejected/)).toBeInTheDocument();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/auth/login?next=%2Fapp%2Faccount"));
+    expect(screen.queryByText("Sign in required")).not.toBeInTheDocument();
   });
 
   it("loads an unset profile, keeps email read-only, and saves Unicode without trimming or HTML interpretation", async () => {

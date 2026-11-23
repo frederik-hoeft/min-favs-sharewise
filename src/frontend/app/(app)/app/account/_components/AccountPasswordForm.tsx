@@ -116,7 +116,7 @@ function PasswordChangeForm({ sessionId }: { sessionId: string }) {
       setCurrentPassword("");
       setNewPassword("");
       setErrors({});
-      setNotice({ kind: "success", message: "Password changed. This session stays signed in; all other sessions must sign in again." });
+      setNotice({ kind: "success", message: "Password changed. This session stays signed in. Other sessions may remain active until their current access tokens expire; they cannot refresh and must then sign in again." });
     } catch (error) {
       if (session.getSessionId() !== sessionId || session.getSnapshot().status !== "authenticated") return;
       const failure = failureFor(error);
@@ -139,7 +139,7 @@ function PasswordChangeForm({ sessionId }: { sessionId: string }) {
       <Stack gap="lg">
         <Stack gap={4}>
           <Title order={2} size="h3">Security</Title>
-          <Text size="sm" c="dimmed">Enter your current password and choose a new one (8 to 256 characters). Other sessions will need to sign in again.</Text>
+          <Text size="sm" c="dimmed">Enter your current password and choose a new one (8 to 256 characters). Other sessions will need to sign in again after their existing access tokens expire.</Text>
         </Stack>
         {notice && (
           <Alert ref={alertRef} tabIndex={-1}
