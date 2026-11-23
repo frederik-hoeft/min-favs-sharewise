@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.IsolatedPostgresPool;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -44,6 +45,7 @@ class TransactionWebScopeE2E {
     @DynamicPropertySource
     static void usePostgres(DynamicPropertyRegistry registry) {
         database = PostgresTestDatabase.createMigrated();
+        IsolatedPostgresPool.register(registry);
         registry.add("spring.datasource.url", database::jdbcUrl);
         registry.add("spring.datasource.username", () -> PostgresTestDatabase.APPLICATION_USER);
         registry.add("spring.datasource.password", () -> PostgresTestDatabase.APPLICATION_PASSWORD);

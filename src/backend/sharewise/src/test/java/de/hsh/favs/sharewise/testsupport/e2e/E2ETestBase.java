@@ -11,10 +11,18 @@ import java.sql.Statement;
 import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.springframework.context.ConfigurableApplicationContext;
 
-/** Per-test ownership of a disposable migrated database, production context, and committed writes. */
+/**
+ * Per-test ownership of a disposable migrated database, production context, and committed writes.
+ * Concurrent methods are safe because JUnit creates a separate test instance and fixture per method;
+ * JUnit uses a single worker by default. A concrete test class can opt out of concurrent
+ * methods with {@code @Execution(ExecutionMode.SAME_THREAD)}.
+ */
 @Tag("e2e")
+@Execution(ExecutionMode.CONCURRENT)
 public abstract class E2ETestBase {
 
     private IntegrationTestContext fixture;

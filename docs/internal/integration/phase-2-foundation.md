@@ -1,6 +1,6 @@
 # Phase 2 implementation foundation: IAM and Group Management
 
-**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login now exist under P2.1a. Group business tables, IAM-to-Group event delivery, projection bootstrap and refresh/logout remain future work. The schema descriptions below retain ER provenance; check the committed IAM Flyway migration for implemented physical DDL.
+**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login now exist under P2.1a. Group business tables, IAM-to-Group event delivery and projection bootstrap remain future work; refresh/logout use the existing IAM tables and are implemented by P2.1b. The schema descriptions below retain ER provenance; check the committed IAM Flyway migration for implemented physical DDL.
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
@@ -35,7 +35,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
     dispatcher.dispatch(GroupOperation.class, GroupOperation::run));
 ```
 
-The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login/session creation is implemented, but live session eligibility and renewal remain P2.1d/P2.1b work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
+The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login, session creation and refresh/logout are implemented, while live eligibility queries for Group consumers remain P2.1d work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
 Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 

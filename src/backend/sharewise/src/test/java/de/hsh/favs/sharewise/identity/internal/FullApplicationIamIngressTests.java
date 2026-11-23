@@ -185,6 +185,10 @@ class FullApplicationIamIngressTests {
             .andExpect(jsonPath("$.userId").value(ALICE.toString()));
         mvc.perform(get(endpoint))
             .andExpect(status().isUnauthorized());
+        mvc.perform(get(endpoint).cookie(new jakarta.servlet.http.Cookie(
+                    "__Host-sharewise-refresh", "opaque-refresh-credential")))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("authentication_required"));
         mvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value("invalid_credential"));

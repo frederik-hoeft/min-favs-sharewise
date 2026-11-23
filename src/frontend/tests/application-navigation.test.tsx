@@ -1,33 +1,62 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+﻿import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_THEME } from "@mantine/core";
 import axe from "axe-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { theme, cssVariablesResolver } from "@/lib/theme";
 import { ApplicationShell } from "@/app/(app)/app/_components/ApplicationShell";
+import { IdentityProvider } from "@/app/identity-provider";
+import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
 import { accountRoute, appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
 import DummyOnePage from "@/app/(app)/app/dummy1/page";
 import { TestProviders } from "./support/TestProviders";
 
 let pathname = "/app/dummy1";
+let searchParams: URLSearchParams | null = null;
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
   usePathname: () => pathname,
+  useSearchParams: () => searchParams,
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
+const appRuntimes: IdentityRuntime[] = [];
+
 function renderApp() {
+  // These tests cover public navigation and login links, not automatic cookie restoration.
+  const runtime = createIdentityRuntime({ channel: () => undefined });
+  runtime.session.invalidate('unauthorized');
+  appRuntimes.push(runtime);
   return render(
     <TestProviders>
-      <ApplicationShell><DummyOnePage /></ApplicationShell>
+      <IdentityProvider runtime={runtime}><ApplicationShell><DummyOnePage /></ApplicationShell></IdentityProvider>
     </TestProviders>,
   );
 }
 
+afterEach(() => { for (const runtime of appRuntimes.splice(0)) runtime.dispose(); });
+
 beforeEach(() => {
   pathname = "/app/dummy1";
+  searchParams = null;
 });
 
 describe("Application route shell", () => {
+  it("offers the current workspace page as the login return path when search parameters are unavailable", async () => {
+    pathname = "/app/dummy3";
+    renderApp();
+    expect(await screen.findByRole("link", { name: "Sign in" }))
+      .toHaveAttribute("href", "/auth/login?next=%2Fapp%2Fdummy3");
+  });
+
+  it("includes available query parameters in the login return path", async () => {
+    pathname = "/app/dummy3";
+    searchParams = new URLSearchParams("tab=expenses");
+    renderApp();
+    expect(await screen.findByRole("link", { name: "Sign in" }))
+      .toHaveAttribute("href", "/auth/login?next=%2Fapp%2Fdummy3%3Ftab%3Dexpenses");
+  });
+
   it("provides semantic content, desktop navigation, active route and relative breadcrumbs", () => {
     renderApp();
     expect(screen.getAllByRole("main")).toHaveLength(1);

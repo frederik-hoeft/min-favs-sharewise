@@ -33,6 +33,22 @@ To run a focused class instead of a full suite, use Surefire's `-Dtest` or Fails
 
 Maven Surefire selects the Unit `*Test`/`*Tests` classes; Failsafe selects `*IT` or `*E2E` under the corresponding PostgreSQL profile. Each database-backed profile skips Unit execution; the Unit profile skips the database-backed suites. Plain `./mvnw clean verify` runs all three when PostgreSQL is available. The three selectors are implemented in the backend `pom.xml`, not separate Maven modules.
 
+### Bounded parallel execution
+
+All backend suites use one JUnit worker by default, so `./mvnw clean verify` retains sequential test execution. Set the Maven property `testParallelism` to a positive integer to use the same bounded JUnit worker count for Unit, Integration and E2E tests without changing Maven forks or enabling parallel module builds:
+
+```bash
+./mvnw -B -ntp clean verify                          # sequential (default: 1)
+./mvnw -B -ntp -DtestParallelism=2 clean verify       # all three suites, 2 workers each
+./mvnw -B -ntp -Pe2e-tests -DtestParallelism=3 verify # E2E only, 3 workers
+```
+
+JUnit runs Unit test classes concurrently, but keeps the methods within each unannotated class sequential. Tests extending `IntegrationTestBase` or `E2ETestBase` explicitly permit method-level concurrency; both use JUnit's default per-method test instances. Individual classes or methods can override the inherited setting with `@Execution(ExecutionMode.SAME_THREAD)` when they depend on shared mutable state, ordering, or other non-isolated resources. The pool size is bounded per test runner rather than globally across Maven or CI jobs.
+
+Integration methods share one migrated database and Spring application context, but each operation owns an independent rollback-only physical transaction, operation scope and connection. Their concurrency contract requires disjoint write keys, no cross-test modification of committed fixture state, and no mutable application singletons shared between test methods. The existing Integration tests follow these constraints, including the dedicated concurrent-rollback test. New tests that cannot meet them must opt out of concurrent execution or use a separate E2E fixture. E2Es generally own a database and Spring context per method; tests that create additional contexts still need to account for server and JVM-global resources.
+
+Spring Boot's per-context logging initialization reconfigures a JVM-global Logback instance and is not safe when test-created contexts start simultaneously. The test runners disable Boot's logging-system initialization and use a static test-only Logback configuration at WARN level, with startup banners disabled. This preserves failure diagnostics without interleaving framework startup banners, and does not affect production logging. Disposable E2E contexts use a test-only Hikari pool of at most three connections with no minimum idle connections; this bounds connection demand when many contexts share one PostgreSQL server while leaving the shared Integration context sized for concurrent rollback operations. The limit also applies to the Spring TestContext-managed E2E fixtures, and does not change production datasource settings. Parallel PostgreSQL suites still increase startup, migration and database load; tune the worker count against the actual server rather than assuming that more workers are always faster. GitLab CI uses 16 JUnit workers per backend Unit, Integration and E2E job, independently of how many GitLab runners execute jobs. The default unparameterized local build remains sequential.
+
 An offline development environment can run the Unit gate with cached Maven dependencies:
 
 ```bash
