@@ -303,6 +303,51 @@ describe('renewal failure and caller cancellation', () => {
     expect(calls).toEqual([CSRF_PATH, REFRESH_PATH, DOMAIN_PATH]);
   });
 
+  it('aborts a pending CSRF GET after acquiring the lock when the last waiter cancels', async () => {
+    const locks = new ControlledLocks();
+    const calls: string[] = [];
+    let firstCsrfStarted = false;
+    let firstCsrfAborted = false;
+    let csrfCount = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      calls.push(path);
+      if (path === CSRF_PATH) {
+        csrfCount++;
+        if (csrfCount === 1) {
+          firstCsrfStarted = true;
+          return new Promise<Response>((_resolve, reject) => {
+            const cancel = () => {
+              firstCsrfAborted = true;
+              reject(new DOMException('CSRF bootstrap canceled', 'AbortError'));
+            };
+            if (init?.signal?.aborted) cancel();
+            else init?.signal?.addEventListener('abort', cancel, { once: true });
+          });
+        }
+        return jsonResponse({ token: 'csrf' });
+      }
+      if (path === '/api/iam/v1/auth/login') return jsonResponse(authenticationResponse('new'));
+      if (path === REFRESH_PATH) throw new Error('Canceled restoration must not submit refresh');
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const a = runtime(fetchImpl as typeof fetch, locks);
+    const b = runtime(fetchImpl as typeof fetch, locks);
+    const cancel = new AbortController();
+    const abandoned = a.api.get(DOMAIN_PATH, { signal: cancel.signal });
+    await vi.waitFor(() => expect(firstCsrfStarted).toBe(true));
+    const login = b.auth.login(credentials);
+    await vi.waitFor(() => expect(locks.events.filter((event) => event.startsWith('queued:'))).toHaveLength(2));
+    cancel.abort();
+    await expect(abandoned).rejects.toMatchObject({ code: 'request_aborted' });
+    await expect(login).resolves.toBeUndefined();
+    expect(firstCsrfAborted).toBe(true);
+    expect(a.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'retryable' });
+    expect(b.session.getAccessToken()).toBe('new');
+    expect(calls).toEqual([CSRF_PATH, CSRF_PATH, '/api/iam/v1/auth/login']);
+    expect(locks.events.filter((event) => event.startsWith('acquired:'))).toHaveLength(2);
+  });
+
   it('finishes a submitted shared refresh under the lock despite one canceled caller', async () => {
     const refresh = deferred<Response>();
     let submitted = 0;

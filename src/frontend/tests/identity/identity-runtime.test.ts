@@ -149,6 +149,39 @@ describe("Identity runtime with mock HTTP", () => {
     expect(runtime.session.getAccessToken()).toBeUndefined();
   });
 
+  it.each([
+    ['login', 502, 'bad_gateway'],
+    ['register', 503, 'registration_outcome_unknown'],
+  ] as const)('discards an existing bearer after a possibly committed %s with gateway %i', async (operation, status, code) => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      calls.push(path);
+      return path.endsWith('/csrf') ? jsonResponse({ token: 'fresh' }) : problemResponse(status, 'bad_gateway');
+    });
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
+    runtime.session.accept(authenticationResponse('old-bearer'));
+    await expect(runtime.auth[operation](credentials)).rejects.toMatchObject({ code });
+    expect(runtime.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'uncertain' });
+    expect(runtime.session.getAccessToken()).toBeUndefined();
+    expect(calls).toEqual(['/api/iam/v1/auth/csrf', `/api/iam/v1/auth/${operation}`]);
+  });
+
+  it.each([502, 503])('discards the in-memory bearer after a possibly committed logout with gateway %i', async (status) => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      calls.push(path);
+      return path.endsWith('/csrf') ? jsonResponse({ token: 'fresh' }) : problemResponse(status, 'bad_gateway');
+    });
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
+    runtime.session.accept(authenticationResponse('old-bearer'));
+    await expect(runtime.auth.logout()).rejects.toMatchObject({ status });
+    expect(runtime.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'uncertain' });
+    expect(runtime.session.getAccessToken()).toBeUndefined();
+    expect(calls).toEqual(['/api/iam/v1/auth/csrf', '/api/iam/v1/auth/logout']);
+  });
+
   it("rejects a malformed CSRF response without ever sending credentials", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ unexpected: "value" }));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);

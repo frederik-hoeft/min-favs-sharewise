@@ -30,6 +30,12 @@ function contextChanged(): ApiError {
     return authError('session_context_changed', 'Sign-in Changed', 'The browser is signed in to a different session. Reload this page.');
 }
 
+function mayHaveCommitted(error: unknown): boolean {
+    return error instanceof ApiError && (error.status >= 500 ||
+        error.code === 'network_error' || error.code === 'invalid_response' ||
+        error.code === 'invalid_auth_response');
+}
+
 function reauthenticationRequired(): ApiError {
     return authError('reauthentication_required', 'Sign-in Required', 'Sign in again to continue.');
 }
@@ -106,7 +112,7 @@ export class AuthCoordinator {
                     throw contextChanged();
                 }
                 // A logout may have committed even if its response was lost.
-                if (error instanceof ApiError && error.status === 0) this.session.invalidate('uncertain');
+                if (mayHaveCommitted(error)) this.session.invalidate('uncertain');
                 throw error;
             }
             this.session.clear();
@@ -129,7 +135,7 @@ export class AuthCoordinator {
                     this.session.accept(response);
                     this.channel.publish({ type: 'login', sessionId: response.sessionId });
                 } catch (error) {
-                    if (error instanceof ApiError && error.status === 0) {
+                    if (mayHaveCommitted(error)) {
                         // The server may have committed a login/registration before the response was lost.
                         this.session.invalidate('uncertain');
                         if (operation === 'register') {
@@ -195,7 +201,7 @@ export class AuthCoordinator {
                 if (expectedSessionId) this.assertContext(expectedSessionId);
                 if (this.session.getAccessToken() &&
                     (rejectedToken === undefined || !this.session.matchesAccessToken(rejectedToken))) return;
-                const csrf = await this.api.getCsrfToken();
+                const csrf = await this.api.getCsrfToken(flight.controller.signal);
                 assertInterested(flight);
                 if (expectedSessionId) this.assertContext(expectedSessionId);
                 try {
@@ -226,10 +232,7 @@ export class AuthCoordinator {
                 this.session.markRestorationRetryable();
                 throw error;
             }
-            const uncertain = error instanceof ApiError && (
-                error.status >= 500 || error.code === 'network_error' ||
-                error.code === 'invalid_response' || error.code === 'invalid_auth_response'
-            );
+            const uncertain = mayHaveCommitted(error);
             this.session.invalidate(uncertain ? 'uncertain' : 'unauthorized');
             if (uncertain) throw authError('refresh_outcome_unknown', 'Refresh Outcome Unknown',
                 'The authentication response could not be confirmed. Sign in again.');

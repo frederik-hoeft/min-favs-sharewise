@@ -17,8 +17,8 @@ export const ANONYMOUS_IDENTITY_PATHS = new Set([
 export class IdentityApi {
     constructor(private readonly client: ApiClient) {}
 
-    async getCsrfToken(): Promise<string> {
-        const response = await this.client.get<unknown>(`${ROOT}/auth/csrf`);
+    async getCsrfToken(signal?: AbortSignal): Promise<string> {
+        const response = await this.client.get<unknown>(`${ROOT}/auth/csrf`, { signal });
         if (
             typeof response !== 'object' || response === null ||
             !('token' in response) || typeof response.token !== 'string' || !response.token
