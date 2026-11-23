@@ -112,6 +112,22 @@ class JooqSessionLifecycleStore implements SessionLifecycleStore {
         requireOne(updated, "Locked session disappeared during revocation");
     }
 
+    @Override
+    public void revokeOtherSessions(UUID userId, UUID retainedSessionId, Instant revokedAt) {
+        Objects.requireNonNull(userId, "userId");
+        Objects.requireNonNull(retainedSessionId, "retainedSessionId");
+        Objects.requireNonNull(revokedAt, "revokedAt");
+        // Account and retained-session locks precede this set update. Competing refresh
+        // transactions hold a session row only, and finish before their row is revoked.
+        // Login must acquire the account lock before inserting a session.
+        database.dsl().update(SESSIONS)
+                .set(SESSIONS.REVOKED_AT, dbTime(revokedAt))
+                .where(SESSIONS.USER_ID.eq(userId))
+                .and(SESSIONS.ID.ne(retainedSessionId))
+                .and(SESSIONS.REVOKED_AT.isNull())
+                .execute();
+    }
+
     private static RefreshTokenRecord token(RefreshTokensRecord row) {
         return new RefreshTokenRecord(row.getId(), row.getSessionId(), row.getVerifierHash(),
                 instant(row.getIssuedAt()), instant(row.getConsumedAt()));

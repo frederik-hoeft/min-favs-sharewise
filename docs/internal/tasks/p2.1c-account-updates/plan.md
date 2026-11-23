@@ -1,14 +1,14 @@
 # P2.1c - Account profile and password changes: implementation plan
 
-**Status:** Proposed **sequential** implementation sequence. This plan accompanies the [draft specification](specification.md); it is **not approval** to begin implementing a phase. Approve the specification first, then this plan, and commit/push the approved documents to the authoritative task branch before feature work.
+**Status:** Approved **sequential** implementation plan. Phases A–C are complete and human-accepted. Phase D is in progress against the completed, merged P2.1b baseline. Each remaining phase retains its own test and human review gate.
 
 ## Baseline, ownership and constraints
 
-The supplied source implements P2.1a's IAM registration/login, `identity.users`/`sessions`/`refresh_tokens`, fixed-profile PBKDF2 and the initial browser identity boundary. It has **no** `identity.user_profiles` table or P2.1b refresh/logout implementation. P2.1b and its reactive-renewal workstream are in progress; their [specification](../p2.1b-session-lifecycle/specification.md) and [plan](../p2.1b-session-lifecycle/plan.md) are integration assumptions until accepted code is available. P2.1c is limited to **own-account read/display-name changes and password change with revocation of all other sessions**. The backend `identity` module owns persistence and business rules; frontend `core/identity` owns the typed account API; shared `lib/api` and P2.1b own bearer recovery/cookie coordination.
+The merged baseline includes P2.1a registration/login, the P2.1b refresh/logout and reactive-renewal lifecycle, and P2.1c's optional profile schema, backend API and Account page (A–C). The remaining P2.1c scope is password replacement with atomic revocation of all other sessions. IAM owns the credential/session write transaction; frontend `core/identity` and shared `lib/api` own the eventual HTTP and browser integration in Phase E.
 
 Follow [AGENTS.md](../../../../AGENTS.md), the [AI workflow](../../../development/ai-development-workflow.md), [transactions](../../../architecture/transactions.md), [persistence](../../../architecture/persistence.md), [frontend development](../../../development/frontend.md) and [test guide](../../../development/tests.md). Build the backend with Java 25/Maven; compile and test the frontend with Node 24/npm. Do not substitute another SDK or dependency cache to claim offline validation. Real PostgreSQL 18 and human HTTPS browser gates are separate from offline compilation and Unit tests.
 
-**One phase at a time.** Each implementation phase starts from the approved baseline including the preceding approved phase, returns a focused patch and closes only after its tests and human review. No overlapping implementation branches or parallel owners are planned. Do not begin the next phase until the current phase is approved. P2.1b may continue independently as a separate task, but the password phase waits for its accepted session contracts. The human remains responsible for final acceptance and merging.
+**One phase at a time.** Each implementation phase starts from the approved baseline including the preceding approved phase, returns a focused patch and closes only after its tests and human review. No overlapping implementation branches or parallel owners are planned. Do not begin the next phase until the current phase is approved. P2.1b is already accepted and merged. The remaining protected-operation renewal scenarios are tested as part of P2.1c manual acceptance, not as a Phase D service-code prerequisite. The human remains responsible for final acceptance and merging.
 
 ## Implementation order
 
@@ -23,7 +23,7 @@ flowchart TD
     E --> F["F: Independent review and documentation"]
 ```
 
-The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still in progress at Gate C, the profile slice can be reviewed with the existing auth behavior and mocked restoration; the final P2.1b session-restoration browser journey remains an explicit Gate E prerequisite. This avoids parallel workstream coordination within P2.1c without claiming premature end-to-end acceptance.
+The baseline contains the accepted P2.1b lifecycle and Phase C profile UI. Gate E includes the previously deferred protected-operation browser scenarios (P2.1c.1), without treating P2.1b's earlier smoke-test observations as verification of those scenarios.
 
 ## Gate 0 - Approval and source-contract reconciliation
 
@@ -31,7 +31,7 @@ The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still 
 - [x] Approve this plan **separately after** specification review. Commit/push both accepted artifacts to the authoritative task branch; keep the local documentation patch unmerged until human acceptance.
 - [x] Before Phase D, inspect the accepted P2.1b `SessionStore`/rotation/logout implementation and browser coordinator; record one shared account/session row-lock order and serialization proof. Return to the specification gate if accepted P2.1b behavior conflicts with IAM-C05–C07.
 
-**Gate 0:** Approved and reproducible task documents, including frozen request/response/error contracts. This draft patch does not satisfy approval by itself.
+**Gate 0:** Satisfied: the specification and sequential plan were approved before Phases A–C. Their request/response/error contracts remain the reference for D and E.
 
 ## Phase A - Profile migration and generated-schema handoff
 
@@ -65,7 +65,7 @@ The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still 
 
 ## Phase D - Password service, atomic revocation and PostgreSQL races
 
-**Prerequisite:** Phase C accepted **and** P2.1b's relevant session store, refresh/logout behavior and row-lock contract accepted. Inspect actual code and document shared locking/serialization before writing credential/session SQL. An incompatible lock order returns to the specification gate rather than being patched around speculatively.
+**Prerequisite:** Phase C accepted **and** P2.1b's relevant session store, refresh/logout behavior and row-lock contract accepted (satisfied by the merged baseline). Password change acquires the account row lock, then the caller session row lock, then updates other sessions. Refresh/logout acquire a session lock and read account disablement without locking the account; login locks the account first. Verify this order and its serialization on PostgreSQL before Gate D acceptance.
 
 **Scope:** Reuse `PasswordPolicy`, `CredentialEncoder` and `LoginLockoutPolicy` for current-password verification, validation and failure counters. Use verified bearer-derived user/session identity and IAM-private ports; compute PBKDF2 outside long-held write locks. In one `Transactions.execute(...)`, recheck the locked account verifier, account state and eligible caller session, then change the verifier and revoke all *other* sessions. Preserve the caller's refresh generation and deadlines.
 
@@ -84,7 +84,7 @@ The profile phases A–C do not depend on P2.1b's completion. If P2.1b is still 
 - [ ] Test UI validation, bad current password, sensitive-field clearing, uncertain-response recovery, account-context changes and success messaging; run frontend lint/typechecks/Vitest/build/static export (IAM-C09, IAM-CT09).
 - [ ] Human HTTPS E2E with independent browser sessions: verify A continues, B loses refresh eligibility, new login uses only the replacement password, JWT expiry remains bounded and reload/restoration follows accepted P2.1b behavior (IAM-CT05, CT10).
 
-**Gate E:** IAM/HTTP security, PostgreSQL, frontend and human browser acceptance pass together on the integrated revision; human approves the password UI and transport patch.
+**Gate E:** IAM/HTTP security, PostgreSQL, frontend and general P2.1c manual browser acceptance (including P2.1c.1 protected-operation restoration/retry scenarios) pass together on the integrated revision; human approves the password UI and transport patch.
 
 ## Phase F - Independent review, steady-state documentation and merge authorization
 

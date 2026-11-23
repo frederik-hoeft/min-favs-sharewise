@@ -73,6 +73,13 @@ public interface SessionLifecycleStore {
     void revoke(UUID sessionId, Instant revokedAt);
 
     /**
+     * Revoke every other non-revoked session of the account in the same credential
+     * transaction. Caller holds the users row and retained session row first.
+     * Existing token history and the retained session are not modified.
+     */
+    void revokeOtherSessions(UUID userId, UUID retainedSessionId, Instant revokedAt);
+
+    /**
      * Session and owning account state observed while holding the session row lock.
      *
      * @param session durable session state

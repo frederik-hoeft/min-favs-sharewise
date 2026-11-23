@@ -1,6 +1,6 @@
 # P2.1b Phase E: browser smoke acceptance and final review
 
-**Status:** Manual HTTPS browser **smoke stage accepted** by the maintainer on November 22, 2026. The results below are observations, not exhaustive end-to-end verification. Independent security review, final integrated CI evidence and merge authorization remain open. The [approved specification](specification.md#central-test-and-acceptance-design) defines the complete correctness contract.
+**Status:** P2.1b was subsequently completed and merged with human approval. The maintainer accepted this manual HTTPS browser **smoke stage** on November 22, 2026. The observations below retain their original evidentiary limits; the protected-operation scenarios are included in P2.1c's general manual acceptance. The [approved specification](specification.md#central-test-and-acceptance-design) defines the complete correctness contract.
 
 ## Environment and scope
 
@@ -25,9 +25,9 @@ Browser version, tested application commit and complete final CI pipeline identi
 
 The absence of a refresh cookie is intentionally indistinguishable to frontend JavaScript because it is `HttpOnly`. A tab without a local bearer may attempt one lazy restoration even when logged out; IAM returns an authentication failure if no usable cookie exists. This is an expected recovery outcome, not an automatic retry loop.
 
-## Automated evidence and outstanding review
+## Automated evidence at the smoke-test checkpoint
 
-| Gate | State | Evidence needed for completion |
+| Gate | State at November 22 smoke checkpoint | Evidence requested at that checkpoint |
 | --- | --- | --- |
 | IAM lifecycle Unit, PostgreSQL persistence and HTTP component tests | **Implemented; prior review evidence** | Reconcile test results for the integrated revision rather than carrying forward isolated phase counts. |
 | PostgreSQL Integration/E2E in CI at 16 JUnit workers | **Follow-up verification outstanding** | Confirm the complete pipeline after the test-only Hikari pool bound; a prior run exhausted PostgreSQL connection slots. |
@@ -35,6 +35,6 @@ The absence of a refresh cookie is intentionally indistinguishable to frontend J
 | Independent security and architecture review | **Pending** | Review complete IAM rotation/HTTP/browser call paths, race ordering, ambiguous outcomes and token/cookie handling; record and resolve findings. |
 | Final merge approval | **Pending** | Maintainer reviews the full integrated diff, evidence and accepted limitations, then explicitly authorizes merge. |
 
-The blocked protected-operation browser cases and remaining partial account-switching variants are explicitly deferred to P2.1c.1 once a real authenticated profile API exists; they are neither failures nor verified passes in this smoke-test record. This does not require adding a production-only test endpoint or relaxing bearer ingress rules to make the demo pass. Scheduled refresh-history cleanup, device/session-management UI, stateful access-JWT admission and optional introspection remain outside P2.1b.
+The blocked protected-operation browser cases and remaining partial account-switching variants are included in P2.1c's general manual acceptance (tracked as P2.1c.1); they are neither failures nor verified passes in this smoke-test record. This does not require adding a production-only test endpoint or relaxing bearer ingress rules to make the demo pass. Scheduled refresh-history cleanup, device/session-management UI, stateful access-JWT admission and optional introspection remain outside P2.1b.
 
-**Acceptance decision:** The observed Phase E functional **smoke-test stage is accepted**, with the explicitly blocked and untested cases retained as limitations. This acceptance does not itself close P2.1b/P2.1b.1 or authorize their final merge.
+**Acceptance decision:** This record documents the accepted Phase E **smoke-test stage**, not complete coverage of every originally proposed browser scenario. P2.1b/P2.1b.1 were subsequently reviewed and merged; identifiers for the final CI run and merge authorization are not recorded here. Outstanding protected-operation manual scenarios remain part of P2.1c acceptance.

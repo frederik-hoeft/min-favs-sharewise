@@ -15,6 +15,15 @@ public interface AccountStore {
     /** Serialize credential decisions and lockout updates on this account row. */
     Optional<AccountSnapshot> findByEmailForUpdate(EmailAddress email);
 
+    /** Snapshot the caller's credentials before expensive password verification. */
+    Optional<AccountSnapshot> findById(UUID userId);
+
+    /** Lock the account row before a credential change or its committed failure counter. */
+    Optional<AccountSnapshot> findByIdForUpdate(UUID userId);
+
+    /** Replace the locked account verifier and clear failure state; fail on stale state. */
+    void replacePassword(UUID userId, String previousVerifier, String newVerifier);
+
     /** Update a previously locked account without overwriting a stale failure state. */
     boolean compareAndSetLoginFailures(UUID userId, LoginLockoutPolicy.State previous,
             LoginLockoutPolicy.State next);

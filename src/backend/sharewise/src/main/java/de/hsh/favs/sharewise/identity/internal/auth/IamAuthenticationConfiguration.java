@@ -161,6 +161,14 @@ class IamAuthenticationConfiguration {
 
     @Bean
     @Scope("operation")
+    PasswordChangeService iamPasswordChangeService(IamSessionContext identity, Transactions transactions,
+            AccountStore accounts, SessionLifecycleStore sessions, CredentialEncoder encoder,
+            LoginLockoutPolicy lockouts, @Qualifier("iamClock") Clock clock) {
+        return new PasswordChangeService(identity, transactions, accounts, sessions, encoder, lockouts, clock);
+    }
+
+    @Bean
+    @Scope("operation")
     AccountProfileService iamAccountProfileService(IdentityContext identity, Transactions transactions,
             AccountProfileStore profiles) {
         return new AccountProfileService(identity, transactions, profiles);
