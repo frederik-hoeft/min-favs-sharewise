@@ -5,12 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import de.hsh.favs.sharewise.identity.internal.auth.ChangePasswordCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.profile.DisplayNameUpdate;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AccountProfileUpdateRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
+import de.hsh.favs.sharewise.identity.internal.web.dto.ChangePasswordRequest;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,7 +23,7 @@ class AuthFactoryWiringTests {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withBean(PasswordPolicy.class, PasswordPolicy::initial)
             .withUserConfiguration(RegistrationCommandFactory.class, LoginCommandFactory.class,
-                    AccountProfileUpdateFactory.class);
+                    AccountProfileUpdateFactory.class, PasswordChangeCommandFactory.class);
 
     @Test
     void enabledAuthenticationPublishesTypedInputFactories() {
@@ -39,6 +41,8 @@ class AuthFactoryWiringTests {
                     AccountProfileUpdateRequest update = new AccountProfileUpdateRequest("Alice", false);
                     assertEquals("Alice", consumer.updates.createFrom(update)
                             .fold(DisplayNameUpdate::value, errors -> "unexpected"));
+                    assertTrue(consumer.passwordChanges.createFrom(
+                            new ChangePasswordRequest("current-password", "new-password")).isSuccess());
                 });
     }
 
@@ -48,6 +52,7 @@ class AuthFactoryWiringTests {
             assertFalse(context.containsBean("registrationCommandFactory"));
             assertFalse(context.containsBean("loginCommandFactory"));
             assertFalse(context.containsBean("accountProfileUpdateFactory"));
+            assertFalse(context.containsBean("passwordChangeCommandFactory"));
         });
     }
 
@@ -55,6 +60,7 @@ class AuthFactoryWiringTests {
         final DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations;
         final DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins;
         final DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates;
+        final DomainObjectFactory<ChangePasswordCommand, ChangePasswordRequest> passwordChanges;
 
         FactoryConsumer(
                 @Qualifier("registrationCommandFactory")
@@ -62,10 +68,13 @@ class AuthFactoryWiringTests {
                 @Qualifier("loginCommandFactory")
                 DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins,
                 @Qualifier("accountProfileUpdateFactory")
-                DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates) {
+                DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates,
+                @Qualifier("passwordChangeCommandFactory")
+                DomainObjectFactory<ChangePasswordCommand, ChangePasswordRequest> passwordChanges) {
             this.registrations = registrations;
             this.logins = logins;
             this.updates = updates;
+            this.passwordChanges = passwordChanges;
         }
     }
 }
