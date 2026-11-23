@@ -14,7 +14,7 @@ describe('AuthSession (tab-local bearer and stable session binding)', () => {
       session.accept(response);
       expect(session.getAccessToken()).toBe(response.accessToken);
       expect(session.getSessionId()).toBe(SESSION_ONE);
-      expect(session.getSnapshot()).toEqual({ status: 'authenticated', expiresAt: response.expiresAt });
+      expect(session.getSnapshot()).toEqual({ status: 'authenticated', sessionId: response.sessionId, expiresAt: response.expiresAt });
       expect(JSON.stringify(session.getSnapshot())).not.toContain(response.accessToken);
       expect(listener).toHaveBeenCalledTimes(1);
       expect(set).not.toHaveBeenCalled();
@@ -35,7 +35,7 @@ describe('AuthSession (tab-local bearer and stable session binding)', () => {
     try {
       session.accept(authenticationResponse('server-issued', past));
       expect(session.getAccessToken()).toBe('server-issued');
-      expect(session.getSnapshot()).toEqual({ status: 'authenticated', expiresAt: past });
+      expect(session.getSnapshot()).toEqual({ status: 'authenticated', sessionId: SESSION_ONE, expiresAt: past });
     } finally { session.dispose(); }
   });
 

@@ -2,6 +2,7 @@ import { ApiError, type ApiClient } from '@/lib/api';
 import type { AccountProfile, AuthenticationResponse, ChangePasswordRequest, IdentityCredentials } from './models.ts';
 
 const ROOT = '/iam/v1';
+export const PASSWORD_CHANGE_PATH = '/api/iam/v1/auth/password';
 export const CSRF_HEADER = 'X-XSRF-TOKEN';
 
 /** Cookie-backed endpoints must neither receive access JWTs nor enter bearer renewal. */
@@ -52,8 +53,8 @@ export class IdentityApi {
     }
 
     /** The only authenticated /auth mutation: bearer-only, no CSRF bootstrap or response credentials. */
-    changePassword(request: ChangePasswordRequest, expectedSessionId: string): Promise<void> {
-        return this.client.post<void>(`${ROOT}/auth/password`, request, { expectedSessionId, expectedStatus: 204 });
+    changePassword(request: ChangePasswordRequest): Promise<void> {
+        return this.client.post<void>(PASSWORD_CHANGE_PATH, request, { expectedStatus: 204 });
     }
 
     login(credentials: IdentityCredentials, csrfToken: string): Promise<AuthenticationResponse> {

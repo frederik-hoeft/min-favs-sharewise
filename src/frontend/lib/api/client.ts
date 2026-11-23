@@ -4,8 +4,6 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
     /** Timeout for one HTTP attempt, including response reading, excluding authentication preparation. 0 disables it. */
     readonly timeoutMs?: number;
-    /** Optional initiating browser session, checked after asynchronous auth preparation and before dispatch. */
-    readonly expectedSessionId?: string;
     /** A strict success status when an operation has an exact acknowledgment contract (e.g., 204). */
     readonly expectedStatus?: number;
 }
@@ -22,6 +20,8 @@ export interface SentRequestContext {
 }
 
 export interface ApiClientHooks {
+    /** Capture the initiating session synchronously, before credential preparation. */
+    readonly captureSessionId?: (path: string, headers: Readonly<Headers>) => string | undefined;
     /** Prepare credentials for an attempt. The signal cancels this caller, not an already-submitted shared refresh. */
     readonly onRequest?: (path: string, headers: Headers, signal?: AbortSignal) =>
         Promise<string | undefined | void> | string | undefined | void;
@@ -33,8 +33,8 @@ export interface ApiClientHooks {
     readonly onReplayUnauthorized?: (
         path: string, failure: ApiError, sentHeaders: Readonly<Headers>, context: SentRequestContext
     ) => Promise<void> | void;
-    /** Guard successful responses against a context change while the request was in flight. */
-    readonly assertResponseContext?: (context: SentRequestContext) => void;
+    /** Guard dispatch and response delivery against a changed session. */
+    readonly assertSessionContext?: (context: SentRequestContext) => void;
 }
 
 export interface ApiClient {
@@ -96,27 +96,28 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         const hasExplicitAuthorization = initialHeaders.has('Authorization');
         const requestOptions = { ...options };
         delete requestOptions.timeoutMs;
-        delete requestOptions.expectedSessionId;
         delete requestOptions.expectedStatus;
         delete requestOptions.body;
 
+        // A first-use restoration may establish the binding; an existing session must never be replaced.
+        const initiatingSessionId = hooks.captureSessionId?.(targetPath, initialHeaders);
+
+        function assertBinding(expected: string | undefined, actual: string | undefined): void {
+            if (expected !== undefined && expected !== actual) {
+                throw new ApiError({
+                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
+                    detail: 'The active session changed during the request.',
+                });
+            }
+        }
+
         async function attempt(allowRetry: boolean, boundSessionId?: string): Promise<T> {
             assertNotCanceled(requestSignal);
+            if (hooks.captureSessionId) assertBinding(boundSessionId, hooks.captureSessionId(targetPath, initialHeaders));
             const headers = new Headers(initialHeaders);
             const sessionId = hooks.onRequest ? await hooks.onRequest(targetPath, headers, requestSignal) : undefined;
             assertNotCanceled(requestSignal);
-            if (options.expectedSessionId && sessionId !== options.expectedSessionId) {
-                throw new ApiError({
-                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
-                    detail: 'The browser session changed before the request was sent.',
-                });
-            }
-            if (boundSessionId && sessionId !== boundSessionId) {
-                throw new ApiError({
-                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
-                    detail: 'The active session changed before the request could be repeated.',
-                });
-            }
+            assertBinding(boundSessionId, typeof sessionId === 'string' ? sessionId : undefined);
             const context: SentRequestContext = {
                 sessionId: typeof sessionId === 'string' ? sessionId : undefined,
                 method,
@@ -124,6 +125,7 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                 hasExplicitAuthorization,
                 attempt: allowRetry ? 'initial' : 'replay',
             };
+            hooks.assertSessionContext?.(context);
             const controller = new AbortController();
             const abort = () => controller.abort();
             requestSignal?.addEventListener('abort', abort, { once: true });
@@ -181,7 +183,7 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                         throw networkError(new Error('HTTP request timed out.'));
                     }
                     assertNotCanceled(requestSignal);
-                    hooks.assertResponseContext?.(context);
+                    hooks.assertSessionContext?.(context);
                     return value;
                 }
                 rejection = await parseErrorResponse(response);
@@ -189,23 +191,31 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                     assertNotCanceled(requestSignal);
                     throw networkError(new Error('HTTP request timed out.'));
                 }
+            } catch (error) {
+                hooks.assertSessionContext?.(context);
+                throw error;
             } finally {
                 if (timeout !== undefined) clearTimeout(timeout);
                 requestSignal?.removeEventListener('abort', abort);
             }
 
             assertNotCanceled(requestSignal);
+            // A stale denial must not trigger recovery or invalidate another session.
+            hooks.assertSessionContext?.(context);
             if (allowRetry && hooks.onUnauthorized) {
                 const shouldRetry = await hooks.onUnauthorized(targetPath, rejection, headers, context, requestSignal);
                 assertNotCanceled(requestSignal);
-                if (shouldRetry && prepared.replayable) return attempt(false, sessionId || undefined);
+                if (shouldRetry && prepared.replayable) return attempt(false, context.sessionId);
             } else if (!allowRetry) {
                 await hooks.onReplayUnauthorized?.(targetPath, rejection, headers, context);
             }
             assertNotCanceled(requestSignal);
+            // A terminal hook may deliberately invalidate the current bearer (retaining its ID).
+            // Preserve its original denial, but never deliver a denial across a session replacement.
+            if (hooks.captureSessionId) assertBinding(context.sessionId, hooks.captureSessionId(targetPath, initialHeaders));
             throw rejection;
         }
-        return attempt(true);
+        return attempt(true, initiatingSessionId);
     }
 
     return {

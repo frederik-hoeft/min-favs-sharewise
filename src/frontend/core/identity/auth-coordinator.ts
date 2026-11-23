@@ -234,26 +234,27 @@ export class AuthCoordinator {
             await this.cookieLock.runExclusive(async () => {
                 assertInterested(flight);
                 // Another request may have renewed while we waited for the lock.
-                if (expectedSessionId) this.assertContext(expectedSessionId);
+                this.assertRenewalContext(expectedSessionId);
                 if (this.session.getAccessToken() &&
                     (rejectedToken === undefined || !this.session.matchesAccessToken(rejectedToken))) return;
                 const csrf = await this.api.getCsrfToken(flight.controller.signal);
                 assertInterested(flight);
-                if (expectedSessionId) this.assertContext(expectedSessionId);
+                this.assertRenewalContext(expectedSessionId);
                 try {
                     flight.submitted = true;
                     const response = await this.api.refresh(expectedSessionId, csrf);
+                    // Never publish or interpret an old flight under a replacement login.
+                    this.assertRenewalContext(expectedSessionId);
                     // Validate the response BEFORE comparing its session to the bound request.
                     AuthSession.validateResponse(response);
                     if (expectedSessionId && response.sessionId !== expectedSessionId) {
                         this.session.markContextChanged();
                         throw contextChanged();
                     }
-                    if (expectedSessionId) this.assertContext(expectedSessionId);
-                    if (this.session.getSnapshot().status === 'context-changed') throw contextChanged();
                     this.session.accept(response);
                 } catch (error) {
                     if (error instanceof ApiError && error.status === 409 && error.code === 'session_context_changed') {
+                        this.assertRenewalContext(expectedSessionId);
                         this.session.markContextChanged();
                         throw contextChanged();
                     }
@@ -262,7 +263,7 @@ export class AuthCoordinator {
             }, flight.controller.signal);
         } catch (error) {
             if (error instanceof ApiError && error.code === 'session_context_changed') throw error;
-            if (this.session.getSnapshot().status === 'context-changed') throw contextChanged();
+            this.assertRenewalContext(expectedSessionId);
             if (!flight.submitted) {
                 // No refresh generation was consumed. Retain the established bearer or allow restoration later.
                 this.session.markRestorationRetryable();
@@ -273,6 +274,15 @@ export class AuthCoordinator {
             if (uncertain) throw authError('refresh_outcome_unknown', 'Refresh Outcome Unknown',
                 'The authentication response could not be confirmed. Sign in again.');
             throw error;
+        }
+    }
+
+    /** A renewal flight may finish under its original context only, not revive an invalidated login. */
+    private assertRenewalContext(expected: string | undefined): void {
+        const state = this.session.getSnapshot();
+        if (expected === undefined ? state.status !== 'restoring' :
+            state.status !== 'authenticated' || state.sessionId !== expected) {
+            throw contextChanged();
         }
     }
 

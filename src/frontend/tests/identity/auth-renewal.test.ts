@@ -78,6 +78,64 @@ describe('transparent renewal and restoration', () => {
     expect(instance.session.getAccessToken()).toBe('bob');
   });
 
+  it('does not dispatch a first-use request or overwrite a replacement login after stale restoration', async () => {
+    const refresh = deferred<Response>();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (String(input) === REFRESH_PATH) return refresh.promise;
+      return jsonResponse({ ok: true });
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    const pending = instance.api.get(DOMAIN_PATH);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    instance.session.accept(authenticationResponse('bob', undefined, SESSION_TWO));
+    refresh.resolve(jsonResponse(authenticationResponse('restored-alice')));
+    await expect(pending).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(instance.session.getAccessToken()).toBe('bob');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('binds ordinary domain mutations before asynchronous bearer preparation', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('alice'));
+    const pending = instance.api.post(DOMAIN_PATH, { name: 'private draft' });
+    instance.session.accept(authenticationResponse('bob', undefined, SESSION_TWO));
+    await expect(pending).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(instance.session.getAccessToken()).toBe('bob');
+  });
+
+  it.each([400, 403, 401])('discards a late %i error from a replaced session before recovery or delivery', async (status) => {
+    const response = deferred<Response>();
+    const fetchImpl = vi.fn(async () => response.promise);
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('alice'));
+    const pending = instance.api.post(DOMAIN_PATH, { name: 'private draft' });
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    instance.session.accept(authenticationResponse('bob', undefined, SESSION_TWO));
+    response.resolve(problemResponse(status, status === 401 ? 'invalid_credential' : 'validation_failed'));
+    await expect(pending).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(instance.session.getAccessToken()).toBe('bob');
+  });
+
+  it.each([false, true])('keeps a domain session_unavailable denial local (after replay: %s)', async (replay) => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (path === REFRESH_PATH) return jsonResponse(authenticationResponse('renewed'));
+      return replay && (init?.headers as Headers).get('Authorization') === 'Bearer old'
+        ? problemResponse(401, 'invalid_credential') : problemResponse(401, 'session_unavailable');
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('old'));
+    await expect(instance.api.post(DOMAIN_PATH, { action: 'create' })).rejects.toMatchObject({ status: 401, code: 'session_unavailable' });
+    expect(instance.session.getAccessToken()).toBe(replay ? 'renewed' : 'old');
+    expect(instance.session.getSnapshot().status).toBe('authenticated');
+    expect(fetchImpl).toHaveBeenCalledTimes(replay ? 4 : 1);
+  });
+
   it('coalesces simultaneous same-tab 401s into one refresh submission', async () => {
     const refresh = deferred<Response>();
     let refreshCount = 0;
@@ -528,6 +586,44 @@ describe('shared-cookie session contexts', () => {
     await expect(instance.auth.logout()).rejects.toMatchObject({ code: 'session_context_changed' });
     expect(instance.session.getSnapshot()).toEqual({ status: 'context-changed' });
     expect(calls).toEqual([CSRF_PATH, LOGOUT_PATH]);
+  });
+
+  it.each([401, 409, 502])('does not apply a stale renewal failure (%i) to a replacement login', async (status) => {
+    const refresh = deferred<Response>();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (String(input) === REFRESH_PATH) return refresh.promise;
+      return problemResponse(401, 'invalid_credential');
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('alice'));
+    const request = instance.api.get(DOMAIN_PATH);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(3));
+    instance.session.accept(authenticationResponse('bob', undefined, SESSION_TWO));
+    refresh.resolve(problemResponse(status, status === 409 ? 'session_context_changed' : 'refresh_token_invalid'));
+    await expect(request).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(instance.session.getAccessToken()).toBe('bob');
+    expect(instance.session.getSnapshot().status).toBe('authenticated');
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('cannot revive a terminally invalidated session with a late successful renewal', async () => {
+    const refresh = deferred<Response>();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (String(input) === REFRESH_PATH) return refresh.promise;
+      return problemResponse(401, 'invalid_credential');
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    instance.session.accept(authenticationResponse('alice'));
+    const request = instance.api.get(DOMAIN_PATH);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(3));
+    instance.session.invalidate('unauthorized');
+    refresh.resolve(jsonResponse(authenticationResponse('renewed')));
+    await expect(request).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(instance.session.getAccessToken()).toBeUndefined();
+    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'unauthorized' });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('does not silently adopt a different session between renewal and original-request replay', async () => {

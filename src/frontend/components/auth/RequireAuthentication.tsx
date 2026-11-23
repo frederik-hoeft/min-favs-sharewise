@@ -2,7 +2,7 @@
 
 import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { Fragment, useEffect, type ReactNode } from "react";
 import { useAuthState, useIdentity } from "@/app/identity-provider";
 import { safeAppReturnPath } from "@/lib/navigation/return-path";
 
@@ -31,7 +31,8 @@ export function RequireAuthentication({ children }: Readonly<{ children: ReactNo
     }
   }, [pathname, router, state]);
 
-  if (state.status === "authenticated") return children;
+  // The entire workspace owns one lifetime per login, not per access-token generation.
+  if (state.status === "authenticated") return <Fragment key={state.sessionId}>{children}</Fragment>;
 
   if (state.status === "context-changed") {
     return (

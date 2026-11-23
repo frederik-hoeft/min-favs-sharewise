@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIdentityRuntime } from "@/core/identity";
 import { ApiError } from "@/lib/api";
 import {
-  ControlledLocks, SESSION_ONE, SESSION_TWO, authenticationResponse, jsonResponse, problemResponse,
+  ControlledLocks, SESSION_ONE, SESSION_TWO, authenticationResponse, deferred, jsonResponse, problemResponse,
 } from "./support";
 
 const request = { currentPassword: "old secret", newPassword: "new long secret" };
@@ -29,7 +29,7 @@ describe("IAM password-change transport", () => {
       return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
     });
     const instance = runtime(fetchImpl as typeof fetch);
-    await expect(instance.security.changePassword(request, SESSION_ONE)).resolves.toBeUndefined();
+    await expect(instance.security.changePassword(request)).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(instance.session.getAccessToken()).toBe("current-bearer");
     expect(instance.session.getSessionId()).toBe(SESSION_ONE);
@@ -49,7 +49,7 @@ describe("IAM password-change transport", () => {
       [400, "validation_failed"], [400, "current_password_invalid"], [409, "credential_changed"],
       [403, "account_unavailable"], [401, "session_unavailable"],
     ] as const) {
-      await expect(instance.security.changePassword(request, SESSION_ONE)).rejects.toMatchObject({ status, code } satisfies Partial<ApiError>);
+      await expect(instance.security.changePassword(request)).rejects.toMatchObject({ status, code } satisfies Partial<ApiError>);
     }
     expect(fetchImpl).toHaveBeenCalledTimes(5);
     expect(instance.session.getAccessToken()).toBeUndefined();
@@ -59,7 +59,7 @@ describe("IAM password-change transport", () => {
   it("refuses a password POST if auth switches between initiation and HTTP dispatch", async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
     const instance = runtime(fetchImpl as typeof fetch);
-    const pending = instance.security.changePassword(request, SESSION_ONE);
+    const pending = instance.security.changePassword(request);
     instance.session.accept(authenticationResponse("second-bearer", undefined, SESSION_TWO));
     await expect(pending).rejects.toMatchObject({ status: 0, code: "session_context_changed" });
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -68,7 +68,7 @@ describe("IAM password-change transport", () => {
   it("never automatically refreshes or repeats a dispatched post-dispatch session denial", async () => {
     const fetchImpl = vi.fn(async () => problemResponse(401, "session_unavailable"));
     const instance = runtime(fetchImpl as typeof fetch);
-    await expect(instance.security.changePassword(request, SESSION_ONE)).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
+    await expect(instance.security.changePassword(request)).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(instance.session.getAccessToken()).toBeUndefined();
     expect(instance.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
@@ -88,24 +88,53 @@ describe("IAM password-change transport", () => {
       return new Response(null, { status: 204 });
     });
     const instance = runtime(fetchImpl as typeof fetch);
-    await expect(instance.security.changePassword(request, SESSION_ONE)).resolves.toBeUndefined();
+    await expect(instance.security.changePassword(request)).resolves.toBeUndefined();
     expect(calls).toEqual([
       "/api/iam/v1/auth/password", "/api/iam/v1/auth/csrf", "/api/iam/v1/auth/refresh", "/api/iam/v1/auth/password",
     ]);
     expect(instance.session.getAccessToken()).toBe("fresh-bearer");
   });
 
+  it.each([SESSION_ONE, SESSION_TWO])("does not invalidate a newer bearer on a late password session denial (%s)", async (sessionId) => {
+    const reply = deferred<Response>();
+    const fetchImpl = vi.fn(async () => reply.promise);
+    const instance = runtime(fetchImpl as typeof fetch);
+    const pending = instance.security.changePassword(request);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    instance.session.accept(authenticationResponse("new-bearer", undefined, sessionId));
+    reply.resolve(problemResponse(401, "session_unavailable"));
+    await expect(pending).rejects.toMatchObject({ code: sessionId === SESSION_ONE ? "session_unavailable" : "session_context_changed" });
+    expect(instance.session.getAccessToken()).toBe("new-bearer");
+    expect(instance.session.getSnapshot().status).toBe("authenticated");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats session_unavailable on a password replay as terminal without a second refresh", async () => {
+    const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(path);
+      if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
+      if (url.endsWith("/refresh")) return jsonResponse(authenticationResponse("fresh-bearer"));
+      return (init?.headers as Headers).get("Authorization") === "Bearer current-bearer"
+        ? problemResponse(401, "invalid_credential") : problemResponse(401, "session_unavailable");
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    await expect(instance.security.changePassword(request)).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(instance.session.getAccessToken()).toBeUndefined();
+    expect(instance.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
+  });
+
   it("rejects a non-204 success response as unconfirmed and never replays it", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
     const instance = runtime(fetchImpl as typeof fetch);
-    await expect(instance.security.changePassword(request, SESSION_ONE)).rejects.toMatchObject({ status: 0, code: "unexpected_response" });
+    await expect(instance.security.changePassword(request)).rejects.toMatchObject({ status: 0, code: "unexpected_response" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("does not repeat a POST after a lost response", async () => {
     const fetchImpl = vi.fn(async () => { throw new TypeError("connection lost"); });
     const instance = runtime(fetchImpl as typeof fetch);
-    await expect(instance.security.changePassword(request, SESSION_ONE)).rejects.toMatchObject({ status: 0, code: "network_error" });
+    await expect(instance.security.changePassword(request)).rejects.toMatchObject({ status: 0, code: "network_error" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

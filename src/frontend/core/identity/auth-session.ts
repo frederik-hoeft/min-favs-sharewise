@@ -58,7 +58,7 @@ export class AuthSession {
         AuthSession.validateResponse(response);
         this.accessToken = response.accessToken;
         this.sessionId = response.sessionId;
-        this.update({ status: 'authenticated', expiresAt: response.expiresAt });
+        this.update({ status: 'authenticated', sessionId: response.sessionId, expiresAt: response.expiresAt });
     }
 
     markRestoring(): void {

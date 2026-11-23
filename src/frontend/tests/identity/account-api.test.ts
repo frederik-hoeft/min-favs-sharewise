@@ -63,21 +63,13 @@ describe("Typed IAM account API", () => {
     expect(runtime.session.getAccessToken()).toBe("new-account-bearer");
     expect(await runtime.account.getAccount()).toEqual(profile);
   });
-  it("a late session_unavailable denial cannot discard a newer signed-in session", async () => {
-    let resolveFirst!: (response: Response) => void;
-    const first = new Promise<Response>((resolve) => { resolveFirst = resolve; });
-    let calls = 0;
-    const fetchImpl = vi.fn(async () => ++calls === 1 ? first : jsonResponse(profile));
+  it("does not interpret an account-operation session_unavailable code as an IAM auth denial", async () => {
+    const fetchImpl = vi.fn(async () => problemResponse(401, "session_unavailable"));
     const runtime = createRuntime(fetchImpl as typeof fetch);
-    const pending = runtime.account.getAccount();
-    await Promise.resolve();
-    await Promise.resolve();
-    runtime.session.accept(authenticationResponse("new-account-bearer"));
-    resolveFirst(problemResponse(401, "session_unavailable"));
-    await expect(pending).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
-    expect(runtime.session.getAccessToken()).toBe("new-account-bearer");
+    await expect(runtime.account.getAccount()).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(runtime.session.getAccessToken()).toBe("account-bearer");
     expect(runtime.session.getSnapshot().status).toBe("authenticated");
-    expect(await runtime.account.getAccount()).toEqual(profile);
   });
 
 });

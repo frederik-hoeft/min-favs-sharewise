@@ -14,12 +14,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
   usePathname: () => "/app/account",
 }));
-import { authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
+import { ControlledLocks, SESSION_TWO, authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
 
 const initial: AccountProfile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: null };
 const active: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function renderAccount(fetchImpl: typeof fetch = vi.fn(async () => jsonResponse(initial)) as typeof fetch, signedIn = true) {
-  const runtime = createIdentityRuntime({ fetchImpl });
+  const runtime = createIdentityRuntime({ fetchImpl, locks: () => new ControlledLocks().manager });
   active.push(runtime);
   if (signedIn) runtime.session.accept(authenticationResponse("first-bearer"));
   const result = render(
@@ -209,7 +209,7 @@ describe("Account profile page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry loading" }));
     await loadedForm();
     expect(screen.getByDisplayValue(initial.email)).toBeInTheDocument();
-    await act(async () => runtime.session.accept(authenticationResponse("other-bearer")));
+    await act(async () => runtime.session.accept(authenticationResponse("other-bearer", undefined, SESSION_TWO)));
     await loadedForm();
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
@@ -221,6 +221,61 @@ describe("Account profile page", () => {
     expect(screen.queryByRole("form", { name: "Account profile" })).not.toBeInTheDocument();
   });
 
+  it("keeps unsaved profile edits through a transparent same-session renewal", async () => {
+    const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(path);
+      if (url.endsWith("/account")) return jsonResponse({ ...initial, displayName: "Alice" });
+      if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
+      if (url.endsWith("/refresh")) return jsonResponse(authenticationResponse("renewed"));
+      return (init?.headers as Headers).get("Authorization") === "Bearer first-bearer"
+        ? problemResponse(401, "invalid_credential") : jsonResponse({ ok: true });
+    });
+    const { runtime } = renderAccount(fetchImpl as typeof fetch);
+    await screen.findByDisplayValue("Alice");
+    fireEvent.change(nameInput(), { target: { value: "Unsaved draft" } });
+    await act(async () => { await runtime.api.get("/groups/v1/groups"); });
+    expect(runtime.session.getAccessToken()).toBe("renewed");
+    expect(nameInput()).toHaveValue("Unsaved draft");
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeEnabled();
+    expect(fetchImpl.mock.calls.filter(([path]) => String(path).endsWith("/account"))).toHaveLength(1);
+  });
+
+  it("keeps the mutation pending across renewal and applies the successful replay without reloading", async () => {
+    const refresh = deferred<Response>();
+    const reply = deferred<Response>();
+    const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(path);
+      if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
+      if (url.endsWith("/refresh")) return refresh.promise;
+      if (init?.method === "PATCH") {
+        expect(JSON.parse(String(init.body))).toEqual({ displayName: "Edited", clear: false });
+        return (init.headers as Headers).get("Authorization") === "Bearer first-bearer"
+          ? problemResponse(401, "invalid_credential") : reply.promise;
+      }
+      return jsonResponse({ ...initial, displayName: "Alice" });
+    });
+    const { runtime } = renderAccount(fetchImpl as typeof fetch);
+    await screen.findByDisplayValue("Alice");
+    fireEvent.change(nameInput(), { target: { value: "Edited" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Account profile" }));
+    await waitFor(() => expect(fetchImpl.mock.calls.some(([path]) => String(path).endsWith("/refresh"))).toBe(true));
+    expect(nameInput()).toBeDisabled();
+    expect(nameInput()).toHaveValue("Edited");
+    await act(async () => refresh.resolve(jsonResponse(authenticationResponse("renewed"))));
+    await waitFor(() => expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(2));
+    expect(runtime.session.getAccessToken()).toBe("renewed");
+    expect(nameInput()).toBeDisabled();
+    expect(nameInput()).toHaveValue("Edited");
+    fireEvent.submit(screen.getByRole("form", { name: "Account profile" }));
+    expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(2);
+    await act(async () => reply.resolve(jsonResponse({ ...initial, displayName: "Edited" })));
+    expect(await screen.findByText("Display name updated.")).toBeInTheDocument();
+    expect(nameInput()).toHaveValue("Edited");
+    expect(nameInput()).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
+    expect(fetchImpl.mock.calls.filter(([path, init]) => String(path).endsWith("/account") && init?.method === "GET")).toHaveLength(1);
+  });
+
   it("never displays a previous account while reloading for a new authentication context", async () => {
     const first = deferred<Response>();
     const second = deferred<Response>();
@@ -228,7 +283,7 @@ describe("Account profile page", () => {
       (init?.headers as Headers).get("Authorization") === "Bearer first-bearer" ? first.promise : second.promise);
     const { runtime } = renderAccount(fetchImpl as typeof fetch);
     await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
-    await act(async () => runtime.session.accept(authenticationResponse("second-bearer")));
+    await act(async () => runtime.session.accept(authenticationResponse("second-bearer", undefined, SESSION_TWO)));
     expect(screen.getByRole("status", { name: "Loading account" })).toBeInTheDocument();
     await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
     await act(async () => first.resolve(jsonResponse(initial)));
@@ -252,7 +307,7 @@ describe("Account profile page", () => {
     fireEvent.change(nameInput(), { target: { value: "X" } });
     fireEvent.click(screen.getByRole("button", { name: "Update display name" }));
     await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
-    await act(async () => runtime.session.accept(authenticationResponse("second-bearer")));
+    await act(async () => runtime.session.accept(authenticationResponse("second-bearer", undefined, SESSION_TWO)));
     await screen.findByDisplayValue("bob@example.com");
     await act(async () => pending.resolve(jsonResponse({ ...initial, displayName: "X" })));
     expect(nameInput()).toHaveValue("Bob");

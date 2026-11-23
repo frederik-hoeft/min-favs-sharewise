@@ -180,7 +180,7 @@ describe("createApiClient", () => {
     const fetchImpl = vi.fn(async () => response);
     const client = createApiClient({
       onRequest: () => currentSession,
-      assertResponseContext: (context) => {
+      assertSessionContext: (context) => {
         if (context.sessionId !== currentSession) {
           throw new ApiError({ status: 0, code: 'session_context_changed', title: 'Sign-in Changed', detail: 'Session changed.' });
         }

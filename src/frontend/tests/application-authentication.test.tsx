@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider } from "@/app/identity-provider";
 import AppLayout from "@/app/(app)/app/layout";
 import { createIdentityRuntime } from "@/core/identity";
 import { TestProviders } from "./support/TestProviders";
-import { ControlledLocks, authenticationResponse, jsonResponse, problemResponse } from "./identity/support";
+import { ControlledLocks, SESSION_TWO, authenticationResponse, jsonResponse, problemResponse } from "./identity/support";
 
 const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
 let pathname = "/app/account";
@@ -14,11 +15,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
-function mount(runtime: ReturnType<typeof createIdentityRuntime>) {
+function mount(runtime: ReturnType<typeof createIdentityRuntime>, children: ReactNode = <div>Protected workspace content</div>) {
   runtimes.push(runtime);
   return render(
     <TestProviders><IdentityProvider runtime={runtime}>
-      <AppLayout><div>Protected workspace content</div></AppLayout>
+      <AppLayout>{children}</AppLayout>
     </IdentityProvider></TestProviders>,
   );
 }
@@ -72,6 +73,24 @@ describe("authenticated workspace layout", () => {
     expect(screen.queryByText("Protected workspace content")).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Workspace navigation" })).not.toBeInTheDocument();
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/auth/login?next=%2Fapp%2Faccount"));
+  });
+
+  it("owns the lifetime of ordinary workspace components without involving their local state in authentication", async () => {
+    function Draft() {
+      const [draft, setDraft] = useState("");
+      return <input aria-label="Workspace draft" value={draft} onChange={(event) => setDraft(event.target.value)} />;
+    }
+    const runtime = createIdentityRuntime({ fetchImpl: vi.fn() });
+    runtime.session.accept(authenticationResponse("first"));
+    mount(runtime, <Draft />);
+    const draft = screen.getByRole("textbox", { name: "Workspace draft" });
+    fireEvent.change(draft, { target: { value: "Private unsaved draft" } });
+    await act(async () => runtime.session.accept(authenticationResponse("renewed")));
+    expect(screen.getByRole("textbox", { name: "Workspace draft" })).toBe(draft);
+    expect(draft).toHaveValue("Private unsaved draft");
+    await act(async () => runtime.session.accept(authenticationResponse("replacement", undefined, SESSION_TWO)));
+    expect(draft).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Workspace draft" })).toHaveValue("");
   });
 
   it("preserves an app-local return path, including query, for terminal reauthentication", async () => {
