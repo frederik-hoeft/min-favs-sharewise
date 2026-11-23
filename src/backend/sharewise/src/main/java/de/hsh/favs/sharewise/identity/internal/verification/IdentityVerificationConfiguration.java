@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
-/** IAM's local authority-port wiring. The database query adapter is supplied in Phase B. */
+/** IAM's local authority-port wiring. */
 @Configuration(proxyBeanMethods = false)
 class IdentityVerificationConfiguration {
 

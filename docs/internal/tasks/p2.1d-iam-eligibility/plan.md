@@ -1,6 +1,6 @@
 # P2.1d - Authoritative IAM identity and session verification: implementation plan
 
-**Status:** Approved for Phase A implementation, subject to Gate A human review before Phase B. See the approved [specification](specification.md) and IAM-D01–D09 / IAM-DT01–DT08 contracts.
+**Status:** Phase A approved by the human maintainer; Phase B implementation in review. PostgreSQL and operational acceptance remain open. See the approved [specification](specification.md) and IAM-D01–D09 / IAM-DT01–DT08 contracts.
 
 ## Baseline, ownership and dependency gates
 
@@ -23,11 +23,11 @@ The accepted P2.1b session schema and the existing `IdentityContext`, operation-
 
 **Scope:** Add the IAM-published `IdentityPort`, immutable result/failure types and operation-scoped local implementation. Obtain the verified user/session pair from `IdentityContext`; use a private eligibility query port, `Clock` and IAM-owned `Transactions.execute(...)` with `ABSTAIN`. Do not introduce generic cross-context RPC abstractions or HTTP transport. Keep public contract types independent of database, JOSE and Spring MVC.
 
-- [ ] Test eligible/denied/unavailable and anonymous outcomes, same-credential user/session binding, injected-clock boundaries and login-lockout behavior using deterministic private query fakes (IAM-DT01–DT04).
-- [ ] Test the synchronous call after a completed segment and rejection inside an active or unrelated transaction, using the real operation-scope transaction guard where appropriate (IAM-DT05, DT08).
-- [ ] Run focused Unit tests and Spring Modulith verification, plus the offline backend regression gate. Inspect the staged diff for unrelated code and prohibited dependencies.
+- [x] Test eligible/denied/unavailable and anonymous outcomes, same-credential user/session binding, injected-clock boundaries and login-lockout behavior using deterministic private query fakes (IAM-DT01–DT04).
+- [x] Test the synchronous call after a completed segment and rejection inside an active or unrelated transaction, using the real operation-scope transaction guard where appropriate (IAM-DT05, DT08).
+- [x] Run focused Unit tests and Spring Modulith verification, plus the offline backend regression gate. Inspect the staged diff for unrelated code and prohibited dependencies.
 
-**Gate A:** Contract, Unit behavior, transaction-boundary tests and module rules are green; human reviews and approves the focused Java/service patch before Phase B.
+**Gate A:** Contract, Unit behavior, transaction-boundary tests and module rules are green; human reviews and approves the focused Java/service patch before Phase B. Human approval received; 326 offline Unit tests and packaging passed.
 
 ## Phase B - IAM PostgreSQL adapter, integration and final documentation
 
@@ -37,7 +37,9 @@ The accepted P2.1b session schema and the existing `IdentityContext`, operation-
 - [ ] Verify consistency with logout, account disablement and password-change session revocation using independent connections; do not demand atomicity across the verification read and a later consumer write (IAM-DT06).
 - [ ] Exercise database unavailability/failed completion paths with meaningful fault injection; prove unavailable/indeterminate results fail closed and cannot be followed by consumer mutation (IAM-DT07).
 - [ ] Run Unit, PostgreSQL Integration, Modulith and relevant regression suites; arrange production-style local deployment smoke with a representative Java-level integration workflow, or record a justified human-approved exception if no meaningful deployed probe is available.
-- [ ] **Final implementation step:** reconcile verified behavior in [implemented authorization architecture](../../../architecture/authorization.md), [transaction architecture](../../../architecture/transactions.md) if needed, [planned security design](../../../stack/security.md), relevant developer/testing docs, and the [backlog](../backlog.md). Preserve the distinction between implemented guarantees and future HTTP/service-authentication proposals.
+- [x] **Final implementation step:** reconcile implemented behavior in [implemented authorization architecture](../../../architecture/authorization.md), [transaction architecture](../../../architecture/transactions.md) if needed, [planned security design](../../../stack/security.md), relevant developer/testing docs, and the [backlog](../backlog.md). Preserve the distinction between implemented guarantees and future HTTP/service-authentication proposals.
 - [ ] Obtain an independent security/architecture review proportionate to this authority-sensitive change, resolve findings in reviewable increments, and record human operational acceptance and outstanding infrastructure limitations.
+
+**Phase B implementation evidence:** `JooqIdentityEligibilityQuery` uses the existing generated IAM schema and one read-only `EXISTS` query. `JooqIdentityEligibilityQueryTests` covers recognized SQL-state failures and unexpected errors; `JooqIdentityEligibilityQueryIT` covers the real database predicate and precision boundaries; `IdentityVerificationE2E` exercises production IAM wiring, physical lifecycle changes and database fault injection. The offline `-Punit-tests clean verify` gate passed with 338 Unit tests, zero failures/errors/skips, including Modulith structure verification and packaging. Targeted `-Pintegration-tests -Dit.test=JooqIdentityEligibilityQueryIT verify` and `-Pe2e-tests -Dit.test=IdentityVerificationE2E verify` both reached Failsafe but failed during fixture setup with `UnknownHostException: postgres`; no database behavior was exercised. PostgreSQL tests require a reachable PostgreSQL 18 instance; neither a server nor a container runtime is available in this workspace. No database acceptance check is marked complete based on compilation or Unit results. The supplied P2.1c snapshot is still the integration baseline; rerun against its final accepted revision.
 
 **Gate B:** PostgreSQL-backed correctness and module boundaries are demonstrated, final P2.1c interaction checked, authoritative docs reconciled, independent and human reviews accepted, and the complete patch approved for merge. Leave the branch unmerged until authorization.
