@@ -62,7 +62,8 @@ export class AuthSession {
     }
 
     markRestoring(): void {
-        if (this.state.status === 'reauthentication-required' && this.state.reason === 'initial') {
+        if (this.state.status === 'reauthentication-required' &&
+            (this.state.reason === 'initial' || this.state.reason === 'retryable')) {
             this.update({ status: 'restoring' });
         }
     }
@@ -70,7 +71,7 @@ export class AuthSession {
     /** A canceled/failed pre-submission restoration has not consumed the cookie and can be tried again. */
     markRestorationRetryable(): void {
         if (this.state.status === 'restoring') {
-            this.update({ status: 'reauthentication-required', reason: 'initial' });
+            this.update({ status: 'reauthentication-required', reason: 'retryable' });
         }
     }
 

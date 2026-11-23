@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('IdentityProvider lifecycle', () => {
   it('keeps exactly one channel connected after Strict Mode effect replay and releases it on unmount', async () => {
     const channels = new ControlledChannels();
-    vi.stubGlobal('BroadcastChannel', vi.fn().mockImplementation(() => channels.create()));
+    vi.stubGlobal('BroadcastChannel', function MockBroadcastChannel() { return channels.create(); });
     const connectedRuntimes: IdentityRuntime[] = [];
     function Observer() {
       const runtime = useIdentity();

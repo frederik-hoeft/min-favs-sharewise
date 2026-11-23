@@ -203,7 +203,7 @@ describe('renewal failure and caller cancellation', () => {
     const instance = createIdentityRuntime({ fetchImpl: fetchImpl as typeof fetch, locks: () => available ? locks.manager : undefined });
     runtimes.push(instance);
     await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
-    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'initial' });
+    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'retryable' });
     expect(requests).toEqual([]);
     available = true;
     await expect(instance.api.get(DOMAIN_PATH)).resolves.toEqual({ ok: true });
@@ -228,7 +228,7 @@ describe('renewal failure and caller cancellation', () => {
     });
     const instance = runtime(fetchImpl as typeof fetch);
     await expect(instance.api.get(DOMAIN_PATH)).rejects.toMatchObject({ code: 'network_error' });
-    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'initial' });
+    expect(instance.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'retryable' });
     expect(refreshCount).toBe(0);
     await expect(instance.api.get(DOMAIN_PATH)).resolves.toEqual({ ok: true });
     expect(refreshCount).toBe(1);

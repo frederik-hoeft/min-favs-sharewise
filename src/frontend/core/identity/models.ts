@@ -13,7 +13,7 @@ export interface AuthenticationResponse {
 }
 
 export type AuthState =
-    | { readonly status: 'reauthentication-required'; readonly reason: 'initial' | 'expired' | 'unauthorized' | 'uncertain' }
+    | { readonly status: 'reauthentication-required'; readonly reason: 'initial' | 'retryable' | 'expired' | 'unauthorized' | 'uncertain' }
     | { readonly status: 'restoring' }
     | { readonly status: 'context-changed' }
     | { readonly status: 'authenticated'; readonly expiresAt: string };

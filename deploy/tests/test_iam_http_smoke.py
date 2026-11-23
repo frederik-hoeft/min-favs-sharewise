@@ -118,8 +118,10 @@ class IamHttpSmokeTests(unittest.TestCase):
             self.run_smoke(FakeIam(deny_after_logout=False))
 
     def test_empty_204_response_is_supported(self):
-        with patch.object(smoke, "compose_exec", return_value="\n204"):
+        with patch.object(smoke, "compose_exec", return_value="\n204") as invoke:
             self.assertEqual(smoke.curl("localhost", "18443", "/tmp/jar", "logout", payload="{}"), (204, None))
+            argv = invoke.call_args.args
+            self.assertEqual(argv[argv.index("--write-out") + 1], r"\n%{http_code}")
 
     def test_cookie_jar_requires_secure_httponly_host_only_cookie(self):
         jar = f"#HttpOnly_localhost\tFALSE\t/\tTRUE\t2000000000\t{smoke.REFRESH_COOKIE}\tsecret\n"

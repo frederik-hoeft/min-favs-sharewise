@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_THEME } from "@mantine/core";
 import axe from "axe-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { theme, cssVariablesResolver } from "@/lib/theme";
 import { ApplicationShell } from "@/app/(app)/app/_components/ApplicationShell";
 import { IdentityProvider } from "@/app/identity-provider";
+import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
 import { appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
 import DummyOnePage from "@/app/(app)/app/dummy1/page";
 import { TestProviders } from "./support/TestProviders";
@@ -19,13 +20,21 @@ vi.mock("next/navigation", async (importOriginal) => ({
   useRouter: () => ({ replace: vi.fn() }),
 }));
 
+const appRuntimes: IdentityRuntime[] = [];
+
 function renderApp() {
+  // These tests cover public navigation and login links, not automatic cookie restoration.
+  const runtime = createIdentityRuntime({ channel: () => undefined });
+  runtime.session.invalidate('unauthorized');
+  appRuntimes.push(runtime);
   return render(
     <TestProviders>
-      <IdentityProvider><ApplicationShell><DummyOnePage /></ApplicationShell></IdentityProvider>
+      <IdentityProvider runtime={runtime}><ApplicationShell><DummyOnePage /></ApplicationShell></IdentityProvider>
     </TestProviders>,
   );
 }
+
+afterEach(() => { for (const runtime of appRuntimes.splice(0)) runtime.dispose(); });
 
 beforeEach(() => {
   pathname = "/app/dummy1";

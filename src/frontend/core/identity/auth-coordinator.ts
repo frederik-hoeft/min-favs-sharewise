@@ -67,7 +67,8 @@ export class AuthCoordinator {
         if (signal?.aborted) throw requestCanceled();
         if (this.renewal) return this.awaitRenewal(this.renewal, signal);
         const state = this.session.getSnapshot();
-        if (state.status !== 'reauthentication-required' || state.reason !== 'initial') {
+        if (state.status !== 'reauthentication-required' ||
+            (state.reason !== 'initial' && state.reason !== 'retryable')) {
             throw reauthenticationRequired();
         }
         this.session.markRestoring();

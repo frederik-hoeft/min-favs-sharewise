@@ -40,7 +40,7 @@ def curl(host: str, port: str, cookie_file: str, path: str,
         "curl", "--silent", "--show-error", "--insecure", "--max-time", "20",
         "--connect-to", f"{host}:{port}:frontend:443",
         "--cookie", cookie_file, "--cookie-jar", cookie_file,
-        "--write-out", "\n%{http_code}",
+        "--write-out", "\\n%{http_code}",
     ]
     if payload is not None:
         options += ["-X", "POST", "-H", "Content-Type: application/json",

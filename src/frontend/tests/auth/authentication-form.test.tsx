@@ -254,10 +254,34 @@ describe('registration and login presentation', () => {
   it('preserves the current workspace page and query when offering sign-in', async () => {
     window.history.replaceState({}, '', '/app/dummy3?tab=expenses');
     const runtime = createIdentityRuntime({ locks: () => undefined, fetchImpl: vi.fn() as typeof fetch });
+    runtime.session.invalidate('unauthorized');
     activeRuntimes.push(runtime);
     render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
     const link = await screen.findByRole('link', { name: 'Sign in' });
     expect(link).toHaveAttribute('href', '/auth/login?next=%2Fapp%2Fdummy3%3Ftab%3Dexpenses');
+  });
+
+  it('offers an explicit retry after safe restoration preparation failure', async () => {
+    const locks = new ControlledLocks();
+    let locksAvailable = false;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/csrf')
+      ? jsonResponse({ token: 'fresh' })
+      : jsonResponse(authenticationResponse()));
+    const runtime = createIdentityRuntime({
+      fetchImpl: fetchImpl as typeof fetch,
+      locks: () => locksAvailable ? locks.manager : undefined,
+      channel: () => undefined,
+    });
+    activeRuntimes.push(runtime);
+    render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
+    const retry = await screen.findByRole('button', { name: 'Retry session check' });
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeVisible();
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    locksAvailable = true;
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(screen.getByText(/authentication will renew automatically/i)).toBeVisible());
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('restores the browser context and displays a context-change prompt without exposing the JWT', async () => {

@@ -269,13 +269,14 @@ describe("Identity runtime with mock HTTP", () => {
     expect(runtime.session.getAccessToken()).toBe("existing-token");
   });
 
-  it("a pre-dispatch 401 without Web Locks fails closed before any cookie mutation", async () => {
+  it("a pre-dispatch 401 without Web Locks avoids cookie mutation and preserves the bearer", async () => {
     const fetchImpl = vi.fn(async () => problemResponse(401, "invalid_credential"));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => undefined);
     runtime.session.accept(authenticationResponse("active"));
     await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(runtime.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
+    expect(runtime.session.getSnapshot().status).toBe("authenticated");
+    expect(runtime.session.getAccessToken()).toBe("active");
   });
 
   it("a delayed 401 from an old request cannot invalidate a newer login", async () => {

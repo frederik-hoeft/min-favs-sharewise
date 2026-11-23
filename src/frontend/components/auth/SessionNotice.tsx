@@ -42,9 +42,16 @@ export function SessionNotice() {
   }
   const message = state.reason === 'uncertain'
     ? 'The last renewal could not be confirmed. For safety, sign in again.'
-    : 'No active sign-in is available in this tab.';
+    : state.reason === 'retryable'
+      ? 'The browser session could not be checked. You can retry or sign in.'
+      : 'No active sign-in is available in this tab.';
   return (
     <Alert title="Demonstration workspace" color="gray">
+      {state.reason === 'retryable' && (
+        <Button size="xs" variant="light" mb="sm" onClick={() => void auth.ensureAuthenticated().catch(() => {})}>
+          Retry session check
+        </Button>
+      )}
       <Text size="sm">{message} <Suspense fallback={<Link href="/auth/login">Sign in</Link>}><LoginReturnLink /></Suspense> or <Link href="/auth/register">create an account</Link>. You can still explore this demo.</Text>
     </Alert>
   );
