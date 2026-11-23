@@ -1,6 +1,6 @@
 # P2.1b - Refresh, logout and session lifecycle: implementation plan
 
-**Status:** Specification and plan approved. Phases A–C are accepted; Phase D HTTP integration is reviewed and its connection-pool follow-up needs final integrated CI evidence. The maintainer accepted Phase E's **manual browser smoke stage** on November 22, 2026, with protected-operation and adversarial cases recorded as blocked or not exercised. Final independent security review, complete CI reconciliation and separate merge authorization remain open. See [the acceptance record](acceptance.md). Checkboxes represent completed, verified and approved activities, not inferred coverage.
+**Status:** Completed and merged with final human authorization. Phases A–E are accepted subject to the explicitly recorded limits of the November 22, 2026 browser smoke test. The protected-operation renewal and retry scenarios were not covered by that smoke test and are included in P2.1c's general manual acceptance. See [the acceptance record](acceptance.md) for historical evidence and limitations.
 
 ## Baseline, scope and team boundaries
 
@@ -86,4 +86,4 @@ Avoid concurrent edits to the same ports, DTOs, shared API client, or test fixtu
 - [x] Approve this reconciliation of [security](../../../stack/security.md), [frontend architecture](../../../architecture/frontend.md), [development guide](../../../development.md), frontend test guidance and backlog with implemented contracts; retain the approved specification and this plan.
 - [x] Record independent security review findings and their resolution, then obtain final human approval for the complete merge-request diff.
 
-**Gate E:** The maintainer has accepted the **smoke-test stage**, not a claim that every originally proposed manual scenario passed. Independent review, final CI reconciliation and explicit merge authorization remain required before P2.1b/P2.1b.1 can be marked complete in the backlog.
+**Gate E:** The maintainer has accepted the **smoke-test stage**, not a claim that every originally proposed manual scenario passed. The final independent review, CI reconciliation and merge authorization were subsequently accepted for P2.1b/P2.1b.1; the deferred protected-operation scenarios remain a P2.1c acceptance obligation.

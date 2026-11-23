@@ -18,6 +18,19 @@ public interface IdentityContext {
     /** Returns the authenticated user's stable IAM ID, if one is present. */
     Optional<UUID> userId();
 
+    /**
+     * Returns the authenticated IAM session binding from the same verified primary
+     * credential as {@link #userId()}. Anonymous operations have neither value.
+     * The binding is a canonical IAM session UUID, but it is not a credential
+     * or a grant of current session eligibility.
+     */
+    Optional<UUID> sessionId();
+
+    /** Returns the current session ID or fails when no authenticated caller is present. */
+    default UUID requireSessionId() {
+        return sessionId().orElseThrow(UnauthenticatedCallerException::new);
+    }
+
     /** Returns the user ID or fails when no authenticated caller is present. */
     default UUID requireUserId() {
         return userId().orElseThrow(UnauthenticatedCallerException::new);

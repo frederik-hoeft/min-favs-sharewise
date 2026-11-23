@@ -2,7 +2,7 @@
 
 ShareWise uses PostgreSQL as its relational database and Flyway migrations as the authority for the physical schema. Spring Boot configures an application `DataSource` and a separate Flyway migration connection with schema-changing privileges. jOOQ and JPA/Hibernate are integrated with Spring's explicit transaction segments through operation-scoped persistence accessors.
 
-The implemented persistence layer provides the shared infrastructure foundation and IAM-owned authentication tables and jOOQ adapters. Other contexts have schema namespaces but do not yet own business tables. The [application architecture](../architecture.md) describes the intended module interaction model; [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
+The implemented persistence layer provides the shared infrastructure foundation and IAM-owned account, optional profile, session and refresh-token tables with jOOQ adapters. Other contexts have schema namespaces but do not yet own business tables. The [application architecture](../architecture.md) describes the intended module interaction model; [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
 
 ## Database topology and ownership
 
@@ -10,7 +10,7 @@ A single PostgreSQL database contains the following schemas:
 
 | Schema | Current responsibility |
 | --- | --- |
-| `identity`, `groups`, `finance`, `files`, `notifications` | Bounded-context schemas. `identity` contains the IAM account, session and refresh-token tables; the remaining context schemas do not yet contain business tables. |
+| `identity`, `groups`, `finance`, `files`, `notifications` | Bounded-context schemas. `identity` contains the IAM account, optional profile, session and refresh-token tables; the remaining context schemas do not yet contain business tables. |
 | `flyway` | Flyway's migration history, separate from the context namespaces. |
 
 Schema boundaries make ownership visible in the physical layout, but do not provide database-enforced isolation between contexts: the single runtime database role has privileges across all five context schemas. The backend's [Spring Modulith boundaries](../architecture.md#module-structure-and-published-apis) govern dependencies between application modules; schema separation does not authorize cross-context data access.

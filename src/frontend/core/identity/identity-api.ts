@@ -1,7 +1,8 @@
 import { ApiError, type ApiClient } from '@/lib/api';
-import type { AuthenticationResponse, IdentityCredentials } from './models.ts';
+import type { AccountProfile, AuthenticationResponse, ChangePasswordRequest, IdentityCredentials } from './models.ts';
 
 const ROOT = '/iam/v1';
+export const PASSWORD_CHANGE_PATH = '/api/iam/v1/auth/password';
 export const CSRF_HEADER = 'X-XSRF-TOKEN';
 
 /** Cookie-backed endpoints must neither receive access JWTs nor enter bearer renewal. */
@@ -37,6 +38,23 @@ export class IdentityApi {
         return this.client.post<AuthenticationResponse>(`${ROOT}/auth/register`, credentials, {
             headers: { [CSRF_HEADER]: csrfToken },
         });
+    }
+
+    getAccount(options?: { readonly signal?: AbortSignal }): Promise<AccountProfile> {
+        return this.client.get<AccountProfile>(`${ROOT}/account`, options);
+    }
+
+    setDisplayName(displayName: string): Promise<AccountProfile> {
+        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName, clear: false });
+    }
+
+    clearDisplayName(): Promise<AccountProfile> {
+        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName: null, clear: true });
+    }
+
+    /** The only authenticated /auth mutation: bearer-only, no CSRF bootstrap or response credentials. */
+    changePassword(request: ChangePasswordRequest): Promise<void> {
+        return this.client.post<void>(PASSWORD_CHANGE_PATH, request, { expectedStatus: 204 });
     }
 
     login(credentials: IdentityCredentials, csrfToken: string): Promise<AuthenticationResponse> {

@@ -6,7 +6,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Brand } from "@/components/brand/Brand";
-import { SessionNotice } from "@/components/auth/SessionNotice";
 import { SkipLink } from "@/components/navigation/SkipLink";
 import { ApplicationHeader } from "./ApplicationHeader";
 import { AppNavigation } from "./AppNavigation";
@@ -85,7 +84,6 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
         </AppShellNavbar>
         <AppShellMain id="app-main" tabIndex={-1}>
           <Container size="content" className={styles.mainContent}>
-            <SessionNotice />
             {children}
           </Container>
         </AppShellMain>

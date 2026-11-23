@@ -10,6 +10,7 @@ import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -24,17 +25,26 @@ final class IamCredentialEntryFilter extends OncePerRequestFilter {
     private static final RequestMatcher AUTH_ROUTES = PathPatternRequestMatcher.withDefaults()
             .matcher("/api/iam/v1/auth/**");
 
+    // The password endpoint accepts only a verified IAM bearer, not the refresh cookie.
+    // Match both method and exact route so every other unsafe /auth/** URL stays protected.
+    private static final RequestMatcher BEARER_PASSWORD_CHANGE = PathPatternRequestMatcher.withDefaults()
+            .matcher(HttpMethod.POST, "/api/iam/v1/auth/password");
+
     static boolean isAuthMutation(HttpServletRequest request) {
         String method = request.getMethod();
         return !"GET".equals(method) && !"HEAD".equals(method)
                 && !"OPTIONS".equals(method) && !"TRACE".equals(method)
-                && AUTH_ROUTES.matches(request);
+                && AUTH_ROUTES.matches(request)
+                && !BEARER_PASSWORD_CHANGE.matches(request);
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        return !CSRF_PATH.equals(path) && !isAuthMutation(request);
+        // The bearer-only password command still needs no-store on validation failures,
+        // but it must not acquire the cookie-backed Origin/CSRF requirements.
+        return !CSRF_PATH.equals(path) && !isAuthMutation(request)
+                && !BEARER_PASSWORD_CHANGE.matches(request);
     }
 
     @Override

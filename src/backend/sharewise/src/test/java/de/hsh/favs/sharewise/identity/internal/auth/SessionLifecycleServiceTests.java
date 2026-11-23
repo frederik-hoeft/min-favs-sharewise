@@ -372,6 +372,11 @@ class SessionLifecycleServiceTests {
                 session = new LoginSession(session.id(), session.userId(), session.deadlines(), revokedAt);
             }
         }
+        @Override public void revokeOtherSessions(UUID userId, UUID retainedSessionId, Instant revokedAt) {
+            // This fixture models only one retained session; the Phase D unit/E2E suites
+            // exercise cross-session revocation independently.
+            requireLock();
+        }
         @Override public UUID newTokenId() { requireLock(); return UUID.randomUUID(); }
         @Override public void insert(RefreshTokenRecord record) {
             requireLock();

@@ -5,10 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import de.hsh.favs.sharewise.identity.internal.auth.ChangePasswordCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayNameUpdate;
+import de.hsh.favs.sharewise.identity.internal.web.dto.AccountProfileUpdateRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
+import de.hsh.favs.sharewise.identity.internal.web.dto.ChangePasswordRequest;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -18,10 +22,11 @@ class AuthFactoryWiringTests {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withBean(PasswordPolicy.class, PasswordPolicy::initial)
-            .withUserConfiguration(RegistrationCommandFactory.class, LoginCommandFactory.class);
+            .withUserConfiguration(RegistrationCommandFactory.class, LoginCommandFactory.class,
+                    AccountProfileUpdateFactory.class, PasswordChangeCommandFactory.class);
 
     @Test
-    void enabledAuthenticationPublishesBothTypedInputFactories() {
+    void enabledAuthenticationPublishesTypedInputFactories() {
         runner.withPropertyValues("sharewise.iam.auth.enabled=true")
                 .withBean(FactoryConsumer.class)
                 .run(context -> {
@@ -33,6 +38,11 @@ class AuthFactoryWiringTests {
                     assertEquals("one@example.org", consumer.logins.createFrom(
                             new AuthCredentialsRequest("ONE@example.org", "x"))
                             .fold(command -> command.email().normalized(), errors -> "unexpected"));
+                    AccountProfileUpdateRequest update = new AccountProfileUpdateRequest("Alice", false);
+                    assertEquals("Alice", consumer.updates.createFrom(update)
+                            .fold(DisplayNameUpdate::value, errors -> "unexpected"));
+                    assertTrue(consumer.passwordChanges.createFrom(
+                            new ChangePasswordRequest("current-password", "new-password")).isSuccess());
                 });
     }
 
@@ -41,20 +51,30 @@ class AuthFactoryWiringTests {
         runner.run(context -> {
             assertFalse(context.containsBean("registrationCommandFactory"));
             assertFalse(context.containsBean("loginCommandFactory"));
+            assertFalse(context.containsBean("accountProfileUpdateFactory"));
+            assertFalse(context.containsBean("passwordChangeCommandFactory"));
         });
     }
 
     static final class FactoryConsumer {
         final DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations;
         final DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins;
+        final DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates;
+        final DomainObjectFactory<ChangePasswordCommand, ChangePasswordRequest> passwordChanges;
 
         FactoryConsumer(
                 @Qualifier("registrationCommandFactory")
                 DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations,
                 @Qualifier("loginCommandFactory")
-                DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins) {
+                DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins,
+                @Qualifier("accountProfileUpdateFactory")
+                DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates,
+                @Qualifier("passwordChangeCommandFactory")
+                DomainObjectFactory<ChangePasswordCommand, ChangePasswordRequest> passwordChanges) {
             this.registrations = registrations;
             this.logins = logins;
+            this.updates = updates;
+            this.passwordChanges = passwordChanges;
         }
     }
 }
