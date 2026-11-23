@@ -74,6 +74,33 @@ describe("IAM password-change transport", () => {
     expect(instance.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
   });
 
+  it.each([false, true])("classifies query-bearing password denial as terminal (replayed: %s)", async (replay) => {
+    const path = "/api/iam/v1/auth/password?example=1";
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith("/csrf")) return jsonResponse({ token: "csrf" });
+      if (String(input).endsWith("/refresh")) return jsonResponse(authenticationResponse("fresh-bearer"));
+      expect(String(input)).toBe(path);
+      const bearer = (init?.headers as Headers).get("Authorization");
+      return replay && bearer === "Bearer current-bearer"
+        ? problemResponse(401, "invalid_credential") : problemResponse(401, "session_unavailable");
+    });
+    const instance = runtime(fetchImpl as typeof fetch);
+    await expect(instance.forSession(SESSION_ONE).api.post(path, request)).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
+    expect(instance.session.getAccessToken()).toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(replay ? 4 : 1);
+  });
+
+  it.each([
+    ["GET", "/iam/v1/auth/password?example=1"],
+    ["POST", "/groups/v1/groups?example=/api/iam/v1/auth/password"],
+  ])("does not invalidate IAM for %s %s", async (method, path) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => problemResponse(401, "session_unavailable"));
+    const instance = runtime(fetchImpl as typeof fetch);
+    await expect(instance.forSession(SESSION_ONE).api.request(path, { method })).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
+    expect(instance.session.getAccessToken()).toBe("current-bearer");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("renews only after a recognized pre-dispatch 401, then replays once on the same session", async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {

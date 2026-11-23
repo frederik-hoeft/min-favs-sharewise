@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIdentityRuntime } from "@/core/identity";
-import { authenticationResponse, jsonResponse, SESSION_ONE, SESSION_TWO } from "./support";
+import { authenticationResponse, jsonResponse, problemResponse, SESSION_ONE, SESSION_TWO } from "./support";
 
 const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function setup() {
@@ -48,6 +48,21 @@ describe("Session-scoped application APIs", () => {
     await expect(apis.api.get("/groups/v1/groups")).rejects.toMatchObject({ code: "session_context_changed" });
     await expect(runtime.forSession(SESSION_ONE).api.get("/groups/v1/groups")).resolves.toEqual({ ok: true });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["csrf", "register", "login", "refresh", "logout"])("blocks query-bearing cookie-backed %s from workspace APIs", async (endpoint) => {
+    const { runtime, fetchImpl, apis } = setup();
+    const path = `/iam/v1/auth/${endpoint}?example=1`;
+    await expect(apis.api.post(path, {})).rejects.toMatchObject({ code: "invalid_request_context" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await expect(runtime.api.post(path, {})).resolves.toEqual({ ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe(`/api${path}`);
+    expect((fetchImpl.mock.calls[0][1]?.headers as Headers).has("Authorization")).toBe(false);
+    fetchImpl.mockResolvedValueOnce(problemResponse(401, "invalid_credential"));
+    await expect(runtime.api.post(path, {})).rejects.toMatchObject({ status: 401, code: "invalid_credential" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(runtime.session.getAccessToken()).toBe("first");
   });
 
   it("does not permit workspace adapters to bypass the session bearer or invoke cookie-backed authentication", async () => {
