@@ -1,6 +1,6 @@
 # Development environment
 
-**Status:** Development setup for the implemented platform foundations, IAM authentication/session lifecycle and frontend demonstration workspace. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
+**Status:** Development setup for the implemented platform foundations, IAM authentication/session lifecycle and account updates, and the authenticated frontend workspace. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
 ## VS Code Dev Containers
 

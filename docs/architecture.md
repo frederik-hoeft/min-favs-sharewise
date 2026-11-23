@@ -1,6 +1,6 @@
 # Application architecture
 
-**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md), [transaction management](architecture/transactions.md), [verified-credential foundation](architecture/authorization.md), and executable module-boundary verification are implemented; most business capabilities and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
+**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md), [transaction management](architecture/transactions.md), [verified-credential foundation](architecture/authorization.md), IAM authentication, account profiles, password changes and executable module-boundary verification are implemented; Group/Finance business capabilities and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
 
 ## System organization
 

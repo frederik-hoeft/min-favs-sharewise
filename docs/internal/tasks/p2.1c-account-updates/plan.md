@@ -1,10 +1,10 @@
 # P2.1c - Account profile and password changes: implementation plan
 
-**Status:** Approved **sequential** implementation plan. Phases A–C are complete and human-accepted. Phase D is in progress against the completed, merged P2.1b baseline. Each remaining phase retains its own test and human review gate.
+**Status:** Approved **sequential** implementation plan. Phases A–D are human-accepted; the Phase E backend and frontend are integrated with a green MR pipeline reported by the maintainer. Targeted manual acceptance is encouraging but does not constitute recorded completion of every browser scenario. Phase F review and final merge authorization remain open; see [acceptance](acceptance.md).
 
 ## Baseline, ownership and constraints
 
-The merged baseline includes P2.1a registration/login, the P2.1b refresh/logout and reactive-renewal lifecycle, and P2.1c's optional profile schema, backend API and Account page (A–C). The remaining P2.1c scope is password replacement with atomic revocation of all other sessions. IAM owns the credential/session write transaction; frontend `core/identity` and shared `lib/api` own the eventual HTTP and browser integration in Phase E.
+The implementation includes P2.1a registration/login, P2.1b refresh/logout and reactive renewal, and P2.1c account profiles and password replacement. IAM owns the password/session write transaction; frontend `core/identity` and shared `lib/api` own its HTTP/browser integration. The approved MVP excludes email changes, password recovery, self-service disablement and session/device administration.
 
 Follow [AGENTS.md](../../../../AGENTS.md), the [AI workflow](../../../development/ai-development-workflow.md), [transactions](../../../architecture/transactions.md), [persistence](../../../architecture/persistence.md), [frontend development](../../../development/frontend.md) and [test guide](../../../development/tests.md). Build the backend with Java 25/Maven; compile and test the frontend with Node 24/npm. Do not substitute another SDK or dependency cache to claim offline validation. Real PostgreSQL 18 and human HTTPS browser gates are separate from offline compilation and Unit tests.
 
@@ -69,19 +69,19 @@ The baseline contains the accepted P2.1b lifecycle and Phase C profile UI. Gate 
 
 **Scope:** Reuse `PasswordPolicy`, `CredentialEncoder` and `LoginLockoutPolicy` for current-password verification, validation and failure counters. Use verified bearer-derived user/session identity and IAM-private ports; compute PBKDF2 outside long-held write locks. In one `Transactions.execute(...)`, recheck the locked account verifier, account state and eligible caller session, then change the verifier and revoke all *other* sessions. Preserve the caller's refresh generation and deadlines.
 
-- [ ] Unit-test current-password denials and lockout, invalid/equal new password, stale verifier, disabled/locked account and invalid `sid` (IAM-C04, C07; IAM-CT04, CT07).
-- [ ] PostgreSQL-test two-session success, parallel changes, login/refresh/logout races, session eligibility, commit/rollback failures and no stale old-password survivors (IAM-C05–C07; IAM-CT05–CT07).
-- [ ] Preserve P2.1b's consumed-token history/replay behavior and never return success before commit; run applicable backend regression and Modulith tests.
+- [x] Unit-test current-password denials and lockout, invalid/equal new password, stale verifier, disabled/locked account and invalid `sid` (IAM-C04, C07; IAM-CT04, CT07).
+- [x] PostgreSQL-test two-session success, parallel changes, login/refresh/logout races, session eligibility, commit/rollback failures and no stale old-password survivors (IAM-C05–C07; IAM-CT05–CT07).
+- [x] Preserve P2.1b's consumed-token history/replay behavior and never return success before commit; run applicable backend regression and Modulith tests.
 
 **Gate D:** Security-sensitive service and database concurrency behavior is demonstrated against PostgreSQL 18 with no unresolved lock-order risk; human approves the atomic credential/session patch.
 
 ## Phase E - Password HTTP, Account UI and integrated security acceptance
 
-**Scope:** Add **bearer-only** `POST /api/iam/v1/auth/password` and the separate password-change form on `/app/account`. The auth namespace currently enforces CSRF and exact Origin for all unsafe methods; make an **exact method/path exception** for bearer-only password changes while preserving the fail-closed default for other auth mutations. Continue to require verified bearer ingress and prevent cookie-only access. Frontend bearer injection must include `/auth/password` while refresh/logout retain their cookie-backed rules. Do not add a second security chain, request replacement tokens, or replay an uncertain password POST.
+**Scope:** Add **bearer-only** `POST /api/iam/v1/auth/password` and the separate password-change form on `/app/account`. The integrated frontend scope also places the existing authentication guard around the entire `/app` workspace, with a safe `?next=` login detour, rather than guarding the Account page alone. The auth namespace currently enforces CSRF and exact Origin for all unsafe methods; make an **exact method/path exception** for bearer-only password changes while preserving the fail-closed default for other auth mutations. Continue to require verified bearer ingress and prevent cookie-only access. Frontend bearer injection must include `/auth/password` while refresh/logout retain their cookie-backed rules. Do not add a second security chain, request replacement tokens, or replay an uncertain password POST.
 
-- [ ] Test request/response validation, `204` without cookies/tokens, `no-store`, stable errors, no sensitive logging and the distinction between pre-dispatch renewable bearer `401` and post-dispatch session denial (IAM-C01, C04, C08; IAM-CT04, CT08).
-- [ ] Regression-test CSRF/Origin enforcement for existing and unknown unsafe `/auth/**` routes and bearer-only admission for exactly `POST /auth/password`. Verify absent/invalid bearer and cookie-only request failures through the real chain (IAM-CT08).
-- [ ] Test UI validation, bad current password, sensitive-field clearing, uncertain-response recovery, account-context changes and success messaging; run frontend lint/typechecks/Vitest/build/static export (IAM-C09, IAM-CT09).
+- [x] Test request/response validation, `204` without cookies/tokens, `no-store`, stable errors, no sensitive logging and the distinction between pre-dispatch renewable bearer `401` and post-dispatch session denial (IAM-C01, C04, C08; IAM-CT04, CT08).
+- [x] Regression-test CSRF/Origin enforcement for existing and unknown unsafe `/auth/**` routes and bearer-only admission for exactly `POST /auth/password`. Verify absent/invalid bearer and cookie-only request failures through the real chain (IAM-CT08).
+- [x] Test UI validation, bad current password, sensitive-field clearing, uncertain-response recovery, account-context changes and success messaging; run frontend lint/typechecks/Vitest/build/static export (IAM-C09, IAM-CT09).
 - [ ] Human HTTPS E2E with independent browser sessions: verify A continues, B loses refresh eligibility, new login uses only the replacement password, JWT expiry remains bounded and reload/restoration follows accepted P2.1b behavior (IAM-CT05, CT10).
 
 **Gate E:** IAM/HTTP security, PostgreSQL, frontend and general P2.1c manual browser acceptance (including P2.1c.1 protected-operation restoration/retry scenarios) pass together on the integrated revision; human approves the password UI and transport patch.
