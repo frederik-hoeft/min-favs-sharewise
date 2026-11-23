@@ -29,3 +29,9 @@ export interface AccountProfile {
     readonly email: string;
     readonly displayName: string | null;
 }
+
+/** Credentials for bearer-authorized password replacement; never persist or log these values. */
+export interface ChangePasswordRequest {
+    readonly currentPassword: string;
+    readonly newPassword: string;
+}

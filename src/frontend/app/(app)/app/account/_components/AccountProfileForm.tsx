@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Card, Group, Loader, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Card, Group, Loader, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
@@ -145,6 +145,17 @@ export function AccountProfileForm() {
     void mutate();
   }
 
+  if (authState.status === "context-changed") {
+    return (
+      <Alert title="Account context changed" color="gray" role="alert">
+        <Stack gap="sm" align="flex-start">
+          <Text size="sm">Another sign-in changed the browser session. Reload to view the current account.</Text>
+          <Button component="a" href="/app/account" variant="light">Reload account</Button>
+        </Stack>
+      </Alert>
+    );
+  }
+
   if (authState.status === "reauthentication-required") {
     const reason = authState.reason === "expired" ? "Your session has expired." :
       authState.reason === "unauthorized" ? "Your session was rejected." : "You're not signed in.";
@@ -184,7 +195,7 @@ export function AccountProfileForm() {
       <Stack gap="lg">
         <Stack gap={4}>
           <Title order={2} size="h3">Profile</Title>
-          <Text size="sm" c="dimmed">Your email cannot be changed here. Your display name is optional.</Text>
+          <Text size="sm" c="dimmed">Your email is read-only. Leave the display name blank to remove it.</Text>
         </Stack>
         {currentFeedback && (
           <Alert color={currentFeedback.kind === "success" ? "indigo" : "red"}
@@ -200,32 +211,33 @@ export function AccountProfileForm() {
         )}
         <form aria-label="Account profile" onSubmit={submit} noValidate>
           <Stack gap="md">
-            <TextInput label="Email address" value={profile.email} readOnly autoComplete="email" />
-            <TextInput
-              ref={inputRef}
-              label="Display name"
-              name="displayName"
-              description="Leave blank to remove your display name."
-              placeholder="No display name"
-              // A safe native UTF-16 bound plus a scalar-aware guard preserves all 80-character Unicode names.
-              maxLength={MAX_DISPLAY_NAME_CHARACTERS * 2}
-              value={draft}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                if (!withinDisplayNameLimit(value)) {
-                  setFieldError("Enter at most 80 characters.");
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+              <TextInput label="Email address" value={profile.email} readOnly autoComplete="email" />
+              <TextInput
+                ref={inputRef}
+                label="Display name"
+                name="displayName"
+                placeholder="No display name"
+                // A safe native UTF-16 bound plus a scalar-aware guard preserves all 80-character Unicode names.
+                maxLength={MAX_DISPLAY_NAME_CHARACTERS * 2}
+                value={draft}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  if (!withinDisplayNameLimit(value)) {
+                    setFieldError("Enter at most 80 characters.");
+                    setFeedback(undefined);
+                    return;
+                  }
+                  setDraft(value);
+                  setFieldError(undefined);
                   setFeedback(undefined);
-                  return;
-                }
-                setDraft(value);
-                setFieldError(undefined);
-                setFeedback(undefined);
-              }}
-              error={fieldError}
-              disabled={pending || currentFeedback?.reloadRequired}
-              autoComplete="nickname"
-            />
-            <Group gap="sm" wrap="wrap">
+                }}
+                error={fieldError}
+                disabled={pending || currentFeedback?.reloadRequired}
+                autoComplete="nickname"
+              />
+            </SimpleGrid>
+            <Group justify="flex-end">
               <Button type="submit" loading={pending}
                 disabled={pending || Boolean(currentFeedback?.reloadRequired) || Boolean(fieldError) || unchanged}>Update display name</Button>
             </Group>

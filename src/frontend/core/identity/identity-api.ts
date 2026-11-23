@@ -1,5 +1,5 @@
 import { ApiError, type ApiClient } from '@/lib/api';
-import type { AccountProfile, AuthenticationResponse, IdentityCredentials } from './models.ts';
+import type { AccountProfile, AuthenticationResponse, ChangePasswordRequest, IdentityCredentials } from './models.ts';
 
 const ROOT = '/iam/v1';
 export const CSRF_HEADER = 'X-XSRF-TOKEN';
@@ -49,6 +49,11 @@ export class IdentityApi {
 
     clearDisplayName(): Promise<AccountProfile> {
         return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName: null, clear: true });
+    }
+
+    /** The only authenticated /auth mutation: bearer-only, no CSRF bootstrap or response credentials. */
+    changePassword(request: ChangePasswordRequest, expectedSessionId: string): Promise<void> {
+        return this.client.post<void>(`${ROOT}/auth/password`, request, { expectedSessionId, expectedStatus: 204 });
     }
 
     login(credentials: IdentityCredentials, csrfToken: string): Promise<AuthenticationResponse> {

@@ -9,13 +9,14 @@ export { AUTH_COOKIE_LOCK, AuthCookieLock } from './auth-cookie-lock.ts';
 export { AuthSession } from './auth-session.ts';
 export { CSRF_HEADER, IdentityApi } from './identity-api.ts';
 export { SessionContextChannel, SESSION_CONTEXT_CHANNEL } from './session-context-channel.ts';
-export type { AccountProfile, AuthenticationResponse, AuthState, IdentityCredentials, SessionContextEvent } from './models.ts';
+export type { AccountProfile, AuthenticationResponse, AuthState, ChangePasswordRequest, IdentityCredentials, SessionContextEvent } from './models.ts';
 
 export interface IdentityRuntime {
     /** Use this client for authenticated domain API operations. */
     readonly api: ApiClient;
     readonly auth: AuthCoordinator;
     readonly account: Pick<IdentityApi, 'getAccount' | 'setDisplayName' | 'clearDisplayName'>;
+    readonly security: Pick<IdentityApi, 'changePassword'>;
     readonly cookieLock: AuthCookieLock;
     readonly session: AuthSession;
     connect(): void;
@@ -85,7 +86,7 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
     const auth = new AuthCoordinator(identityApi, session, cookieLock, channel);
     return {
         api, auth, cookieLock, session,
-		account: identityApi,
+		account: identityApi, security: identityApi,
         connect: () => channel.connect(),
         disconnect: () => channel.disconnect(),
         dispose: () => { auth.dispose(); channel.dispose(); session.dispose(); },

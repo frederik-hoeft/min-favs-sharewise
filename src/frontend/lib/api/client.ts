@@ -4,6 +4,10 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
     /** Timeout for one HTTP attempt, including response reading, excluding authentication preparation. 0 disables it. */
     readonly timeoutMs?: number;
+    /** Optional initiating browser session, checked after asynchronous auth preparation and before dispatch. */
+    readonly expectedSessionId?: string;
+    /** A strict success status when an operation has an exact acknowledgment contract (e.g., 204). */
+    readonly expectedStatus?: number;
 }
 
 export const DEFAULT_API_TIMEOUT_MS = 45_000;
@@ -92,6 +96,8 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         const hasExplicitAuthorization = initialHeaders.has('Authorization');
         const requestOptions = { ...options };
         delete requestOptions.timeoutMs;
+        delete requestOptions.expectedSessionId;
+        delete requestOptions.expectedStatus;
         delete requestOptions.body;
 
         async function attempt(allowRetry: boolean, boundSessionId?: string): Promise<T> {
@@ -99,6 +105,12 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
             const headers = new Headers(initialHeaders);
             const sessionId = hooks.onRequest ? await hooks.onRequest(targetPath, headers, requestSignal) : undefined;
             assertNotCanceled(requestSignal);
+            if (options.expectedSessionId && sessionId !== options.expectedSessionId) {
+                throw new ApiError({
+                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
+                    detail: 'The browser session changed before the request was sent.',
+                });
+            }
             if (boundSessionId && sessionId !== boundSessionId) {
                 throw new ApiError({
                     status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
@@ -142,6 +154,12 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                 }
                 if (response.status !== 401) {
                     if (!response.ok) throw await parseErrorResponse(response);
+                    if (options.expectedStatus !== undefined && response.status !== options.expectedStatus) {
+                        throw new ApiError({
+                            status: 0, code: 'unexpected_response', title: 'Unexpected Response',
+                            detail: 'The server returned an unexpected success status.',
+                        });
+                    }
                     let value: T;
                     if (response.status === 204) {
                         value = undefined as T;
