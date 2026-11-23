@@ -4,7 +4,7 @@ import { Alert, Button, Card, Group, PasswordInput, SimpleGrid, Stack, Text, Tit
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useAuthState, useIdentity } from "@/app/identity-provider";
+import { useAuthenticatedApis } from "@/app/identity-provider";
 import { validatePasswordChange } from "@/core/identity/password-validation";
 import type { PasswordChangeErrors } from "@/core/identity/password-validation";
 import { ApiError } from "@/lib/api";
@@ -55,17 +55,8 @@ function failureFor(error: unknown): Failure {
     message: "We couldn't confirm whether your password changed. Do not submit the change again yet. Reload to recover your session, or sign in with the new password to verify the result." } };
 }
 
-/** Mount a fresh form for each stable P2.1b session, never carrying credentials into another account. */
 export function AccountPasswordForm() {
-  const authState = useAuthState();
-  const { session } = useIdentity();
-  const sessionId = authState.status === "authenticated" ? session.getSessionId() : undefined;
-  if (!sessionId) return null;
-  return <PasswordChangeForm key={sessionId} sessionId={sessionId} />;
-}
-
-function PasswordChangeForm({ sessionId }: { sessionId: string }) {
-  const { security, session } = useIdentity();
+  const { security } = useAuthenticatedApis();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [errors, setErrors] = useState<PasswordChangeErrors>({});
@@ -98,8 +89,6 @@ function PasswordChangeForm({ sessionId }: { sessionId: string }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current || notice?.blocked) return;
-    const context = session.getSnapshot();
-    if (context.status !== "authenticated" || session.getSessionId() !== sessionId) return;
     const validation = validatePasswordChange(currentPassword, newPassword);
     setErrors(validation);
     setNotice(undefined);
@@ -111,14 +100,12 @@ function PasswordChangeForm({ sessionId }: { sessionId: string }) {
     submitting.current = true;
     setPending(true);
     try {
-      await security.changePassword({ currentPassword, newPassword }, sessionId);
-      if (session.getSessionId() !== sessionId || session.getSnapshot().status !== "authenticated") return;
+      await security.changePassword({ currentPassword, newPassword });
       setCurrentPassword("");
       setNewPassword("");
       setErrors({});
       setNotice({ kind: "success", message: "Password changed. This session stays signed in. Other sessions may remain active until their current access tokens expire; they cannot refresh and must then sign in again." });
     } catch (error) {
-      if (session.getSessionId() !== sessionId || session.getSnapshot().status !== "authenticated") return;
       const failure = failureFor(error);
       setErrors(failure.fields);
       setNotice(failure.notice);

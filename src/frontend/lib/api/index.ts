@@ -3,6 +3,7 @@ export { ApiError, parseErrorResponse, type FieldError, type ProblemDetailPayloa
 export {
     apiClient,
     createApiClient,
+    scopeApiClient,
     type ApiClient,
     type ApiClientHooks,
     type ApiRequestOptions,

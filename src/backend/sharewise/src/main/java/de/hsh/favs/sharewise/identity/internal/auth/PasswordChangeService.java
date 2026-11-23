@@ -57,6 +57,15 @@ public final class PasswordChangeService {
             return Result.err(PasswordChangeFailure.ACCOUNT_UNAVAILABLE);
         }
         AccountSnapshot original = snapshot.orElseThrow();
+        // The snapshot already contains inexpensive account admission state. Avoid PBKDF2
+        // work for disabled or currently locked accounts; the locked transaction must still
+        // recheck both states because this snapshot may become stale in the meantime.
+        if (original.isDisabled()) {
+            return Result.err(PasswordChangeFailure.ACCOUNT_UNAVAILABLE);
+        }
+        if (lockouts.isLocked(original.loginFailures(), clock.instant())) {
+            return Result.err(PasswordChangeFailure.CURRENT_PASSWORD_INVALID);
+        }
         // Expensive PBKDF2 operations must never run while holding PostgreSQL row locks.
         boolean matches = credentials.matches(command.currentPassword(), original.encodedPassword());
         String replacement = matches ? credentials.encode(command.newPassword()) : null;
@@ -72,11 +81,13 @@ public final class PasswordChangeService {
             if (!current.encodedPassword().equals(original.encodedPassword())) {
                 return denied(PasswordChangeFailure.CREDENTIAL_CHANGED);
             }
+            Optional<SessionLifecycleStore.LockedSession> selected = sessions.lockSession(sessionId);
+            // Session locking may block behind refresh or logout. Eligibility and mutation
+            // timestamps must reflect the time after that wait, not when it began.
             Instant now = clock.instant();
             if (lockouts.isLocked(current.loginFailures(), now)) {
                 return denied(PasswordChangeFailure.CURRENT_PASSWORD_INVALID);
             }
-            Optional<SessionLifecycleStore.LockedSession> selected = sessions.lockSession(sessionId);
             if (selected.isEmpty() || !eligible(selected.orElseThrow(), userId, sessionId, now)) {
                 return denied(PasswordChangeFailure.SESSION_UNAVAILABLE);
             }

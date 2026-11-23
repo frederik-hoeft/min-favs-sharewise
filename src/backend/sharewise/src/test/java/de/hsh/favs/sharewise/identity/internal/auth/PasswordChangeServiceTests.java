@@ -21,6 +21,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.time.Clock;
+import java.time.ZoneId;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /** Domain contract and transaction-outcome tests; real row-lock races require PostgreSQL E2E. */
@@ -65,6 +67,8 @@ class PasswordChangeServiceTests {
         assertEquals(Result.err(PasswordChangeFailure.CURRENT_PASSWORD_INVALID),
                 rig.service.change(command(OLD, NEW)));
         assertEquals("encoded:" + OLD, rig.accounts.hash);
+        assertEquals(5, rig.encoder.matchesCount);
+        assertEquals(0, rig.encoder.encodesCount);
         assertNull(rig.sessions.sessions.get(OTHER).revokedAt());
         assertEquals(5, rig.transactions.commits);
         assertEquals(0, rig.sessions.revocations);
@@ -104,6 +108,11 @@ class PasswordChangeServiceTests {
         locked.accounts.state = new LoginLockoutPolicy.State(5, NOW.plusSeconds(20));
         assertEquals(Result.err(PasswordChangeFailure.CURRENT_PASSWORD_INVALID),
                 locked.service.change(command(OLD, NEW)));
+        assertEquals(0, disabled.encoder.matchesCount);
+        assertEquals(0, disabled.encoder.encodesCount);
+        assertEquals(0, locked.encoder.matchesCount);
+        assertEquals(0, locked.encoder.encodesCount);
+        assertEquals(0, missing.encoder.matchesCount);
         Rig wrongOwner = new Rig();
         wrongOwner.sessions.sessions.put(CALLER, new LoginSession(CALLER, UUID.randomUUID(),
                 wrongOwner.sessions.sessions.get(CALLER).deadlines(), null));
@@ -123,6 +132,45 @@ class PasswordChangeServiceTests {
             assertNull(rig.sessions.sessions.get(OTHER).revokedAt());
             assertEquals(0, rig.sessions.revocations);
         }
+    }
+
+    @Test
+    void accountStateChangedDuringVerificationIsStillRejectedUnderTheAccountLock() {
+        Rig disabled = new Rig();
+        disabled.encoder.afterMatch = () -> disabled.accounts.disabled = NOW;
+        assertEquals(Result.err(PasswordChangeFailure.ACCOUNT_UNAVAILABLE),
+                disabled.service.change(command(OLD, NEW)));
+        assertEquals(1, disabled.encoder.matchesCount);
+        assertEquals("encoded:" + OLD, disabled.accounts.hash);
+        assertEquals(0, disabled.sessions.revocations);
+
+        Rig locked = new Rig();
+        locked.encoder.afterMatch = () -> locked.accounts.state =
+                new LoginLockoutPolicy.State(5, NOW.plusSeconds(900));
+        assertEquals(Result.err(PasswordChangeFailure.CURRENT_PASSWORD_INVALID),
+                locked.service.change(command(OLD, NEW)));
+        assertEquals(1, locked.encoder.matchesCount);
+        assertEquals("encoded:" + OLD, locked.accounts.hash);
+        assertEquals(0, locked.sessions.revocations);
+    }
+
+    @Test
+    void sessionExpiringDuringLockWaitCannotAuthorizePasswordReplacement() {
+        MutableClock clock = new MutableClock(NOW);
+        Rig rig = new Rig(clock);
+        rig.sessions.sessions.put(CALLER, new LoginSession(CALLER, USER,
+                new SessionPolicy.Deadlines(NOW.minusSeconds(100), NOW.plusSeconds(1),
+                        NOW.plusSeconds(3600)), null));
+        // Model the wall clock advancing while another refresh/logout holds the row lock.
+        // Before the fix the service captured this decision time before lockSession().
+        rig.sessions.onSessionLockWait = () -> clock.set(NOW.plusSeconds(1));
+
+        assertEquals(Result.err(PasswordChangeFailure.SESSION_UNAVAILABLE),
+                rig.service.change(command(OLD, NEW)));
+        assertEquals("encoded:" + OLD, rig.accounts.hash);
+        assertNull(rig.sessions.sessions.get(OTHER).revokedAt());
+        assertEquals(0, rig.sessions.revocations);
+        assertEquals(0, rig.transactions.commits);
     }
 
     @Test
@@ -164,8 +212,26 @@ class PasswordChangeServiceTests {
             @Override public Optional<UUID> userId() { return Optional.of(Rig.this.userId); }
             @Override public Optional<UUID> sessionId() { return Optional.of(Rig.this.sessionId); }
         };
-        final PasswordChangeService service = new PasswordChangeService(identity, transactions,
-                accounts, sessions, encoder, LoginLockoutPolicy.initial(), Clock.fixed(NOW, ZoneOffset.UTC));
+        final PasswordChangeService service;
+        Rig() { this(Clock.fixed(NOW, ZoneOffset.UTC)); }
+        Rig(Clock clock) {
+            service = new PasswordChangeService(identity, transactions,
+                    accounts, sessions, encoder, LoginLockoutPolicy.initial(), clock);
+        }
+    }
+
+    private static final class MutableClock extends Clock {
+        private final AtomicReference<Instant> current;
+        private final ZoneId zone;
+        MutableClock(Instant now) { this(new AtomicReference<>(now), ZoneOffset.UTC); }
+        private MutableClock(AtomicReference<Instant> current, ZoneId zone) {
+            this.current = current;
+            this.zone = zone;
+        }
+        void set(Instant now) { current.set(now); }
+        @Override public Instant instant() { return current.get(); }
+        @Override public ZoneId getZone() { return zone; }
+        @Override public Clock withZone(ZoneId zone) { return new MutableClock(current, zone); }
     }
 
     private static final class Accounts implements AccountStore {
@@ -212,12 +278,14 @@ class PasswordChangeServiceTests {
         final Map<UUID, LoginSession> sessions = new HashMap<>();
         int revocations;
         boolean failRevoke;
+        Runnable onSessionLockWait;
         Sessions() {
             SessionPolicy.Deadlines dates = SessionPolicy.initial().startAt(NOW.minusSeconds(100));
             sessions.put(CALLER, new LoginSession(CALLER, USER, dates, null));
             sessions.put(OTHER, new LoginSession(OTHER, USER, dates, null));
         }
         @Override public Optional<LockedSession> lockSession(UUID sessionId) {
+            if (onSessionLockWait != null) { onSessionLockWait.run(); }
             return Optional.ofNullable(sessions.get(sessionId)).map(s -> new LockedSession(s, false));
         }
         @Override public void revokeOtherSessions(UUID userId, UUID retainedSessionId, Instant at) {
@@ -238,14 +306,18 @@ class PasswordChangeServiceTests {
         final Accounts accounts;
         Runnable afterMatch;
         boolean usedDuringLock;
+        int matchesCount;
+        int encodesCount;
         Encoder(Accounts accounts) { this.accounts = accounts; }
         @Override public boolean matches(String value, String hash) {
+            matchesCount++;
             usedDuringLock |= accounts.locked;
             boolean matched = ("encoded:" + value).equals(hash);
             if (afterMatch != null) { afterMatch.run(); }
             return matched;
         }
         @Override public String encode(String value) {
+            encodesCount++;
             usedDuringLock |= accounts.locked;
             return "encoded:" + value;
         }

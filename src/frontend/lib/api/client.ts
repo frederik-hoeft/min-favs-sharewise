@@ -4,8 +4,6 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
     /** Timeout for one HTTP attempt, including response reading, excluding authentication preparation. 0 disables it. */
     readonly timeoutMs?: number;
-    /** Optional initiating browser session, checked after asynchronous auth preparation and before dispatch. */
-    readonly expectedSessionId?: string;
     /** A strict success status when an operation has an exact acknowledgment contract (e.g., 204). */
     readonly expectedStatus?: number;
 }
@@ -21,7 +19,10 @@ export interface SentRequestContext {
     readonly attempt: 'initial' | 'replay';
 }
 
+/** Route hooks receive the canonical /api pathname, never the query string. */
 export interface ApiClientHooks {
+    /** Capture the initiating session synchronously, before credential preparation. */
+    readonly captureSessionId?: (path: string, headers: Readonly<Headers>) => string | undefined;
     /** Prepare credentials for an attempt. The signal cancels this caller, not an already-submitted shared refresh. */
     readonly onRequest?: (path: string, headers: Headers, signal?: AbortSignal) =>
         Promise<string | undefined | void> | string | undefined | void;
@@ -33,8 +34,8 @@ export interface ApiClientHooks {
     readonly onReplayUnauthorized?: (
         path: string, failure: ApiError, sentHeaders: Readonly<Headers>, context: SentRequestContext
     ) => Promise<void> | void;
-    /** Guard successful responses against a context change while the request was in flight. */
-    readonly assertResponseContext?: (context: SentRequestContext) => void;
+    /** Guard dispatch and response delivery against a changed session. */
+    readonly assertSessionContext?: (context: SentRequestContext) => void;
 }
 
 export interface ApiClient {
@@ -46,10 +47,24 @@ export interface ApiClient {
     delete<T>(path: string, options?: Omit<ApiRequestOptions, 'method' | 'body'>): Promise<T>;
 }
 
-function normalizeApiPath(path: string): string {
-    if (path.startsWith('/api/') || path === '/api') return path;
-    if (path.startsWith('/')) return `/api${path}`;
-    return `/api/${path}`;
+/** Keep routing policy and HTTP dispatch on the same unambiguous API path. */
+function normalizeApiPath(path: string): { pathname: string; target: string } {
+    const queryIndex = path.indexOf('?');
+    const rawPathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
+    const query = queryIndex === -1 ? '' : path.slice(queryIndex);
+    const rooted = rawPathname.startsWith('/') ? rawPathname : `/${rawPathname}`;
+    const pathname = rooted === '/api' || rooted.startsWith('/api/') ? rooted : `/api${rooted}`;
+    // Route segments use unreserved ASCII characters. Reject spellings that a
+    // browser, proxy or server could decode or normalize to a different route.
+    if (!/^\/api(?:\/[A-Za-z0-9._~-]+)*$/.test(pathname) ||
+        pathname.split('/').some(segment => segment === '.' || segment === '..') ||
+        path.includes('#') || /\p{Cc}/u.test(path)) {
+        throw new ApiError({
+            status: 0, code: 'invalid_api_path', title: 'Invalid API Path',
+            detail: 'API requests require a canonical relative route path.',
+        });
+    }
+    return { pathname, target: pathname + query };
 }
 
 function prepareBody(body: unknown, headers: Headers): { body: BodyInit | undefined; replayable: boolean } {
@@ -85,10 +100,13 @@ function networkError(cause: unknown): ApiError {
 
 export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fetch = fetch): ApiClient {
     async function executeRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-        const targetPath = normalizeApiPath(path);
+        const { pathname, target } = normalizeApiPath(path);
         const requestSignal = options.signal ?? undefined;
         const initialHeaders = new Headers(options.headers);
         if (!initialHeaders.has('Accept')) initialHeaders.set('Accept', 'application/json, application/problem+json');
+        // Capture before body serialization or asynchronous credential preparation.
+        // First-use restoration may establish the binding when none exists yet.
+        const initiatingSessionId = hooks.captureSessionId?.(pathname, initialHeaders);
         const prepared = prepareBody(options.body, initialHeaders);
         const method = (options.method ?? 'GET').toUpperCase();
         const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
@@ -96,27 +114,25 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
         const hasExplicitAuthorization = initialHeaders.has('Authorization');
         const requestOptions = { ...options };
         delete requestOptions.timeoutMs;
-        delete requestOptions.expectedSessionId;
         delete requestOptions.expectedStatus;
         delete requestOptions.body;
 
+        function assertBinding(expected: string | undefined, actual: string | undefined): void {
+            if (expected !== undefined && expected !== actual) {
+                throw new ApiError({
+                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
+                    detail: 'The active session changed during the request.',
+                });
+            }
+        }
+
         async function attempt(allowRetry: boolean, boundSessionId?: string): Promise<T> {
             assertNotCanceled(requestSignal);
+            if (hooks.captureSessionId) assertBinding(boundSessionId, hooks.captureSessionId(pathname, initialHeaders));
             const headers = new Headers(initialHeaders);
-            const sessionId = hooks.onRequest ? await hooks.onRequest(targetPath, headers, requestSignal) : undefined;
+            const sessionId = hooks.onRequest ? await hooks.onRequest(pathname, headers, requestSignal) : undefined;
             assertNotCanceled(requestSignal);
-            if (options.expectedSessionId && sessionId !== options.expectedSessionId) {
-                throw new ApiError({
-                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
-                    detail: 'The browser session changed before the request was sent.',
-                });
-            }
-            if (boundSessionId && sessionId !== boundSessionId) {
-                throw new ApiError({
-                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
-                    detail: 'The active session changed before the request could be repeated.',
-                });
-            }
+            assertBinding(boundSessionId, typeof sessionId === 'string' ? sessionId : undefined);
             const context: SentRequestContext = {
                 sessionId: typeof sessionId === 'string' ? sessionId : undefined,
                 method,
@@ -124,6 +140,7 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                 hasExplicitAuthorization,
                 attempt: allowRetry ? 'initial' : 'replay',
             };
+            hooks.assertSessionContext?.(context);
             const controller = new AbortController();
             const abort = () => controller.abort();
             requestSignal?.addEventListener('abort', abort, { once: true });
@@ -135,7 +152,7 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
             try {
                 if (controller.signal.aborted) assertNotCanceled(requestSignal);
                 try {
-                    response = await fetchImpl(targetPath, {
+                    response = await fetchImpl(target, {
                         ...requestOptions,
                         method,
                         signal: controller.signal,
@@ -181,7 +198,7 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                         throw networkError(new Error('HTTP request timed out.'));
                     }
                     assertNotCanceled(requestSignal);
-                    hooks.assertResponseContext?.(context);
+                    hooks.assertSessionContext?.(context);
                     return value;
                 }
                 rejection = await parseErrorResponse(response);
@@ -189,25 +206,48 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
                     assertNotCanceled(requestSignal);
                     throw networkError(new Error('HTTP request timed out.'));
                 }
+            } catch (error) {
+                hooks.assertSessionContext?.(context);
+                throw error;
             } finally {
                 if (timeout !== undefined) clearTimeout(timeout);
                 requestSignal?.removeEventListener('abort', abort);
             }
 
             assertNotCanceled(requestSignal);
+            // A stale denial must not trigger recovery or invalidate another session.
+            hooks.assertSessionContext?.(context);
             if (allowRetry && hooks.onUnauthorized) {
-                const shouldRetry = await hooks.onUnauthorized(targetPath, rejection, headers, context, requestSignal);
+                const shouldRetry = await hooks.onUnauthorized(pathname, rejection, headers, context, requestSignal);
                 assertNotCanceled(requestSignal);
-                if (shouldRetry && prepared.replayable) return attempt(false, sessionId || undefined);
+                if (shouldRetry && prepared.replayable) return attempt(false, context.sessionId);
             } else if (!allowRetry) {
-                await hooks.onReplayUnauthorized?.(targetPath, rejection, headers, context);
+                await hooks.onReplayUnauthorized?.(pathname, rejection, headers, context);
             }
             assertNotCanceled(requestSignal);
+            // A terminal hook may deliberately invalidate the current bearer (retaining its ID).
+            // Preserve its original denial, but never deliver a denial across a session replacement.
+            if (hooks.captureSessionId) assertBinding(context.sessionId, hooks.captureSessionId(pathname, initialHeaders));
             throw rejection;
         }
-        return attempt(true);
+        return attempt(true, initiatingSessionId);
     }
 
+    return createApiMethods(executeRequest);
+}
+
+/** Expose the same transport through a narrower request lifetime. */
+export function scopeApiClient(client: ApiClient, assertRequest: (path: string, headers: Headers) => void): ApiClient {
+    return createApiMethods(async <T>(path: string, options?: ApiRequestOptions): Promise<T> => {
+        const { pathname, target } = normalizeApiPath(path);
+        const headers = new Headers(options?.headers);
+        const scopedOptions = { ...options, headers };
+        assertRequest(pathname, headers);
+        return client.request<T>(target, scopedOptions);
+    });
+}
+
+function createApiMethods(executeRequest: <T>(path: string, options?: ApiRequestOptions) => Promise<T>): ApiClient {
     return {
         request<T>(path: string, options?: ApiRequestOptions): Promise<T> {
             return executeRequest<T>(path, options);
@@ -230,5 +270,5 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
     };
 }
 
-/** Plain transport for anonymous/public APIs. Authenticated operations use IdentityRuntime.api. */
+/** Plain transport for anonymous/public APIs. Authenticated operations use the workspace scope. */
 export const apiClient: ApiClient = createApiClient();

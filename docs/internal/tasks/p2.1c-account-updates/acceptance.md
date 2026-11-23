@@ -19,6 +19,10 @@ The remaining manual acceptance record should distinguish the following behavior
 
 Mark a scenario passed only when its observed result and tested revision are recorded. Unexercised variants remain open acceptance evidence, not presumed failures or successes.
 
+## Password verification review disposition
+
+Password changes reject already disabled or actively login-locked accounts from the existing account snapshot **before** PBKDF2 verification, with authoritative state and session checks repeated after row locking. No additional database preflight for revoked sessions or application-level throttling is added for this internal MVP: a still-valid access JWT associated with a revoked session can therefore trigger verification work until that JWT expires. The residual computational-abuse risk is accepted for this deployment scope; public exposure requires rate limiting at the ingress/WAF boundary. Password login lockout does not itself invalidate established refresh sessions, while logout, account disablement and durable session revocation remain authoritative refresh denials.
+
 ## Final decision
 
 Independent security/architecture review, any accepted corrections, final manual-acceptance disposition and explicit merge authorization remain to be recorded. The reduced MVP deliberately excludes email changes, password recovery, self-service disablement, session/device management and permanent deletion (P2.1e).

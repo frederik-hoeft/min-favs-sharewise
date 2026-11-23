@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIdentityRuntime } from "@/core/identity";
 import { ApiError } from "@/lib/api";
-import { authenticationResponse, jsonResponse, problemResponse } from "./support";
+import { SESSION_ONE, authenticationResponse, jsonResponse, problemResponse } from "./support";
 
 const profile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: null };
 const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
@@ -26,9 +26,9 @@ describe("Typed IAM account API", () => {
       return jsonResponse({ ...profile, displayName: calls.length === 2 ? "  Alice 🦊  " : null });
     });
     const runtime = createRuntime(fetchImpl as typeof fetch);
-    expect(await runtime.account.getAccount()).toEqual(profile);
-    expect((await runtime.account.setDisplayName("  Alice 🦊  ")).displayName).toBe("  Alice 🦊  ");
-    expect((await runtime.account.clearDisplayName()).displayName).toBeNull();
+    expect(await runtime.forSession(SESSION_ONE).account.getAccount()).toEqual(profile);
+    expect((await runtime.forSession(SESSION_ONE).account.setDisplayName("  Alice 🦊  ")).displayName).toBe("  Alice 🦊  ");
+    expect((await runtime.forSession(SESSION_ONE).account.clearDisplayName()).displayName).toBeNull();
     expect(calls).toEqual([
       { path: "/api/iam/v1/account", method: "GET", authorization: "Bearer account-bearer", body: undefined, credentials: "same-origin" },
       { path: "/api/iam/v1/account", method: "PATCH", authorization: "Bearer account-bearer", body: JSON.stringify({ displayName: "  Alice 🦊  ", clear: false }), credentials: "same-origin" },
@@ -41,9 +41,9 @@ describe("Typed IAM account API", () => {
     const responses = [problemResponse(400, "validation_failed", fields), problemResponse(400, "malformed_request"), problemResponse(403, "account_unavailable")];
     const fetchImpl = vi.fn(async () => responses.shift()!);
     const runtime = createRuntime(fetchImpl as typeof fetch);
-    await expect(runtime.account.setDisplayName("x")).rejects.toMatchObject({ status: 400, code: "validation_failed", fieldErrors: fields } satisfies Partial<ApiError>);
-    await expect(runtime.account.clearDisplayName()).rejects.toMatchObject({ status: 400, code: "malformed_request" } satisfies Partial<ApiError>);
-    await expect(runtime.account.getAccount()).rejects.toMatchObject({ status: 403, code: "account_unavailable" } satisfies Partial<ApiError>);
+    await expect(runtime.forSession(SESSION_ONE).account.setDisplayName("x")).rejects.toMatchObject({ status: 400, code: "validation_failed", fieldErrors: fields } satisfies Partial<ApiError>);
+    await expect(runtime.forSession(SESSION_ONE).account.clearDisplayName()).rejects.toMatchObject({ status: 400, code: "malformed_request" } satisfies Partial<ApiError>);
+    await expect(runtime.forSession(SESSION_ONE).account.getAccount()).rejects.toMatchObject({ status: 403, code: "account_unavailable" } satisfies Partial<ApiError>);
   });
 
   it("invalidates only the bearer that received a 401, never a newer session", async () => {
@@ -52,7 +52,7 @@ describe("Typed IAM account API", () => {
     let calls = 0;
     const fetchImpl = vi.fn(async () => ++calls === 1 ? first : jsonResponse(profile));
     const runtime = createRuntime(fetchImpl as typeof fetch);
-    const pending = runtime.account.getAccount();
+    const pending = runtime.forSession(SESSION_ONE).account.getAccount();
     // onRequest has attached the old bearer, but its response is still pending.
     await Promise.resolve();
     await Promise.resolve();
@@ -61,23 +61,15 @@ describe("Typed IAM account API", () => {
     await expect(pending).rejects.toMatchObject({ status: 401 });
     expect(runtime.session.getSnapshot().status).toBe("authenticated");
     expect(runtime.session.getAccessToken()).toBe("new-account-bearer");
-    expect(await runtime.account.getAccount()).toEqual(profile);
+    expect(await runtime.forSession(SESSION_ONE).account.getAccount()).toEqual(profile);
   });
-  it("a late session_unavailable denial cannot discard a newer signed-in session", async () => {
-    let resolveFirst!: (response: Response) => void;
-    const first = new Promise<Response>((resolve) => { resolveFirst = resolve; });
-    let calls = 0;
-    const fetchImpl = vi.fn(async () => ++calls === 1 ? first : jsonResponse(profile));
+  it("does not interpret an account-operation session_unavailable code as an IAM auth denial", async () => {
+    const fetchImpl = vi.fn(async () => problemResponse(401, "session_unavailable"));
     const runtime = createRuntime(fetchImpl as typeof fetch);
-    const pending = runtime.account.getAccount();
-    await Promise.resolve();
-    await Promise.resolve();
-    runtime.session.accept(authenticationResponse("new-account-bearer"));
-    resolveFirst(problemResponse(401, "session_unavailable"));
-    await expect(pending).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
-    expect(runtime.session.getAccessToken()).toBe("new-account-bearer");
+    await expect(runtime.forSession(SESSION_ONE).account.getAccount()).rejects.toMatchObject({ status: 401, code: "session_unavailable" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(runtime.session.getAccessToken()).toBe("account-bearer");
     expect(runtime.session.getSnapshot().status).toBe("authenticated");
-    expect(await runtime.account.getAccount()).toEqual(profile);
   });
 
 });

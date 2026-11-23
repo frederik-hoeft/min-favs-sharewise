@@ -2,7 +2,7 @@ import { StrictMode, useEffect } from 'react';
 import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IdentityProvider, useIdentity } from '@/app/identity-provider';
-import { createIdentityRuntime, type IdentityRuntime } from '@/core/identity';
+import { createIdentityRuntime } from '@/core/identity';
 import { ControlledChannels, ControlledLocks, SESSION_TWO, authenticationResponse, credentials, jsonResponse } from './support';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -11,7 +11,7 @@ describe('IdentityProvider lifecycle', () => {
   it('keeps exactly one channel connected after Strict Mode effect replay and releases it on unmount', async () => {
     const channels = new ControlledChannels();
     vi.stubGlobal('BroadcastChannel', function MockBroadcastChannel() { return channels.create(); });
-    const connectedRuntimes: IdentityRuntime[] = [];
+    const connectedRuntimes: ReturnType<typeof useIdentity>[] = [];
     function Observer() {
       const runtime = useIdentity();
       useEffect(() => { connectedRuntimes.push(runtime); }, [runtime]);

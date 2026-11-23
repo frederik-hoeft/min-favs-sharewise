@@ -169,12 +169,28 @@ describe("Account password-change page", () => {
     expect(passwordPosts(requests)).toHaveLength(1);
   });
 
+  it("preserves password drafts on same-session bearer rotation", async () => {
+    const { runtime, requests } = mount();
+    await enterPasswords();
+    await act(async () => runtime.session.accept(authenticationResponse("renewed")));
+    expect(currentInput()).toHaveValue("old-password");
+    expect(newInput()).toHaveValue("new-password-123");
+    fireEvent.submit(passwordForm());
+    await screen.findByRole("status", { name: "Password updated" });
+    expect(passwordPosts(requests)).toHaveLength(1);
+    expect((passwordPosts(requests)[0].init?.headers as Headers).get("Authorization")).toBe("Bearer renewed");
+  });
+
   it("disables inputs and ignores repeated submissions while a password mutation is pending", async () => {
     const reply = deferred<Response>();
-    const { requests } = mount(() => reply.promise);
+    const { requests, runtime } = mount(() => reply.promise);
     const user = await enterPasswords();
     await user.click(changeButton());
     await waitFor(() => expect(passwordPosts(requests)).toHaveLength(1));
+    expect(currentInput()).toBeDisabled();
+    expect(newInput()).toBeDisabled();
+    expect(changeButton()).toBeDisabled();
+    await act(async () => runtime.session.accept(authenticationResponse("renewed")));
     expect(currentInput()).toBeDisabled();
     expect(newInput()).toBeDisabled();
     expect(changeButton()).toBeDisabled();

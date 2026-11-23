@@ -11,6 +11,8 @@ export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89
 export class AuthSession {
     private accessToken: string | undefined;
     private sessionId: string | undefined;
+    private lifetimeSequence = 0;
+    private authenticatedLifetime: number | undefined;
     private readonly listeners = new Set<() => void>();
     private state: AuthState = { status: 'reauthentication-required', reason: 'initial' };
 
@@ -29,6 +31,11 @@ export class AuthSession {
     /** Remains bound to the original session even when recovery is suspended. */
     getSessionId(): string | undefined {
         return this.sessionId;
+    }
+
+    /** Opaque lifetime identity, stable through bearer rotation and never reused after invalidation. */
+    getAuthenticatedLifetime(): number | undefined {
+        return this.authenticatedLifetime;
     }
 
     matchesAccessToken(token: string): boolean {
@@ -58,7 +65,7 @@ export class AuthSession {
         AuthSession.validateResponse(response);
         this.accessToken = response.accessToken;
         this.sessionId = response.sessionId;
-        this.update({ status: 'authenticated', expiresAt: response.expiresAt });
+        this.update({ status: 'authenticated', sessionId: response.sessionId, expiresAt: response.expiresAt });
     }
 
     markRestoring(): void {
@@ -98,10 +105,16 @@ export class AuthSession {
         this.listeners.clear();
         this.accessToken = undefined;
         this.sessionId = undefined;
+        this.authenticatedLifetime = undefined;
         this.state = { status: 'reauthentication-required', reason: 'initial' };
     }
 
     private update(next: AuthState): void {
+        if (next.status !== 'authenticated') {
+            this.authenticatedLifetime = undefined;
+        } else if (this.state.status !== 'authenticated' || this.state.sessionId !== next.sessionId) {
+            this.authenticatedLifetime = ++this.lifetimeSequence;
+        }
         this.state = next;
         for (const listener of this.listeners) listener();
     }

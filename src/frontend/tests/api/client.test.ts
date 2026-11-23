@@ -17,6 +17,44 @@ describe("createApiClient", () => {
     await expect(client.get<{ status: string }>("/system/v1/health")).resolves.toEqual({ status: "UP" });
   });
 
+  it.each(["groups/v1/groups", "/groups/v1/groups", "api/groups/v1/groups", "/api/groups/v1/groups"])(
+    "classifies %s by pathname and preserves the query across replay", async (path) => {
+      const query = "?search=a%2Fb%23c&flag=&search=x";
+      const captureSessionId = vi.fn(() => undefined);
+      const onRequest = vi.fn();
+      const onUnauthorized = vi.fn(async () => true);
+      const onReplayUnauthorized = vi.fn();
+      const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 401 }));
+      const client = createApiClient({ captureSessionId, onRequest, onUnauthorized, onReplayUnauthorized }, fetchImpl);
+      await expect(client.get(path + query)).rejects.toMatchObject({ status: 401 });
+      for (const hook of [captureSessionId, onRequest, onUnauthorized, onReplayUnauthorized]) {
+        expect(hook).toHaveBeenCalled();
+        expect(hook.mock.calls.every(call => call[0] === "/api/groups/v1/groups")).toBe(true);
+      }
+      expect(fetchImpl.mock.calls.map(call => call[0])).toEqual([
+        "/api/groups/v1/groups" + query, "/api/groups/v1/groups" + query,
+      ]);
+    },
+  );
+
+  it.each([
+    "https://example.com/api/groups", "//example.com/api/groups", "/api//groups",
+    "/api/iam/v1/auth/../auth/logout", "/api/iam/v1/auth/./logout",
+    "/api/iam/v1/auth/%6cogout", "/api/iam/v1/auth%2flogout",
+    "/api/iam/v1/auth/logout;param=x", "/api/iam/v1/auth/logout/",
+    "/api/iam/v1/auth/logout#fragment", "/api/iam/v1/auth/logout?x=#fragment",
+    "/api/iam/v1/auth/\\logout", "/api/iam/v1/auth/log\tout", "",
+  ])("rejects noncanonical API path %j before auth or dispatch", async (path) => {
+    const captureSessionId = vi.fn();
+    const onRequest = vi.fn();
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = createApiClient({ captureSessionId, onRequest }, fetchImpl);
+    await expect(client.get(path)).rejects.toMatchObject({ code: "invalid_api_path" });
+    expect(captureSessionId).not.toHaveBeenCalled();
+    expect(onRequest).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("resolves undefined on 204 No Content", async () => {
     const client = createApiClient({}, async () => new Response(null, { status: 204 }));
 
@@ -180,7 +218,7 @@ describe("createApiClient", () => {
     const fetchImpl = vi.fn(async () => response);
     const client = createApiClient({
       onRequest: () => currentSession,
-      assertResponseContext: (context) => {
+      assertSessionContext: (context) => {
         if (context.sessionId !== currentSession) {
           throw new ApiError({ status: 0, code: 'session_context_changed', title: 'Sign-in Changed', detail: 'Session changed.' });
         }

@@ -3,19 +3,18 @@
 import { Alert, Button, Card, Group, Loader, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useAuthState, useIdentity } from "@/app/identity-provider";
-import type { AccountProfile, AuthState } from "@/core/identity";
+import { useAuthenticatedApis } from "@/app/identity-provider";
+import type { AccountProfile } from "@/core/identity";
 import { MAX_DISPLAY_NAME_CHARACTERS, validateDisplayName, withinDisplayNameLimit } from "@/core/identity/display-name";
 import { ApiError } from "@/lib/api";
 
 type ProfileView =
-  | { readonly context: AuthState; readonly attempt: number; readonly status: "loading" }
-  | { readonly context: AuthState; readonly attempt: number; readonly status: "ready"; readonly profile: AccountProfile }
-  | { readonly context: AuthState; readonly attempt: number; readonly status: "error"; readonly message: string }
-  | { readonly context: AuthState; readonly attempt: number; readonly status: "unavailable" };
+  | { readonly attempt: number; readonly status: "loading" }
+  | { readonly attempt: number; readonly status: "ready"; readonly profile: AccountProfile }
+  | { readonly attempt: number; readonly status: "error"; readonly message: string }
+  | { readonly attempt: number; readonly status: "unavailable" };
 
 type Feedback = {
-  readonly context: AuthState;
   readonly kind: "success" | "error";
   readonly message: string;
   readonly reloadRequired?: boolean;
@@ -43,20 +42,17 @@ function updateFailure(error: unknown): { message: string; field?: string; reloa
   return { message: "Unable to update your account right now. Please try again." };
 }
 
-/** Data belongs to the active bearer context, not a pathname, account ID or browser storage. */
 export function AccountProfileForm() {
-  const authState = useAuthState();
-  const { account, session } = useIdentity();
+  const { account } = useAuthenticatedApis();
   const [view, setView] = useState<ProfileView>();
   const [draft, setDraft] = useState("");
   const [fieldError, setFieldError] = useState<string>();
   const [feedback, setFeedback] = useState<Feedback>();
   const [reloadCount, setReloadCount] = useState(0);
-  const [pendingContext, setPendingContext] = useState<AuthState>();
-  const inFlight = useRef<AuthState | undefined>(undefined);
+  const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const focusWhenEnabled = useRef(false);
-  const pending = pendingContext === authState;
 
   // A server field error can arrive while the input is disabled for the mutation.
   useEffect(() => {
@@ -67,24 +63,21 @@ export function AccountProfileForm() {
   }, [pending]);
 
   useEffect(() => {
-    if (authState.status !== "authenticated") return;
-
-    const context = authState;
     const controller = new AbortController();
     let active = true;
 
     void account.getAccount({ signal: controller.signal }).then((profile) => {
-      if (!active || session.getSnapshot() !== context) return;
-      setView({ context, attempt: reloadCount, status: "ready", profile });
+      if (!active) return;
+      setView({ attempt: reloadCount, status: "ready", profile });
       setDraft(profile.displayName ?? "");
       setFieldError(undefined);
       setFeedback(undefined);
     }).catch((error: unknown) => {
-      if (!active || session.getSnapshot() !== context) return;
+      if (!active) return;
       if (error instanceof ApiError && error.status === 403 && error.code === "account_unavailable") {
-        setView({ context, attempt: reloadCount, status: "unavailable" });
+        setView({ attempt: reloadCount, status: "unavailable" });
       } else {
-        setView({ context, attempt: reloadCount, status: "error", message: loadFailure(error) });
+        setView({ attempt: reloadCount, status: "error", message: loadFailure(error) });
       }
     });
 
@@ -92,16 +85,14 @@ export function AccountProfileForm() {
       active = false;
       controller.abort();
     };
-  }, [account, authState, reloadCount, session]);
+  }, [account, reloadCount]);
 
-  const currentView = view?.context === authState && view.attempt === reloadCount ? view : undefined;
-  const currentFeedback = feedback?.context === authState ? feedback : undefined;
+  const currentView = view?.attempt === reloadCount ? view : undefined;
   // An empty or whitespace-only entry clears the optional name; otherwise preserve it exactly.
   const nextDisplayName = draft.trim().length === 0 ? null : draft;
 
   async function mutate() {
-    if (currentView?.status !== "ready" || session.getSnapshot() !== authState ||
-        inFlight.current === authState || currentFeedback?.reloadRequired || fieldError ||
+    if (currentView?.status !== "ready" || inFlight.current || feedback?.reloadRequired || fieldError ||
         nextDisplayName === currentView.profile.displayName) return;
 
     if (nextDisplayName !== null) {
@@ -112,30 +103,27 @@ export function AccountProfileForm() {
         return;
       }
     }
-    const context = authState;
-    inFlight.current = context;
-    setPendingContext(context);
+    inFlight.current = true;
+    setPending(true);
     setFieldError(undefined);
     setFeedback(undefined);
     try {
       const profile = nextDisplayName === null ? await account.clearDisplayName() : await account.setDisplayName(nextDisplayName);
-      if (session.getSnapshot() !== context) return;
-      setView({ context, attempt: reloadCount, status: "ready", profile });
+      setView({ attempt: reloadCount, status: "ready", profile });
       setDraft(profile.displayName ?? "");
-      setFeedback({ context, kind: "success", message: nextDisplayName === null ? "Display name cleared." : "Display name updated." });
+      setFeedback({ kind: "success", message: nextDisplayName === null ? "Display name cleared." : "Display name updated." });
     } catch (error) {
-      if (session.getSnapshot() !== context) return;
       if (error instanceof ApiError && error.status === 403 && error.code === "account_unavailable") {
-        setView({ context, attempt: reloadCount, status: "unavailable" });
+        setView({ attempt: reloadCount, status: "unavailable" });
         return;
       }
       const failure = updateFailure(error);
       setFieldError(failure.field);
-      setFeedback({ context, kind: "error", message: failure.message, reloadRequired: failure.reloadRequired });
+      setFeedback({ kind: "error", message: failure.message, reloadRequired: failure.reloadRequired });
       if (failure.field) focusWhenEnabled.current = true;
     } finally {
-      if (inFlight.current === context) inFlight.current = undefined;
-      setPendingContext((current) => current === context ? undefined : current);
+      inFlight.current = false;
+      setPending(false);
     }
   }
 
@@ -143,9 +131,6 @@ export function AccountProfileForm() {
     event.preventDefault();
     void mutate();
   }
-
-  // A route-level guard owns sign-in navigation; do not render stale profile data.
-  if (authState.status !== "authenticated") return null;
 
   if (!currentView || currentView.status === "loading") {
     return <Group role="status" aria-label="Loading account" gap="sm"><Loader size="sm" /><Text>Loading account details…</Text></Group>;
@@ -175,13 +160,13 @@ export function AccountProfileForm() {
           <Title order={2} size="h3">Profile</Title>
           <Text size="sm" c="dimmed">Your email is read-only. Leave the display name blank to remove it.</Text>
         </Stack>
-        {currentFeedback && (
-          <Alert color={currentFeedback.kind === "success" ? "indigo" : "red"}
-            role={currentFeedback.kind === "success" ? "status" : "alert"}
-            title={currentFeedback.kind === "success" ? "Profile updated" : "Update unsuccessful"}>
+        {feedback && (
+          <Alert color={feedback.kind === "success" ? "indigo" : "red"}
+            role={feedback.kind === "success" ? "status" : "alert"}
+            title={feedback.kind === "success" ? "Profile updated" : "Update unsuccessful"}>
             <Stack gap="sm" align="flex-start">
-              <Text size="sm">{currentFeedback.message}</Text>
-              {currentFeedback.reloadRequired && (
+              <Text size="sm">{feedback.message}</Text>
+              {feedback.reloadRequired && (
                 <Button variant="light" onClick={() => setReloadCount((count) => count + 1)}>Reload account</Button>
               )}
             </Stack>
@@ -211,13 +196,13 @@ export function AccountProfileForm() {
                   setFeedback(undefined);
                 }}
                 error={fieldError}
-                disabled={pending || currentFeedback?.reloadRequired}
+                disabled={pending || feedback?.reloadRequired}
                 autoComplete="nickname"
               />
             </SimpleGrid>
             <Group justify="flex-end">
               <Button type="submit" loading={pending}
-                disabled={pending || Boolean(currentFeedback?.reloadRequired) || Boolean(fieldError) || unchanged}>Update display name</Button>
+                disabled={pending || Boolean(feedback?.reloadRequired) || Boolean(fieldError) || unchanged}>Update display name</Button>
             </Group>
           </Stack>
         </form>

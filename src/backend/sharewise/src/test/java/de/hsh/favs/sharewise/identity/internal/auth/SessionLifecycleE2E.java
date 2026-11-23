@@ -151,6 +151,30 @@ class SessionLifecycleE2E extends E2ETestBase {
     }
 
     @Test
+    void loginLockoutDoesNotSuspendAnEstablishedSessionButLogoutStillRevokesIt() {
+        runLifecycleTest(fixture -> {
+            OperationDispatcher dispatcher = dispatcher(fixture);
+            AuthenticationResult initial = register(dispatcher);
+            // Lockout gates password verification, not an independently authenticated
+            // session's refresh permission. Disabling the account would deny renewal.
+            execute(fixture, "update identity.users set failed_login_attempts = 5, "
+                    + "locked_until = ? where id = ?", NOW.plusSeconds(900), initial.userId());
+            assertEquals(Result.err(LoginFailure.INVALID_CREDENTIALS),
+                    dispatcher.dispatch(LoginService.class, service -> service.login(
+                            LoginCommand.from("refresh-e2e@example.org", "long-enough-password",
+                                    PasswordPolicy.initial()))));
+
+            AuthenticationResult rotated = successful(refresh(dispatcher,
+                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+            assertNull(revokedAt(fixture, initial.sessionId()));
+            assertEquals(Result.ok(LogoutStatus.REVOKED), logout(dispatcher,
+                    rotated.refreshCredential().cookieValue(), initial.sessionId()));
+            assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
+                    refresh(dispatcher, rotated.refreshCredential().cookieValue(), initial.sessionId()));
+        });
+    }
+
+    @Test
     void signerFailureRollsBackConsumptionAndSuccessorAndLeavesCredentialUsable() {
         runLifecycleTest(fixture -> {
             OperationDispatcher dispatcher = dispatcher(fixture);
