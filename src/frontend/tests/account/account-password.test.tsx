@@ -4,7 +4,7 @@ import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider } from "@/app/identity-provider";
 import AccountPage from "@/app/(app)/app/account/page";
-import AccountLayout from "@/app/(app)/app/account/layout";
+import { RequireAuthentication } from "@/components/auth/RequireAuthentication";
 import { createIdentityRuntime } from "@/core/identity";
 import { TestProviders } from "../support/TestProviders";
 
@@ -27,7 +27,7 @@ function mount(passwordResponse: () => Promise<Response> = async () => new Respo
   runtimes.push(runtime);
   if (signedIn) runtime.session.accept(authenticationResponse("alice-bearer"));
   const result = render(
-    <TestProviders><IdentityProvider runtime={runtime}><AccountLayout><AccountPage /></AccountLayout></IdentityProvider></TestProviders>,
+    <TestProviders><IdentityProvider runtime={runtime}><RequireAuthentication><AccountPage /></RequireAuthentication></IdentityProvider></TestProviders>,
   );
   return { runtime, requests, fetchImpl, ...result };
 }

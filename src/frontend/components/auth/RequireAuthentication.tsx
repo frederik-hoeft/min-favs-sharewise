@@ -7,7 +7,7 @@ import { useAuthState, useIdentity } from "@/app/identity-provider";
 import { safeAppReturnPath } from "@/lib/navigation/return-path";
 
 /**
- * Route-level guard for pages backed by authenticated APIs. Keep navigation in
+ * Presentation guard for the authenticated workspace. Keep navigation in
  * the presentation layer: the HTTP client owns recovery and publishes terminal
  * identity state, but never redirects or treats every application 401 as logout.
  */

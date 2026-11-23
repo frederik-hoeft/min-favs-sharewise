@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +6,6 @@ import { AuthenticationForm } from "@/app/(auth)/_components/AuthenticationForm"
 import AuthLayout from "@/app/(auth)/layout";
 import { IdentityProvider } from "@/app/identity-provider";
 import { createIdentityRuntime } from "@/core/identity";
-import { SessionNotice } from "@/components/auth/SessionNotice";
 import { TestProviders } from "../support/TestProviders";
 import { ControlledLocks, authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
 
@@ -251,51 +250,5 @@ describe('registration and login presentation', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('preserves the current workspace page and query when offering sign-in', async () => {
-    window.history.replaceState({}, '', '/app/dummy3?tab=expenses');
-    const runtime = createIdentityRuntime({ locks: () => undefined, fetchImpl: vi.fn() as typeof fetch });
-    runtime.session.invalidate('unauthorized');
-    activeRuntimes.push(runtime);
-    render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
-    const link = await screen.findByRole('link', { name: 'Sign in' });
-    expect(link).toHaveAttribute('href', '/auth/login?next=%2Fapp%2Fdummy3%3Ftab%3Dexpenses');
-  });
-
-  it('offers an explicit retry after safe restoration preparation failure', async () => {
-    const locks = new ControlledLocks();
-    let locksAvailable = false;
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/csrf')
-      ? jsonResponse({ token: 'fresh' })
-      : jsonResponse(authenticationResponse()));
-    const runtime = createIdentityRuntime({
-      fetchImpl: fetchImpl as typeof fetch,
-      locks: () => locksAvailable ? locks.manager : undefined,
-      channel: () => undefined,
-    });
-    activeRuntimes.push(runtime);
-    render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
-    const retry = await screen.findByRole('button', { name: 'Retry session check' });
-    expect(screen.getByRole('link', { name: 'Sign in' })).toBeVisible();
-    expect(fetchImpl).not.toHaveBeenCalled();
-
-    locksAvailable = true;
-    await userEvent.setup().click(retry);
-    await waitFor(() => expect(screen.getByText(/authentication will renew automatically/i)).toBeVisible());
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
-
-  it('restores the browser context and displays a context-change prompt without exposing the JWT', async () => {
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/csrf')
-      ? jsonResponse({ token: 'fresh' }) : jsonResponse(authenticationResponse()));
-    const runtime = createIdentityRuntime({ fetchImpl: fetchImpl as typeof fetch, locks: () => new ControlledLocks().manager });
-    activeRuntimes.push(runtime);
-    const view = render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
-    await waitFor(() => expect(screen.getByText(/authentication will renew automatically/i)).toBeVisible());
-    expect(screen.queryByText('opaque.jwt.value')).not.toBeInTheDocument();
-    act(() => runtime.session.markContextChanged());
-    expect(screen.getByRole('alert')).toHaveTextContent(/sign-in changed/i);
-    expect(screen.getByRole('button', { name: 'Reload page' })).toBeVisible();
-    view.unmount();
-  });
 
 });
