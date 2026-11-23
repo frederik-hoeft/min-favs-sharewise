@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AUTH_COOKIE_LOCK, AuthCookieLock, CSRF_HEADER, createIdentityRuntime } from "@/core/identity";
-import { ApiError } from "@/lib/api";
+import { ApiError, createApiClient } from "@/lib/api";
 import {
   ControlledLocks, authenticationResponse, credentials, deferred, jsonResponse, problemResponse,
 } from "./support";
@@ -48,6 +48,15 @@ describe("Identity runtime with mock HTTP", () => {
     expect(locks.events).toEqual([
       `queued:${AUTH_COOKIE_LOCK}`, `acquired:${AUTH_COOKIE_LOCK}:exclusive`, `released:${AUTH_COOKIE_LOCK}`,
     ]);
+  });
+
+  it("keeps anonymous endpoints on the plain API client without requiring cookie restoration", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ status: 'UP' }));
+    const publicApi = createApiClient({}, fetchImpl as typeof fetch);
+    const identity = createRuntime(fetchImpl as typeof fetch, () => undefined);
+    await expect(publicApi.get('/system/v1/health')).resolves.toEqual({ status: 'UP' });
+    await expect(identity.api.get('/system/v1/health')).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("attaches the current bearer to subsequent domain requests, not anonymous auth requests", async () => {
@@ -98,6 +107,7 @@ describe("Identity runtime with mock HTTP", () => {
       new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () =>
         reject(new DOMException('Aborted', 'AbortError')), { once: true })));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => locks.manager);
+    runtime.session.accept(authenticationResponse());
     try {
       const pending = runtime.api.get('/groups/v1/groups', { timeoutMs: 150 });
       const result = expect(pending).rejects.toMatchObject({ status: 0, code: 'network_error' });
@@ -139,6 +149,39 @@ describe("Identity runtime with mock HTTP", () => {
     expect(runtime.session.getAccessToken()).toBeUndefined();
   });
 
+  it.each([
+    ['login', 502, 'bad_gateway'],
+    ['register', 503, 'registration_outcome_unknown'],
+  ] as const)('discards an existing bearer after a possibly committed %s with gateway %i', async (operation, status, code) => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      calls.push(path);
+      return path.endsWith('/csrf') ? jsonResponse({ token: 'fresh' }) : problemResponse(status, 'bad_gateway');
+    });
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
+    runtime.session.accept(authenticationResponse('old-bearer'));
+    await expect(runtime.auth[operation](credentials)).rejects.toMatchObject({ code });
+    expect(runtime.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'uncertain' });
+    expect(runtime.session.getAccessToken()).toBeUndefined();
+    expect(calls).toEqual(['/api/iam/v1/auth/csrf', `/api/iam/v1/auth/${operation}`]);
+  });
+
+  it.each([502, 503])('discards the in-memory bearer after a possibly committed logout with gateway %i', async (status) => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      calls.push(path);
+      return path.endsWith('/csrf') ? jsonResponse({ token: 'fresh' }) : problemResponse(status, 'bad_gateway');
+    });
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
+    runtime.session.accept(authenticationResponse('old-bearer'));
+    await expect(runtime.auth.logout()).rejects.toMatchObject({ status });
+    expect(runtime.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'uncertain' });
+    expect(runtime.session.getAccessToken()).toBeUndefined();
+    expect(calls).toEqual(['/api/iam/v1/auth/csrf', '/api/iam/v1/auth/logout']);
+  });
+
   it("rejects a malformed CSRF response without ever sending credentials", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ unexpected: "value" }));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
@@ -150,10 +193,10 @@ describe("Identity runtime with mock HTTP", () => {
     vi.useFakeTimers();
     const action = vi.fn(async () => undefined);
     const locks = {
-      request: (_name: string, options: LockOptions, _callback: (lock: Lock) => Promise<unknown>) =>
+      request: (_name: string, options: LockOptions) =>
         new Promise((_, reject) => options.signal?.addEventListener('abort', () =>
           reject(new DOMException('Timed out', 'AbortError')), { once: true })),
-    } as LockManager;
+    } as unknown as LockManager;
     const lock = new AuthCookieLock(() => locks);
     try {
       const pending = lock.runExclusive(action);
@@ -226,24 +269,17 @@ describe("Identity runtime with mock HTTP", () => {
     expect(secondTab.session.getAccessToken()).toBe("second");
   });
 
-  it("does not attach an expired bearer when making a subsequent API request", async () => {
-    let now = Date.parse("2026-11-20T12:00:00Z");
+  it("retains an access bearer despite client clock skew and lets server ingress reject it", async () => {
     const observed: Array<string | null> = [];
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       observed.push((init?.headers as Headers).get("Authorization"));
-      return problemResponse(401, "missing_credentials");
+      return problemResponse(401, "unauthenticated");
     });
-    const runtime = createIdentityRuntime({
-      fetchImpl: fetchImpl as typeof fetch,
-      locks: () => undefined,
-      now: () => now,
-    });
-    runtimes.push(runtime);
-    runtime.session.accept(authenticationResponse("short-lived", "2026-11-20T12:00:01Z"));
-    now += 2000;
-    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ status: 401 });
-    expect(observed).toEqual([null]);
-    expect(runtime.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "expired" });
+    const runtime = createRuntime(fetchImpl as typeof fetch, () => undefined);
+    runtime.session.accept(authenticationResponse("short-lived", "2020-11-20T12:00:01Z"));
+    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ status: 401, code: 'unauthenticated' });
+    expect(observed).toEqual(['Bearer short-lived']);
+    expect(runtime.session.getSnapshot().status).toBe('authenticated');
   });
 
   it("rejects an invalid successful authentication body without storing it", async () => {
@@ -266,13 +302,14 @@ describe("Identity runtime with mock HTTP", () => {
     expect(runtime.session.getAccessToken()).toBe("existing-token");
   });
 
-  it("a protected 401 invalidates the active bearer without retrying the request", async () => {
-    const fetchImpl = vi.fn(async () => problemResponse(401, "expired_access_token"));
+  it("a pre-dispatch 401 without Web Locks avoids cookie mutation and preserves the bearer", async () => {
+    const fetchImpl = vi.fn(async () => problemResponse(401, "invalid_credential"));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => undefined);
     runtime.session.accept(authenticationResponse("active"));
-    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ status: 401 });
+    await expect(runtime.api.get("/groups/v1/groups")).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(runtime.session.getSnapshot()).toEqual({ status: "reauthentication-required", reason: "unauthorized" });
+    expect(runtime.session.getSnapshot().status).toBe("authenticated");
+    expect(runtime.session.getAccessToken()).toBe("active");
   });
 
   it("a delayed 401 from an old request cannot invalidate a newer login", async () => {

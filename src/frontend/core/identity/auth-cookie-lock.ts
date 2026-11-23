@@ -20,7 +20,7 @@ function lockUnavailable(): ApiError {
 export class AuthCookieLock {
     constructor(private readonly getLocks: () => LockManager | undefined) {}
 
-    async runExclusive<T>(action: () => Promise<T>): Promise<T> {
+    async runExclusive<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         let lockManager: LockManager | undefined;
         try {
             lockManager = this.getLocks();
@@ -32,6 +32,9 @@ export class AuthCookieLock {
         const acquisition = new AbortController();
         const deadline = setTimeout(() => acquisition.abort(), AUTH_COOKIE_LOCK_WAIT_MS);
         let entered = false;
+        const cancelQueued = () => { if (!entered) acquisition.abort(); };
+        signal?.addEventListener('abort', cancelQueued, { once: true });
+        if (signal?.aborted) acquisition.abort();
         try {
             const result = await lockManager.request(
                 AUTH_COOKIE_LOCK, { mode: 'exclusive', signal: acquisition.signal }, async (lock) => {
@@ -39,6 +42,7 @@ export class AuthCookieLock {
                     if (!lock || acquisition.signal.aborted) throw lockUnavailable();
                     entered = true;
                     clearTimeout(deadline);
+                    signal?.removeEventListener('abort', cancelQueued);
                     // The lock remains held until the HTTP operation settles,
                     // including its abort. A UI timeout never releases it early.
                     return action();
@@ -53,6 +57,7 @@ export class AuthCookieLock {
             throw error;
         } finally {
             clearTimeout(deadline);
+            signal?.removeEventListener('abort', cancelQueued);
         }
     }
 }

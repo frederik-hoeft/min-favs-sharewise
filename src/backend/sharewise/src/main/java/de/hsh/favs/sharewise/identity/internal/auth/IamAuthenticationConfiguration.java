@@ -8,6 +8,7 @@ import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
+import de.hsh.favs.sharewise.identity.internal.auth.session.SessionLifecycleStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IamPemKeyLoader;
@@ -127,6 +128,15 @@ class IamAuthenticationConfiguration {
     InitialAuthentication iamInitialAuthentication(SessionStore sessions, RefreshTokenStore refreshTokens,
             RefreshCredentialGenerator secrets, SessionPolicy policy, AccessTokenIssuer accessTokens) {
         return new InitialAuthentication(sessions, refreshTokens, secrets, policy, accessTokens);
+    }
+
+    @Bean
+    @Scope("operation")
+    SessionLifecycleService iamSessionLifecycleService(Transactions transactions, SessionLifecycleStore sessions,
+            RefreshTokenStore refreshTokens, RefreshCredentialGenerator credentials, SessionPolicy policy,
+            AccessTokenIssuer accessTokens, @Qualifier("iamClock") Clock clock) {
+        return new SessionLifecycleService(transactions, sessions, refreshTokens, credentials,
+                policy, accessTokens, clock);
     }
 
     @Bean

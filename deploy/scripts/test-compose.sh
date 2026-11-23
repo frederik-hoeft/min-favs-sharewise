@@ -23,6 +23,9 @@ esac
 
 deploy_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$deploy_dir/scripts/lib-compose.sh"
+# Disposable acceptance must never inherit the optional local PostgreSQL host binding.
+# COMPOSE_FILE in deploy/.env is for the ordinary developer deployment only.
+export COMPOSE_FILE=compose.yaml
 cli="$container_cli"
 # A separate project prevents this test from touching the normal local stack.
 project="${SHAREWISE_COMPOSE_TEST_PROJECT:-sharewise-p26ab-smoke}"

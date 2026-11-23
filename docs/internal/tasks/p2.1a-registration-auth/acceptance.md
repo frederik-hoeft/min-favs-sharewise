@@ -23,7 +23,7 @@ Complete the checkboxes **against the running application**, not against mocks o
 
 ### Test environment and evidence
 
-Use a disposable PostgreSQL 18 database; a backend with `sharewise.iam.auth.enabled=true` and a correctly provisioned **production** ES256 issuer/audience/signing/verification profile; and the current frontend on one trusted **HTTPS origin** with same-origin `/api/*` proxying. Use an isolated browser profile without prior ShareWise cookies. Do **not** bypass TLS warnings, turn off security filters, or use fixture issuers. See [initial IAM setup](../../../development.md#initial-iam-authentication-p21a) and the [deployment guide](../../../../deploy/README.md).
+Use a disposable PostgreSQL 18 database; a backend with `sharewise.iam.auth.enabled=true` and a correctly provisioned **production** ES256 issuer/audience/signing/verification profile; and the current frontend on one trusted **HTTPS origin** with same-origin `/api/*` proxying. Use an isolated browser profile without prior ShareWise cookies. Do **not** bypass TLS warnings, turn off security filters, or use fixture issuers. See [IAM development setup](../../../development.md#iam-authentication-and-session-lifecycle) and the [deployment guide](../../../../deploy/README.md).
 
 - [x] Confirm the frontend is served over trusted HTTPS and that the deployed `/api/*` proxy targets the **same origin** (not a separate backend origin). The authentication workflows below will exercise `/api/iam/v1/auth/csrf`; no standalone bootstrap request is needed for setup.
 - [x] Confirm the backend uses disposable test data and the approved production IAM signing/trust configuration; avoid reusing a real account or password.

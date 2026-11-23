@@ -10,9 +10,11 @@ const INITIAL_STATE: AuthState = { status: "reauthentication-required", reason: 
 /** A single identity runtime for the lifetime of this browser-side React root. */
 export function IdentityProvider({ children, runtime: provided }: { children: ReactNode; runtime?: IdentityRuntime }) {
   const [runtime] = useState(() => provided ?? createIdentityRuntime());
-  useEffect(() => () => {
-    if (!provided) runtime.dispose();
-  }, [runtime, provided]);
+  useEffect(() => {
+    runtime.connect();
+    // Strict Mode repeats setup/cleanup; do not dispose the retained runtime or its session here.
+    return () => runtime.disconnect();
+  }, [runtime]);
   return <IdentityContext.Provider value={runtime}>{children}</IdentityContext.Provider>;
 }
 

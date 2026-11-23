@@ -10,6 +10,8 @@ import unittest
 
 DEPLOY = Path(__file__).resolve().parents[1]
 FAKE_DOCKER = r'''#!/bin/sh
+# The smoke stack must ignore a local deployment's optional Compose override.
+[ "${COMPOSE_FILE:-}" = compose.yaml ] || exit 42
 printf '%s\n' "$*" >> "$MOCK_DOCKER_CALLS"
 case "$1 $2" in
     "volume inspect") exit 1 ;; # Fresh test project.
@@ -109,6 +111,25 @@ class ComposeLifecycleTests(unittest.TestCase):
         ])
         self.assertNotIn("sharewise-p26ab-local", " ".join(self.down_calls()))
         self.assertTrue((self.deploy / ".env").exists())
+
+    def test_smoke_ignores_local_compose_override(self):
+        result = self.run_smoke(
+            COMPOSE_FILE="compose.yaml:compose.postgres-host.yaml",
+            SHAREWISE_POSTGRES_BIND="0.0.0.0",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_test_cleanup_ignores_local_compose_override(self):
+        result = subprocess.run(
+            ["bash", str(self.deploy / "scripts/cleanup.sh"), "test", "--yes"],
+            env=self.env | {
+                "COMPOSE_FILE": "compose.yaml:compose.postgres-host.yaml",
+                "SHAREWISE_POSTGRES_BIND": "0.0.0.0",
+            },
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("compose -p sharewise-p26ab-smoke down --volumes --remove-orphans", self.calls())
 
     def test_keep_retains_successful_stack(self):
         result = self.run_smoke("--keep")

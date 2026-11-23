@@ -51,6 +51,9 @@ workflow:
 .backend-maven:
   image: eclipse-temurin:25-jdk
   interruptible: true
+  variables:
+    # JUnit workers per backend test job, not GitLab runner instances.
+    BACKEND_TEST_PARALLELISM: '16'
   cache: &backend_maven_cache
     key:
       files:
@@ -147,7 +150,7 @@ test-backend-unit:
   stage: test
   dependencies: [] # No backend packaging artifact is needed.
   script:
-    - ./mvnw -B -ntp -Punit-tests clean verify
+    - ./mvnw -B -ntp -Punit-tests -DtestParallelism="${BACKEND_TEST_PARALLELISM}" clean verify
 
 test-backend-integration:
   extends: [.postgres-tests, .backend-test-reports]
@@ -156,7 +159,7 @@ test-backend-integration:
     - job: test-backend-unit
       artifacts: false
   script:
-    - ./mvnw -B -ntp -Pintegration-tests clean verify
+    - ./mvnw -B -ntp -Pintegration-tests -DtestParallelism="${BACKEND_TEST_PARALLELISM}" clean verify
 
 test-backend-e2e:
   extends: [.postgres-tests, .backend-test-reports]
@@ -165,7 +168,7 @@ test-backend-e2e:
     - job: test-backend-integration
       artifacts: false
   script:
-    - ./mvnw -B -ntp -Pe2e-tests clean verify
+    - ./mvnw -B -ntp -Pe2e-tests -DtestParallelism="${BACKEND_TEST_PARALLELISM}" clean verify
 
 test-frontend-lint:
   extends: .frontend-npm

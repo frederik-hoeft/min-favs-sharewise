@@ -1,6 +1,7 @@
 package de.hsh.favs.sharewise.testsupport.integration;
 
 import de.hsh.favs.sharewise.testsupport.database.TestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.IsolatedPostgresPool;
 import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -8,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import javax.sql.DataSource;
+import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -66,7 +68,7 @@ public final class IntegrationTestContext implements AutoCloseable {
             applicationSources);
     }
 
-    /** Uses explicit PostgreSQL server/role credentials and an optional committed-data initializer. */
+    /** Uses explicit credentials and a bounded pool for one disposable E2E application context. */
     public static IntegrationTestContext start(
         PostgresTestDatabase.ConnectionSettings connections,
         DatabasePreparation preparation,
@@ -79,7 +81,16 @@ public final class IntegrationTestContext implements AutoCloseable {
             throw new IllegalArgumentException("At least one application source is required");
         }
 
-        return startConfigured(connections, preparation, WebApplicationType.NONE, Map.of(), applicationSources);
+        return startConfigured(connections, preparation, WebApplicationType.NONE, Map.of(), true, applicationSources);
+    }
+
+    /** Starts the Integration suite's shared context with capacity for concurrent rollback operations. */
+    public static IntegrationTestContext startShared(
+        PostgresTestDatabase.ConnectionSettings connections,
+        DatabasePreparation preparation,
+        Class<?>... applicationSources
+    ) {
+        return startConfigured(connections, preparation, WebApplicationType.NONE, Map.of(), false, applicationSources);
     }
 
     /** Starts a real servlet HTTP application backed by a disposable migrated database. */
@@ -90,7 +101,7 @@ public final class IntegrationTestContext implements AutoCloseable {
         Class<?>... applicationSources
     ) {
         Objects.requireNonNull(webProperties, "webProperties");
-        return startConfigured(connections, preparation, WebApplicationType.SERVLET, webProperties, applicationSources);
+        return startConfigured(connections, preparation, WebApplicationType.SERVLET, webProperties, true, applicationSources);
     }
 
     private static IntegrationTestContext startConfigured(
@@ -98,6 +109,7 @@ public final class IntegrationTestContext implements AutoCloseable {
         DatabasePreparation preparation,
         WebApplicationType webType,
         Map<String, Object> overrides,
+        boolean isolatedPool,
         Class<?>... applicationSources
     ) {
         Objects.requireNonNull(connections, "connections");
@@ -111,6 +123,9 @@ public final class IntegrationTestContext implements AutoCloseable {
         try {
             preparation.prepare(database);
             Map<String, Object> properties = new LinkedHashMap<>();
+            if (isolatedPool) {
+                IsolatedPostgresPool.configure(properties);
+            }
             properties.put("spring.datasource.url", database.jdbcUrl());
             properties.put("spring.datasource.username", PostgresTestDatabase.APPLICATION_USER);
             properties.put("spring.datasource.password", connections.applicationPassword());
@@ -131,6 +146,8 @@ public final class IntegrationTestContext implements AutoCloseable {
             }
 
             ConfigurableApplicationContext context = new SpringApplicationBuilder(applicationSources)
+                .bannerMode(Banner.Mode.OFF)
+                .logStartupInfo(false)
                 .web(webType)
                 .initializers(application -> application.getEnvironment().getPropertySources()
                     .addFirst(new MapPropertySource("isolated-postgres-fixture", properties)))

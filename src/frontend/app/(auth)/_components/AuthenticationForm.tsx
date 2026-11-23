@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError } from "@/lib/api";
+import { safeAppReturnPath } from "@/lib/navigation/return-path";
 import { useIdentity } from "@/app/identity-provider";
 import { validateCredentials, type CredentialErrors } from "./credentials-validation";
 import styles from "./AuthenticationForm.module.scss";
@@ -92,8 +93,9 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
     setPending(true);
     try {
       await auth[mode]({ email: trimmedEmail, password });
-      // Client-side navigation retains the root identity runtime; a full reload intentionally does not.
-      router.replace('/app');
+      // Validate the requested page path before using it as a router destination.
+      const next = isRegistration ? '/app' : safeAppReturnPath(new URLSearchParams(window.location.search).get('next'));
+      router.replace(next);
     } catch (error) {
       const failure = mapFailure(error, mode);
       setErrors(failure.fields);

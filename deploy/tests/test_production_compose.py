@@ -50,6 +50,32 @@ class ProductionComposeContractTests(unittest.TestCase):
         self.assertNotIn("sharewise_migrator_dev", yaml)
         self.assertNotIn("postgres_dev", yaml)
 
+    def test_postgres_host_access_is_explicit_and_scoped_to_local_override(self):
+        override = (ROOT / "deploy/compose.postgres-host.yaml").read_text()
+        base = COMPOSE.read_text()
+        example = (ROOT / "deploy/.env.example").read_text()
+        devcontainer = (ROOT / ".devcontainer/docker-compose.yml").read_text()
+        smoke = (ROOT / "deploy/scripts/test-compose.sh").read_text()
+        cleanup = (ROOT / "deploy/scripts/cleanup.sh").read_text()
+
+        # No default database host publishing; the optional override is never
+        # selected by the checked-in .env template without explicit editing.
+        postgres = base.split("\n  postgres:\n", 1)[1].split("\n  backend:\n", 1)[0]
+        self.assertNotIn("    ports:", postgres)
+        self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", example)
+        self.assertIn("# SHAREWISE_POSTGRES_BIND=127.0.0.1", example)
+        self.assertNotRegex(example, r"(?m)^COMPOSE_FILE=")
+        self.assertIn("${SHAREWISE_POSTGRES_BIND:-127.0.0.1}", override)
+        self.assertIn("${SHAREWISE_POSTGRES_PORT:-15432}:5432", override)
+        self.assertIn("- postgres_host_access", override)
+        self.assertIn("  postgres_host_access: {}", override)
+        self.assertIn("    internal: true", base)
+        self.assertIn("host.docker.internal:host-gateway", devcontainer)
+
+        # Disposable test stacks must not inherit local host publication.
+        self.assertIn("export COMPOSE_FILE=compose.yaml", smoke)
+        self.assertIn("export COMPOSE_FILE=compose.yaml", cleanup)
+
     def test_local_deployment_ports_do_not_overlap_explicit_development_forwards(self):
         devcontainer = json.loads((ROOT / ".devcontainer/devcontainer.json").read_text())
         forwarded = set(devcontainer["forwardPorts"])
@@ -140,6 +166,29 @@ class ProductionComposeContractTests(unittest.TestCase):
                 self.assertFalse(called.exists())
                 self.assertNotIn("a" * 64, completed.stderr)
                 self.assertNotIn(invalid, completed.stderr)
+
+    @unittest.skipUnless(shutil.which("openssl"), "OpenSSL is required")
+    def test_local_env_keeps_optional_host_access_disabled_and_preserves_existing_settings(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            deploy = root / "deploy"
+            scripts = deploy / "scripts"
+            scripts.mkdir(parents=True)
+            shutil.copy2(ROOT / "deploy/.env.example", deploy / ".env.example")
+            shutil.copy2(ROOT / "deploy/scripts/prepare-local.sh", scripts / "prepare-local.sh")
+
+            command = ["bash", str(scripts / "prepare-local.sh")]
+            first = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            rendered = (deploy / ".env").read_text()
+            self.assertIn("# COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml", rendered)
+            self.assertIn("# SHAREWISE_POSTGRES_BIND=127.0.0.1", rendered)
+            self.assertNotRegex(rendered, r"(?m)^COMPOSE_FILE=")
+            self.assertNotRegex(rendered, r"(?m)^SHAREWISE_POSTGRES_BIND=")
+
+            second = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual((deploy / ".env").read_text(), rendered)
 
     @unittest.skipUnless(shutil.which("openssl"), "OpenSSL is required")
     def test_local_fixture_uses_distinct_untracked_secrets_without_newlines(self):
