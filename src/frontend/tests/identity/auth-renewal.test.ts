@@ -348,6 +348,54 @@ describe('renewal failure and caller cancellation', () => {
     expect(locks.events.filter((event) => event.startsWith('acquired:'))).toHaveLength(2);
   });
 
+  it('restarts restoration after an abandoned CSRF flight has settled and released its lock', async () => {
+    const locks = new ControlledLocks();
+    const firstCsrfStarted = deferred<void>();
+    const settleCanceledCsrf = deferred<void>();
+    const calls: string[] = [];
+    let csrfCount = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      calls.push(path);
+      if (path === CSRF_PATH) {
+        csrfCount++;
+        if (csrfCount === 1) {
+          firstCsrfStarted.resolve();
+          return new Promise<Response>((_resolve, reject) => {
+            const cancel = () => {
+              void settleCanceledCsrf.promise.then(() => reject(new DOMException('Canceled CSRF', 'AbortError')));
+            };
+            if (init?.signal?.aborted) cancel();
+            else init?.signal?.addEventListener('abort', cancel, { once: true });
+          });
+        }
+        return jsonResponse({ token: 'csrf' });
+      }
+      if (path === REFRESH_PATH) return jsonResponse(authenticationResponse('restored'));
+      if (path === DOMAIN_PATH) return jsonResponse({ ok: true });
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const instance = runtime(fetchImpl as typeof fetch, locks);
+    const controller = new AbortController();
+    const abandoned = instance.api.get(DOMAIN_PATH, { signal: controller.signal });
+    await firstCsrfStarted.promise;
+    controller.abort();
+    const abandonedResult = expect(abandoned).rejects.toMatchObject({ code: 'request_aborted' });
+
+    // The second caller arrives before the first aborted fetch has settled.
+    const restored = instance.api.get(DOMAIN_PATH);
+    const restoredResult = expect(restored).resolves.toEqual({ ok: true });
+    await abandonedResult;
+    expect(csrfCount).toBe(1);
+    expect(locks.events.filter((event) => event.startsWith('acquired:'))).toHaveLength(1);
+
+    settleCanceledCsrf.resolve();
+    await restoredResult;
+    expect(calls).toEqual([CSRF_PATH, CSRF_PATH, REFRESH_PATH, DOMAIN_PATH]);
+    expect(locks.events.filter((event) => event.startsWith('acquired:'))).toHaveLength(2);
+    expect(instance.session.getAccessToken()).toBe('restored');
+  });
+
   it('finishes a submitted shared refresh under the lock despite one canceled caller', async () => {
     const refresh = deferred<Response>();
     let submitted = 0;

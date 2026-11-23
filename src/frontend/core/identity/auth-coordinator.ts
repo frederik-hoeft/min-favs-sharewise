@@ -71,7 +71,7 @@ export class AuthCoordinator {
         if (this.session.getSnapshot().status === 'context-changed') throw contextChanged();
         if (this.session.getAccessToken()) return;
         if (signal?.aborted) throw requestCanceled();
-        if (this.renewal) return this.awaitRenewal(this.renewal, signal);
+        if (this.renewal) return this.singleFlightRenewal(undefined, undefined, signal);
         const state = this.session.getSnapshot();
         if (state.status !== 'reauthentication-required' ||
             (state.reason !== 'initial' && state.reason !== 'retryable')) {
@@ -152,9 +152,24 @@ export class AuthCoordinator {
     }
 
     /** A caller may stop waiting; submitted refreshes must still settle under their shared Web Lock. */
-    private singleFlightRenewal(expectedSessionId: string | undefined, rejectedToken?: string,
+    private async singleFlightRenewal(expectedSessionId: string | undefined, rejectedToken?: string,
         signal?: AbortSignal): Promise<void> {
-        if (signal?.aborted) return Promise.reject(requestCanceled());
+        if (signal?.aborted) throw requestCanceled();
+        const previous = this.renewal;
+        if (previous?.controller.signal.aborted && !previous.submitted) {
+            // No new caller may join a canceled flight. Its in-flight CSRF request
+            // must settle and release the Web Lock before we start a replacement.
+            await this.awaitAbandonedRenewal(previous, signal);
+            if (expectedSessionId === undefined) return this.ensureAuthenticated(signal);
+            this.assertContext(expectedSessionId);
+            const state = this.session.getSnapshot();
+            if (state.status === 'reauthentication-required' && state.reason !== 'initial') {
+                throw reauthenticationRequired();
+            }
+            if (this.session.getAccessToken() && rejectedToken !== undefined &&
+                !this.session.matchesAccessToken(rejectedToken)) return;
+            return this.singleFlightRenewal(expectedSessionId, rejectedToken, signal);
+        }
         if (!this.renewal) {
             const flight: RenewalFlight = {
                 controller: new AbortController(), action: Promise.resolve(), waiters: 0, submitted: false,
@@ -166,6 +181,27 @@ export class AuthCoordinator {
             }).catch(() => {});
         }
         return this.awaitRenewal(this.renewal, signal);
+    }
+
+    private async awaitAbandonedRenewal(flight: RenewalFlight, signal?: AbortSignal): Promise<void> {
+        const settled = flight.action.then(() => {}, () => {});
+        if (!signal) {
+            await settled;
+            return;
+        }
+        if (signal.aborted) throw requestCanceled();
+        let onAbort: () => void = () => {};
+        try {
+            await Promise.race([
+                settled,
+                new Promise<never>((_resolve, reject) => {
+                    onAbort = () => reject(requestCanceled());
+                    signal.addEventListener('abort', onAbort, { once: true });
+                }),
+            ]);
+        } finally {
+            signal.removeEventListener('abort', onAbort);
+        }
     }
 
     private awaitRenewal(flight: RenewalFlight, signal?: AbortSignal): Promise<void> {
