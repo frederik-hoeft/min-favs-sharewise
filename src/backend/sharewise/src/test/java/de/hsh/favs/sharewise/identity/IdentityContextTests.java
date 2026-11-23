@@ -16,10 +16,16 @@ class IdentityContextTests {
     @Test
     void authenticatedCallerProvidesConsistentAccessorsToConsumer() {
         UUID userId = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be137");
-        IdentityContext context = () -> Optional.of(userId);
+        UUID sessionId = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be138");
+        IdentityContext context = new IdentityContext() {
+            @Override public Optional<UUID> userId() { return Optional.of(userId); }
+            @Override public Optional<String> sessionId() { return Optional.of(sessionId.toString()); }
+        };
         GroupLikeConsumer consumer = new GroupLikeConsumer(context);
 
         assertEquals(Optional.of(userId), context.userId());
+        assertEquals(Optional.of(sessionId.toString()), context.sessionId());
+        assertEquals(sessionId.toString(), context.requireSessionId());
         assertTrue(context.isAuthenticated());
         assertEquals(userId, context.requireUserId());
         assertEquals(userId, consumer.currentUserId());
@@ -27,22 +33,29 @@ class IdentityContextTests {
 
     @Test
     void anonymousCallerIsDistinctFromAuthorizationDenial() {
-        IdentityContext context = Optional::empty;
+        IdentityContext context = new IdentityContext() {
+            @Override public Optional<UUID> userId() { return Optional.empty(); }
+            @Override public Optional<String> sessionId() { return Optional.empty(); }
+        };
 
         assertEquals(Optional.empty(), context.userId());
         assertFalse(context.isAuthenticated());
+        assertEquals(Optional.empty(), context.sessionId());
+        assertThrows(UnauthenticatedCallerException.class, context::requireSessionId);
         assertThrows(UnauthenticatedCallerException.class, context::requireUserId);
     }
 
     @Test
     void providerFailureIsNotConvertedToAnonymousCaller() {
         IllegalStateException failure = new IllegalStateException("Invalid credential");
-        IdentityContext context = () -> {
-            throw failure;
+        IdentityContext context = new IdentityContext() {
+            @Override public Optional<UUID> userId() { throw failure; }
+            @Override public Optional<String> sessionId() { throw failure; }
         };
 
         assertSame(failure, assertThrows(IllegalStateException.class, context::userId));
         assertSame(failure, assertThrows(IllegalStateException.class, context::requireUserId));
+        assertSame(failure, assertThrows(IllegalStateException.class, context::requireSessionId));
         assertSame(failure, assertThrows(IllegalStateException.class, context::isAuthenticated));
     }
 

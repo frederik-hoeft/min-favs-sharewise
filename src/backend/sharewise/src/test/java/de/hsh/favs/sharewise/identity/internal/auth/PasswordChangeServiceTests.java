@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountSnapshot;
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountStore;
 import de.hsh.favs.sharewise.identity.internal.auth.account.EmailAddress;
@@ -140,9 +141,21 @@ class PasswordChangeServiceTests {
     }
 
     @Test
+    void passwordChangesRejectNoncanonicalOrInvalidSessionKeysBeforePersistence() {
+        for (String invalid : new String[] {"session-alice", CALLER.toString().toUpperCase()}) {
+            Rig rig = new Rig();
+            rig.sessionId = invalid;
+            assertThrows(IllegalStateException.class, () -> rig.service.change(command(OLD, NEW)));
+            assertEquals("encoded:" + OLD, rig.accounts.hash);
+            assertNull(rig.sessions.sessions.get(OTHER).revokedAt());
+            assertEquals(0, rig.transactions.commits);
+        }
+    }
+
+    @Test
     void primaryIdentityCannotChooseAnotherAccountsSessions() {
         Rig rig = new Rig();
-        rig.identity = new VerifiedIamSession(UUID.randomUUID(), CALLER);
+        rig.userId = UUID.randomUUID();
         assertEquals(Result.err(PasswordChangeFailure.ACCOUNT_UNAVAILABLE),
                 rig.service.change(command(OLD, NEW)));
     }
@@ -157,8 +170,13 @@ class PasswordChangeServiceTests {
         final Sessions sessions = new Sessions();
         final FakeTransactions transactions = new FakeTransactions(accounts, sessions);
         final Encoder encoder = new Encoder(accounts);
-        VerifiedIamSession identity = new VerifiedIamSession(USER, CALLER);
-        final PasswordChangeService service = new PasswordChangeService(() -> identity, transactions,
+        UUID userId = USER;
+        String sessionId = CALLER.toString();
+        final IdentityContext identity = new IdentityContext() {
+            @Override public Optional<UUID> userId() { return Optional.of(Rig.this.userId); }
+            @Override public Optional<String> sessionId() { return Optional.of(Rig.this.sessionId); }
+        };
+        final PasswordChangeService service = new PasswordChangeService(identity, transactions,
                 accounts, sessions, encoder, LoginLockoutPolicy.initial(), Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

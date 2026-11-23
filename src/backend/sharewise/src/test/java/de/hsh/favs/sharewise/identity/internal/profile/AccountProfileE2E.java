@@ -137,7 +137,10 @@ class AccountProfileE2E extends E2ETestBase {
     }
 
     private static AccountProfileService service(UUID userId, Probe probe) {
-        IdentityContext identity = () -> Optional.of(userId);
+        IdentityContext identity = new IdentityContext() {
+            @Override public Optional<UUID> userId() { return Optional.of(userId); }
+            @Override public Optional<String> sessionId() { return Optional.of(userId.toString()); }
+        };
         return new AccountProfileService(identity, probe.transactions(), probe.profiles());
     }
 

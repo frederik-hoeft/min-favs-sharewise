@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountStore;
 import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
@@ -43,7 +44,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 class PasswordChangeE2E extends E2ETestBase {
     private static final String ORIGINAL = "original-password-long";
     private static final String REPLACEMENT = "replacement-password-long";
-    private static final ThreadLocal<VerifiedIamSession> TEST_SESSION = new ThreadLocal<>();
+    private record TestSession(UUID userId, UUID sessionId) { }
+    private static final ThreadLocal<TestSession> TEST_SESSION = new ThreadLocal<>();
 
     @Test
     void successfulChangeKeepsOnlyCallerEligibleAndNewLoginsRequireReplacement() {
@@ -98,7 +100,7 @@ class PasswordChangeE2E extends E2ETestBase {
             AuthenticationResult first = register(dispatcher);
             AuthenticationResult unrelated = registerOther(dispatcher);
             assertEquals(Result.err(PasswordChangeFailure.SESSION_UNAVAILABLE),
-                    withSession(new VerifiedIamSession(first.userId(), unrelated.sessionId()),
+                    withSession(new TestSession(first.userId(), unrelated.sessionId()),
                             () -> changeDirect(dispatcher, ORIGINAL, REPLACEMENT)));
             execute(fixture, "update identity.sessions set revoked_at = now() where id = ?",
                     first.sessionId());
@@ -270,7 +272,7 @@ class PasswordChangeE2E extends E2ETestBase {
 
     private static Result<PasswordChangeStatus, PasswordChangeFailure> change(OperationDispatcher dispatcher,
             AuthenticationResult caller, String current, String next) {
-        return withSession(new VerifiedIamSession(caller.userId(), caller.sessionId()),
+        return withSession(new TestSession(caller.userId(), caller.sessionId()),
                 () -> changeDirect(dispatcher, current, next));
     }
 
@@ -288,7 +290,7 @@ class PasswordChangeE2E extends E2ETestBase {
         return change(dispatcher, caller, current, next);
     }
 
-    private static <T> T withSession(VerifiedIamSession session, Supplier<T> action) {
+    private static <T> T withSession(TestSession session, Supplier<T> action) {
         TEST_SESSION.set(session);
         try { return action.get(); } finally { TEST_SESSION.remove(); }
     }
@@ -354,16 +356,17 @@ class PasswordChangeE2E extends E2ETestBase {
         @Bean
         @Primary
         @Scope("operation")
-        IamSessionContext testIamSessionContext() {
-            return () -> {
-                VerifiedIamSession session = TEST_SESSION.get();
-                if (session == null) { throw new IllegalStateException("Missing test primary session evidence"); }
-                return session;
+        IdentityContext testIdentityContext() {
+            TestSession session = TEST_SESSION.get();
+            if (session == null) { throw new IllegalStateException("Missing test primary session evidence"); }
+            return new IdentityContext() {
+                @Override public java.util.Optional<UUID> userId() { return java.util.Optional.of(session.userId()); }
+                @Override public java.util.Optional<String> sessionId() { return java.util.Optional.of(session.sessionId().toString()); }
             };
         }
         @Bean
         @Scope("operation")
-        PasswordChangeService passwordChangeService(IamSessionContext identity, Transactions transactions,
+        PasswordChangeService passwordChangeService(IdentityContext identity, Transactions transactions,
                 AccountStore accounts, SessionLifecycleStore sessions,
                 IamAuthenticationE2E.FakeEncoder encoder, LoginLockoutPolicy lockout, Clock clock) {
             return new PasswordChangeService(identity, transactions, accounts, sessions, encoder, lockout, clock);

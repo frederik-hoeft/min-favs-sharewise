@@ -18,12 +18,12 @@ import org.springframework.stereotype.Component;
 @Scope("operation")
 final class DefaultIdentityContext implements IdentityContext {
 
-    private final Optional<UUID> userId;
+    private final Optional<Caller> caller;
 
     DefaultIdentityContext(AuthorizationContext authorization, IamCredentialVerifier verifier) {
         Objects.requireNonNull(authorization);
         JwtCredentialProfile profile = verifier.requireCodec().profile();
-        Optional<UUID> selected = Optional.empty();
+        Optional<Caller> selected = Optional.empty();
         for (AuthorizationCredential credential : authorization.credentialsFrom(profile.issuer(), profile.name())) {
             ClaimOrigin origin = credential.origin();
             if (selected.isPresent()) {
@@ -35,12 +35,12 @@ final class DefaultIdentityContext implements IdentityContext {
             if (sessions.size() != 1 || sessions.getFirst().value().isBlank()) {
                 throw new IllegalStateException("Invalid primary IAM session evidence");
             }
-            selected = Optional.of(subject);
+            selected = Optional.of(new Caller(subject, sessions.getFirst().value()));
         }
         if (selected.isEmpty() && !authorization.credentials().isEmpty()) {
             throw new IllegalStateException("Authorization evidence without a primary IAM credential");
         }
-        userId = selected;
+        caller = selected;
     }
 
     private static UUID parseSubject(ClaimOrigin origin) {
@@ -58,6 +58,13 @@ final class DefaultIdentityContext implements IdentityContext {
 
     @Override
     public Optional<UUID> userId() {
-        return userId;
+        return caller.map(Caller::userId);
     }
+
+    @Override
+    public Optional<String> sessionId() {
+        return caller.map(Caller::sessionId);
+    }
+
+    private record Caller(UUID userId, String sessionId) { }
 }

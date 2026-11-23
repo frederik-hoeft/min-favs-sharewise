@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
+import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountSnapshot;
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountStore;
 import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
@@ -13,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Changes the verifier and revokes every other session in one physical transaction.
@@ -25,7 +27,7 @@ import java.util.Optional;
  */
 public final class PasswordChangeService {
 
-    private final IamSessionContext identity;
+    private final IdentityContext identity;
     private final Transactions transactions;
     private final AccountStore accounts;
     private final SessionLifecycleStore sessions;
@@ -33,7 +35,7 @@ public final class PasswordChangeService {
     private final LoginLockoutPolicy lockouts;
     private final Clock clock;
 
-    public PasswordChangeService(IamSessionContext identity, Transactions transactions,
+    public PasswordChangeService(IdentityContext identity, Transactions transactions,
             AccountStore accounts, SessionLifecycleStore sessions, CredentialEncoder credentials,
             LoginLockoutPolicy lockouts, Clock clock) {
         this.identity = Objects.requireNonNull(identity, "identity");
@@ -47,9 +49,10 @@ public final class PasswordChangeService {
 
     public Result<PasswordChangeStatus, PasswordChangeFailure> change(ChangePasswordCommand command) {
         Objects.requireNonNull(command, "command");
-        VerifiedIamSession caller = identity.requireSession();
+        UUID userId = identity.requireUserId();
+        UUID sessionId = parseSessionId(identity.requireSessionId());
         Optional<AccountSnapshot> snapshot = transactions.execute(() ->
-                TransactionOutcome.abstain(accounts.findById(caller.userId())));
+                TransactionOutcome.abstain(accounts.findById(userId)));
         if (snapshot.isEmpty()) {
             return Result.err(PasswordChangeFailure.ACCOUNT_UNAVAILABLE);
         }
@@ -61,7 +64,7 @@ public final class PasswordChangeService {
             throw new IllegalStateException("Credential encoder returned no verifier");
         }
         return transactions.execute(() -> {
-            Optional<AccountSnapshot> locked = accounts.findByIdForUpdate(caller.userId());
+            Optional<AccountSnapshot> locked = accounts.findByIdForUpdate(userId);
             if (locked.isEmpty() || locked.orElseThrow().isDisabled()) {
                 return denied(PasswordChangeFailure.ACCOUNT_UNAVAILABLE);
             }
@@ -73,28 +76,40 @@ public final class PasswordChangeService {
             if (lockouts.isLocked(current.loginFailures(), now)) {
                 return denied(PasswordChangeFailure.CURRENT_PASSWORD_INVALID);
             }
-            Optional<SessionLifecycleStore.LockedSession> selected = sessions.lockSession(caller.sessionId());
-            if (selected.isEmpty() || !eligible(selected.orElseThrow(), caller, now)) {
+            Optional<SessionLifecycleStore.LockedSession> selected = sessions.lockSession(sessionId);
+            if (selected.isEmpty() || !eligible(selected.orElseThrow(), userId, sessionId, now)) {
                 return denied(PasswordChangeFailure.SESSION_UNAVAILABLE);
             }
             if (!matches) {
                 LoginLockoutPolicy.State next = lockouts.failure(current.loginFailures(), now);
-                if (!accounts.compareAndSetLoginFailures(caller.userId(), current.loginFailures(), next)) {
+                if (!accounts.compareAndSetLoginFailures(userId, current.loginFailures(), next)) {
                     throw new IllegalStateException("Serialized IAM password failure state changed unexpectedly");
                 }
                 // Failure counters intentionally commit on a denied current password.
                 return TransactionOutcome.commit(Result.err(PasswordChangeFailure.CURRENT_PASSWORD_INVALID));
             }
-            accounts.replacePassword(caller.userId(), original.encodedPassword(), replacement);
-            sessions.revokeOtherSessions(caller.userId(), caller.sessionId(), now);
+            accounts.replacePassword(userId, original.encodedPassword(), replacement);
+            sessions.revokeOtherSessions(userId, sessionId, now);
             return TransactionOutcome.commit(Result.ok(PasswordChangeStatus.CHANGED));
         });
     }
 
+    private static UUID parseSessionId(String rawSessionId) {
+        try {
+            UUID id = UUID.fromString(rawSessionId);
+            if (id.toString().equals(rawSessionId)) {
+                return id;
+            }
+        } catch (IllegalArgumentException invalid) {
+            // Only canonical IAM session keys may be used for credential mutations.
+        }
+        throw new IllegalStateException("Invalid verified primary IAM session evidence");
+    }
+
     private static boolean eligible(SessionLifecycleStore.LockedSession locked,
-            VerifiedIamSession caller, Instant now) {
+            UUID userId, UUID sessionId, Instant now) {
         LoginSession session = locked.session();
-        return session.id().equals(caller.sessionId()) && session.userId().equals(caller.userId())
+        return session.id().equals(sessionId) && session.userId().equals(userId)
                 && !locked.userDisabled() && session.revokedAt() == null
                 && !now.isBefore(session.deadlines().createdAt())
                 && now.isBefore(session.deadlines().effectiveExpiresAt());
