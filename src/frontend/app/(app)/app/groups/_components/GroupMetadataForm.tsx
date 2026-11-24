@@ -69,6 +69,9 @@ interface GroupMetadataFormProps {
   values: MetadataInput;
   errors: MetadataFieldMessages;
   formError?: ReactNode;
+  /** An operation is running: the fields are read-only and the submit action is unavailable. */
+  busy: boolean;
+  /** The running operation is this form's submission, which the submit button shows as loading. */
   submitting: boolean;
   submitLabel: string;
   onChange: (values: MetadataInput) => void;
@@ -76,12 +79,18 @@ interface GroupMetadataFormProps {
   secondaryAction?: ReactNode;
 }
 
-/** Controlled name and description fields shared by group creation and editing. */
+/**
+ * Controlled name and description fields shared by group creation and editing. While `busy`,
+ * the fields stay focusable but read-only, so input cannot change after a request has captured
+ * it. The owner still guards `onSubmit` itself, because a submit event can arrive before the
+ * busy state has rendered.
+ */
 export function GroupMetadataForm({
   idPrefix,
   values,
   errors,
   formError,
+  busy,
   submitting,
   submitLabel,
   onChange,
@@ -94,7 +103,7 @@ export function GroupMetadataForm({
   }
 
   return (
-    <form noValidate onSubmit={handleSubmit} aria-busy={submitting}>
+    <form noValidate onSubmit={handleSubmit} aria-busy={busy}>
       <Stack gap="md">
         {formError ? (
           <Alert color="red" variant="light" icon={<WarningCircleIcon aria-hidden="true" />} role="alert">
@@ -107,6 +116,7 @@ export function GroupMetadataForm({
           required
           autoComplete="off"
           value={values.name}
+          readOnly={busy}
           error={errors.name}
           onChange={(event) => onChange({ ...values, name: event.currentTarget.value })}
         />
@@ -118,11 +128,12 @@ export function GroupMetadataForm({
           minRows={3}
           maxRows={8}
           value={values.description}
+          readOnly={busy}
           error={errors.description}
           onChange={(event) => onChange({ ...values, description: event.currentTarget.value })}
         />
         <Group gap="sm">
-          <Button type="submit" loading={submitting}>{submitLabel}</Button>
+          <Button type="submit" loading={submitting} disabled={busy}>{submitLabel}</Button>
           {secondaryAction}
         </Group>
       </Stack>

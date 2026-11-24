@@ -3,12 +3,13 @@
 import { Button, Card, Stack, Text, Title } from "@mantine/core";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   classifyGroupProblem,
   normalizedDescription,
   type MetadataInput,
 } from "@/core/groups";
+import { useExclusiveOperation } from "./use-exclusive-operation";
 import { useGroupsApi } from "./use-groups-api";
 import { groupRoutes, groupViewHref } from "../../_components/app-routes";
 import {
@@ -26,27 +27,39 @@ const problemMessages = {
   unavailable: "ShareWise could not confirm that the group was created. Check your groups before trying again.",
 } as const;
 
+/**
+ * Creates a group and opens it. Creation is not idempotent, so a running request locks the form
+ * and its Cancel action: neither may suggest that the request can be withdrawn. Leaving the page
+ * through workspace navigation abandons only the response, never navigating afterwards; the
+ * group may still have been created and then appears in the list.
+ */
 export function CreateGroup() {
   const api = useGroupsApi();
   const router = useRouter();
+  const operation = useExclusiveOperation<"create">();
   const [values, setValues] = useState<MetadataInput>({ name: "", description: "" });
   const [errors, setErrors] = useState<MetadataFieldMessages>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Set once a group was created; the form stays locked until navigation replaces the page.
+  const created = useRef(false);
+  const [opening, setOpening] = useState(false);
 
-  async function submit() {
+  function submit() {
+    if (operation.isRunning() || created.current) return;
     const clientErrors = clientFieldMessages(values);
     setErrors(clientErrors);
     setFormError(null);
     if (hasMessages(clientErrors)) return;
 
-    setSubmitting(true);
-    try {
-      const created = await api.create({ name: values.name, description: normalizedDescription(values.description) });
-      router.push(groupViewHref(created.id));
-    } catch (error) {
-      setSubmitting(false);
-      const problem = classifyGroupProblem(error);
+    const request = { name: values.name, description: normalizedDescription(values.description) };
+    operation.start("create", () => api.create(request), (outcome) => {
+      if (outcome.status === "fulfilled") {
+        created.current = true;
+        setOpening(true);
+        router.push(groupViewHref(outcome.value.id));
+        return;
+      }
+      const problem = classifyGroupProblem(outcome.error);
       if (problem.kind === "invalid") {
         const server = serverFieldMessages(problem.error);
         setErrors(server.fields);
@@ -54,11 +67,13 @@ export function CreateGroup() {
       } else if (problem.kind === "unauthenticated" || problem.kind === "user_unknown") {
         setFormError(problemMessages[problem.kind]);
       } else {
+        // Never retried automatically: the group may already exist.
         setFormError(problemMessages.unavailable);
       }
-    }
+    });
   }
 
+  const busy = operation.pending !== null || opening;
   return (
     <Stack gap="xl" maw="40rem">
       <Stack gap="xs">
@@ -71,11 +86,25 @@ export function CreateGroup() {
           values={values}
           errors={errors}
           formError={formError}
-          submitting={submitting}
+          busy={busy}
+          submitting={busy}
           submitLabel="Create group"
           onChange={setValues}
-          onSubmit={() => void submit()}
-          secondaryAction={<Button component={Link} href={groupRoutes.list} variant="subtle">Cancel</Button>}
+          onSubmit={submit}
+          secondaryAction={(
+            <Button
+              component={Link}
+              href={groupRoutes.list}
+              variant="subtle"
+              data-disabled={busy || undefined}
+              aria-disabled={busy || undefined}
+              onClick={(event) => {
+                if (busy) event.preventDefault();
+              }}
+            >
+              Cancel
+            </Button>
+          )}
         />
       </Card>
     </Stack>

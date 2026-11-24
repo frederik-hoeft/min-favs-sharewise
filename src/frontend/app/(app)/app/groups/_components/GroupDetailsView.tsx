@@ -12,6 +12,7 @@ import {
   type GroupProblem,
   type MetadataInput,
 } from "@/core/groups";
+import { useExclusiveOperation } from "./use-exclusive-operation";
 import { useGroupsApi } from "./use-groups-api";
 import {
   clientFieldMessages,
@@ -70,17 +71,7 @@ function GroupDetailsLoader({ groupId }: { groupId: string }) {
         setNotice(null);
         replace(group);
       }}
-      onFetchCurrent={async () => {
-        try {
-          const current = await api.get(groupId);
-          replace(current);
-          return current;
-        } catch (error) {
-          const problem = classifyGroupProblem(error);
-          if (problem.kind !== "unavailable") setPageProblem(problem);
-          return null;
-        }
-      }}
+      onRefreshed={replace}
       onProblem={(problem) => void handleEditorProblem(problem)}
     />
   );
@@ -90,11 +81,11 @@ interface GroupDetailsContentProps {
   group: GroupDetails;
   notice: string | null;
   onSaved: (group: GroupDetails) => void;
-  onFetchCurrent: () => Promise<GroupDetails | null>;
+  onRefreshed: (group: GroupDetails) => void;
   onProblem: (problem: GroupProblem) => void;
 }
 
-function GroupDetailsContent({ group, notice, onSaved, onFetchCurrent, onProblem }: GroupDetailsContentProps) {
+function GroupDetailsContent({ group, notice, onSaved, onRefreshed, onProblem }: GroupDetailsContentProps) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
   const canEdit = group.callerRole === "admin";
@@ -149,7 +140,7 @@ function GroupDetailsContent({ group, notice, onSaved, onFetchCurrent, onProblem
             setSaved(true);
             onSaved(updated);
           }}
-          onFetchCurrent={onFetchCurrent}
+          onRefreshed={onRefreshed}
           onProblem={onProblem}
         />
       ) : null}
@@ -158,47 +149,64 @@ function GroupDetailsContent({ group, notice, onSaved, onFetchCurrent, onProblem
 }
 
 interface GroupEditorProps {
+  /** The group as the editor opened it; the draft is taken from it once. */
   group: GroupDetails;
   onCancel: () => void;
   onSaved: (group: GroupDetails) => void;
-  onFetchCurrent: () => Promise<GroupDetails | null>;
+  /** Receives the current details that the user loaded after a conflict. */
+  onRefreshed: (group: GroupDetails) => void;
   onProblem: (problem: GroupProblem) => void;
 }
 
-function metadataValues(group: GroupDetails): MetadataInput {
-  return { name: group.name, description: group.description ?? "" };
+/** Edited metadata together with the version it is based on; the two change only together. */
+interface MetadataDraft {
+  readonly values: MetadataInput;
+  readonly baseVersion: number;
+}
+
+function draftOf(group: GroupDetails): MetadataDraft {
+  return { values: { name: group.name, description: group.description ?? "" }, baseVersion: group.version };
 }
 
 /**
- * Edits metadata against the version it was loaded from. A conflict keeps the user's input
- * until they explicitly choose to replace it with the current metadata.
+ * Edits a draft bound to the version it was taken from. A save always names that version, never
+ * the version the page shows at the time, so it can only replace the state the user edited.
+ * Loading the current details replaces the draft and its version together; a conflict keeps the
+ * draft until the user explicitly chooses to do so.
+ *
+ * One operation runs at a time, and its outcome reaches only this editor instance. While a save
+ * runs, the draft and Cancel are locked, because closing the editor would hide whether the
+ * change was saved. While the current details load, the draft is read-only but Cancel remains
+ * available; the abandoned response then changes nothing.
  */
-function GroupEditor({ group, onCancel, onSaved, onFetchCurrent, onProblem }: GroupEditorProps) {
+function GroupEditor({ group, onCancel, onSaved, onRefreshed, onProblem }: GroupEditorProps) {
   const api = useGroupsApi();
-  const [values, setValues] = useState<MetadataInput>(() => metadataValues(group));
+  const operation = useExclusiveOperation<"save" | "reload">();
+  const [draft, setDraft] = useState<MetadataDraft>(() => draftOf(group));
   const [errors, setErrors] = useState<MetadataFieldMessages>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [reloading, setReloading] = useState(false);
+  const groupId = group.id;
 
-  async function submit() {
-    const clientErrors = clientFieldMessages(values);
+  function submit() {
+    if (operation.isRunning()) return;
+    const clientErrors = clientFieldMessages(draft.values);
     setErrors(clientErrors);
     setFormError(null);
     if (hasMessages(clientErrors)) return;
 
-    setSubmitting(true);
-    try {
-      const updated = await api.replaceMetadata(group.id, {
-        name: values.name,
-        description: normalizedDescription(values.description),
-        expectedVersion: group.version,
-      });
-      setConflict(false);
-      onSaved(updated);
-    } catch (error) {
-      const problem = classifyGroupProblem(error);
+    const request = {
+      name: draft.values.name,
+      description: normalizedDescription(draft.values.description),
+      expectedVersion: draft.baseVersion,
+    };
+    operation.start("save", () => api.replaceMetadata(groupId, request), (outcome) => {
+      if (outcome.status === "fulfilled") {
+        setConflict(false);
+        onSaved(outcome.value);
+        return;
+      }
+      const problem = classifyGroupProblem(outcome.error);
       if (problem.kind === "version_conflict") {
         setConflict(true);
       } else if (problem.kind === "invalid") {
@@ -211,25 +219,29 @@ function GroupEditor({ group, onCancel, onSaved, onFetchCurrent, onProblem }: Gr
       } else {
         onProblem(problem);
       }
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
-  async function loadCurrent() {
-    setReloading(true);
-    const current = await onFetchCurrent();
-    setReloading(false);
-    if (current) {
-      setValues(metadataValues(current));
-      setErrors({});
-      setFormError(null);
-      setConflict(false);
-    } else {
-      setFormError("The current details could not be loaded. Try again.");
-    }
+  function loadCurrent() {
+    operation.start("reload", () => api.get(groupId), (outcome) => {
+      if (outcome.status === "fulfilled") {
+        setDraft(draftOf(outcome.value));
+        setErrors({});
+        setFormError(null);
+        setConflict(false);
+        onRefreshed(outcome.value);
+        return;
+      }
+      const problem = classifyGroupProblem(outcome.error);
+      if (problem.kind === "unavailable") {
+        setFormError("The current details could not be loaded. Try again.");
+      } else {
+        onProblem(problem);
+      }
+    });
   }
 
+  const pending = operation.pending;
   return (
     <Card padding="xl" component="section" aria-labelledby="edit-group-title">
       <Stack gap="md">
@@ -244,8 +256,9 @@ function GroupEditor({ group, onCancel, onSaved, onFetchCurrent, onProblem }: Gr
                 size="xs"
                 variant="light"
                 leftSection={<ArrowClockwiseIcon aria-hidden="true" />}
-                loading={reloading}
-                onClick={() => void loadCurrent()}
+                loading={pending === "reload"}
+                disabled={pending !== null}
+                onClick={loadCurrent}
               >
                 Load current details
               </Button>
@@ -254,14 +267,15 @@ function GroupEditor({ group, onCancel, onSaved, onFetchCurrent, onProblem }: Gr
         ) : null}
         <GroupMetadataForm
           idPrefix="edit-group"
-          values={values}
+          values={draft.values}
           errors={errors}
           formError={formError}
-          submitting={submitting}
+          busy={pending !== null}
+          submitting={pending === "save"}
           submitLabel="Save changes"
-          onChange={setValues}
-          onSubmit={() => void submit()}
-          secondaryAction={<Button variant="subtle" onClick={onCancel}>Cancel</Button>}
+          onChange={(values) => setDraft((current) => ({ values, baseVersion: current.baseVersion }))}
+          onSubmit={submit}
+          secondaryAction={<Button variant="subtle" disabled={pending === "save"} onClick={onCancel}>Cancel</Button>}
         />
       </Stack>
     </Card>

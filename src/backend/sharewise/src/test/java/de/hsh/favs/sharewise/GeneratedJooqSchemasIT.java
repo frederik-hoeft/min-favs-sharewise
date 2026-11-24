@@ -2,123 +2,108 @@ package de.hsh.favs.sharewise;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import de.hsh.favs.sharewise.JooqCodegenProfile.Execution;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestBase;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Stream;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.xpath.XPath;
-import javax.xml.xpath.XPathConstants;
-import javax.xml.xpath.XPathFactory;
 import org.jooq.codegen.GenerationTool;
-import org.jooq.codegen.JavaGenerator;
 import org.jooq.meta.jaxb.Configuration;
 import org.jooq.meta.jaxb.Database;
-import org.jooq.meta.jaxb.Generate;
 import org.jooq.meta.jaxb.Generator;
-import org.jooq.meta.jaxb.OnError;
 import org.jooq.meta.jaxb.Target;
-import org.jooq.meta.postgres.PostgresDatabase;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
 /**
  * Regenerates every context's jOOQ sources from the suite's freshly Flyway-migrated database
  * and requires them to equal the committed sources byte for byte.
  *
- * <p>The contexts are the executions of the {@code jooq-codegen} Maven profile, read from
- * {@code pom.xml}, so the profile is the single list of generated schemas and a new
- * execution is checked without changing this test. The shared generator settings mirror the
- * profile's plugin-level configuration. If the two diverge, the regenerated sources no
- * longer match the committed ones and this test fails, so the profile cannot silently drift
- * from the check.
+ * <p>Each context is an execution of the {@code jooq-codegen} Maven profile, and generation
+ * uses that execution's effective configuration as {@link JooqCodegenProfile} derives it from
+ * {@code pom.xml}: the plugin-level settings merged with the execution's own. The profile is
+ * therefore the single source of the generated schemas and of every generator setting. A new
+ * execution is checked without changing this test, and a setting changed only in the profile
+ * also changes the regenerated output, which then no longer matches stale committed sources.
+ * Only the connection and the output directory are the test's own: generation reads the test
+ * database and writes to a temporary directory, which is compared with the execution's
+ * configured target directory.
  */
 @Tag("integration")
 class GeneratedJooqSchemasIT extends IntegrationTestBase {
 
     private static final Path POM = Path.of("pom.xml");
-    private static final Path COMMITTED_SOURCES = Path.of("src", "main", "java");
 
-    /** One {@code jooq-codegen} execution: the schema it reads and the package it writes. */
-    record GeneratedSchema(String executionId, String inputSchema, String packageName) {
-
-        @Override
-        public String toString() {
-            return executionId;
-        }
-    }
-
-    static List<GeneratedSchema> generatedSchemas() throws Exception {
-        Document pom = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(POM.toFile());
-        XPath xpath = XPathFactory.newInstance().newXPath();
-        NodeList executions = (NodeList) xpath.evaluate(
-            "/project/profiles/profile[id='jooq-codegen']/build/plugins/plugin"
-                + "[artifactId='jooq-codegen-maven']/executions/execution",
-            pom, XPathConstants.NODESET);
-        List<GeneratedSchema> schemas = new ArrayList<>();
-        for (int index = 0; index < executions.getLength(); index++) {
-            Element execution = (Element) executions.item(index);
-            schemas.add(new GeneratedSchema(
-                xpath.evaluate("id", execution).trim(),
-                xpath.evaluate("configuration/generator/database/inputSchema", execution).trim(),
-                xpath.evaluate("configuration/generator/target/packageName", execution).trim()));
-        }
-        return schemas;
+    static List<Execution> executions() throws Exception {
+        return JooqCodegenProfile.executions(POM);
     }
 
     @Test
     void profileDeclaresEachContextSchemaOnce() throws Exception {
-        List<GeneratedSchema> schemas = generatedSchemas();
-        assertFalse(schemas.isEmpty(), "the jooq-codegen profile declares no executions");
-        for (GeneratedSchema schema : schemas) {
-            assertFalse(schema.inputSchema().isEmpty(), () -> schema + " declares no inputSchema");
-            assertFalse(schema.packageName().isEmpty(), () -> schema + " declares no target package");
+        List<Execution> executions = executions();
+        assertFalse(executions.isEmpty(), "the jooq-codegen profile declares no executions");
+        for (Execution execution : executions) {
+            assertFalse(inputSchema(execution).isBlank(), () -> execution + " declares no inputSchema");
+            assertFalse(target(execution).getPackageName().isBlank(), () -> execution + " declares no target package");
+            assertNotNull(target(execution).getDirectory(), () -> execution + " declares no target directory");
         }
-        assertEquals(schemas.size(), schemas.stream().map(GeneratedSchema::inputSchema).distinct().count(),
+        assertEquals(executions.size(), executions.stream().map(GeneratedJooqSchemasIT::inputSchema).distinct().count(),
             "a schema is generated by more than one execution");
-        assertEquals(schemas.size(), schemas.stream().map(GeneratedSchema::packageName).distinct().count(),
-            "two executions write into the same package");
+        assertEquals(executions.size(), executions.stream().map(execution -> target(execution).getPackageName())
+            .distinct().count(), "two executions write into the same package");
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("generatedSchemas")
-    void committedGeneratedSourcesMatchTheMigratedSchema(GeneratedSchema schema, @TempDir Path output)
+    @MethodSource("executions")
+    void committedGeneratedSourcesMatchTheMigratedSchema(Execution execution, @TempDir Path output)
         throws Exception {
+        Configuration configuration = execution.configuration();
+        Target target = target(execution);
+        String packageName = target.getPackageName();
+        Path committedSources = Path.of(target.getDirectory());
+        target.setDirectory(output.toString());
         try (Connection migrator = fixture().database().connectAsMigrator()) {
             GenerationTool generator = new GenerationTool();
             generator.setConnection(migrator);
-            generator.run(new Configuration().withOnMetadataProblem(OnError.FAIL).withGenerator(new Generator()
-                .withName(JavaGenerator.class.getName())
-                .withDatabase(new Database()
-                    .withName(PostgresDatabase.class.getName())
-                    .withInputSchema(schema.inputSchema())
-                    .withIncludes(".*"))
-                .withGenerate(new Generate().withDaos(false).withPojos(false).withRecords(true))
-                .withTarget(new Target().withPackageName(schema.packageName()).withDirectory(output.toString()))));
+            generator.run(configuration);
         }
 
-        String regenerate = "rerun -Pjooq-codegen (execution " + schema.executionId() + ")";
-        Map<String, String> regenerated = sources(output, schema.packageName());
-        Map<String, String> committed = sources(COMMITTED_SOURCES, schema.packageName());
-        assertFalse(regenerated.isEmpty(), () -> "jOOQ generated no sources for schema " + schema.inputSchema());
+        String regenerate = "rerun -Pjooq-codegen (execution " + execution.id() + ")";
+        Map<String, String> regenerated = sources(output, packageName);
+        Map<String, String> committed = sources(committedSources, packageName);
+        assertFalse(regenerated.isEmpty(), () -> "jOOQ generated no sources for schema " + inputSchema(execution));
         assertEquals(regenerated.keySet(), committed.keySet(), () -> "generated file set differs; " + regenerate);
         for (Map.Entry<String, String> file : regenerated.entrySet()) {
             assertEquals(file.getValue(), committed.get(file.getKey()),
                 () -> file.getKey() + " differs from the migrated schema; " + regenerate);
         }
+    }
+
+    private static String inputSchema(Execution execution) {
+        Database database = generator(execution).getDatabase();
+        return database == null || database.getInputSchema() == null ? "" : database.getInputSchema();
+    }
+
+    private static Target target(Execution execution) {
+        Target target = generator(execution).getTarget();
+        assertNotNull(target, () -> execution + " declares no target");
+        return target;
+    }
+
+    private static Generator generator(Execution execution) {
+        Generator generator = execution.configuration().getGenerator();
+        assertNotNull(generator, () -> execution + " declares no generator");
+        return generator;
     }
 
     private static Map<String, String> sources(Path root, String packageName) throws IOException {

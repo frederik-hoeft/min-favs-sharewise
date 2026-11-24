@@ -11,7 +11,7 @@ import NewGroupPage from "@/app/(app)/app/groups/new/page";
 import GroupViewPage from "@/app/(app)/app/groups/view/page";
 import { authenticationResponse } from "../identity/support";
 import { TestProviders } from "../support/TestProviders";
-import { GROUP_ID, details, json, problem, scriptedClient, summary } from "./support";
+import { GROUP_ID, deferred, details, json, problem, scriptedClient, summary } from "./support";
 
 const LIST = "/api/groups/v1/groups";
 const GROUP = `${LIST}/${GROUP_ID}`;
@@ -51,6 +51,34 @@ function renderPage(page: ReactElement) {
 function expectFieldError(field: HTMLElement, message: string) {
   expect(field).toHaveAttribute("aria-invalid", "true");
   expect(field).toHaveAccessibleDescription(expect.stringContaining(message));
+}
+
+/**
+ * Submits a form twice within one React batch, so the second submission sees the same rendered
+ * state as the first and only a guard independent of rendering can reject it.
+ */
+function submitTwiceBeforeRendering(form: HTMLFormElement) {
+  act(() => {
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+}
+
+function formOf(field: HTMLElement): HTMLFormElement {
+  const form = field.closest("form");
+  if (!form) throw new Error("field is not inside a form");
+  return form;
+}
+
+/**
+ * Runs every queued promise continuation, so a request or navigation that should not happen
+ * would have happened. One macrotask turn drains the whole microtask queue; the scripted
+ * transport involves no timers, so this does not depend on timing.
+ */
+async function settlePendingWork() {
+  await act(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 async function expectNoAxeViolations(container: HTMLElement) {
@@ -155,6 +183,13 @@ describe("GM-FT02 group creation", () => {
     expectFieldError(screen.getByRole("textbox", { name: /Name/ }), "Name is too long.");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
+
+    const name = screen.getByRole("textbox", { name: /Name/ });
+    expect(name).not.toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Create group" })).toBeEnabled();
+    expect(screen.getByRole("link", { name: "Cancel" })).not.toHaveAttribute("aria-disabled");
+    await user.type(name, "!");
+    expect(name).toHaveValue("Flat share!");
   });
 
   it("creates the group and navigates to its detail page", async () => {
@@ -178,6 +213,73 @@ describe("GM-FT02 group creation", () => {
     await user.type(screen.getByRole("textbox", { name: /Name/ }), "Flat share");
     await user.click(screen.getByRole("button", { name: "Create group" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("could not confirm that the group was created");
+    await settlePendingWork();
+    expect(fake.requests).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: /Name/ })).not.toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Create group" })).toBeEnabled();
+  });
+
+  it("sends one creation request and locks the form until the created group opens", async () => {
+    const user = userEvent.setup();
+    const response = deferred<Response>();
+    fake.respond("POST", LIST, response.promise);
+    renderPage(<NewGroupPage />);
+    const name = screen.getByRole("textbox", { name: /Name/ });
+    await user.type(name, "Flat share");
+    await user.click(screen.getByRole("button", { name: "Create group" }));
+    await waitFor(() => expect(fake.requests).toHaveLength(1));
+
+    expect(formOf(name)).toHaveAttribute("aria-busy", "true");
+    expect(name).toHaveAttribute("readonly");
+    expect(screen.getByRole("textbox", { name: /Description/ })).toHaveAttribute("readonly");
+    await user.type(name, " 2");
+    expect(name).toHaveValue("Flat share");
+    // Creation cannot be withdrawn, so Cancel does not pretend to.
+    expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("aria-disabled", "true");
+    await user.type(name, "{Enter}");
+    submitTwiceBeforeRendering(formOf(name));
+    await settlePendingWork();
+    expect(fake.requests).toHaveLength(1);
+
+    await act(async () => response.resolve(json(201, details())));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/app/groups/view?id=${GROUP_ID}`));
+    expect(name).toHaveAttribute("readonly");
+    submitTwiceBeforeRendering(formOf(name));
+    await settlePendingWork();
+    expect(fake.requests).toHaveLength(1);
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a repeated submission that arrives before the busy state renders", async () => {
+    const user = userEvent.setup();
+    const response = deferred<Response>();
+    fake.respond("POST", LIST, response.promise);
+    renderPage(<NewGroupPage />);
+    const name = screen.getByRole("textbox", { name: /Name/ });
+    await user.type(name, "Flat share");
+
+    submitTwiceBeforeRendering(formOf(name));
+    await settlePendingWork();
+    expect(fake.requests).toHaveLength(1);
+    await act(async () => response.resolve(json(201, details())));
+    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not navigate when the page was left before the creation response arrived", async () => {
+    const user = userEvent.setup();
+    const response = deferred<Response>();
+    fake.respond("POST", LIST, response.promise);
+    const view = renderPage(<NewGroupPage />);
+    await user.type(screen.getByRole("textbox", { name: /Name/ }), "Flat share");
+    await user.click(screen.getByRole("button", { name: "Create group" }));
+    await waitFor(() => expect(fake.requests).toHaveLength(1));
+
+    // Workspace navigation replaces the page while the POST is outstanding.
+    view.unmount();
+    await act(async () => response.resolve(json(201, details())));
+    await settlePendingWork();
+    expect(push).not.toHaveBeenCalled();
+    expect(fake.requests).toHaveLength(1);
   });
 });
 
@@ -221,6 +323,8 @@ describe("GM-FT03 group details", () => {
     await user.click(within(conflict).getByRole("button", { name: "Load current details" }));
     await waitFor(() => expect(screen.getByRole("textbox", { name: /Name/ })).toHaveValue("Shared flat"));
     expect(screen.queryByText("This group was changed in the meantime")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Shared flat", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Name/ })).not.toHaveAttribute("readonly");
 
     await user.clear(screen.getByRole("textbox", { name: /Name/ }));
     await user.type(screen.getByRole("textbox", { name: /Name/ }), "Shared flat 2026");
@@ -228,6 +332,103 @@ describe("GM-FT03 group details", () => {
     expect(await screen.findByRole("heading", { name: "Shared flat 2026", level: 1 })).toBeInTheDocument();
     expect(fake.requests.at(-1)?.body).toEqual({ name: "Shared flat 2026", description: null, expectedVersion: 1 });
     expect(screen.getByText("Changes saved.")).toBeInTheDocument();
+  });
+
+  it("ignores a conflict reload abandoned by Cancel, so a reopened editor still saves against its own version", async () => {
+    const user = userEvent.setup();
+    search = `id=${GROUP_ID}`;
+    const current = deferred<Response>();
+    fake.respond("GET", GROUP, json(200, details()), current.promise);
+    fake.respond("PUT", GROUP, problem(409, "group_version_conflict"), problem(409, "group_version_conflict"));
+    renderPage(<GroupViewPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit details" }));
+    await user.clear(screen.getByRole("textbox", { name: /Name/ }));
+    await user.type(screen.getByRole("textbox", { name: /Name/ }), "My edit");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(within(await screen.findByRole("alert")).getByRole("button", { name: "Load current details" }));
+    await waitFor(() => expect(fake.requests.filter((request) => request.method === "GET")).toHaveLength(2));
+
+    // While the current details load, the draft and saving are locked, but leaving is not.
+    const name = screen.getByRole("textbox", { name: /Name/ });
+    expect(name).toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    submitTwiceBeforeRendering(formOf(name));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Edit details" }));
+    expect(screen.getByRole("textbox", { name: /Name/ })).toHaveValue("Flat share");
+
+    // Another administrator's version 1 arrives for the editor that no longer exists.
+    await act(async () => current.resolve(json(200, details({ name: "Shared flat", description: null, version: 1 }))));
+    await settlePendingWork();
+    expect(screen.getByRole("heading", { name: "Flat share", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Name/ })).toHaveValue("Flat share");
+
+    await user.clear(screen.getByRole("textbox", { name: /Name/ }));
+    await user.type(screen.getByRole("textbox", { name: /Name/ }), "Stale edit");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This group was changed in the meantime");
+    const puts = fake.requests.filter((request) => request.method === "PUT");
+    expect(puts.map((request) => request.body)).toEqual([
+      { name: "My edit", description: "Rent and groceries", expectedVersion: 0 },
+      { name: "Stale edit", description: "Rent and groceries", expectedVersion: 0 },
+    ]);
+  });
+
+  it("locks the draft, Cancel and repeated saves while a save is pending", async () => {
+    const user = userEvent.setup();
+    search = `id=${GROUP_ID}`;
+    const saved = deferred<Response>();
+    fake.respond("GET", GROUP, json(200, details()));
+    fake.respond("PUT", GROUP, saved.promise);
+    renderPage(<GroupViewPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit details" }));
+    const name = screen.getByRole("textbox", { name: /Name/ });
+    await user.clear(name);
+    await user.type(name, "Shared flat");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(fake.requests.filter((request) => request.method === "PUT")).toHaveLength(1));
+
+    expect(formOf(name)).toHaveAttribute("aria-busy", "true");
+    expect(name).toHaveAttribute("readonly");
+    await user.type(name, " 2026");
+    expect(name).toHaveValue("Shared flat");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.type(name, "{Enter}");
+    submitTwiceBeforeRendering(formOf(name));
+    await settlePendingWork();
+    expect(fake.requests.filter((request) => request.method === "PUT")).toHaveLength(1);
+
+    await act(async () => saved.resolve(json(200, details({ name: "Shared flat", version: 1 }))));
+    expect(await screen.findByRole("heading", { name: "Shared flat", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText("Changes saved.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /Name/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the draft and its version editable after a failed save", async () => {
+    const user = userEvent.setup();
+    search = `id=${GROUP_ID}`;
+    fake.respond("GET", GROUP, json(200, details()));
+    fake.respond("PUT", GROUP, new TypeError("offline"), json(200, details({ name: "Shared flat", version: 1 })));
+    renderPage(<GroupViewPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit details" }));
+    const name = screen.getByRole("textbox", { name: /Name/ });
+    await user.clear(name);
+    await user.type(name, "Shared");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your changes could not be saved");
+
+    expect(name).not.toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    await user.type(name, " flat");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("heading", { name: "Shared flat", level: 1 })).toBeInTheDocument();
+    expect(fake.requests.filter((request) => request.method === "PUT").map((request) => request.body)).toEqual([
+      { name: "Shared", description: "Rent and groceries", expectedVersion: 0 },
+      { name: "Shared flat", description: "Rent and groceries", expectedVersion: 0 },
+    ]);
   });
 
   it("shows the group as it is after a concurrent demotion", async () => {

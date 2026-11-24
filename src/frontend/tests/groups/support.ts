@@ -8,7 +8,8 @@ export interface RecordedRequest {
   readonly body: unknown;
 }
 
-export type FakeResponse = Response | Error | (() => Response | Error);
+/** A scripted outcome; a promise holds the response until the test settles it. */
+export type FakeResponse = Response | Error | Promise<Response | Error> | (() => Response | Error);
 
 /**
  * A real `ApiClient` over a scripted fetch, so tests exercise ProblemDetail parsing too.
@@ -23,7 +24,7 @@ export function scriptedClient() {
     requests.push({ method, path, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
     const next = queues.get(`${method} ${path}`)?.shift();
     if (!next) throw new Error(`Unexpected request ${method} ${path}`);
-    const outcome = typeof next === "function" ? next() : next;
+    const outcome = await (typeof next === "function" ? next() : next);
     if (outcome instanceof Error) throw outcome;
     return outcome;
   });
@@ -37,6 +38,20 @@ export function scriptedClient() {
       queues.set(key, [...(queues.get(key) ?? []), ...responses]);
     },
   };
+}
+
+export interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+}
+
+/** A promise the test resolves explicitly, to order asynchronous outcomes without timers. */
+export function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 export function json(status: number, body: unknown): Response {
