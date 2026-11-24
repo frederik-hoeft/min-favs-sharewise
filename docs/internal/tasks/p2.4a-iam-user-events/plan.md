@@ -73,14 +73,16 @@ flowchart LR
 
 **Scope:** D9, D10; EV-06, EV-10; TC-07, TC-09.
 
-- [ ] Configure `republish-outstanding-events-on-restart=true` and the staleness durations (`staleness.published` above the worst-case queue wait); document the single-instance assumption next to the property.
-- [ ] Add `@EnableScheduling` once in shared infrastructure; the staleness monitor and the resubmitter depend on it.
-- [ ] Add a scheduled `FailedEventPublications` resubmitter that runs outside any transaction, with backoff (filter on `lastResubmissionDate`/`completionAttempts`, exponential and capped), `withMaxInFlight`, configurable interval and structured log lines.
-- [ ] Never abandon: keep `abandon-after-attempts=-1`, add a context test asserting that no `AbandonPolicy` bean exists and document that `applyAbandonPolicy()` must not be called (DELETE mode would delete abandoned publications).
-- [ ] E2E: a publication stuck in `PUBLISHED` becomes `FAILED` through the staleness monitor and is then delivered by the resubmitter.
+- [x] Configure `republish-outstanding-events-on-restart=true` and the staleness durations (`staleness.published` above the worst-case queue wait); document the single-instance assumption next to the property.
+- [x] Add `@EnableScheduling` once in shared infrastructure; the staleness monitor and the resubmitter depend on it.
+- [x] Add a scheduled `FailedEventPublications` resubmitter that runs outside any transaction, with backoff (filter on `lastResubmissionDate`/`completionAttempts`, exponential and capped), `withMaxInFlight`, configurable interval and structured log lines.
+- [x] Never abandon: keep `abandon-after-attempts=-1`, add a context test asserting that no `AbandonPolicy` bean exists and document that `applyAbandonPolicy()` must not be called (DELETE mode would delete abandoned publications).
+- [x] E2E: a publication stuck in `PUBLISHED` becomes `FAILED` through the staleness monitor and is then delivered by the resubmitter.
 - [ ] Add the Flyway data migration copying existing `identity.users.id` into `groups.users` with `ON CONFLICT DO NOTHING`, versioned after the registry and both feature migrations; document the stop → migrate → start precondition (D10).
 - [ ] E2E: TC-07 (pending publication survives context restart and is delivered), TC-09 (bootstrapped database migrated to the version before the bootstrap, seeded, then migrated fully; idempotent).
 - [ ] Document the operator procedure for renamed or removed listeners (specification failure table).
+
+**Phase D notes:** The recovery part (everything except the bootstrap migration, TC-07 and TC-09) is independent of P2.2a and implemented ahead of Phase C: `EventPublicationRecoveryConfiguration` (`@EnableScheduling`, settings), `FailedPublicationResubmitter` (exponential backoff on `lastResubmissionDate`/`completionAttempts`, `withMaxInFlight`, no-op without a registry), unit tests for the backoff, and `EventPublicationRecoveryE2E` (stuck `PUBLISHED` row → staleness → resubmission → delivered; no `AbandonPolicy`). TC-07 and the bootstrap follow with Phase C because they need the real consumer.
 
 **Gate D:** `./mvnw verify` green; retry/staleness defaults approved (Q4).
 

@@ -48,20 +48,21 @@ class EventPublicationRegistryE2E extends E2ETestBase {
 
     static final String LISTENER_ID = "test.registry-probe.v1";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
+    /** Probe projection; the deferred self-reference lets a write fail only at physical COMMIT. */
+    static final String PROBE_SCHEMA = """
+        create table groups.event_registry_probe (
+            id uuid primary key,
+            parent_id uuid references groups.event_registry_probe(id)
+                deferrable initially deferred
+        )
+        """;
 
     private OperationDispatcher dispatcher;
     private ProbeBehavior behavior;
 
     @BeforeEach
     void initialize() {
-        // The deferred self-reference lets a consumer write a row that only fails at physical COMMIT.
-        startWithSchema("""
-            create table groups.event_registry_probe (
-                id uuid primary key,
-                parent_id uuid references groups.event_registry_probe(id)
-                    deferrable initially deferred
-            )
-            """, ProductionEntityScanConfiguration.class, Fixtures.class);
+        startWithSchema(PROBE_SCHEMA, ProductionEntityScanConfiguration.class, Fixtures.class);
         dispatcher = context().getBean(OperationDispatcher.class);
         behavior = context().getBean(ProbeBehavior.class);
     }
