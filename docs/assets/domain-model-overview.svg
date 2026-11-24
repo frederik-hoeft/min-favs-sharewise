@@ -291,7 +291,7 @@
       <text x="1630.3726" xml:space="preserve" y="485.6128" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">0..*</text>
       <path fill="none" d="M1522.9696 322.5099 L1522.9696 302.4994 L1797.9298 302.4994 L1797.9298 322.5208" clip-path="url(#clipPath2)"/>
       <text x="1785.7001" xml:space="preserve" y="317.2133" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">1</text>
-      <text x="1529.8141" xml:space="preserve" y="317.2133" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">1..*</text>
+      <text x="1529.8141" xml:space="preserve" y="317.2133" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">0..*</text>
       <path fill="none" d="M1628.0872 358.5897 L1587.8212 358.5897" clip-path="url(#clipPath2)"/>
       <text x="1589.0583" xml:space="preserve" y="370.98" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">1</text>
       <text x="1607.1537" xml:space="preserve" y="371.0584" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">0..*</text>

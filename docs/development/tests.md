@@ -113,9 +113,10 @@ An Integration operation permits one logical segment. It must not commit seed ch
 
 ### E2E: a database and context owned by each test
 
-Extend `E2ETestBase` and use its callback-owned lifecycle:
+Extend `E2ETestBase`, declare `@Tag("e2e")` on the concrete test class and use its callback-owned lifecycle. For application tests, select `ProductionEntityScanConfiguration` explicitly so Hibernate validates only context-owned production entities:
 
 ```java
+@Tag("e2e")
 class SomeApplicationE2E extends E2ETestBase {
 
     @Test
@@ -125,12 +126,12 @@ class SomeApplicationE2E extends E2ETestBase {
             try (Connection connection = fixture.connectAsApplication()) {
                 assertTrue(connection.isValid(2));
             }
-        });
+        }, ProductionEntityScanConfiguration.class);
     }
 }
 ```
 
-The E2E example uses JUnit's `@Test`, `assertNotNull` and `assertTrue` plus `java.sql.Connection`. The helper creates, migrates, configures and closes the fixture, including on assertion failure. `runServiceTest(MyService.class, (service, fixture) -> { ... })` resolves an application service inside a production operation scope while allowing it to commit real physical transactions. `runTestWithSchema(ddl, ...)` is for infrastructure tests requiring additional schema objects, not normal application tests; normal production tables come from Flyway migrations.
+The E2E example uses JUnit's `@Tag`, `@Test`, `assertNotNull` and `assertTrue`, `java.sql.Connection` and `testsupport.postgres.ProductionEntityScanConfiguration`. The helper creates, migrates, configures and closes the fixture, including on assertion failure. `runServiceTest(MyService.class, (service, fixture) -> { ... })` resolves an application service inside a production operation scope while allowing it to commit real physical transactions. `runTestWithSchema(ddl, ...)` is for infrastructure tests requiring additional schema objects, not normal application tests; normal production tables come from Flyway migrations. Tests that need JPA probe entities select their own entity scan and matching schema setup. Without a constrained scan, Hibernate can discover probe entities on the test classpath whose tables do not exist in a normal migrated database.
 
 Use `fixture.connectAsApplication()` for assertions from an independent connection after a real commit or rollback. For legacy infrastructure tests, the base class also supports `start(...)` in `@BeforeEach` and closes the fixture in `@AfterEach`. Tests intentionally inspecting provisioning or failure during startup may use the lower-level `IntegrationTestContext` and `TestDatabase` APIs directly. The fixture's PostgreSQL-specific implementation is `PostgresTestDatabase` when server administration or PostgreSQL semantics are the subject.
 

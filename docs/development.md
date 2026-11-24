@@ -33,17 +33,24 @@ The application uses **PostgreSQL 18**. The [persistence architecture](architect
 
 Flyway applies the migrations in `src/main/resources/db/migration/` at startup. Each bounded context owns one schema (`identity`, `groups`, `finance`, `files`, `notifications`); the Flyway history lives in schema `flyway`. Hibernate only validates its mappings (`spring.jpa.hibernate.ddl-auto=validate`). Migration files follow `db/migration/<context>/V<yyyyMMddHHmm>__<context>_<description>.sql` (cross-cutting migrations such as the schema baseline use `db/migration/platform/`) and are immutable once committed and pushed; local work-in-progress migrations may be edited after resetting the local database.
 
-The IAM persistence adapters use committed jOOQ schema classes generated against **migrated PostgreSQL**, not handwritten table definitions. After a Flyway schema change, regenerate them from the development container with the database running and migrated:
+IAM and Finance use committed jOOQ schema classes generated against **migrated PostgreSQL**, not handwritten table definitions. After changing a context's Flyway schema, start the development database and apply the migrations, then regenerate only that context's metadata from `src/backend/sharewise`. Choose `jooq-codegen-identity` for IAM or `jooq-codegen-finance` for Finance. For example, to regenerate Finance:
 
 ```bash
 cd src/backend/sharewise
-./mvnw -Pjooq-codegen-identity \
+./mvnw -Pjooq-codegen-finance \
   -Djooq.codegen.jdbc.url=jdbc:postgresql://postgres:5432/sharewise \
   -Djooq.codegen.jdbc.user=sharewise_migrator \
   org.jooq:jooq-codegen-maven:generate
 ```
 
-The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role. Review and commit the generated sources under `identity/internal/auth/persistence/generated/` alongside the Flyway change. Ordinary Maven builds use those checked-in sources and do not contact PostgreSQL for code generation. The generator profile is opt-in and requires its plugin artifacts, which are not included in the Maven-only offline handoff; CI generation-freshness checking is still planned.
+The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role and adjust the JDBC URL for the migrated database. Review the generated diff and commit it alongside the migration. The context-specific targets, relative to `src/main/java/de/hsh/favs/sharewise/`, are:
+
+| Maven profile | Generated package directory |
+| --- | --- |
+| `jooq-codegen-identity` | `identity/internal/auth/persistence/generated/` |
+| `jooq-codegen-finance` | `finance/internal/persistence/generated/` |
+
+Run `./mvnw -Punit-tests clean verify` to check compilation and module boundaries, and the applicable PostgreSQL suites to verify schema and adapter behavior. Ordinary builds use the checked-in sources; both opt-in generator profiles require PostgreSQL and plugin artifacts outside the Maven-only offline handoff.
 
 `application.properties` contains dev-only defaults for the dev-container database. The production image uses the `production` profile and required password files via the [Compose runtime configuration](development/production-compose.md). Other non-production environments may override the dev values with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
@@ -108,8 +115,8 @@ The backend is divided into Spring Modulith application modules; the [applicatio
 A vertical slice that introduces a module creates its package directly below `de.hsh.favs.sharewise` and declares every module API or named interface that the module uses in its `package-info.java`:
 
 ```java
-// Example for a future module; no business modules exist yet.
-@ApplicationModule(allowedDependencies = { "shared :: di", "groups" })
+// Finance module declaration
+@ApplicationModule(allowedDependencies = { "shared::jooq" })
 package de.hsh.favs.sharewise.finance;
 
 import org.springframework.modulith.ApplicationModule;
@@ -129,12 +136,12 @@ The verification tests also run small fixture applications under `de.hsh.favs.mo
 
 ## Operation scope usage
 
-The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published. The DI foundation, transaction manager and jOOQ/JPA accessors are implemented and tested; domain-specific business modules are not yet present.
+The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published.
 
 Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Inbound adapters dispatch an entry-service type rather than obtaining an operation-scoped bean during construction. HTTP controllers use the request-scoped `OperationIngressDispatcher`, which composes caller-side inputs; non-HTTP adapters may use the core `OperationDispatcher` directly or compose their own contributors. The example below illustrates a core dispatcher call:
 
 ```java
-// Example service types; no financial business modules exist yet.
+// Illustrative service types.
 @Component
 @Scope("operation")
 final class ExampleState {
@@ -274,7 +281,7 @@ tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
 ./deps/verify-offline.sh verify deps --source /path/to/sharewise
 ```
 
-The Maven cache is populated by running the actual `-Punit-tests clean verify` lifecycle, including Spring Boot repackaging and Surefire/Failsafe plugins, rather than prefetching every plugin managed by the Spring Boot parent. The opt-in `jooq-codegen-identity` profile is excluded: generated sources are already committed, and the handoff does not provide PostgreSQL. Running code generation separately requires a migrated PostgreSQL schema and its plugin dependencies.
+The Maven cache is populated by running the actual `-Punit-tests clean verify` lifecycle, including Spring Boot repackaging and Surefire/Failsafe plugins, rather than prefetching every plugin managed by the Spring Boot parent. The opt-in jOOQ generation profiles (`jooq-codegen-identity` and `jooq-codegen-finance`) are excluded: generated sources are already committed, and the handoff does not provide PostgreSQL. Running code generation separately requires a migrated PostgreSQL schema and its plugin dependencies.
 
 The verifier hashes the required original toolchain archives, extracts them to temporary storage, checks the selected source dependency descriptors and runs the corresponding backend tests and/or frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar` and basic Unix checksum utilities, plus Python 3 when verifying Maven builds (to unpack the original Maven ZIP), but not preinstalled language toolchains. See `README-OFFLINE.md` within the dependency archive for more information.
 

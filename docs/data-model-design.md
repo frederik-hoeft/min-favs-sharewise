@@ -1,6 +1,6 @@
 # ShareWise domain model and financial history
 
-**Status:** Agreed conceptual model and business contracts. The IAM account, session and optional display-name profile subset is implemented; Group, Finance and the remaining domain model are not yet fully implemented. Specific policies in [open decisions](#open-decisions) remain unresolved. The [P4.0 design handoff](internal/integration/phase-4-foundation.md) proposes the MVP refinements described below; they require human approval before implementation.
+**Status:** Agreed conceptual model and business contracts. The IAM account, session and optional display-name profile subset and the Finance group/actor persistence foundation are implemented. The [persistence architecture](architecture/persistence.md#finance-persistence) describes the physical Finance contract; the wider business model below defines the target behavior. The [P4.0 design handoff](internal/integration/phase-4-foundation.md) proposes the MVP refinements described below; they require human approval before implementation. Specific policies in [open decisions](#open-decisions) remain unresolved.
 
 ## Domain scope and diagrams
 
@@ -34,7 +34,7 @@ Within a surviving FinancialGroup, `FinancialActor` records are **retained when 
 
 The **FinancialGroup is the sole aggregate root for the group's finance domain model**. Its conceptual consistency boundary encompasses FinancialActor, Expense, Settlement, ChangeRecord, and Expense's owned Allocation and Attachment entities. It is one aggregate **per financial group**, not an application-wide global aggregate. Group lifecycle, revision ordering, balances, and journal atomicity motivate this broader-than-usual aggregate boundary.
 
-This model does **not** require constructing an enormous in-memory FinancialGroup object graph or mutating objects through one facade. Focused Expense, Settlement, Lifecycle and History application services can collaborate inside the same **group-scoped transaction protocol**, with targeted database projections and direct SQL. Their published entry points must preserve the aggregate's business invariants. [Architecture](architecture.md) describes the intended application-port-adapter realization.
+This model does **not** require constructing an enormous in-memory FinancialGroup object graph or mutating objects through one facade. Focused Expense, Settlement, Lifecycle and History application services can collaborate inside the same **group-scoped transaction protocol**, with targeted database projections and direct SQL. Their published entry points must preserve the aggregate's business invariants. The [Finance persistence architecture](architecture/persistence.md#finance-persistence) describes the group-root schema and locking primitive on which this protocol builds.
 
 ### Expenses and allocations
 
@@ -69,7 +69,7 @@ A positive balance indicates a member is owed money; a negative balance indicate
 
 | FinancialGroup state | Expense modifications | Settlement modifications | Historical reads |
 | --- | --- | --- | --- |
-| **PROVISIONING** | Forbidden | Forbidden | Forbidden |
+| **PROVISIONING** | Forbidden (not ready) | Forbidden (not ready) | API-specific initialization policy |
 | **OPEN** | Allowed subject to authorization/invariants | Allowed | Allowed |
 | **CLOSED** | Frozen | Allowed | Allowed |
 | **ARCHIVED** | Forbidden | Forbidden | Allowed |
@@ -94,7 +94,7 @@ A correction has immutable **domain semantics**: it creates a valid new record s
 
 Every committed financial mutation obeys one group-local transaction protocol:
 
-1. Serialize financial writes for the group (for example a `FinancialGroup` row lock); verify the authoritative lifecycle state, authorization, and expected revision of the affected logical record.
+1. Serialize financial writes for the group through the [Finance root lock](architecture/persistence.md#group-root-provisioning-and-locking); verify the authoritative lifecycle state, authorization, and expected individual revision.
 2. Check domain invariants, using database-side predicates/targeted projections where efficient.
 3. Allocate the next group financial revision, persist a complete immutable revised expense/settlement state (or valid lifecycle transition), and append the corresponding ChangeRecord.
 4. Commit atomically, together with any required durable integration-event publication record. On failure, none of these changes becomes visible.
