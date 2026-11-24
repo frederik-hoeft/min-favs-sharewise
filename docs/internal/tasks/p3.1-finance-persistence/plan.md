@@ -16,7 +16,7 @@ Work on a local P3.1 feature branch; exchange patches against the last mutually 
 - [x] Implement FIN-S01–S05 as a single additive Finance-owned migration under `db/migration/finance/`, named according to `V<yyyyMMddHHmm>__finance_<description>.sql`. Reuse the platform schema/default privileges; do not edit historical migrations. Coordinate the version against the latest authoritative branch before push/merge: Flyway `outOfOrder` stays disabled. If an unmerged migration must be re-timestamped, coordinate before integration and reset disposable databases as needed; never silently rewrite a migration already applied to a shared environment.
 - [x] Add the opt-in Finance jOOQ profile (FIN-S06), aligned with the existing identity configuration, and the closed Finance module declaration with an empty dependency whitelist. The generated package will cause Finance to be discovered by Modulith, so its declaration must precede the generated-source handoff. Keep ordinary build dependencies and lifecycle unchanged; inspect whether configuration reuse is worthwhile without refactoring unrelated IAM code. Add PostgreSQL schema/constraint/trigger/role tests FIN-T01–T05 using the disposable PostgreSQL database fixture directly, without starting a Spring context or depending on generated Finance classes. FIN-T02/T03 use independent autocommit statements so constraint failures do not poison a shared transaction.
 - [x] Run the offline Unit build (including test compilation), inspect the migration and tests, run `git diff --check` and export one implementation patch for review. The POM change invalidates the recorded descriptor checksum even if ordinary build dependencies are unchanged; the ordinary offline build remains green using only the supplied cache. No regeneration of the identity schema is required.
-- [ ] Refresh the Maven-only handoff using the [offline handoff procedure](../../../development.md#portable-offline-dependency-handoff) to match the changed POM descriptor before claiming full handoff compatibility; the existing isolated cache continues to support the ordinary Unit build.
+- [x] Refresh the Maven-only handoff using the [offline handoff procedure](../../../development.md#portable-offline-dependency-handoff) to match the changed POM descriptor before claiming full handoff compatibility; the existing isolated cache continues to support the ordinary Unit build.
 
 **Suggested commit:** `P3.1a: Add Finance schema migration and jOOQ generation profile`
 
@@ -61,8 +61,8 @@ Work on a local P3.1 feature branch; exchange patches against the last mutually 
 
 ## PR review correction
 
-- [ ] Scope latest-schema catalog assertions to the P3.1 contracts rather than the entire Finance schema; retain behavioral database tests.
-- [ ] Implement `FinancialGroupLookup.requireReady()` under FIN-R06 and verify FIN-T07/FIN-T14, including the closed Finance module's `shared::result` dependency. Reconcile the specification, backlog and persistence architecture, including the root-lock sequence diagram.
+- [x] Scope latest-schema catalog assertions to the P3.1 contracts rather than the entire Finance schema; retain behavioral database tests.
+- [x] Implement `FinancialGroupLookup.requireReady()` under FIN-R06 and verify FIN-T07/FIN-T14, including the closed Finance module's `shared::result` dependency. Reconcile the specification, backlog and persistence architecture, including the root-lock sequence diagram.
 
 **Suggested commit:** `P3.1b: Centralize Finance readiness validation and strengthen persistence contracts`
 
@@ -101,6 +101,6 @@ Use focused `-Dit.test` during development if useful, but run applicable full su
 | Independent MR review and resolutions | Pending |
 | Human final diff review and merge authorization | Pending |
 
-- [ ] Perform independent MR review of the integrated revision against the specification; resolve or explicitly justify findings. Re-run affected checks and reconcile docs when corrections change behavior. Suggested follow-up commit: `P3.1b: <specific review fix>` (use the affected subtask ID, or `P3.1: <message>` for cross-task corrections).
-- [ ] Record manual database acceptance (fresh/upgrade migration, provisioning defaults, runtime privileges, orphan rejection using disposable data) and successful local deployment smoke, or a documented human-approved smoke exception with alternative evidence and deferred verification. No manual UI scenario applies.
-- [ ] After all gates pass, mark P3.1a/b and P3.1 complete in the backlog, record final acceptance, and obtain explicit merge authorization. Suggested final commit: `P3.1: Record acceptance and complete Finance persistence tasks`. Merge the local task branch into the local approved baseline only after authorization; the human owns the authoritative merge.
+- [x] Perform independent MR review of the integrated revision against the specification; resolve or explicitly justify findings. Re-run affected checks and reconcile docs when corrections change behavior. Suggested follow-up commit: `P3.1b: <specific review fix>` (use the affected subtask ID, or `P3.1: <message>` for cross-task corrections).
+- [x] Record manual database acceptance (fresh/upgrade migration, provisioning defaults, runtime privileges, orphan rejection using disposable data) and successful local deployment smoke, or a documented human-approved smoke exception with alternative evidence and deferred verification. No manual UI scenario applies.
+- [x] After all gates pass, mark P3.1a/b and P3.1 complete in the backlog, record final acceptance, and obtain explicit merge authorization. Suggested final commit: `P3.1: Record acceptance and complete Finance persistence tasks`. Merge the local task branch into the local approved baseline only after authorization; the human owns the authoritative merge.
