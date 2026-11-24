@@ -1,6 +1,6 @@
 # P3.1 - FinancialGroup and FinancialActor persistence/provisioning: specification
 
-**Status:** Approved for P3.1 implementation; the maintainer selected the Finance-local PostgreSQL domains in the authoritative ERD. This task implements the persistence foundation of [P3.1a/b](../backlog.md#phase-3---finance-actor-synchronization-and-accounting-foundations), without implementing the application operations consuming that foundation. Approval of the [shared Phase 3 contract](../../integration/phase-3-foundation.md) (P3.0) remains a separate gate.
+**Status:** Approved for P3.1 implementation; the maintainer selected the Finance-local PostgreSQL domains in the authoritative ERD. This task implements the persistence foundation of [P3.1a/b](../backlog.md#phase-3---finance-actor-synchronization-and-accounting-foundations), without implementing the application operations consuming that foundation. The maintainer has also approved the [shared Phase 3 contract](../../integration/phase-3-foundation.md) (P3.0).
 
 ## Architectural solution and scope
 
