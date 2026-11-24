@@ -6,9 +6,11 @@ package de.hsh.favs.sharewise.identity.internal.auth.persistence.generated;
 
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.RefreshTokens;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Sessions;
+import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.UserProfiles;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Users;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.records.RefreshTokensRecord;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.records.SessionsRecord;
+import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.records.UserProfilesRecord;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.records.UsersRecord;
 
 import org.jooq.ForeignKey;
@@ -32,6 +34,7 @@ public class Keys {
 
     public static final UniqueKey<RefreshTokensRecord> REFRESH_TOKENS_PKEY = Internal.createUniqueKey(RefreshTokens.REFRESH_TOKENS, DSL.name("refresh_tokens_pkey"), new TableField[] { RefreshTokens.REFRESH_TOKENS.ID }, true);
     public static final UniqueKey<SessionsRecord> SESSIONS_PKEY = Internal.createUniqueKey(Sessions.SESSIONS, DSL.name("sessions_pkey"), new TableField[] { Sessions.SESSIONS.ID }, true);
+    public static final UniqueKey<UserProfilesRecord> USER_PROFILES_PKEY = Internal.createUniqueKey(UserProfiles.USER_PROFILES, DSL.name("user_profiles_pkey"), new TableField[] { UserProfiles.USER_PROFILES.USER_ID }, true);
     public static final UniqueKey<UsersRecord> IDENTITY_USERS_NORMALIZED_EMAIL_UNIQUE = Internal.createUniqueKey(Users.USERS, DSL.name("identity_users_normalized_email_unique"), new TableField[] { Users.USERS.NORMALIZED_EMAIL }, true);
     public static final UniqueKey<UsersRecord> USERS_PKEY = Internal.createUniqueKey(Users.USERS, DSL.name("users_pkey"), new TableField[] { Users.USERS.ID }, true);
 
@@ -41,4 +44,5 @@ public class Keys {
 
     public static final ForeignKey<RefreshTokensRecord, SessionsRecord> REFRESH_TOKENS__REFRESH_TOKENS_SESSION_ID_FKEY = Internal.createForeignKey(RefreshTokens.REFRESH_TOKENS, DSL.name("refresh_tokens_session_id_fkey"), new TableField[] { RefreshTokens.REFRESH_TOKENS.SESSION_ID }, Keys.SESSIONS_PKEY, new TableField[] { Sessions.SESSIONS.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<SessionsRecord, UsersRecord> SESSIONS__SESSIONS_USER_ID_FKEY = Internal.createForeignKey(Sessions.SESSIONS, DSL.name("sessions_user_id_fkey"), new TableField[] { Sessions.SESSIONS.USER_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<UserProfilesRecord, UsersRecord> USER_PROFILES__USER_PROFILES_USER_ID_FKEY = Internal.createForeignKey(UserProfiles.USER_PROFILES, DSL.name("user_profiles_user_id_fkey"), new TableField[] { UserProfiles.USER_PROFILES.USER_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.NO_ACTION, ForeignKeyRule.NO_ACTION);
 }

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,12 +6,15 @@ import { AuthenticationForm } from "@/app/(auth)/_components/AuthenticationForm"
 import AuthLayout from "@/app/(auth)/layout";
 import { IdentityProvider } from "@/app/identity-provider";
 import { createIdentityRuntime } from "@/core/identity";
-import { SessionNotice } from "@/components/auth/SessionNotice";
 import { TestProviders } from "../support/TestProviders";
 import { ControlledLocks, authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
 
 const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
+  usePathname: () => window.location.pathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 
 const activeRuntimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function renderAuth(
@@ -39,6 +42,7 @@ async function enterCredentials(user: ReturnType<typeof userEvent.setup>, passwo
 afterEach(() => {
   for (const runtime of activeRuntimes.splice(0)) runtime.dispose();
   replace.mockReset();
+  window.history.replaceState({}, "", "/");
 });
 
 describe('registration and login presentation', () => {
@@ -111,6 +115,18 @@ describe('registration and login presentation', () => {
     await enterCredentials(user, 'short');
     await user.keyboard('{Enter}');
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/app'));
+  });
+
+  it.each([
+    ['/app/groups/123?tab=expenses', '/app/groups/123?tab=expenses'],
+    ['//outside.example/steal', '/app'],
+  ])('validates the login return location %s', async (next, expected) => {
+    window.history.replaceState({}, '', `/auth/login?next=${encodeURIComponent(next)}`);
+    const user = userEvent.setup();
+    renderAuth('login');
+    await enterCredentials(user);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(expected));
   });
 
   it('focuses a duplicate registration email and supports retry without stale field errors', async () => {
@@ -234,21 +250,5 @@ describe('registration and login presentation', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('makes reauthentication explicit in the demo workspace and reflects the memory-only session', () => {
-    const fetchImpl = vi.fn();
-    const runtime = createIdentityRuntime({ fetchImpl: fetchImpl as typeof fetch });
-    activeRuntimes.push(runtime);
-    const view = render(<TestProviders><IdentityProvider runtime={runtime}><SessionNotice /></IdentityProvider></TestProviders>);
-    expect(screen.getByText(/no active sign-in in this tab/i)).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/auth/login');
-    act(() => runtime.session.accept(authenticationResponse()));
-    expect(screen.getByText(/temporary browser session is active/i)).toBeVisible();
-    act(() => runtime.session.invalidate('expired'));
-    expect(screen.getByText(/session has expired/i)).toBeVisible();
-    view.unmount();
-    const fresh = createIdentityRuntime();
-    activeRuntimes.push(fresh);
-    render(<TestProviders><IdentityProvider runtime={fresh}><SessionNotice /></IdentityProvider></TestProviders>);
-    expect(screen.getByText(/no active sign-in in this tab/i)).toBeVisible();
-  });
+
 });

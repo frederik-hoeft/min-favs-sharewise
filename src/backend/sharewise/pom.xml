@@ -33,6 +33,8 @@
         <skipUnitTests>false</skipUnitTests>
         <skipDatabaseTests>false</skipDatabaseTests>
         <databaseTestIncludes>**/*IT.java,**/*E2E.java</databaseTestIncludes>
+        <!-- One bounded JUnit worker by default; override with -DtestParallelism=N. -->
+        <testParallelism>1</testParallelism>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -135,13 +137,25 @@
                 <configuration>
                     <classesDirectory>${project.build.outputDirectory}</classesDirectory>
                     <skipITs>${skipDatabaseTests}</skipITs>
-                    <!-- A single fork guarantees one JUnit-root-owned database per Integration execution. -->
+                    <!-- One JUnit launcher and one Integration fixture per Failsafe fork. -->
                     <forkCount>1</forkCount>
                     <reuseForks>true</reuseForks>
                     <includes>
                         <include>${databaseTestIncludes}</include>
                     </includes>
                     <failIfNoTests>true</failIfNoTests>
+                    <!-- Spring Boot's logging initialization mutates a JVM-global Logback context.
+                         Concurrent disposable application contexts must not reconfigure it. -->
+                    <systemPropertyVariables>
+                        <org.springframework.boot.logging.LoggingSystem>none</org.springframework.boot.logging.LoggingSystem>
+                        <spring.main.banner-mode>off</spring.main.banner-mode>
+                        <junit.jupiter.execution.parallel.enabled>true</junit.jupiter.execution.parallel.enabled>
+                        <junit.jupiter.execution.parallel.mode.default>same_thread</junit.jupiter.execution.parallel.mode.default>
+                        <junit.jupiter.execution.parallel.mode.classes.default>concurrent</junit.jupiter.execution.parallel.mode.classes.default>
+                        <junit.jupiter.execution.parallel.config.strategy>fixed</junit.jupiter.execution.parallel.config.strategy>
+                        <junit.jupiter.execution.parallel.config.fixed.parallelism>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.parallelism>
+                        <junit.jupiter.execution.parallel.config.fixed.max-pool-size>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.max-pool-size>
+                    </systemPropertyVariables>
                 </configuration>
                 <executions>
                     <execution>
@@ -157,6 +171,18 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <skipTests>${skipUnitTests}</skipTests>
+                    <!-- Spring Boot's logging initialization mutates a JVM-global Logback context.
+                         Concurrent disposable application contexts must not reconfigure it. -->
+                    <systemPropertyVariables>
+                        <org.springframework.boot.logging.LoggingSystem>none</org.springframework.boot.logging.LoggingSystem>
+                        <spring.main.banner-mode>off</spring.main.banner-mode>
+                        <junit.jupiter.execution.parallel.enabled>true</junit.jupiter.execution.parallel.enabled>
+                        <junit.jupiter.execution.parallel.mode.default>same_thread</junit.jupiter.execution.parallel.mode.default>
+                        <junit.jupiter.execution.parallel.mode.classes.default>concurrent</junit.jupiter.execution.parallel.mode.classes.default>
+                        <junit.jupiter.execution.parallel.config.strategy>fixed</junit.jupiter.execution.parallel.config.strategy>
+                        <junit.jupiter.execution.parallel.config.fixed.parallelism>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.parallelism>
+                        <junit.jupiter.execution.parallel.config.fixed.max-pool-size>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.max-pool-size>
+                    </systemPropertyVariables>
                     <includes>
                         <include>**/*Tests.java</include>
                         <include>**/*Test.java</include>

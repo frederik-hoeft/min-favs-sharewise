@@ -314,6 +314,25 @@ class AuthenticationWorkflowTests {
             return findByEmail(requested);
         }
 
+        @Override
+        public Optional<AccountSnapshot> findById(UUID requested) {
+            return requested.equals(userId) ? snapshot() : Optional.empty();
+        }
+
+        @Override
+        public Optional<AccountSnapshot> findByIdForUpdate(UUID requested) {
+            return findById(requested);
+        }
+
+        @Override
+        public void replacePassword(UUID requested, String previous, String replacement) {
+            if (!requested.equals(userId) || !passwordHash.equals(previous)) {
+                throw new IllegalStateException("Stale IAM verifier");
+            }
+            passwordHash = replacement;
+            failureState = new LoginLockoutPolicy.State(0, null);
+        }
+
         private Optional<AccountSnapshot> snapshot() {
             return email == null ? Optional.empty() : Optional.of(new AccountSnapshot(userId, email,
                     passwordHash, NOW, disabledAt, failureState));

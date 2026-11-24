@@ -36,11 +36,11 @@ describe("GroupsApi", () => {
     ]);
   });
 
-  it("encodes a group ID as one path segment", async () => {
+  it("never lets a group ID change the request route", async () => {
     const fake = scriptedClient();
-    fake.respond("GET", "/api/groups/v1/groups/a%2F..%2Fb", json(200, details()));
-    await new GroupsApi(fake.client).get("a/../b");
-    expect(fake.requests[0].path).toBe("/api/groups/v1/groups/a%2F..%2Fb");
+    // The ID is encoded as one segment; the client rejects such noncanonical paths before dispatch.
+    await expect(new GroupsApi(fake.client).get("a/../b")).rejects.toMatchObject({ code: "invalid_api_path" });
+    expect(fake.requests).toEqual([]);
   });
 
   it("surfaces Group problem codes as typed problems", async () => {

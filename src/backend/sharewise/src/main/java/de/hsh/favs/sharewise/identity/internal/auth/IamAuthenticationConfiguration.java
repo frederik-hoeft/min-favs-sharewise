@@ -8,6 +8,7 @@ import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
+import de.hsh.favs.sharewise.identity.internal.auth.session.SessionLifecycleStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IamPemKeyLoader;
@@ -17,6 +18,9 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileService;
+import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileStore;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -131,6 +135,15 @@ class IamAuthenticationConfiguration {
 
     @Bean
     @Scope("operation")
+    SessionLifecycleService iamSessionLifecycleService(Transactions transactions, SessionLifecycleStore sessions,
+            RefreshTokenStore refreshTokens, RefreshCredentialGenerator credentials, SessionPolicy policy,
+            AccessTokenIssuer accessTokens, @Qualifier("iamClock") Clock clock) {
+        return new SessionLifecycleService(transactions, sessions, refreshTokens, credentials,
+                policy, accessTokens, clock);
+    }
+
+    @Bean
+    @Scope("operation")
     RegistrationService iamRegistrationService(Transactions transactions, AccountStore accounts,
             CredentialEncoder credentials, InitialAuthentication authentication,
             @Qualifier("iamClock") Clock clock) {
@@ -145,4 +158,20 @@ class IamAuthenticationConfiguration {
         return new LoginService(transactions, accounts, credentials, authentication, lockouts,
                 clock, dummy.encoded());
     }
+
+    @Bean
+    @Scope("operation")
+    PasswordChangeService iamPasswordChangeService(IdentityContext identity, Transactions transactions,
+            AccountStore accounts, SessionLifecycleStore sessions, CredentialEncoder encoder,
+            LoginLockoutPolicy lockouts, @Qualifier("iamClock") Clock clock) {
+        return new PasswordChangeService(identity, transactions, accounts, sessions, encoder, lockouts, clock);
+    }
+
+    @Bean
+    @Scope("operation")
+    AccountProfileService iamAccountProfileService(IdentityContext identity, Transactions transactions,
+            AccountProfileStore profiles) {
+        return new AccountProfileService(identity, transactions, profiles);
+    }
+
 }

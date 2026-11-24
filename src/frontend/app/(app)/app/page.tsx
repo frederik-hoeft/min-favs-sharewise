@@ -2,12 +2,10 @@ import { Button, Card, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
 import { breadcrumbDemoRoutes } from "./_components/app-routes";
-import { SessionNotice } from "@/components/auth/SessionNotice";
 
 export default function WorkspacePage() {
   return (
     <Stack gap="xl">
-      <SessionNotice />
       <Stack gap="xs">
         <Text size="xs" fw={700} tt="uppercase" c="dimmed">Application demo</Text>
         <Title order={1}>Your workspace.</Title>

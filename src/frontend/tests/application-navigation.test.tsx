@@ -2,29 +2,43 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_THEME } from "@mantine/core";
 import axe from "axe-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { theme, cssVariablesResolver } from "@/lib/theme";
-import { ApplicationShell } from "@/app/(app)/app/_components/ApplicationShell";
-import { appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
+import AppLayout from "@/app/(app)/app/layout";
+import { IdentityProvider } from "@/app/identity-provider";
+import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
+import { accountRoute, appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
 import DummyOnePage from "@/app/(app)/app/dummy1/page";
 import { TestProviders } from "./support/TestProviders";
+import { authenticationResponse } from "./identity/support";
 
 let pathname = "/app/dummy1";
+let searchParams: URLSearchParams | null = null;
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
   usePathname: () => pathname,
+  useSearchParams: () => searchParams,
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
+const appRuntimes: IdentityRuntime[] = [];
+
 function renderApp() {
+  const runtime = createIdentityRuntime({ channel: () => undefined, fetchImpl: vi.fn() });
+  runtime.session.accept(authenticationResponse("signed-in"));
+  appRuntimes.push(runtime);
   return render(
     <TestProviders>
-      <ApplicationShell><DummyOnePage /></ApplicationShell>
+      <IdentityProvider runtime={runtime}><AppLayout><DummyOnePage /></AppLayout></IdentityProvider>
     </TestProviders>,
   );
 }
 
+afterEach(() => { for (const runtime of appRuntimes.splice(0)) runtime.dispose(); });
+
 beforeEach(() => {
   pathname = "/app/dummy1";
+  searchParams = null;
 });
 
 describe("Application route shell", () => {
@@ -145,6 +159,34 @@ describe("Application route shell", () => {
     expect(window.localStorage.getItem("mantine-color-scheme-value")).toBe("dark");
     await user.click(screen.getByRole("button", { name: "Account menu" }));
     expect(await screen.findByRole("menuitem", { name: "Appearance" })).toBeInTheDocument();
+  });
+
+  it("navigates to the account route from the menu without disturbing Appearance or mobile navigation", async () => {
+    pathname = accountRoute.href;
+    const user = userEvent.setup();
+    renderApp();
+    const breadcrumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(breadcrumbs).getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/app");
+    expect(within(breadcrumbs).getByText("Account")).toHaveAttribute("aria-current", "page");
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const accountItem = await screen.findByRole("menuitem", { name: "Account details" });
+    expect(accountItem).toHaveAttribute("href", accountRoute.href);
+    accountItem.addEventListener("click", (event) => event.preventDefault());
+    await user.click(accountItem);
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Account details" })).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const appearance = await screen.findByRole("menuitem", { name: "Appearance" });
+    appearance.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("menuitem", { name: "Back to account" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("menuitem", { name: "Appearance" })).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Open navigation" }));
+    const drawer = await screen.findByRole("dialog", { name: "Workspace navigation" });
+    expect(within(drawer).getByRole("link", { name: "Dummy 1" })).toBeInTheDocument();
   });
 
   it("keeps the header noninteractive outside explicit controls", async () => {

@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider } from "@/app/identity-provider";
+import { RequireAuthentication } from "@/components/auth/RequireAuthentication";
 import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
 import GroupsPage from "@/app/(app)/app/groups/page";
 import NewGroupPage from "@/app/(app)/app/groups/new/page";
@@ -16,29 +17,34 @@ const LIST = "/api/groups/v1/groups";
 const GROUP = `${LIST}/${GROUP_ID}`;
 
 let fake = scriptedClient();
-// Pages obtain their client from the identity runtime, as in production; its transport is scripted.
+// Pages obtain their client from the workspace guard's session facade, as in production; its transport is scripted.
 let runtime: IdentityRuntime = createIdentityRuntime({ fetchImpl: fake.fetchImpl });
 let search = "";
 const push = vi.fn();
+const replace = vi.fn();
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
   usePathname: () => "/app/groups",
-  useRouter: () => ({ push, replace: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({ push, replace, back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
   useSearchParams: () => new URLSearchParams(search),
 }));
 
 beforeEach(() => {
   fake = scriptedClient();
   runtime = createIdentityRuntime({ fetchImpl: fake.fetchImpl });
+  runtime.session.accept(authenticationResponse("group-access-token"));
   search = "";
   push.mockReset();
+  replace.mockReset();
 });
 
 afterEach(() => runtime.dispose());
 
 function renderPage(page: ReactElement) {
-  return render(<TestProviders><IdentityProvider runtime={runtime}>{page}</IdentityProvider></TestProviders>);
+  return render(
+    <TestProviders><IdentityProvider runtime={runtime}><RequireAuthentication>{page}</RequireAuthentication></IdentityProvider></TestProviders>,
+  );
 }
 
 /** Mantine associates field errors through aria-describedby and marks the input invalid. */
@@ -80,21 +86,24 @@ describe("GM-FT01 group list", () => {
     expect(screen.getByRole("link", { name: "Create group" })).toBeInTheDocument();
   });
 
-  it("shows sign-in-required for 401 and account-not-available for 403 group_user_unknown", async () => {
-    fake.respond("GET", LIST, problem(401, "unauthenticated"));
-    const first = renderPage(<GroupsPage />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Sign in required");
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login");
-    first.unmount();
+  it("leaves an expired sign-in to the workspace guard instead of showing group data", async () => {
+    fake.respond("GET", LIST, json(200, { items: [summary()] }));
+    renderPage(<GroupsPage />);
+    expect(await screen.findByRole("link", { name: "Flat share" })).toBeInTheDocument();
 
+    await act(async () => runtime.session.invalidate("expired"));
+    expect(screen.queryByRole("link", { name: "Flat share" })).not.toBeInTheDocument();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/auth/login?next=%2Fapp%2Fgroups"));
+  });
+
+  it("shows account-not-available for 403 group_user_unknown", async () => {
     fake.respond("GET", LIST, problem(403, "group_user_unknown"));
     renderPage(<GroupsPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Account not yet available");
     expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
   });
 
-  it("sends the tab's IAM bearer with Group requests once signed in", async () => {
-    runtime.session.accept(authenticationResponse("group-access-token"));
+  it("sends the session's IAM bearer with Group requests", async () => {
     fake.respond("GET", LIST, json(200, { items: [] }));
     renderPage(<GroupsPage />);
 

@@ -1,6 +1,6 @@
 # ShareWise domain model and financial history
 
-**Status:** Agreed conceptual model and business contracts for implementation. The repository currently contains starter code; the model is not yet fully implemented. Specific policies in [open decisions](#open-decisions) remain unresolved.
+**Status:** Agreed conceptual model and business contracts. The IAM account, session and optional display-name profile subset is implemented; Group, Finance and the remaining domain model are not yet fully implemented. Specific policies in [open decisions](#open-decisions) remain unresolved.
 
 ## Domain scope and diagrams
 
@@ -16,7 +16,7 @@ The diagram is a conceptual guide, not a mandate for ORM graph loading, one clas
 
 | Bounded context | Owns | External references |
 | --- | --- | --- |
-| **User & Identity Management** | Generic IAM identity, credentials/refresh tokens, application-specific UserProfile and preferences as **separate aggregates** | Other contexts retain stable user IDs, not shared IAM entities |
+| **User & Identity Management** | Generic IAM identity, credentials/refresh tokens and optional, separately stored UserProfile; broader preferences remain conceptual | Other contexts retain stable user IDs, not shared IAM entities |
 | **Group Management** | Group metadata, membership, roles, invitations, organizational existence | User IDs and optional File IDs |
 | **Financial Management** | FinancialGroup lifecycle/accounting currency, FinancialActors, expenses, settlements, allocations, financial change history | Logical group ID from Group Management; File IDs for attachments |
 | **File Management** | Uploaded file bytes/metadata and generic access policies | External authorities may prove resource access, but File does not model groups/expenses |

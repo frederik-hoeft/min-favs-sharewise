@@ -18,12 +18,12 @@ import org.springframework.stereotype.Component;
 @Scope("operation")
 final class DefaultIdentityContext implements IdentityContext {
 
-    private final Optional<UUID> userId;
+    private final Optional<Caller> caller;
 
     DefaultIdentityContext(AuthorizationContext authorization, IamCredentialVerifier verifier) {
         Objects.requireNonNull(authorization);
         JwtCredentialProfile profile = verifier.requireCodec().profile();
-        Optional<UUID> selected = Optional.empty();
+        Optional<Caller> selected = Optional.empty();
         for (AuthorizationCredential credential : authorization.credentialsFrom(profile.issuer(), profile.name())) {
             ClaimOrigin origin = credential.origin();
             if (selected.isPresent()) {
@@ -32,15 +32,15 @@ final class DefaultIdentityContext implements IdentityContext {
             UUID subject = parseSubject(origin);
             List<Claim> sessions = credential.claims().stream()
                 .filter(claim -> "sid".equals(claim.type())).toList();
-            if (sessions.size() != 1 || sessions.getFirst().value().isBlank()) {
+            if (sessions.size() != 1) {
                 throw new IllegalStateException("Invalid primary IAM session evidence");
             }
-            selected = Optional.of(subject);
+            selected = Optional.of(new Caller(subject, parseSessionId(sessions.getFirst().value())));
         }
         if (selected.isEmpty() && !authorization.credentials().isEmpty()) {
             throw new IllegalStateException("Authorization evidence without a primary IAM credential");
         }
-        userId = selected;
+        caller = selected;
     }
 
     private static UUID parseSubject(ClaimOrigin origin) {
@@ -56,8 +56,27 @@ final class DefaultIdentityContext implements IdentityContext {
         }
     }
 
+    private static UUID parseSessionId(String value) {
+        try {
+            UUID id = UUID.fromString(value);
+            if (id.toString().equals(value)) {
+                return id;
+            }
+        } catch (IllegalArgumentException invalid) {
+            // A verified JWT may contain a non-UUID sid; it is not a valid IAM session identity.
+        }
+        throw new IllegalStateException("Invalid primary IAM session evidence");
+    }
+
     @Override
     public Optional<UUID> userId() {
-        return userId;
+        return caller.map(Caller::userId);
     }
+
+    @Override
+    public Optional<UUID> sessionId() {
+        return caller.map(Caller::sessionId);
+    }
+
+    private record Caller(UUID userId, UUID sessionId) { }
 }

@@ -5,6 +5,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -65,12 +66,21 @@ public final class TestAccessTokens {
             new Es256JwtSignatureService(List.of(JwtEcKey.signing(keyId, KEY)), Optional.of(keyId)), clock);
     }
 
-    /** A valid access token for the user, bound to a session derived from the user ID. */
-    public static String accessToken(UUID user) {
-        return accessToken(user, "session-" + user);
+    /** The canonical IAM session UUID that tokens issued without an explicit session carry for the user. */
+    public static UUID sessionFor(UUID user) {
+        Objects.requireNonNull(user, "user");
+        return UUID.nameUUIDFromBytes(("session-" + user).getBytes(StandardCharsets.UTF_8));
     }
 
-    /** A valid access token for the user and IAM session ID. */
+    /** A valid access token for the user, bound to the session from {@link #sessionFor(UUID)}. */
+    public static String accessToken(UUID user) {
+        return accessToken(user, sessionFor(user).toString());
+    }
+
+    /**
+     * A valid access token for the user and raw {@code sid} claim. IAM admits only canonical
+     * session UUIDs, so any other value yields a token that ingress verifies but IAM rejects.
+     */
     public static String accessToken(UUID user, String sessionId) {
         return PRIMARY.sign(new JwtIssueRequest(user, sessionId, "test-token", NOW.minusSeconds(1),
             NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
@@ -83,7 +93,7 @@ public final class TestAccessTokens {
 
     /** A correctly signed token whose validity ended beyond the profile's clock skew. */
     public static String expiredAccessToken(UUID user) {
-        return PRIMARY.sign(new JwtIssueRequest(user, "session-" + user, "expired-token",
+        return PRIMARY.sign(new JwtIssueRequest(user, sessionFor(user).toString(), "expired-token",
             NOW.minusSeconds(240), NOW.minusSeconds(240), NOW.minusSeconds(35), Optional.empty(), Map.of()));
     }
 
@@ -92,8 +102,8 @@ public final class TestAccessTokens {
         JwtCredentialProfile refresh = new JwtCredentialProfile("refresh", PROFILE.issuer(), "sw-refresh+jwt",
             PROFILE.audiences(), JwtCredentialProfile.Kind.PRIMARY, Set.of(), PROFILE.maximumLifetime(),
             PROFILE.clockSkew(), 4096);
-        return codec(refresh, CLOCK).sign(new JwtIssueRequest(user, "session-" + user, "wrong-profile-token",
-            NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
+        return codec(refresh, CLOCK).sign(new JwtIssueRequest(user, sessionFor(user).toString(),
+            "wrong-profile-token", NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
     }
 
     private static KeyPair generateKey() {

@@ -18,6 +18,7 @@ import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
 import de.hsh.favs.sharewise.shared.infra.claims.Claim;
 import de.hsh.favs.sharewise.shared.infra.claims.ClaimOrigin;
 import java.util.List;
+import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import de.hsh.favs.sharewise.shared.infra.claims.internal.AuthorizationConfiguration;
@@ -84,6 +85,8 @@ class PhaseDIamIngressTests {
     private static final UUID ALICE = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
     private static final UUID BOB = UUID.fromString("87654321-4321-4432-8432-ba0987654321");
     private static final JwtCredentialProfile PROFILE = TestAccessTokens.PROFILE;
+    private static final UUID ALICE_SESSION = UUID.fromString("12345678-1234-4123-8123-1234567890ac");
+    private static final UUID BOB_SESSION = UUID.fromString("87654321-4321-4432-8432-ba0987654322");
 
     @Autowired OperationIngressDispatcher httpIngress;
     @Autowired FilterChainProxy filter;
@@ -94,21 +97,21 @@ class PhaseDIamIngressTests {
 
     @Test
     void verifiedIdentityIsStableThroughIndependentConsumersAndStubbedTransactionSegments() {
-        String token = token(ALICE, "session-alice");
+        String token = token(ALICE, ALICE_SESSION.toString());
         Snapshot authenticated = bearer(token).dispatch(Entry.class, Entry::snapshot);
         assertEquals(Optional.of(ALICE), authenticated.userId());
         assertEquals(ALICE, authenticated.requiredUser());
         assertTrue(authenticated.authenticated());
         assertEquals(1, authenticated.credentialCount());
-        assertEquals("session-alice", authenticated.session());
+        assertEquals(ALICE_SESSION, authenticated.session());
         assertTrue(authenticated.sameIdentityInstance());
         assertTrue(authenticated.sameAuthorizationInstance());
         assertEquals(authenticated.segmentOne(), authenticated.segmentTwo());
 
-        Snapshot other = bearer(token(BOB, "session-bob")).dispatch(Entry.class, Entry::snapshot);
+        Snapshot other = bearer(token(BOB, BOB_SESSION.toString())).dispatch(Entry.class, Entry::snapshot);
         Optional<UUID> anonymous = anonymous().dispatch(IdentityContext.class, IdentityContext::userId);
         assertEquals(Optional.of(BOB), other.userId());
-        assertEquals("session-bob", other.session());
+        assertEquals(BOB_SESSION, other.session());
         assertEquals(Optional.empty(), anonymous);
         int anonymousCredentialCount = anonymous().dispatch(AuthorizationContext.class, context -> context.credentials().size());
         assertEquals(0, anonymousCredentialCount);
@@ -119,7 +122,7 @@ class PhaseDIamIngressTests {
 
     @Test
     void failuresCannotTurnIntoAnonymousAndDirectDispatchWithoutIngressIsRejected() {
-        String token = token(ALICE, "session-a");
+        String token = token(ALICE, ALICE_SESSION.toString());
         assertThrows(JwtCredentialException.class, () -> bearer("not-a-jwt").dispatch(Entry.class, Entry::snapshot));
         assertThrows(JwtCredentialException.class, () -> bearer(token + "bad").dispatch(Entry.class, Entry::snapshot));
         assertThrows(JwtCredentialException.class, () -> bearer(null).dispatch(Entry.class, Entry::snapshot));
@@ -131,8 +134,8 @@ class PhaseDIamIngressTests {
 
     @Test
     void semanticIdentityRejectsAmbiguousPrimaryOrCorruptSessionWithoutSelectingTheFirst() {
-        AuthorizationCredential first = codec.verifyPrimary(token(ALICE, "s1")).credential();
-        AuthorizationCredential second = codec.verifyPrimary(token(BOB, "s2")).credential();
+        AuthorizationCredential first = codec.verifyPrimary(token(ALICE, ALICE_SESSION.toString())).credential();
+        AuthorizationCredential second = codec.verifyPrimary(token(BOB, BOB_SESSION.toString())).credential();
         assertThrows(IllegalStateException.class,
             () -> new DefaultIdentityContext(evidence(List.of(first, second)), verifier));
         assertThrows(IllegalStateException.class,
@@ -143,6 +146,11 @@ class PhaseDIamIngressTests {
             first.claims().stream().filter(claim -> !"sid".equals(claim.type())).toList());
         assertThrows(IllegalStateException.class,
             () -> new DefaultIdentityContext(evidence(List.of(missingSession)), verifier));
+        // A cryptographically verified JWT with an opaque/noncanonical sid is not a valid IAM identity.
+        BeanCreationException rejected = assertThrows(BeanCreationException.class,
+            () -> bearer(token(ALICE, "session-a")).dispatch(IdentityContext.class,
+                IdentityContext::requireSessionId));
+        assertEquals("Invalid primary IAM session evidence", rejected.getMostSpecificCause().getMessage());
         ClaimOrigin differentProfile = new ClaimOrigin(origin.issuer(), "group-attestation", origin.audiences(),
             origin.subject(), origin.credentialId(), origin.issuedAt(), origin.notBefore(), origin.expiresAt());
         AuthorizationCredential subordinateOnly = new AuthorizationCredential(differentProfile,
@@ -210,7 +218,7 @@ class PhaseDIamIngressTests {
 
     @Test
     void admittedNonHttpIdentityCanFlowAcrossOperationsAfterTokenExpiry() {
-        String jwt = token(ALICE, "workflow-session");
+        String jwt = token(ALICE, ALICE_SESSION.toString());
         VerifiedJwtCredential admitted = verifier.verify(jwt);
         JwtCredentialCodec later = TestAccessTokens.codec(PROFILE, Clock.offset(CLOCK, Duration.ofSeconds(400)));
         assertThrows(JwtCredentialException.class, () -> later.verifyPrimary(jwt));
@@ -226,8 +234,8 @@ class PhaseDIamIngressTests {
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             CountDownLatch entered = new CountDownLatch(2);
             CountDownLatch release = new CountDownLatch(1);
-            Future<Snapshot> first = executor.submit(() -> overlap(ALICE, "session-a", entered, release));
-            Future<Snapshot> second = executor.submit(() -> overlap(BOB, "session-b", entered, release));
+            Future<Snapshot> first = executor.submit(() -> overlap(ALICE, ALICE_SESSION.toString(), entered, release));
+            Future<Snapshot> second = executor.submit(() -> overlap(BOB, BOB_SESSION.toString(), entered, release));
             try {
                 assertTrue(entered.await(10, TimeUnit.SECONDS));
             } finally {
@@ -247,7 +255,7 @@ class PhaseDIamIngressTests {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new IdentityController(httpIngress))
             .setControllerAdvice(advice).addFilters(filter).build();
         MvcResult success = mvc.perform(get("/api/test/protected")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(ALICE, "web-session")))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(ALICE, ALICE_SESSION.toString())))
             .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(ALICE.toString()))
             .andReturn();
         assertTrue(success.getRequest().getAttribute(IamBearerIngressFilter.VERIFIED_INGRESS_ATTRIBUTE) == null);
@@ -260,7 +268,7 @@ class PhaseDIamIngressTests {
             .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("invalid_credential"));
         mvc.perform(get("/api/test/public").header(HttpHeaders.AUTHORIZATION, "Basic abc"))
             .andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/test/public").header(HttpHeaders.AUTHORIZATION, "Bearer  " + token(ALICE, "wrong-space")))
+        mvc.perform(get("/api/test/public").header(HttpHeaders.AUTHORIZATION, "Bearer  " + token(ALICE, ALICE_SESSION.toString())))
             .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/test/public").header(HttpHeaders.AUTHORIZATION, "Bearer token1", "Bearer token2"))
             .andExpect(status().isUnauthorized());
@@ -277,7 +285,7 @@ class PhaseDIamIngressTests {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new IdentityController(httpIngress))
             .setControllerAdvice(advice).addFilters(filter).build();
         mvc.perform(get("/api/test/contributions").header(HttpHeaders.AUTHORIZATION,
-                "Bearer " + token(ALICE, "session-a")).header("X-Additional-Input", "first"))
+                "Bearer " + token(ALICE, ALICE_SESSION.toString())).header("X-Additional-Input", "first"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.userId").value(ALICE.toString()))
             .andExpect(jsonPath("$.additional").value("first"));
@@ -291,7 +299,7 @@ class PhaseDIamIngressTests {
     @Test
     void nonHttpContributorsComposeAndRejectDuplicateRegistration() {
         OperationInputContributor identity = inputs -> inputs.add(VerifiedJwtCredential.class,
-            verifier.verify(token(ALICE, "session-a")));
+            verifier.verify(token(ALICE, ALICE_SESSION.toString())));
         OperationInputContributor additional = inputs -> inputs.add(AdditionalInput.class, new AdditionalInput("job"));
         OperationIngressDispatcher composed = new ContributingOperationDispatcher(dispatcher,
             List.of(identity, additional));
@@ -386,7 +394,7 @@ class PhaseDIamIngressTests {
             AuthorizationContext authorization = first.authorization();
             UUID segmentOne = segments.invoke(identity::requireUserId);
             UUID segmentTwo = segments.invoke(second.identity()::requireUserId);
-            String session = authorization.find("sid").getFirst().value();
+            UUID session = identity.requireSessionId();
             return new Snapshot(identity.userId(), segmentOne, identity.isAuthenticated(),
                 authorization.credentials().size(), session,
                 identity == second.identity(), authorization == second.authorization(),
@@ -397,7 +405,7 @@ class PhaseDIamIngressTests {
     record ContributionEntry(IdentityContext identity, AdditionalConfiguration additional) { }
 
     record Snapshot(Optional<UUID> userId, UUID requiredUser, boolean authenticated, int credentialCount,
-        String session, boolean sameIdentityInstance, boolean sameAuthorizationInstance,
+        UUID session, boolean sameIdentityInstance, boolean sameAuthorizationInstance,
         UUID segmentOne, UUID segmentTwo, IdentityContext identity, AuthorizationContext authorization) { }
 
     @TestComponent

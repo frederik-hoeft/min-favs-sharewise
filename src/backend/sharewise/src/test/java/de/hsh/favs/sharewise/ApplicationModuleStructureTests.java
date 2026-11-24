@@ -3,7 +3,10 @@ package de.hsh.favs.sharewise;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.identity.IdentityPort;
+import de.hsh.favs.sharewise.identity.IdentityVerificationFailure;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
+import de.hsh.favs.sharewise.identity.VerifiedIdentity;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -67,8 +70,9 @@ class ApplicationModuleStructureTests {
                 .map(type -> type.getName())
                 .filter(name -> !name.endsWith(".package-info"))
                 .collect(Collectors.toSet());
-        assertEquals(Set.of(IdentityContext.class.getName(), UnauthenticatedCallerException.class.getName()),
-                publishedTypes);
+        assertEquals(Set.of(IdentityContext.class.getName(), UnauthenticatedCallerException.class.getName(),
+                IdentityPort.class.getName(), VerifiedIdentity.class.getName(),
+                IdentityVerificationFailure.class.getName()), publishedTypes);
     }
 
     @Test

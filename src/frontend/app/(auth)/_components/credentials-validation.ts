@@ -1,3 +1,5 @@
+import { hasValidSurrogatePairs } from "@/core/identity/password-validation";
+
 export interface CredentialErrors {
   readonly email?: string;
   readonly password?: string;
@@ -26,20 +28,8 @@ export function validateCredentials(mode: 'login' | 'register', emailInput: stri
     errors.password = 'Password must not exceed 256 characters.';
   } else if (mode === 'register' && password.length < 8) {
     errors.password = 'Password is too short.';
-  } else {
-    // A malformed surrogate cannot be encoded as the intended UTF-8 string.
-    for (let i = 0; i < password.length; i++) {
-      const unit = password.charCodeAt(i);
-      if (unit >= 0xd800 && unit <= 0xdbff) {
-        if (++i >= password.length || password.charCodeAt(i) < 0xdc00 || password.charCodeAt(i) > 0xdfff) {
-          errors.password = 'Password contains invalid characters.';
-          break;
-        }
-      } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-        errors.password = 'Password contains invalid characters.';
-        break;
-      }
-    }
+  } else if (!hasValidSurrogatePairs(password)) {
+    errors.password = 'Password contains invalid characters.';
   }
 
   return errors;

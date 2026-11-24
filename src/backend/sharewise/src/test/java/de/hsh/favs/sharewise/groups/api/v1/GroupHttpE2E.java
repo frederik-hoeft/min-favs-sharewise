@@ -9,6 +9,7 @@ import com.jayway.jsonpath.JsonPath;
 import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.GroupTestFixture;
+import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokens;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
@@ -54,11 +55,16 @@ class GroupHttpE2E {
         withServer(server -> {
             GroupTestFixture.provision(server.fixture(), ALICE, BOB);
 
-            // Request fields that try to choose the creator, role or count have no effect.
-            HttpResponse<String> created = server.send("POST", GROUPS, ALICE, """
-                {"name": "  Flat share  ", "description": "Rent and groceries",
+            // Request fields that try to choose the creator, role or count are rejected without writes.
+            HttpResponse<String> overreaching = server.send("POST", GROUPS, ALICE, """
+                {"name": "Flat share", "description": "Rent and groceries",
                  "userId": "%s", "role": "member", "callerRole": "member", "memberCount": 7}""".formatted(BOB));
+            assertEquals(400, overreaching.statusCode(), overreaching.body());
+            assertEquals(ApiProblems.CODE_MALFORMED_REQUEST, JsonPath.read(overreaching.body(), "$.code"));
+            assertEquals(List.of(), server.groups());
 
+            HttpResponse<String> created = server.send("POST", GROUPS, ALICE,
+                "{\"name\": \"  Flat share  \", \"description\": \"Rent and groceries\"}");
             assertEquals(201, created.statusCode(), created.body());
             String id = JsonPath.read(created.body(), "$.id");
             assertEquals(GROUPS + "/" + id, created.headers().firstValue("Location").orElseThrow());
@@ -249,10 +255,17 @@ class GroupHttpE2E {
             assertEquals(GroupProblems.ADMIN_REQUIRED, JsonPath.read(byMember.body(), "$.code"));
             assertEquals(List.of("Trip|0"), server.groups());
 
-            // A null description clears it; fields naming roles or members have no effect.
-            HttpResponse<String> replaced = server.send("PUT", GROUPS + "/" + group, ALICE, """
+            // Fields naming roles, members or the version are rejected without writes.
+            HttpResponse<String> overreaching = server.send("PUT", GROUPS + "/" + group, ALICE, """
                 {"name": "Winter trip", "description": null, "expectedVersion": 0,
                  "callerRole": "member", "memberCount": 9, "version": 5, "userId": "%s"}""".formatted(BOB));
+            assertEquals(400, overreaching.statusCode(), overreaching.body());
+            assertEquals(ApiProblems.CODE_MALFORMED_REQUEST, JsonPath.read(overreaching.body(), "$.code"));
+            assertEquals(List.of("Trip|0"), server.groups());
+
+            // A null description clears it.
+            HttpResponse<String> replaced = server.send("PUT", GROUPS + "/" + group, ALICE,
+                "{\"name\": \"Winter trip\", \"description\": null, \"expectedVersion\": 0}");
             assertEquals(200, replaced.statusCode(), replaced.body());
             assertEquals("Winter trip", JsonPath.read(replaced.body(), "$.name"));
             assertNull(JsonPath.read(replaced.body(), "$.description"));

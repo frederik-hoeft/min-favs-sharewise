@@ -51,6 +51,11 @@ if [[ "$mode" == local || "$mode" == tls ]] &&
     exit 1
 fi
 cd "$deploy_dir"
+# Disposable test projects use the base topology even when the local stack opts
+# into host-published PostgreSQL through a Compose override.
+if [[ "$mode" == test || "$mode" == tests ]]; then
+    export COMPOSE_FILE=compose.yaml
+fi
 compose=("$container_cli" compose)
 confirm() {
     local label="$1" answer

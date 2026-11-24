@@ -206,7 +206,7 @@ Test kinds follow the [backend test architecture](../../../architecture/tests.md
 | **GM-T11** | Administrator replaces metadata with a stale version. | `409 group_version_conflict`; no change. | HTTP |
 | **GM-T12** | Two threads replace metadata of the same group with the same expected version, committing for real. | Exactly one `200` and one `409`; final version incremented once. | E2E |
 | **GM-T13** | Hold the group row lock from a separate connection, demote the administrator's fixture membership and commit, then release; meanwhile the administrator's replacement waits. | The waiting replacement observes the demotion and returns `403`; no change. | E2E |
-| **GM-T14** | Send creation and replacement bodies that include `userId`, `role` or `memberCount` fields. | Extra fields have no effect; the creator is the authenticated caller with role `admin`. | HTTP |
+| **GM-T14** | Send creation and replacement bodies that include `userId`, `role` or `memberCount` fields. | `400 malformed_request` without writes, because API request bodies reject unknown fields; the creator is always the authenticated caller with role `admin`. | HTTP |
 | **GM-T15** | Run the module verification and the generated-schema check. | `groups` declares exactly its dependencies, violations are rejected; committed jOOQ types match the migrated schema. | Unit + IT |
 | **GM-T16** | Provision the same user ID twice through the registry port. | One row; no error. | IT |
 | **GM-FT01** | Render the list page with groups, without groups, and with `401`, `403 group_user_unknown` and network errors from a mocked client. | Correct items and role badges, empty state, sign-in-required, account-not-available and retryable error states. | Frontend |

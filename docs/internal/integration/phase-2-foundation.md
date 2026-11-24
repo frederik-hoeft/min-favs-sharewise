@@ -1,6 +1,6 @@
 # Phase 2 implementation foundation: IAM and Group Management
 
-**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login exist under P2.1a. The `groups.users`, `groups.groups` and `groups.group_members` tables, group creation, the caller's group overview and metadata replacement exist under P2.2a. Invitations, IAM-to-Group event delivery, projection bootstrap and refresh/logout remain future work. The schema descriptions below retain ER provenance; check the committed IAM and Group Flyway migrations for implemented physical DDL.
+**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login exist under P2.1a; refresh/logout use the existing IAM tables and are implemented by P2.1b. The `groups.users`, `groups.groups` and `groups.group_members` tables, group creation, the caller's group overview and metadata replacement exist under P2.2a. Invitations, IAM-to-Group event delivery and projection bootstrap remain future work. The schema descriptions below retain ER provenance; check the committed IAM and Group Flyway migrations for implemented physical DDL.
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
@@ -35,7 +35,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
     dispatcher.dispatch(GroupOperation.class, GroupOperation::run));
 ```
 
-The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login/session creation is implemented, but live session eligibility and renewal remain P2.1d/P2.1b work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
+The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login, session creation and refresh/logout are implemented, while live eligibility queries for Group consumers remain P2.1d work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
 Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 
@@ -69,7 +69,7 @@ The [ER PDF](../../assets/er-data-model.pdf) and [SVG](../../assets/er-data-mode
 
 **Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../../data-model-design.md); **Security** comes from [security.md](../../stack/security.md); **Messaging** comes from [messaging.md](../../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
 
-P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a subsequently added the `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables and the committed IAM jOOQ model. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. **`identity.user_profiles`, `groups.invitations` and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
+P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; P2.1c added the optional `identity.user_profiles` table and generated IAM jOOQ mapping. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. **`groups.invitations` and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
 
 ### IAM: `identity.users`
 
@@ -88,12 +88,12 @@ This is the authoritative account/credential row. Email is normalized in the bac
 
 ### IAM: `identity.user_profiles`
 
-Profile data is separated from credentials. An IAM user may have **zero or one** profile physically, using the shared ID as both PK and FK; ensuring immediate profile creation during registration is an application behavior, not guaranteed by the FK alone.
+Profile data is separated from credentials. An IAM user has **zero or one** profile row, using `user_id` as both PK and FK. Registration does not create a profile; an authenticated update creates or updates the row as needed. A missing row and a null display name are equivalent to callers. The profile migration enforces the reviewed display-name storage constraints; the complete user-facing validation rule belongs to the [P2.1c specification](../tasks/p2.1c-account-updates/specification.md#profile-storage-and-behavior).
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
 | `user_id` (PK, FK → `identity.users.id`) | `uuid` | One-to-zero/one user profile relationship (**Domain, ER**); same-schema FK permits physical integrity. |
-| `display_name` | `text NULL` | Optional user-facing profile name (**ER** proposal aligned with **Backlog P2.1c** profile management); not yet an independently mandated registration field. |
+| `display_name` | `text NULL` | Optional user-facing profile name (**ER**; implemented by **P2.1c**); not a registration requirement. |
 
 ### IAM: `identity.sessions`
 

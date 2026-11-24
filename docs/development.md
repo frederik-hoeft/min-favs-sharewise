@@ -1,6 +1,6 @@
 # Development environment
 
-**Status:** Development setup for the implemented platform foundations, IAM initial authentication and frontend demonstration workspace. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
+**Status:** Development setup for the implemented platform foundations, IAM authentication/session lifecycle and account updates, and the authenticated frontend workspace. Architecture documents also describe features that are not yet implemented. For how the technologies fit together, start with the [technical stack overview](stack/overview.md).
 
 ## VS Code Dev Containers
 
@@ -51,7 +51,7 @@ The Integration test `GeneratedJooqSchemasIT` reads the profile's executions fro
 
 The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
 
-## Initial IAM authentication (P2.1a)
+## IAM authentication and session lifecycle
 
 Production IAM password encoding and access-token signing are enabled only with explicitly provisioned settings. Without `sharewise.iam.auth.enabled=true`, the production authentication services and signing codec are **not** registered; the existing bearer ingress remains fail-closed. The `/api/iam/v1/auth/{register,login}` and `/api/iam/v1/auth/csrf` HTTP routes are enabled by the same flag. Without configured trust and valid signing keys, the API rejects bearer and credential-entry requests rather than falling back to test credentials.
 
@@ -69,9 +69,7 @@ Session and lockout settings are bound from `sharewise.iam.auth` and validated a
 
 **Browser credential entry.** `GET /api/iam/v1/auth/csrf` returns a masked request token with `Cache-Control: no-store` and a host-only `__Host-sharewise-csrf` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`). Registration and login POSTs require the matching `X-XSRF-TOKEN` request header, CSRF cookie, and an exact same-origin `Origin` header. The Spring Security CSRF and Origin filters reject missing/invalid proof before the IAM operation is dispatched. Accepted registration returns `201` and login `200`, with a short-lived bearer JWT in JSON and a distinct `__Host-sharewise-refresh` cookie, also `Secure`, `HttpOnly`, `SameSite=Strict`, host-only, and `Path=/`. The refresh cookie expires no later than the committed session's idle/absolute deadline; its value is never sent in JSON. Successful authentication clears the CSRF cookie; the browser obtains a new token before any later mutation. Rejected credentials, invalid requests, and duplicate registrations never issue refresh cookies.
 
-Local HTTP test clients may inspect the `Secure` cookies, but Phase G browser acceptance uses a real **HTTPS** origin so storage/sending of the host-prefixed cookies is verified rather than assumed. The production Nginx TLS terminator forwards the external origin through its trusted proxy network; Spring's production profile interprets only those proxy-provided forwarded headers. Do not enable forwarded-header trust for arbitrary untrusted client traffic. P2.1b still owns refresh, logout and rotation; no cookie-only request can authenticate a bearer-protected operation. Before public exposure, configure edge-level request size/rate limits and benchmark PBKDF2 load.
-
-For real-browser registration/login acceptance and evidence collection, use the [P2.1a Phase G acceptance checklist](internal/tasks/p2.1a-registration-auth/acceptance.md).
+Local HTTP test clients may inspect the `Secure` cookies, but actual browser cookie storage and sending must be verified through a real **HTTPS** origin. The production Nginx TLS terminator forwards the external origin through its trusted proxy network; Spring's production profile interprets only those proxy-provided forwarded headers. Do not enable forwarded-header trust for arbitrary untrusted client traffic. The same CSRF and Origin boundary protects `/api/iam/v1/auth/refresh` and `/api/iam/v1/auth/logout`. A valid refresh rotates its verifier generation and returns a new access JWT and cookie; logout revokes the session and clears refresh/CSRF cookies. Both operations accept a nullable `expectedSessionId` to bind subsequent mutations to the tab's known session; an unbound refresh is used only when restoring an unknown cookie context. Invalid/missing refresh credentials cannot renew, while a valid cookie belonging to another session returns `409 session_context_changed` without cookie mutation. Refresh/logout require no access bearer and never authenticate other API operations through cookies alone. See [the security architecture](stack/security.md#api-boundaries-and-client-behavior). Before public exposure, configure edge-level request size/rate limits and benchmark PBKDF2 load.
 
 ## Provision local Group users
 

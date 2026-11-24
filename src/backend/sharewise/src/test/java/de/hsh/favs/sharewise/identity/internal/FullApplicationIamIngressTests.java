@@ -70,6 +70,7 @@ class FullApplicationIamIngressTests {
     private static final Instant NOW = TestAccessTokens.NOW;
     private static final Clock CLOCK = TestAccessTokens.CLOCK;
     private static final UUID ALICE = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
+    private static final UUID SESSION = UUID.fromString("12345678-1234-4123-8123-1234567890ac");
     private static final JwtCredentialProfile PROFILE = TestAccessTokens.PROFILE;
 
     @Autowired MockMvc mvc;
@@ -174,6 +175,10 @@ class FullApplicationIamIngressTests {
             .andExpect(jsonPath("$.userId").value(ALICE.toString()));
         mvc.perform(get(endpoint))
             .andExpect(status().isUnauthorized());
+        mvc.perform(get(endpoint).cookie(new jakarta.servlet.http.Cookie(
+                    "__Host-sharewise-refresh", "opaque-refresh-credential")))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("authentication_required"));
         mvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value("invalid_credential"));
@@ -234,7 +239,7 @@ class FullApplicationIamIngressTests {
             PROFILE.tokenType(), PROFILE.audiences(), PROFILE.kind(), PROFILE.trustedPrimaryProfiles(),
             PROFILE.maximumLifetime(), PROFILE.clockSkew(), 16_384);
         JwtCredentialCodec largeCodec = TestAccessTokens.codec(largeProfile, CLOCK);
-        String largeToken = largeCodec.sign(new JwtIssueRequest(ALICE, "session-a", "large-token",
+        String largeToken = largeCodec.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "large-token",
             NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180),
             Optional.empty(), Map.of("padding", "x".repeat(6300))));
         org.junit.jupiter.api.Assertions.assertTrue(largeToken.length() > 8192);
@@ -269,7 +274,7 @@ class FullApplicationIamIngressTests {
     }
 
     private String token() {
-        return TestAccessTokens.accessToken(ALICE, "session-a");
+        return TestAccessTokens.accessToken(ALICE, SESSION.toString());
     }
 
     private String expiredToken() {

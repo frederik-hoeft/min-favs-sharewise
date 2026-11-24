@@ -64,6 +64,44 @@ class JooqAccountStore implements AccountStore {
     }
 
     @Override
+    public Optional<AccountSnapshot> findById(UUID userId) {
+        Objects.requireNonNull(userId, "userId");
+        return database.dsl().selectFrom(USERS)
+                .where(USERS.ID.eq(userId))
+                .fetchOptional(JooqAccountStore::account);
+    }
+
+    @Override
+    public Optional<AccountSnapshot> findByIdForUpdate(UUID userId) {
+        Objects.requireNonNull(userId, "userId");
+        return database.dsl().selectFrom(USERS)
+                .where(USERS.ID.eq(userId))
+                .forUpdate()
+                .fetchOptional(JooqAccountStore::account);
+    }
+
+    @Override
+    public void replacePassword(UUID userId, String previousVerifier, String newVerifier) {
+        Objects.requireNonNull(userId, "userId");
+        Objects.requireNonNull(previousVerifier, "previousVerifier");
+        if (Objects.requireNonNull(newVerifier, "newVerifier").isBlank()) {
+            throw new IllegalArgumentException("New verifier must not be blank");
+        }
+        // The users row is already locked; the old verifier guards against a stale update.
+        int updated = database.dsl().update(USERS)
+                .set(USERS.PASSWORD_HASH, newVerifier)
+                .set(USERS.FAILED_LOGIN_ATTEMPTS, 0)
+                .setNull(USERS.LOCKED_UNTIL)
+                .where(USERS.ID.eq(userId))
+                .and(USERS.PASSWORD_HASH.eq(previousVerifier))
+                .and(USERS.DISABLED_AT.isNull())
+                .execute();
+        if (updated != 1) {
+            throw new IllegalStateException("Locked IAM password verifier could not be updated");
+        }
+    }
+
+    @Override
     public boolean compareAndSetLoginFailures(UUID userId, LoginLockoutPolicy.State previous,
             LoginLockoutPolicy.State next) {
         Objects.requireNonNull(userId, "userId");

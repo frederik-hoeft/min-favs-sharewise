@@ -10,6 +10,9 @@ services:
       - npm-cache:/home/vscode/.npm
       - zsh-history:/home/vscode/.local/share/zsh-history
     init: true
+    # Host-published deployment ports are on the Docker daemon host, not in this container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       JOOQ_CODEGEN_PASSWORD: sharewise_migrator_dev
     command: sleep infinity

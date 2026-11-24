@@ -6,6 +6,8 @@ export const appRoutes = [
   { href: "/app/dummy3", label: "Dummy 3" },
 ] as const;
 
+export const accountRoute = { href: "/app/account", label: "Account" } as const;
+
 /** Static, navigable ancestor routes for the long-path breadcrumb demo. */
 export const breadcrumbDemoRoutes = {
   group: "/app/dummy3/international-collaboration-project",
@@ -41,7 +43,7 @@ export function appBreadcrumbs(pathname: string): AppBreadcrumb[] {
   let href = "/app";
   for (const segment of segments.slice(1)) {
     href += `/${segment}`;
-    const known = [...appRoutes, ...nestedRouteLabels].find((route) => route.href === href);
+    const known = [...appRoutes, accountRoute, ...nestedRouteLabels].find((route) => route.href === href);
     const label = known?.label ?? segment.replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
     crumbs.push({ href, label });
   }

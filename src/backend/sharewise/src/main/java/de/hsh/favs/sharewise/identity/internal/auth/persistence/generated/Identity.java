@@ -6,6 +6,7 @@ package de.hsh.favs.sharewise.identity.internal.auth.persistence.generated;
 
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.RefreshTokens;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Sessions;
+import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.UserProfiles;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Users;
 
 import java.util.Arrays;
@@ -42,6 +43,11 @@ public class Identity extends SchemaImpl {
     public final Sessions SESSIONS = Sessions.SESSIONS;
 
     /**
+     * The table <code>identity.user_profiles</code>.
+     */
+    public final UserProfiles USER_PROFILES = UserProfiles.USER_PROFILES;
+
+    /**
      * The table <code>identity.users</code>.
      */
     public final Users USERS = Users.USERS;
@@ -71,6 +77,7 @@ public class Identity extends SchemaImpl {
         return Arrays.asList(
             RefreshTokens.REFRESH_TOKENS,
             Sessions.SESSIONS,
+            UserProfiles.USER_PROFILES,
             Users.USERS
         );
     }
