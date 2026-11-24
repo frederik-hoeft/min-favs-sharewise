@@ -82,15 +82,15 @@ The baseline contains the accepted P2.1b lifecycle and Phase C profile UI. Gate 
 - [x] Test request/response validation, `204` without cookies/tokens, `no-store`, stable errors, no sensitive logging and the distinction between pre-dispatch renewable bearer `401` and post-dispatch session denial (IAM-C01, C04, C08; IAM-CT04, CT08).
 - [x] Regression-test CSRF/Origin enforcement for existing and unknown unsafe `/auth/**` routes and bearer-only admission for exactly `POST /auth/password`. Verify absent/invalid bearer and cookie-only request failures through the real chain (IAM-CT08).
 - [x] Test UI validation, bad current password, sensitive-field clearing, uncertain-response recovery, account-context changes and success messaging; run frontend lint/typechecks/Vitest/build/static export (IAM-C09, IAM-CT09).
-- [ ] Human HTTPS E2E with independent browser sessions: verify A continues, B loses refresh eligibility, new login uses only the replacement password, JWT expiry remains bounded and reload/restoration follows accepted P2.1b behavior (IAM-CT05, CT10).
+- [x] Human HTTPS E2E with independent browser sessions: verify A continues, B loses refresh eligibility, new login uses only the replacement password, JWT expiry remains bounded and reload/restoration follows accepted P2.1b behavior (IAM-CT05, CT10).
 
 **Gate E:** IAM/HTTP security, PostgreSQL, frontend and general P2.1c manual browser acceptance (including P2.1c.1 protected-operation restoration/retry scenarios) pass together on the integrated revision; human approves the password UI and transport patch.
 
 ## Phase F - Independent review, steady-state documentation and merge authorization
 
-- [ ] Obtain independent security/architecture review of the completed change, especially account/session concurrency, the `/auth/password` security-chain exception, refresh retry behavior and JWT eligibility limits. Resolve confirmed findings in reviewable increments.
-- [ ] Record human manual HTTPS acceptance, automated CI and locally unavailable infrastructure; rerun affected checks after corrections. Verify module boundaries, source encoding, Markdown links and `git diff --check`.
-- [ ] **Final implementation step:** reconcile the authoritative [security](../../../stack/security.md), [frontend architecture](../../../architecture/frontend.md), [persistence](../../../architecture/persistence.md), [data model](../../../data-model-design.md), [development/testing](../../../development/tests.md), Phase 2 integration handoff and [backlog](../backlog.md) against **verified** behavior.
-- [ ] Present the complete diff, validation and deferred scope for human merge authorization. Do not mark P2.1c complete or merge before that decision.
+- [x] Obtain independent security/architecture review of the completed change, especially account/session concurrency, the `/auth/password` security-chain exception, refresh retry behavior and JWT eligibility limits. Resolve confirmed findings in reviewable increments.
+- [x] Record human manual HTTPS acceptance, automated CI and locally unavailable infrastructure; rerun affected checks after corrections. Verify module boundaries, source encoding, Markdown links and `git diff --check`.
+- [x] **Final implementation step:** reconcile the authoritative [security](../../../stack/security.md), [frontend architecture](../../../architecture/frontend.md), [persistence](../../../architecture/persistence.md), [data model](../../../data-model-design.md), [development/testing](../../../development/tests.md), Phase 2 integration handoff and [backlog](../backlog.md) against **verified** behavior.
+- [x] Present the complete diff, validation and deferred scope for human merge authorization. Do not mark P2.1c complete or merge before that decision.
 
 **Gate F:** Independent findings resolved, human acceptance recorded, authoritative docs accurate and final merge authorized. Deferred lifecycle/session-administration features remain out of scope.
