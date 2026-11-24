@@ -1,30 +1,27 @@
 # Application architecture
 
-**Status:** Target modular architecture. The [operation-scoped DI](architecture/dependency-injection.md), [transaction management](architecture/transactions.md), [verified-credential foundation](architecture/authorization.md), IAM authentication, account profiles, password changes and executable module-boundary verification are implemented; Group/Finance business capabilities and messaging remain planned. Except where stated otherwise, the component contracts here describe the intended system rather than code already in the repository.
+ShareWise runs as a modular monolith. The backend separates application-operation lifetime, transaction ownership and bounded-context persistence so that sharing a process and database does not imply shared business authority. This document describes the application structure; the [technical stack](stack/overview.md) and [domain model](data-model-design.md) describe the wider target design.
 
 ## System organization
 
-ShareWise starts as a **modular monolith** with a hexagonal (ports-and-adapters) architecture **inside each bounded context**. The primary modules are User & Identity Management, Group Management, Financial Management, File Management, and Notification Management. They are ownership and language boundaries, not automatically one deployment each. Consult [the domain model](data-model-design.md) for their responsibilities and invariants.
+ShareWise uses a hexagonal (ports-and-adapters) architecture inside each bounded context. The business modules are User & Identity Management (`identity`) and Financial Management (`finance`). IAM owns account and session workflows; Finance owns the group-root and actor schema and an internal root-locking port. Shared infrastructure (`shared`) and host health endpoints (`system`) have separate modules.
 
-Each module owns its data, domain model, commands, queries, published APIs and outbound ports. Other modules access it **only via its supported API or integration events**. The initial shared PostgreSQL deployment must not become a license for cross-context joins, foreign keys, repositories, or transactions. Extraction to separate services should replace integration adapters rather than rewrite domain operations. Cross-context synchronous calls are not categorically forbidden, but are not a default composition mechanism; a concrete use case must establish a reviewed integration boundary and independent operation-scope/transaction semantics before introducing them. Event-driven propagation is preferred for independent, asynchronously consistent state.
+Each module owns its data, domain model and ports. Other modules access it only through explicitly published contracts. Sharing PostgreSQL does not authorize cross-context joins, foreign keys, repositories or business transactions. A synchronous cross-context call requires a reviewed integration boundary with independent operation-scope and transaction semantics; module dependency declarations alone do not establish that contract.
 
 ```mermaid
 flowchart TB
-    inbound[REST / scheduled jobs / event consumers] --> api[Published module API]
-    api --> app[Operation-specific application services]
+    inbound[HTTP adapters] --> app[Operation-specific application services]
     app --> rules[Domain rules and value objects]
     app --> ports[Outbound ports]
     ports --> data[Database adapters]
-    ports --> integration[Event and external-service adapters]
     data --> db[(Module-owned database tables)]
-    integration --> others[Other contexts / broker]
 ```
 
-Runtime calls typically travel from inbound adapters to the application core and through outbound ports. Source dependencies point toward the interfaces owned by the core; the infrastructure adapters implement those interfaces. Diagram layers are conceptual: do not create a facade, interface, mapper, or package for every trivial method merely to mirror this picture.
+Runtime calls typically travel from inbound adapters to the application core and through outbound ports. Source dependencies point toward the interfaces owned by the core; the infrastructure adapters implement those interfaces. The diagram describes responsibilities rather than requiring a separate facade or package for each layer.
 
 ### Module structure and published APIs
 
-Each bounded context is one direct sub-package of the application root `de.hsh.favs.sharewise`: `identity`, `groups`, `finance`, `files` and `notifications`. Business-independent infrastructure lives in the `shared` module. Spring Modulith derives the application modules from this layout. A module's package is created by the first vertical slice that needs it. The host-local `system` module contains monolith-level HTTP probes under `system.api.v1`; it consumes the narrowly published `shared::health` readiness contract while its datasource probe implementation remains internal to `shared`. Business HTTP controllers instead live under their owning context, for example `finance.api.v1`. The application-root HTTP security composition supplies one `/api/**` chain for all contexts; IAM publishes a narrowly scoped `identity::transport` contribution for bearer admission and its own cookie-authentication protections. This host integration is not an outbound dependency from `shared` to IAM, and business contexts use the [published identity contracts](architecture/authorization.md#semantic-identity-and-authorization) and enforce their own authorization policies rather than configuring additional bearer chains. On future service extraction, each deployable owns its own health endpoint; `system` is not a sixth business context.
+Spring Modulith derives application modules from direct sub-packages of `de.hsh.favs.sharewise`. A module's package is created by the first vertical slice that needs it. The host-local `system` module contains monolith-level HTTP probes under `system.api.v1`; it consumes the narrowly published `shared::health` readiness contract while its datasource probe implementation remains internal to `shared`. Business HTTP controllers live under their owning context, as in IAM. The application-root HTTP security composition supplies one `/api/**` chain for all contexts; IAM publishes a narrowly scoped `identity::transport` contribution for bearer admission and its own cookie-authentication protections. This host integration is not an outbound dependency from `shared` to IAM, and the [published identity contracts](architecture/authorization.md#semantic-identity-and-authorization) keep credential evidence independent of resource-specific authorization. `system` is a host-local module, not a business context.
 
 A module's **top-level package is its published API**: the operation-focused command and query contracts and immutable records that other modules may use. Implementation, domain internals and adapters live in sub-packages. These remain internal to the module even when Java requires a type to be `public` for wiring across the module's own packages. A sub-package becomes part of the API only through an explicit Spring Modulith **named interface**, referenced as `module::name`, and only where a module publishes a genuinely separate contract. Types that need no access from other packages stay package-private.
 
@@ -38,7 +35,7 @@ The locally runnable deployment has one Nginx/static-export frontend, one Spring
 
 PostgreSQL initializes separate runtime and Flyway migration roles on an empty persistent data volume. The Spring `production` profile requires distinct runtime secret files and starts Flyway before readiness; Nginx and the backend expose independent health checks. These startup guarantees do not imply automatic rollout, backup, or password rotation for a populated database. See the [persistence foundation](architecture/persistence.md) for database authority and the [deployment guide](../deploy/README.md) for concrete single-host operations.
 
-CI publishes the backend and frontend as separate images and verifies a matching, digest-qualified pair before recording a release descriptor. The `latest` aliases are not a transaction or an authoritative deployment reference. Host provisioning and rollout/rollback automation remain separate P2.6c/d responsibilities; [CI and test guidance](development/tests.md#ci-and-diagnostics) owns the versioning and registry contract.
+CI publishes the backend and frontend as separate images and verifies a matching, digest-qualified pair before recording a release descriptor. The `latest` aliases are not a transaction or an authoritative deployment reference. [CI and test guidance](development/tests.md#ci-and-diagnostics) owns the versioning and registry contract.
 
 ## Operation- and data-flow-oriented services
 
@@ -46,19 +43,7 @@ Published interfaces expose meaningful command and query operations. DI-managed,
 
 Input adapters can use the published `shared::validation` `DomainObjectFactory` contract to convert transport DTOs into validated commands, returning `Result<Command, ValidationErrors>`. Domain/application validators remain authoritative; adapters map structured errors into protocol-specific responses, such as HTTP `ProblemDetail`, without requiring domain objects to depend on transport types.
 
-Typical names and responsibilities:
-
-| Contract | Example | Meaning |
-| --- | --- | --- |
-| Command | `CorrectExpense` | Input to a business mutation, including expected revision |
-| Query | `HistoricalBalancesQuery` | Parameterizes a read at a group revision |
-| Operation result | `CorrectionResult` | Success or typed expected failure such as not-found/conflict |
-| Read projection | `ExpenseSummary`, `GroupBalances` | Consumer-specific, minimal, immutable data |
-| Application service | `ExpenseModificationService`, `BalanceQueryService` | Workflow, authorization, result mapping and commit decision |
-| Outbound port | `ExpenseCorrectionPort`, `BalanceReadPort` | Data capabilities required by that workflow |
-| Adapter | `ExpensePersistenceAdapter` | Efficient implementation of port semantics |
-
-Outbound data ports describe use-case operations instead of exposing generic `findAll()/save()` repositories. A read port may perform an `EXISTS`, joined validation, filtered pagination, aggregation, window-function history reconstruction, or a conditional SQL mutation **inside the database**. Domain invariants and port semantics remain application-owned, while physical queries and ORM entities remain internal to adapters. Database-resident facts are evaluated with targeted SQL operations rather than by loading entire aggregates. Integration tests verify database-enforced invariants.
+Outbound data ports describe use-case operations rather than generic `findAll()/save()` repositories. They encapsulate targeted queries and conditional SQL mutations instead of loading entire aggregates. Domain invariants and port semantics remain application-owned, while physical queries and ORM entities remain internal to adapters. Integration tests verify database-enforced invariants.
 
 Command and query paths need not be symmetrical. Queries generally return direct projections without change tracking or rich aggregate reconstruction; commands retrieve only facts or state required to validate and commit the operation. Read/write separation does not imply separate databases, event sourcing, or a generic message bus.
 
@@ -68,28 +53,17 @@ The application core decides when to commit through an operation-scoped `Transac
 
 Application services use domain-oriented outbound ports and interpret typed business results to select the disposition of each segment. Infrastructure adapters implement those ports with segment-bound jOOQ or JPA accessors; business APIs do not expose database connections, persistence sessions or transaction status. A segment is local to the owning application's data boundary, not an authorization to write another context's tables.
 
-Finance applies an additional business protocol **inside** this generic transaction:
+Finance exposes an internal group-root persistence port on top of this transaction infrastructure. It can provision and lock a root in a caller-owned segment or lock an existing root without creating one. The port distinguishes absence from a snapshot of an existing lifecycle state; the lock remains held until physical transaction completion. Finance consumes only `shared::jooq` and publishes no cross-context API. See [Finance persistence](architecture/persistence.md#finance-persistence) for the schema and serialization contract.
 
-1. Lock the FinancialGroup for the relevant group (or use an equivalent proven serialization protocol); enforce lifecycle/authorization and optimistic entity-revision preconditions.
-2. Validate local and database-resident invariants using targeted state/fact projections.
-3. Allocate the next **group-local financial revision**, persist the immutable Expense/Settlement state and its children, and append the corresponding ChangeRecord.
-4. Persist an integration-event publication record in the same transaction when required; only then authorize commit.
+## Integration boundaries
 
-All financial mutations in one group must follow the same ordering and locking protocol. A database sequence or independent auto-increment IDs alone cannot guarantee the required logical commit order. Historical reads at one group revision must be consistent. The exact COW tables and indexes are infrastructure choices; the [persistence architecture](architecture/persistence.md) defines the implemented database foundation and adapter boundaries. See [domain history](data-model-design.md#financial-revisions-and-history).
-
-## Integration events and extraction
-
-The [preliminary messaging architecture](stack/messaging.md) uses versioned integration facts and Spring Modulith's persistent, JDBC-backed Event Publication Registry for durable asynchronous cross-context propagation. A producer records publication intent atomically with its state change; consumers process independently and idempotently, using a transactional inbox or a proven business-data invariant. Delivery may be duplicated, delayed or out of order; unsuccessful listeners remain recoverable. Failed notifications do not roll back Finance.
-
-**Finance's ChangeRecord journal is business-visible financial history, not the delivery registry or an event store.** Group Management remains membership authority; Finance maintains an eventually synchronized local FinancialActor representation. Rejoining reactivates the same financial identity. An external broker is introduced on justified service extraction without changing context-owned business operations. Each context owns its transactions and tables even when deployed in the same process.
-
-The [implemented credential foundation](architecture/authorization.md) verifies primary IAM evidence and exposes operation-scoped identity. The [preliminary security design](stack/security.md) separates IAM identity/session assertions from issuer-qualified domain attestations. Group Management owns group permissions; consumers validate independently signed claims and enforce their own resource and business rules. Published authorization capabilities provide immediate checks within the modulith. Authoritative remote introspection remains a possible later extension if an extracted service requires stricter freshness. The [generic file ACL proposal](file-management-acl-proposal.md) is a separate, unaccepted extension of this trust model.
+The [verified-credential foundation](architecture/authorization.md) verifies primary IAM evidence and exposes operation-scoped identity. The application-root security composition admits requests and IAM owns credential and session behavior. Business authority remains with the resource-owning context, rather than the shared security infrastructure. The [security design](stack/security.md) and [messaging design](stack/messaging.md) describe cross-context integration contracts separately from the runtime architecture.
 
 ## Infrastructure integration
 
-The [technical stack overview](stack/overview.md) maps the selected frameworks and tools to the runtime layers and distinguishes the starter from the intended system. The [implemented persistence architecture](architecture/persistence.md) and the [preliminary messaging](stack/messaging.md) and [security](stack/security.md) designs own their corresponding technology-specific contracts; this document owns the module boundaries and application interaction model.
+The [technical stack overview](stack/overview.md) maps technologies to runtime responsibilities. The [persistence architecture](architecture/persistence.md) defines database authority and adapter access.
 
-Backend services use Spring constructor injection. Stateless shared infrastructure normally remains singleton-scoped, while the [application-operation DI scope](architecture/dependency-injection.md) gives stateful entry services, participants and adapters one explicitly dispatched lifetime. Operation-scoped `Transactions` uses Spring's programmatic transaction manager (normally `TransactionTemplate`) to physically finalize each segment. The dispatcher, REST adapters, message listeners and application-core services need no `@Transactional` annotations; event publication records enlist in the business operation's physical Spring transaction. Generated jOOQ types, Hibernate entities and event-delivery infrastructure stay inside adapters.
+Backend services use Spring constructor injection. Stateless shared infrastructure normally remains singleton-scoped, while the [application-operation DI scope](architecture/dependency-injection.md) gives stateful entry services, participants and adapters one explicitly dispatched lifetime. Operation-scoped `Transactions` uses Spring's programmatic transaction manager (normally `TransactionTemplate`) to physically finalize each segment. The dispatcher and REST adapters do not own application transaction completion. Generated jOOQ types and Hibernate entities stay inside persistence adapters.
 
 Application operations generally use straightforward imperative Java; virtual threads remain subject to connection-pool capacity and database locking. Architectural tests enforce allowed module dependencies; the [backend test architecture](architecture/tests.md) separates offline validation, rollback-isolated PostgreSQL checks and durable-commit scenarios.
 

@@ -42,22 +42,22 @@ Work on a local P3.1 feature branch; exchange patches against the last mutually 
 
 ## Phase B - P3.1b: Finance root persistence port and adapter
 
-- [ ] Extend the closed Finance module whitelist only with the shared named interfaces actually consumed; define the Finance-owned immutable root projection and lifecycle enum and the internal `FinancialGroupStore` port. Implement `ensureAndLock` and `lockExisting` through an operation-scoped jOOQ adapter using generated Finance metadata and the existing `JooqAccess` guard. No application service or actor adapter is added. Implement FIN-R01–R07, including the explicit typed provisioning state, transaction preconditions, failure propagation and no-update behavior for existing roots.
-- [ ] Add focused real PostgreSQL Integration/E2E cases FIN-T07–T13 using the existing operation/transaction fixtures and independent E2E connections for locking, rollback and visibility. Extend the existing Modulith architecture test as appropriate; do not duplicate its verifier. Add Unit coverage for any meaningful pure mapping or validation behavior rather than mock-based claims about SQL semantics.
-- [ ] Run the offline Unit/architecture gate, inspect the complete change and export one implementation patch. Human executes the PostgreSQL suites and reviews the port contract and concurrency evidence. Fix any findings before advancing.
+- [x] Extend the closed Finance module whitelist only with the shared named interfaces actually consumed; define the Finance-owned immutable root projection and lifecycle enum and the internal `FinancialGroupStore` port. Implement `ensureAndLock` and `lockExisting` through an operation-scoped jOOQ adapter using generated Finance metadata and the existing `JooqAccess` guard. No application service or actor adapter is added. Implement FIN-R01–R07, including the explicit typed provisioning state, transaction preconditions, failure propagation and no-update behavior for existing roots.
+- [x] Add focused real PostgreSQL Integration/E2E cases FIN-T07–T13 using the existing operation/transaction fixtures and independent E2E connections for locking, rollback and visibility. Extend the existing Modulith architecture test as appropriate; do not duplicate its verifier. Add Unit coverage for any meaningful pure mapping or validation behavior rather than mock-based claims about SQL semantics.
+- [x] Run the offline Unit/architecture gate, inspect the complete change and export one implementation patch. Human executes the PostgreSQL suites and reviews the port contract and concurrency evidence. Fix any findings before advancing.
 
 **Suggested commit:** `P3.1b: Add transaction-bound Finance group provisioning and locking`
 
-**Gate B:** Human accepts the implementation and actual PostgreSQL concurrency/rollback results. The port is ready for P3.2a/P3.4 without any P2 dependency. The typed not-ready *application outcome* remains the responsibility of future financial operations; the port's typed lifecycle state and absence are established here.
+**Gate B:** Accepted by the maintainer following static review and the maintainer-reported green rerun after the test-only correction. The correction selects production-only JPA entity scanning in Finance E2Es and asserts the translated repository exception with its original transaction-guard cause in Integration tests. The port is ready for P3.2a/P3.4 without any P2 dependency. The typed not-ready *application outcome* remains the responsibility of future financial operations; the port's typed lifecycle state and absence are established here.
 
 ## Phase C - Consolidated steady-state documentation
 
-- [ ] Reconcile `docs/architecture/persistence.md`, `docs/architecture.md`, `docs/data-model-design.md`, `docs/stack/persistence.md` and `docs/development.md` where affected. Describe actual schema ownership, the root lock contract, the Finance generation command and offline boundaries; search for other stale statements about Finance tables/modules. Keep shared event contracts in the Phase 3 foundation and planned P3.2/P3.4 behavior clearly distinct. Avoid repeating the task spec in durable docs.
+- [ ] Reconcile `docs/architecture/persistence.md`, `docs/architecture.md`, `docs/data-model-design.md`, `docs/stack/persistence.md` and `docs/development.md` where affected, together with dependent overview, diagram and testing guidance. Describe actual schema ownership, the root lock contract, the Finance generation command and offline boundaries; search for other stale statements about Finance tables/modules. Keep shared event contracts in the Phase 3 foundation and planned P3.2/P3.4 behavior clearly distinct. Avoid repeating the task spec in durable docs.
 - [ ] Update plan progress and acceptance evidence only for verified, approved gates. Link the specification/plan from the backlog if helpful, but leave completion checkboxes unchecked until the final acceptance gate. Verify relative links, formatting and the full task diff.
 
 **Suggested commit:** `P3.1-C: Reconcile Finance persistence and development documentation`
 
-**Gate C:** Human accepts the consolidated documentation patch and complete integrated task diff.
+**Gate C:** Pending human review of the consolidated documentation patch and complete integrated task diff. The documentation edits are prepared; the checkboxes remain open until approved.
 
 ## Verification commands and final acceptance
 
@@ -84,10 +84,10 @@ Use focused `-Dit.test` during development if useful, but run applicable full su
 | Evidence | Result |
 | --- | --- |
 | Specification/plan and P3.0 approval | Approved by maintainer |
-| Offline Unit/architecture gate (implementation) | P3.1a and generated-source baseline: 342 Unit tests passed locally; P3.1b: offline `-Punit-tests clean verify` passed 344 Unit tests (including Modulith and test-category checks), with all database test sources compiled; human review pending |
+| Offline Unit/architecture gate (implementation) | P3.1a and generated-source baseline: 342 Unit tests passed locally; P3.1b: offline `-Punit-tests clean verify` passed 344 Unit tests (including Modulith and test-category checks), with all database test sources compiled; the test-only correction also passed 344 Unit tests |
 | Fresh/upgrade migration, runtime role, manual database acceptance | P3.1a automated suite: maintainer reports green `mvn clean verify` at `c00e925135bc262f726d4a0feadb088d9a75ea4b`; separate manual acceptance and detailed environment evidence pending |
 | Finance jOOQ generation and ordinary build | Generated-source patch `c00e925135bc262f726d4a0feadb088d9a75ea4b` accepted; maintainer verification green, offline 342 Unit tests passed |
-| PostgreSQL Integration and E2E suites, including concurrency | P3.1b adds 3 Integration and 8 E2E tests; compiled locally but not executed without PostgreSQL; maintainer verification pending |
+| PostgreSQL Integration and E2E suites, including concurrency | P3.1b adds 3 Integration and 8 E2E tests. The maintainer initially reported eight E2E startup failures and one Integration assertion failure; after the test-only correction, the maintainer reports all tests green. Local offline verification compiled but did not execute these tests. Exact authoritative revision, rerun command and logs were not supplied. |
 | Disposable deployment smoke | Pending |
 | Independent MR review and resolutions | Pending |
 | Human final diff review and merge authorization | Pending |
