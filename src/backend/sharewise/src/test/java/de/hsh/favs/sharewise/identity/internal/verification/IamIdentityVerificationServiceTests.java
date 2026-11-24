@@ -14,6 +14,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
+import de.hsh.favs.sharewise.testsupport.execution.AdjustableClock;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -35,12 +36,11 @@ class IamIdentityVerificationServiceTests {
     @Test
     void eligibleCallerReturnsVerifiedPairAndInstantOnlyAfterCompletedReadSegment() {
         RecordingTransactions transactions = new RecordingTransactions();
-        IdentityEligibilityQuery query = (user, session, now) -> {
+        IdentityEligibilityQuery query = (user, session) -> {
             assertTrue(transactions.active);
             assertEquals(USER, user);
             assertEquals(SESSION, session);
-            assertEquals(NOW, now);
-            return true;
+            return Optional.of(validSession());
         };
         LocalIdentityPort port = port(identity(Optional.of(USER), Optional.of(SESSION)), transactions, query);
 
@@ -55,7 +55,7 @@ class IamIdentityVerificationServiceTests {
     void denialDoesNotDiscloseCauseOrChangeState() {
         RecordingTransactions transactions = new RecordingTransactions();
         LocalIdentityPort port = port(identity(Optional.of(USER), Optional.of(SESSION)), transactions,
-                (user, session, now) -> false);
+                (user, session) -> Optional.empty());
 
         assertEquals(Result.err(IdentityVerificationFailure.INELIGIBLE), port.verifyCurrent());
         assertEquals(List.of(TransactionDecision.ABSTAIN), transactions.decisions);
@@ -65,7 +65,7 @@ class IamIdentityVerificationServiceTests {
     void sessionOrAccountLookupUsesBothAdmittedIdsAndIsNotCallerSelectable() {
         RecordingTransactions transactions = new RecordingTransactions();
         LocalIdentityPort port = port(identity(Optional.of(USER), Optional.of(OTHER)), transactions,
-                (user, session, now) -> USER.equals(user) && SESSION.equals(session));
+                (user, session) -> USER.equals(user) && SESSION.equals(session) ? Optional.of(validSession()) : Optional.empty());
         assertEquals(Result.err(IdentityVerificationFailure.INELIGIBLE), port.verifyCurrent());
         assertEquals(List.of(TransactionDecision.ABSTAIN), transactions.decisions);
     }
@@ -76,7 +76,7 @@ class IamIdentityVerificationServiceTests {
                 identity(Optional.of(USER), Optional.empty()),
                 identity(Optional.empty(), Optional.of(SESSION)))) {
             RecordingTransactions transactions = new RecordingTransactions();
-            LocalIdentityPort port = port(identity, transactions, (user, session, now) -> {
+            LocalIdentityPort port = port(identity, transactions, (user, session) -> {
                 throw new AssertionError("No lookup for an anonymous or incomplete identity");
             });
             assertThrows(UnauthenticatedCallerException.class, port::verifyCurrent);
@@ -85,24 +85,50 @@ class IamIdentityVerificationServiceTests {
     }
 
     @Test
-    void clockInstantAndDeadlineBoundaryAreForwardedToTheQuery() {
+    void serviceEnforcesCreationAndBothExclusiveDeadlineBoundaries() {
         Instant created = NOW.minusSeconds(100);
         Instant idle = NOW.plusSeconds(1);
         Instant absolute = NOW.plusSeconds(100);
-        for (Instant instant : List.of(created.minusNanos(1), created, idle.minusNanos(1), idle,
-                absolute, absolute.plusSeconds(1))) {
-            RecordingTransactions transactions = new RecordingTransactions();
-            IdentityEligibilityQuery query = (user, session, at) ->
-                    !at.isBefore(created) && at.isBefore(idle) && at.isBefore(absolute);
-            IamIdentityVerificationService service = new IamIdentityVerificationService(transactions, query,
-                    Clock.fixed(instant, ZoneOffset.UTC));
-            Result<VerifiedIdentity, IdentityVerificationFailure> actual = service.verify(USER, SESSION);
-            if (!instant.isBefore(created) && instant.isBefore(idle)) {
-                assertEquals(Result.ok(new VerifiedIdentity(USER, SESSION, instant)), actual);
-            } else {
-                assertEquals(Result.err(IdentityVerificationFailure.INELIGIBLE), actual);
+        for (SessionValidityWindow window : List.of(new SessionValidityWindow(SESSION, created, idle, absolute),
+                new SessionValidityWindow(SESSION, created, absolute, absolute))) {
+            for (Instant instant : List.of(created.minusNanos(1), created, idle.minusNanos(1), idle,
+                    idle.plusNanos(1), absolute.minusNanos(1), absolute, absolute.plusNanos(1))) {
+                RecordingTransactions transactions = new RecordingTransactions();
+                IamIdentityVerificationService service = new IamIdentityVerificationService(transactions,
+                        (user, session) -> Optional.of(window), Clock.fixed(instant, ZoneOffset.UTC));
+                Result<VerifiedIdentity, IdentityVerificationFailure> actual = service.verify(USER, SESSION);
+                if (!instant.isBefore(created) && instant.isBefore(window.idleExpiresAt())) {
+                    assertEquals(Result.ok(new VerifiedIdentity(USER, SESSION, instant)), actual);
+                } else {
+                    assertEquals(Result.err(IdentityVerificationFailure.INELIGIBLE), actual);
+                }
             }
         }
+    }
+
+    @Test
+    void verificationSamplesClockAfterReadAndRejectsSessionExpiringDuringLookup() {
+        for (boolean expiresDuringRead : List.of(false, true)) {
+            AdjustableClock clock = new AdjustableClock(NOW);
+            Instant afterRead = NOW.plusSeconds(1);
+            SessionValidityWindow window = new SessionValidityWindow(SESSION, NOW.minusSeconds(1),
+                    expiresDuringRead ? afterRead : afterRead.plusSeconds(1), afterRead.plusSeconds(1));
+            IamIdentityVerificationService service = new IamIdentityVerificationService(new RecordingTransactions(),
+                    (user, session) -> {
+                        clock.setInstant(afterRead);
+                        return Optional.of(window);
+                    }, clock);
+            assertEquals(expiresDuringRead ? Result.err(IdentityVerificationFailure.INELIGIBLE)
+                    : Result.ok(new VerifiedIdentity(USER, SESSION, afterRead)), service.verify(USER, SESSION));
+        }
+    }
+
+    @Test
+    void mismatchedProjectionIsAnInvariantFailureNotAValidIdentity() {
+        IamIdentityVerificationService service = new IamIdentityVerificationService(new RecordingTransactions(),
+                (user, session) -> Optional.of(new SessionValidityWindow(OTHER, NOW.minusSeconds(1),
+                        NOW.plusSeconds(1), NOW.plusSeconds(2))), Clock.fixed(NOW, ZoneOffset.UTC));
+        assertThrows(IllegalStateException.class, () -> service.verify(USER, SESSION));
     }
 
     @Test
@@ -113,7 +139,7 @@ class IamIdentityVerificationServiceTests {
             EligibilityQueryUnavailableException outage = new EligibilityQueryUnavailableException(cause);
             RecordingTransactions transactions = new RecordingTransactions();
             LocalIdentityPort port = port(identity(Optional.of(USER), Optional.of(SESSION)), transactions,
-                    (user, session, now) -> { throw outage; });
+                    (user, session) -> { throw outage; });
             assertEquals(Result.err(IdentityVerificationFailure.UNAVAILABLE), port.verifyCurrent());
             assertFalse(transactions.active);
             assertEquals(List.of(TransactionDecision.ABSTAIN), transactions.decisions);
@@ -125,7 +151,7 @@ class IamIdentityVerificationServiceTests {
         RecordingTransactions unexpected = new RecordingTransactions();
         IllegalStateException defect = new IllegalStateException("unexpected predicate defect");
         LocalIdentityPort broken = port(identity(Optional.of(USER), Optional.of(SESSION)), unexpected,
-                (user, session, now) -> { throw defect; });
+                (user, session) -> { throw defect; });
         assertSame(defect, assertThrows(IllegalStateException.class, broken::verifyCurrent));
         assertFalse(unexpected.active);
 
@@ -135,14 +161,14 @@ class IamIdentityVerificationServiceTests {
         org.jooq.exception.DataAccessException sqlDefect =
                 new org.jooq.exception.DataAccessException("invalid query");
         LocalIdentityPort invalidQuery = port(identity(Optional.of(USER), Optional.of(SESSION)),
-                unclassified, (user, session, now) -> { throw sqlDefect; });
+                unclassified, (user, session) -> { throw sqlDefect; });
         assertSame(sqlDefect, assertThrows(org.jooq.exception.DataAccessException.class,
                 invalidQuery::verifyCurrent));
 
         RecordingTransactions completion = new RecordingTransactions();
         completion.completionFailure = new IllegalStateException("rollback not confirmed");
         LocalIdentityPort uncertain = port(identity(Optional.of(USER), Optional.of(SESSION)), completion,
-                (user, session, now) -> true);
+                (user, session) -> Optional.of(validSession()));
         assertSame(completion.completionFailure,
                 assertThrows(IllegalStateException.class, uncertain::verifyCurrent));
         assertEquals(List.of(TransactionDecision.ABSTAIN), completion.decisions);
@@ -153,6 +179,10 @@ class IamIdentityVerificationServiceTests {
         assertThrows(NullPointerException.class, () -> new VerifiedIdentity(null, SESSION, NOW));
         assertThrows(NullPointerException.class, () -> new VerifiedIdentity(USER, null, NOW));
         assertThrows(NullPointerException.class, () -> new VerifiedIdentity(USER, SESSION, null));
+    }
+
+    private static SessionValidityWindow validSession() {
+        return new SessionValidityWindow(SESSION, NOW.minusSeconds(1), NOW.plusSeconds(1), NOW.plusSeconds(2));
     }
 
     private static LocalIdentityPort port(IdentityContext identity, Transactions transactions,

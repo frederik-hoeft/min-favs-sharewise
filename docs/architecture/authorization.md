@@ -100,7 +100,7 @@ IAM confirms that the account exists and is enabled and that the admitted sessio
 
 A successful verification returns the checked user and session identifiers together with the evaluation instant. `INELIGIBLE` means IAM denied eligibility; `UNAVAILABLE` means a reliable decision could not be obtained. Anonymous callers are rejected, and unexpected errors or transaction-completion failures propagate. Consumers requiring fresh verification fail closed unless it succeeds. IAM completes its own read transaction before returning a result, following the [transaction boundaries](transactions.md#architectural-boundaries) for synchronous authority calls.
 
-The decision establishes **call-time domain validity**, not a new credential admission or a guarantee of continuing eligibility. Account or session state can change after verification. The resource-owning context remains responsible for authorizing its own operation.
+The decision establishes **call-time domain validity**, not a new credential admission or a guarantee of continuing eligibility. IAM evaluates session deadlines after reading account and session state, so a delayed read cannot extend temporal validity. Account or session state can change after the read. The resource-owning context remains responsible for authorizing its own operation.
 
 ## Failure and enforcement boundaries
 

@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import de.hsh.favs.sharewise.identity.internal.verification.EligibilityQueryUnavailableException;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.UUID;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -20,7 +19,6 @@ import org.springframework.dao.DataAccessResourceFailureException;
 class JooqIdentityEligibilityQueryTests {
     private static final UUID USER = UUID.randomUUID();
     private static final UUID SESSION = UUID.randomUUID();
-    private static final Instant NOW = Instant.parse("2026-11-23T12:00:00.123456999Z");
 
     @ParameterizedTest
     @ValueSource(strings = {"08006", "57014", "55P03", "57P01", "57P02", "57P03"})
@@ -30,7 +28,7 @@ class JooqIdentityEligibilityQueryTests {
             JooqIdentityEligibilityQuery query = new JooqIdentityEligibilityQuery(
                     () -> DSL.using(connection, SQLDialect.POSTGRES));
             EligibilityQueryUnavailableException failure = assertThrows(EligibilityQueryUnavailableException.class,
-                    () -> query.isEligible(USER, SESSION, NOW));
+                    () -> query.findSessionValidityWindow(USER, SESSION));
             assertSame(sql, failure.getCause().getCause());
         }
     }
@@ -43,7 +41,7 @@ class JooqIdentityEligibilityQueryTests {
             JooqIdentityEligibilityQuery query = new JooqIdentityEligibilityQuery(
                     () -> DSL.using(connection, SQLDialect.POSTGRES));
             org.jooq.exception.DataAccessException failure = assertThrows(org.jooq.exception.DataAccessException.class,
-                    () -> query.isEligible(USER, SESSION, NOW));
+                    () -> query.findSessionValidityWindow(USER, SESSION));
             assertEquals(state, failure.sqlState());
         }
     }
@@ -56,7 +54,7 @@ class JooqIdentityEligibilityQueryTests {
             JooqIdentityEligibilityQuery query = new JooqIdentityEligibilityQuery(
                     () -> DSL.using(connection, SQLDialect.POSTGRES));
             EligibilityQueryUnavailableException failure = assertThrows(EligibilityQueryUnavailableException.class,
-                    () -> query.isEligible(USER, SESSION, NOW));
+                    () -> query.findSessionValidityWindow(USER, SESSION));
             assertSame(translated, failure.getCause());
         }
     }

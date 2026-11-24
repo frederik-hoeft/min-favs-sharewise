@@ -3,15 +3,17 @@ package de.hsh.favs.sharewise.identity.internal.auth.persistence;
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.DatabaseTime.dbTime;
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Sessions.SESSIONS;
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Users.USERS;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.identity.internal.verification.IdentityEligibilityQuery;
+import de.hsh.favs.sharewise.identity.internal.verification.SessionValidityWindow;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestBase;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Tag;
@@ -32,43 +34,37 @@ class JooqIdentityEligibilityQueryIT extends IntegrationTestBase {
                 UUID user = insertUser(db);
                 UUID other = insertUser(db);
                 UUID session = insertSession(db, user, NOW.minusSeconds(1), NOW.plusSeconds(1), NOW.plusSeconds(2));
-                assertTrue(query.isEligible(user, session, NOW));
-                assertFalse(query.isEligible(UUID.randomUUID(), session, NOW));
-                assertFalse(query.isEligible(user, UUID.randomUUID(), NOW));
-                assertFalse(query.isEligible(other, session, NOW));
+                assertTrue(query.findSessionValidityWindow(user, session).isPresent());
+                assertTrue(query.findSessionValidityWindow(UUID.randomUUID(), session).isEmpty());
+                assertTrue(query.findSessionValidityWindow(user, UUID.randomUUID()).isEmpty());
+                assertTrue(query.findSessionValidityWindow(other, session).isEmpty());
                 db.update(USERS).set(USERS.FAILED_LOGIN_ATTEMPTS, 5).set(USERS.LOCKED_UNTIL, dbTime(NOW.plusSeconds(60)))
                         .where(USERS.ID.eq(user)).execute();
-                assertTrue(query.isEligible(user, session, NOW));
+                assertTrue(query.findSessionValidityWindow(user, session).isPresent());
                 db.update(USERS).set(USERS.DISABLED_AT, dbTime(NOW)).where(USERS.ID.eq(user)).execute();
-                assertFalse(query.isEligible(user, session, NOW));
+                assertTrue(query.findSessionValidityWindow(user, session).isEmpty());
                 db.update(USERS).setNull(USERS.DISABLED_AT).where(USERS.ID.eq(user)).execute();
                 db.update(SESSIONS).set(SESSIONS.REVOKED_AT, dbTime(NOW)).where(SESSIONS.ID.eq(session)).execute();
-                assertFalse(query.isEligible(user, session, NOW));
+                assertTrue(query.findSessionValidityWindow(user, session).isEmpty());
                 return TransactionOutcome.abstain(null);
             });
         });
     }
 
     @Test
-    void exactCreationAndExpiryBoundariesPreserveNanosecondClockSemantics() {
+    void projectionReturnsExactPersistedSessionIdAndDeadlinesWithoutTemporalFiltering() {
         runIntegrationTest(scope -> {
             JooqAccess access = scope.resolve(JooqAccess.class);
             IdentityEligibilityQuery query = scope.resolve(IdentityEligibilityQuery.class);
             scope.resolve(Transactions.class).execute(() -> {
                 DSLContext db = access.dsl();
                 UUID user = insertUser(db);
-                Instant idle = NOW.plusSeconds(1);
-                Instant absolute = NOW.plusSeconds(2);
-                UUID sliding = insertSession(db, user, NOW, idle, absolute);
-                UUID capped = insertSession(db, user, NOW, absolute, absolute);
-                assertFalse(query.isEligible(user, sliding, NOW.minusNanos(1)));
-                assertTrue(query.isEligible(user, sliding, NOW));
-                assertTrue(query.isEligible(user, sliding, idle.minusNanos(1)));
-                assertFalse(query.isEligible(user, sliding, idle));
-                assertFalse(query.isEligible(user, sliding, idle.plusNanos(1)));
-                assertTrue(query.isEligible(user, capped, absolute.minusNanos(1)));
-                assertFalse(query.isEligible(user, capped, absolute));
-                assertFalse(query.isEligible(user, capped, absolute.plusNanos(1)));
+                Instant created = NOW.plusNanos(123_456_000);
+                Instant idle = created.plusSeconds(1);
+                Instant absolute = created.plusSeconds(2);
+                UUID session = insertSession(db, user, created, idle, absolute);
+                assertEquals(Optional.of(new SessionValidityWindow(session, created, idle, absolute)),
+                        query.findSessionValidityWindow(user, session));
                 return TransactionOutcome.abstain(null);
             });
         });

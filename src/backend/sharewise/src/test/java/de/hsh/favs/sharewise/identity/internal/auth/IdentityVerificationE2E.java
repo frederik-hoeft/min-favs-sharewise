@@ -16,6 +16,7 @@ import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
+import de.hsh.favs.sharewise.testsupport.execution.AdjustableClock;
 import de.hsh.favs.sharewise.testsupport.execution.TestCallbacks;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
@@ -30,6 +31,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.FutureTask;
@@ -37,8 +40,12 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Scope;
 
 /** Real IAM wiring, admitted JWT evidence, independent connections and physical transaction completion. */
@@ -106,6 +113,42 @@ class IdentityVerificationE2E {
                 writer.commit();
             }
             assertDenied(fixture, otherToken);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void sessionExpiringWhileAuthoritativeReadIsBlockedIsDenied(boolean absoluteDeadline) throws Exception {
+        runWithProductionIam(fixture -> {
+            AdjustableClock clock = fixture.context().getBean(AdjustableClock.class);
+            AuthenticationResult caller = register(fixture.context().getBean(OperationDispatcher.class), EMAIL);
+            String token = caller.accessToken().value();
+            Instant expiry = clock.instant().plusSeconds(2);
+            // Shorten the persisted idle deadline, or both deadlines for an absolute cap.
+            // The already issued JWT is still valid when the clock reaches this deadline.
+            try (Connection writer = fixture.connectAsApplication(); PreparedStatement update = writer.prepareStatement(
+                    "update identity.sessions set idle_expires_at = ?, absolute_expires_at = ? where id = ?")) {
+                update.setObject(1, expiry.atOffset(ZoneOffset.UTC));
+                update.setObject(2, (absoluteDeadline ? expiry : expiry.plusSeconds(1)).atOffset(ZoneOffset.UTC));
+                update.setObject(3, caller.sessionId());
+                assertEquals(1, update.executeUpdate());
+            }
+            clock.setInstant(expiry.minusNanos(1));
+            assertEligible(fixture, caller, token);
+            String before = snapshot(fixture);
+            try (Connection blocker = fixture.connectAsApplication(); Statement lock = blocker.createStatement()) {
+                blocker.setAutoCommit(false);
+                lock.execute("lock table identity.sessions in access exclusive mode");
+                FutureTask<Result<VerifiedIdentity, IdentityVerificationFailure>> call =
+                        new FutureTask<>(() -> verify(fixture, token));
+                Thread.ofVirtual().start(call);
+                awaitBlockedQuery(fixture);
+                clock.setInstant(expiry);
+                blocker.rollback();
+                assertEquals(Result.err(IdentityVerificationFailure.INELIGIBLE), call.get(10, TimeUnit.SECONDS));
+            }
+            assertDenied(fixture, token);
+            assertEquals(before, snapshot(fixture), "verification must not mutate session state");
         });
     }
 
@@ -220,13 +263,14 @@ class IdentityVerificationE2E {
 
     private static void assertEligible(IntegrationTestContext fixture, AuthenticationResult caller,
             String token) {
-        Instant before = Instant.now();
+        AdjustableClock clock = fixture.context().getBean(AdjustableClock.class);
+        Instant before = clock.instant();
         VerifiedIdentity identity = verify(fixture, token).fold(value -> value,
                 failure -> { throw new AssertionError(failure); });
         assertEquals(caller.userId(), identity.userId());
         assertEquals(caller.sessionId(), identity.sessionId());
         assertFalse(identity.checkedAt().isBefore(before));
-        assertFalse(identity.checkedAt().isAfter(Instant.now()));
+        assertFalse(identity.checkedAt().isAfter(clock.instant()));
     }
 
     private static void assertDenied(IntegrationTestContext fixture, String token) {
@@ -251,7 +295,7 @@ class IdentityVerificationE2E {
         try (Connection observer = fixture.connectAsApplication(); PreparedStatement query = observer.prepareStatement("""
                 select pid from pg_stat_activity where datname = current_database()
                   and pid <> pg_backend_pid() and wait_event_type = 'Lock'
-                  and query like '%sessions%' and query like '%exists%'
+                  and query like '%sessions%' and query like '%users%' and query like '%idle_expires_at%'
                 """)) {
             while (System.nanoTime() < deadline) {
                 try (ResultSet rows = query.executeQuery()) {
@@ -281,6 +325,11 @@ class IdentityVerificationE2E {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
+        @Bean @Primary @Qualifier("iamClock")
+        AdjustableClock testIamClock() {
+            return new AdjustableClock(Instant.now().truncatedTo(ChronoUnit.MICROS));
+        }
+
         @Bean @Scope("operation")
         Entry verificationEntry(IdentityPort port, Transactions transactions) {
             return new Entry(port, transactions);

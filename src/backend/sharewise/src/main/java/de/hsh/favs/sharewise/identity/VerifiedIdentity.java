@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/** IAM user/session pair confirmed eligible at one evaluation instant, not a validity lease. */
+/** IAM user/session pair confirmed eligible against observed state; checkedAt is the temporal evaluation instant. */
 public record VerifiedIdentity(UUID userId, UUID sessionId, Instant checkedAt) {
 
     public VerifiedIdentity {

@@ -20,6 +20,7 @@ import de.hsh.favs.sharewise.testsupport.identity.IdentityTestConfiguration;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
@@ -157,15 +158,15 @@ class LocalIdentityPortScopeTests {
         volatile boolean unavailable;
 
         @Override
-        public boolean isEligible(UUID userId, UUID sessionId, Instant instant) {
+        public Optional<SessionValidityWindow> findSessionValidityWindow(UUID userId, UUID sessionId) {
             assertEquals(USER, userId);
             assertEquals(USER, sessionId);
-            assertEquals(NOW, instant);
             calls.incrementAndGet();
             if (unavailable) {
                 throw new EligibilityQueryUnavailableException(new IllegalStateException("connection offline"));
             }
-            return true;
+            return Optional.of(new SessionValidityWindow(sessionId, NOW.minusSeconds(1),
+                    NOW.plusSeconds(1), NOW.plusSeconds(2)));
         }
     }
 

@@ -8,6 +8,7 @@ import de.hsh.favs.sharewise.shared.result.Result;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,12 +32,20 @@ final class IamIdentityVerificationService {
         Objects.requireNonNull(userId, "userId");
         Objects.requireNonNull(sessionId, "sessionId");
         return transactions.execute(() -> {
-            Instant now = clock.instant();
             try {
-                if (!eligibility.isEligible(userId, sessionId, now)) {
+                Optional<SessionValidityWindow> candidate = eligibility.findSessionValidityWindow(userId, sessionId);
+                if (candidate.isEmpty()) {
                     return TransactionOutcome.abstain(Result.err(IdentityVerificationFailure.INELIGIBLE));
                 }
-                return TransactionOutcome.abstain(Result.ok(new VerifiedIdentity(userId, sessionId, now)));
+                SessionValidityWindow session = candidate.orElseThrow();
+                if (!sessionId.equals(session.sessionId())) {
+                    throw new IllegalStateException("IAM eligibility query returned a different session");
+                }
+                Instant now = clock.instant();
+                if (!session.contains(now)) {
+                    return TransactionOutcome.abstain(Result.err(IdentityVerificationFailure.INELIGIBLE));
+                }
+                return TransactionOutcome.abstain(Result.ok(new VerifiedIdentity(userId, session.sessionId(), now)));
             } catch (EligibilityQueryUnavailableException outage) {
                 // Only adapter-classified infrastructure failures are typed as unavailable, and only
                 // after the enclosing transaction completes its physical rollback.
