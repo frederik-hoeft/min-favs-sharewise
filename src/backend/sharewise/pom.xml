@@ -298,6 +298,24 @@
                                     </generator>
                                 </configuration>
                             </execution>
+                            <execution>
+                                <id>finance</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <generator>
+                                        <database>
+                                            <inputSchema>finance</inputSchema>
+                                        </database>
+                                        <target>
+                                            <packageName>de.hsh.favs.sharewise.finance.internal.persistence.generated</packageName>
+                                            <directory>${project.basedir}/src/main/java</directory>
+                                        </target>
+                                    </generator>
+                                </configuration>
+                            </execution>
                         </executions>
                     </plugin>
                 </plugins>

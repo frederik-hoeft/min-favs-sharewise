@@ -88,6 +88,16 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
+    void financePublishesNoApiAndDependsOnlyOnJooqAndResult() {
+        ApplicationModule finance = modules.getModuleByName("finance")
+                .orElseThrow(() -> new AssertionError("module 'finance' must exist"));
+        assertEquals(List.of("shared::jooq", "shared::result"),
+                ApplicationModuleInformation.of(finance.getBasePackage()).getDeclaredDependencies());
+        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules,
+                finance.getBasePackage().getName()));
+    }
+
+    @Test
     void implementationPackagesAreNeverPublished() {
         assertEquals(List.of(), ModulePublications.publishedTypesInInternalPackages(modules),
                 "no module may publish types declared in an internal implementation package");

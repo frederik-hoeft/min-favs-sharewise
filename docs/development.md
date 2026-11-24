@@ -33,7 +33,7 @@ The application uses **PostgreSQL 18**. The [persistence architecture](architect
 
 Flyway applies the migrations in `src/main/resources/db/migration/` at startup. Each bounded context owns one schema (`identity`, `groups`, `finance`, `files`, `notifications`); the Flyway history lives in schema `flyway`. Hibernate only validates its mappings (`spring.jpa.hibernate.ddl-auto=validate`). Migration files follow `db/migration/<context>/V<yyyyMMddHHmm>__<context>_<description>.sql` (cross-cutting migrations such as the schema baseline use `db/migration/platform/`) and are immutable once committed and pushed; local work-in-progress migrations may be edited after resetting the local database.
 
-Persistence adapters use committed jOOQ schema classes generated against **migrated PostgreSQL**, not handwritten table definitions. The opt-in `jooq-codegen` Maven profile declares one execution per context schema (currently `identity` and `groups`), each writing into its owning module's private `…persistence.generated` package. After a Flyway schema change, regenerate from the development container with the database running and migrated:
+Persistence adapters use committed jOOQ schema classes generated against **migrated PostgreSQL**, not handwritten table definitions. The opt-in `jooq-codegen` Maven profile declares one execution per context schema, each writing into its owning module's private `…persistence.generated` package. After a Flyway schema change, regenerate from the development container with the database running and migrated:
 
 ```bash
 cd src/backend/sharewise
@@ -43,7 +43,15 @@ cd src/backend/sharewise
   generate-sources
 ```
 
-To regenerate a single context, replace `generate-sources` with `org.jooq:jooq-codegen-maven:generate@<context>`, for example `generate@groups`. The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role. Review and commit the generated sources alongside the Flyway change. The profile fails on jOOQ metadata problems, so a database that lacks a context schema stops the run with `No schemata were loaded` before any file is written or removed. Flyway migrates the development database only at application startup, so a fresh or reset database needs one backend start before generation. If the generated sources are missing and the backend cannot compile, start it from a build of the committed sources, for example a `git worktree` of `HEAD`, or restore the sources with `git restore` first. Ordinary Maven builds use those checked-in sources and do not contact PostgreSQL for code generation. The generator profile is opt-in and requires its plugin artifacts, which are not included in the Maven-only offline handoff.
+To regenerate a single context, replace `generate-sources` with `org.jooq:jooq-codegen-maven:generate@<execution-id>`, for example `generate@finance`. The executions and their generated package directories, relative to `src/main/java/de/hsh/favs/sharewise/`, are:
+
+| Execution | Generated package directory |
+| --- | --- |
+| `identity` | `identity/internal/auth/persistence/generated/` |
+| `groups` | `groups/internal/persistence/generated/` |
+| `finance` | `finance/internal/persistence/generated/` |
+
+The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role and adjust the JDBC URL for the migrated database. Review the generated diff and commit it alongside the migration. The profile fails on jOOQ metadata problems, so a database that lacks a context schema stops the run with `No schemata were loaded` before any file is written or removed. Flyway migrates the development database only at application startup, so a fresh or reset database needs one backend start before generation. If the generated sources are missing and the backend cannot compile, start it from a build of the committed sources, for example a `git worktree` of `HEAD`, or restore the sources with `git restore` first. Run `./mvnw -Punit-tests clean verify` to check compilation and module boundaries, and the applicable PostgreSQL suites to verify schema and adapter behavior. Ordinary Maven builds use the checked-in sources and do not contact PostgreSQL for code generation. The generator profile is opt-in and requires its plugin artifacts, which are not included in the Maven-only offline handoff.
 
 The Integration test `GeneratedJooqSchemasIT` reads the profile's executions from `pom.xml`, regenerates each schema from the suite's freshly migrated database and fails if any committed source differs. It generates with each execution's effective configuration, merging the plugin-level settings into the execution's own as Maven does, and substitutes only the connection and a temporary output directory. A context that adds an execution and a change to any shared generator setting are therefore checked by the Integration gate locally and in CI without further test changes. Configuration that the test cannot reproduce exactly (Maven property references outside `<jdbc>` other than `${project.basedir}`, `combine.*` merge attributes, or plugin-only parameters such as `configurationFile`) fails the check instead of being approximated.
 
@@ -129,8 +137,8 @@ The backend is divided into Spring Modulith application modules; the [applicatio
 A vertical slice that introduces a module creates its package directly below `de.hsh.favs.sharewise` and declares every module API or named interface that the module uses in its `package-info.java`:
 
 ```java
-// Example for a future module; no business modules exist yet.
-@ApplicationModule(allowedDependencies = { "shared :: di", "groups" })
+// Finance module declaration
+@ApplicationModule(allowedDependencies = { "shared::jooq" })
 package de.hsh.favs.sharewise.finance;
 
 import org.springframework.modulith.ApplicationModule;
@@ -150,12 +158,12 @@ The verification tests also run small fixture applications under `de.hsh.favs.mo
 
 ## Operation scope usage
 
-The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published. The DI foundation, transaction manager and jOOQ/JPA accessors are implemented and tested; domain-specific business modules are not yet present.
+The backend provides an [explicit application-operation DI scope](architecture/dependency-injection.md), independent of Spring web request scope and physical transactions. Public contracts live in `de.hsh.favs.sharewise.shared.infra.di`, published to other modules as the named interface `shared::di`; Spring-specific wiring under `shared.infra.di.internal` is not published.
 
 Mark a Spring-managed service with `@Scope("operation")` when one operation needs a shared instance of its mutable state. Constructor dependencies are resolved by **Spring**, not by a custom activator. Inbound adapters dispatch an entry-service type rather than obtaining an operation-scoped bean during construction. HTTP controllers use the request-scoped `OperationIngressDispatcher`, which composes caller-side inputs; non-HTTP adapters may use the core `OperationDispatcher` directly or compose their own contributors. The example below illustrates a core dispatcher call:
 
 ```java
-// Example service types; no financial business modules exist yet.
+// Illustrative service types.
 @Component
 @Scope("operation")
 final class ExampleState {
