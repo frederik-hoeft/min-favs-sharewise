@@ -69,11 +69,12 @@ A positive balance indicates a member is owed money; a negative balance indicate
 
 | FinancialGroup state | Expense modifications | Settlement modifications | Historical reads |
 | --- | --- | --- | --- |
+| **PROVISIONING** | Forbidden | Forbidden | Forbidden |
 | **OPEN** | Allowed subject to authorization/invariants | Allowed | Allowed |
 | **CLOSED** | Frozen | Allowed | Allowed |
 | **ARCHIVED** | Forbidden | Forbidden | Allowed |
 
-`OPEN → CLOSED`, `CLOSED → OPEN` and transitions to terminal `ARCHIVED` are business operations. Closing is not equivalent to settling all balances. Business archival is final and read-only; physical offloading, retention and hard deletion are separate decisions. Finance alone authorizes financial writes against its own state within its transaction; group metadata and membership remain owned by Group Management.
+`PROVISIONING` is a technical initialization state, not an activated financial business state; all group-scoped business operations require an activated root as defined by the [P3 readiness contract](internal/integration/phase-3-foundation.md#lifecycle-versus-replication-readiness). `OPEN → CLOSED`, `CLOSED → OPEN` and transitions to terminal `ARCHIVED` are business operations. Closing is not equivalent to settling all balances. Business archival is final and read-only; physical offloading, retention and hard deletion are separate decisions. Finance alone authorizes financial writes against its own state within its transaction; group metadata and membership remain owned by Group Management.
 
 ## Financial revisions and history
 
@@ -109,7 +110,7 @@ A standalone auto-increment ID doesn't establish business commit ordering. Histo
 | 5 | Expense B removed (v5 tombstone) | A v3, S v4 |
 | 6 | Group closed | A v3, S v4; expenses frozen |
 
-A point-in-time view at group revision 4 shows A v3, B v2, settlement S v4, and the balances derived from that snapshot. History is a **group-internal audit aid**, not evidence that an external payment was genuine.
+A point-in-time view at group revision 4 shows A v3, B v2, settlement S v4, and the balances derived from that snapshot. History is a **group-internal audit aid**, not evidence that an external payment was genuine. Authorized Group members may inspect the entire retained financial history, including pre-join revisions; retained actor identity alone does not confer access. The [P4 read contract](internal/integration/phase-4-foundation.md#read-and-accounting-contracts) distinguishes effective financial state from exact journal version references.
 
 ### Attachments and historical scope
 
