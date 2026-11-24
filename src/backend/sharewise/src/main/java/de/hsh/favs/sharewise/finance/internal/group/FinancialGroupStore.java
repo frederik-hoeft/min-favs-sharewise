@@ -1,6 +1,5 @@
 package de.hsh.favs.sharewise.finance.internal.group;
 
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -20,7 +19,8 @@ public interface FinancialGroupStore {
 
     /**
      * Lock an existing root without creating one. Absence means no Finance row was found
-     * or locked, not that the upstream Group does not exist. The caller owns lifecycle policy.
+     * or locked, not that the upstream Group does not exist. The result provides the shared
+     * readiness check; the caller owns authorization and operation-specific lifecycle policy.
      */
-    Optional<FinancialGroup> lockExisting(UUID groupId);
+    FinancialGroupLookup lockExisting(UUID groupId);
 }

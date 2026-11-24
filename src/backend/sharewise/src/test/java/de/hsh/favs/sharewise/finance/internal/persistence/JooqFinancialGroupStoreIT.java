@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.finance.internal.group.FinancialGroup;
+import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupFailure;
+import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupLookup;
 import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupState;
 import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupStore;
 import de.hsh.favs.sharewise.finance.internal.persistence.generated.enums.GroupState;
@@ -15,6 +17,7 @@ import de.hsh.favs.sharewise.finance.internal.persistence.generated.tables.recor
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
+import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestBase;
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -35,12 +38,16 @@ class JooqFinancialGroupStoreIT extends IntegrationTestBase {
             UUID missing = UUID.randomUUID();
             scope.resolve(Transactions.class).execute(() -> {
                 DSLContext db = scope.resolve(JooqAccess.class).dsl();
-                assertEquals(Optional.empty(), store.lockExisting(id));
+                FinancialGroupLookup absent = store.lockExisting(id);
+                assertEquals(Optional.empty(), absent.group());
+                assertEquals(Result.err(FinancialGroupFailure.NOT_READY), absent.requireReady());
                 FinancialGroup expected = new FinancialGroup(id, FinancialGroupState.PROVISIONING, 0);
                 assertEquals(expected, store.ensureAndLock(id));
-                assertEquals(Optional.of(expected), store.lockExisting(id));
+                FinancialGroupLookup provisioning = store.lockExisting(id);
+                assertEquals(Optional.of(expected), provisioning.group());
+                assertEquals(Result.err(FinancialGroupFailure.NOT_READY), provisioning.requireReady());
                 assertEquals(expected, store.ensureAndLock(id));
-                assertEquals(Optional.empty(), store.lockExisting(missing));
+                assertEquals(Optional.empty(), store.lockExisting(missing).group());
                 assertEquals(1, db.fetchCount(GROUPS, GROUPS.ID.in(id, missing)));
                 assertEquals(0, db.fetchCount(ACTORS, ACTORS.GROUP_ID.eq(id)));
                 return TransactionOutcome.abstain(null);
@@ -68,7 +75,11 @@ class JooqFinancialGroupStoreIT extends IntegrationTestBase {
                     FinancialGroup expected = new FinancialGroup(id, state, Long.MAX_VALUE);
                     assertEquals(expected, store.ensureAndLock(id));
                     assertEquals(expected, store.ensureAndLock(id));
-                    assertEquals(Optional.of(expected), store.lockExisting(id));
+                    FinancialGroupLookup lookup = store.lockExisting(id);
+                    assertEquals(Optional.of(expected), lookup.group());
+                    Result<FinancialGroup, FinancialGroupFailure> readiness = state == FinancialGroupState.PROVISIONING
+                            ? Result.err(FinancialGroupFailure.NOT_READY) : Result.ok(expected);
+                    assertEquals(readiness, lookup.requireReady());
                     GroupsRecord row = db.selectFrom(GROUPS).where(GROUPS.ID.eq(id)).fetchSingle();
                     assertEquals(persisted, row.getState());
                     assertEquals(Long.MAX_VALUE, row.getCurrentRevision());
@@ -90,7 +101,7 @@ class JooqFinancialGroupStoreIT extends IntegrationTestBase {
             scope.resolve(Transactions.class).execute(() -> {
                 assertThrows(NullPointerException.class, () -> store.ensureAndLock(null));
                 assertThrows(NullPointerException.class, () -> store.lockExisting(null));
-                assertTrue(store.lockExisting(id).isEmpty(), "Rejected access must not have inserted a root");
+                assertTrue(store.lockExisting(id).group().isEmpty(), "Rejected access must not have inserted a root");
                 return TransactionOutcome.abstain(null);
             });
             assertNoActiveSegment(() -> store.ensureAndLock(id));

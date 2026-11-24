@@ -102,12 +102,12 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
                 if (ensureOwner) {
                     assertEquals(initial, store.ensureAndLock(id));
                 } else {
-                    assertEquals(Optional.of(initial), store.lockExisting(id));
+                    assertEquals(Optional.of(initial), store.lockExisting(id).group());
                 }
                 // Start the competing SELECT before any UPDATE could acquire a lock itself.
                 Future<FinancialGroup> pending = workers.submit(() -> inSegment(fixture, (other, otherDb) -> {
                     contenderPid.complete(backendPid(otherDb));
-                    return TransactionOutcome.commit(other.lockExisting(id).orElseThrow());
+                    return TransactionOutcome.commit(other.lockExisting(id).group().orElseThrow());
                 }));
                 awaitBlockedBy(db, contenderPid, pending);
                 assertEquals(1, db.update(GROUPS).set(GROUPS.CURRENT_REVISION, 4L)
@@ -128,12 +128,12 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
             FinancialGroup second = new FinancialGroup(secondId, FinancialGroupState.PROVISIONING, 0);
             try (ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor()) {
                 inSegment(fixture, (store, db) -> {
-                    assertEquals(Optional.of(first), store.lockExisting(firstId));
+                    assertEquals(Optional.of(first), store.lockExisting(firstId).group());
                     int firstPid = backendPid(db);
                     Future<FinancialGroup> pending = workers.submit(() -> inSegment(fixture, (other, otherDb) -> {
                         assertNotEquals(firstPid, backendPid(otherDb), "Operations must use independent connections");
                         FinancialGroup ensured = other.ensureAndLock(secondId);
-                        assertEquals(Optional.of(ensured), other.lockExisting(secondId));
+                        assertEquals(Optional.of(ensured), other.lockExisting(secondId).group());
                         return TransactionOutcome.commit(ensured);
                     }));
                     assertEquals(second, await(pending));
@@ -156,7 +156,7 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
                 return TransactionOutcome.rollback(null);
             });
             inSegment(fixture, (store, db) -> {
-                assertEquals(Optional.empty(), store.lockExisting(id));
+                assertEquals(Optional.empty(), store.lockExisting(id).group());
                 assertEquals(0, db.fetchCount(GROUPS, GROUPS.ID.eq(id)));
                 return TransactionOutcome.commit(null);
             });
@@ -170,7 +170,7 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
             FinancialGroup initial = seedOpenRoot(fixture, id);
             try (ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor()) {
                 inSegment(fixture, (store, db) -> {
-                    assertEquals(Optional.of(initial), store.lockExisting(id));
+                    assertEquals(Optional.of(initial), store.lockExisting(id).group());
                     Future<RuntimeException> pending = workers.submit(() -> assertThrows(RuntimeException.class,
                             () -> inSegment(fixture, (other, otherDb) -> {
                                 otherDb.execute("set local lock_timeout = '250ms'");
@@ -208,7 +208,7 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
 
     private static void assertCommittedRoot(IntegrationTestContext fixture, FinancialGroup expected) {
         inSegment(fixture, (store, db) -> {
-            assertEquals(Optional.of(expected), store.lockExisting(expected.id()));
+            assertEquals(Optional.of(expected), store.lockExisting(expected.id()).group());
             assertEquals(1, db.fetchCount(GROUPS, GROUPS.ID.eq(expected.id())));
             return TransactionOutcome.commit(null);
         });

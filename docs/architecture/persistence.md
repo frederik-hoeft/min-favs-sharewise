@@ -71,9 +71,38 @@ The two tables track different kinds of state. The root contains the Finance-own
 
 ### Group-root provisioning and locking
 
-The internal `FinancialGroupStore` separates creating a missing root from acquiring an existing root's lock. `ensureAndLock` is reserved for trusted Group-originated facts: it inserts a root with database defaults if none exists, then obtains its row lock. The caller establishes trust; this port neither authenticates the fact nor activates the root, creates an actor or advances a revision. `lockExisting` acquires the same lock without inserting a row; an empty result identifies absence from Finance, not absence from Group Management. A successful lock returns an immutable snapshot of the identity, lifecycle and financial revision; absence carries no row lock. The caller interprets the lifecycle according to the operation's policy.
+The internal `FinancialGroupStore` separates creating a missing root from acquiring an existing root's lock. `ensureAndLock` is reserved for trusted Group-originated facts: it inserts a root with database defaults if none exists, then obtains its row lock. The caller establishes trust; this port neither authenticates the fact nor activates the root, creates an actor or advances a revision. `lockExisting` acquires the same lock without inserting a row. Its `FinancialGroupLookup` contains an optional immutable snapshot of the identity, lifecycle and financial revision; absence identifies a missing Finance root, not absence from Group Management, and carries no row lock. `ensureAndLock` returns the snapshot directly because it guarantees a root exists on success.
+
+The lookup's `requireReady()` method provides a common initialization precondition independent of the lookup's locking strategy. It returns a typed `NOT_READY` failure for an absent or provisioning root and a successful snapshot for an open, closed or archived root, regardless of revision. Readiness is neither authorization nor writability nor actor eligibility. The caller must establish scoped authorization before exposing a readiness outcome and enforce operation-specific lifecycle and eligibility policy separately. Technical callers can inspect the optional snapshot without applying this business precondition. The guard is pure: it neither reads the database nor controls transaction completion.
 
 The operation-scoped jOOQ adapter uses `INSERT ... ON CONFLICT (id) DO NOTHING` followed by a separate `SELECT ... FOR UPDATE` for provisioning. Under PostgreSQL's `READ COMMITTED` isolation, the separate select can observe the committed winner of a concurrent first insert. The conflict path does not update an existing root merely to acquire its lock, preserving its state, revision, creation timestamp and tuple version. Existing-root locking executes only the select.
+
+The caller owns the physical transaction across the store invocation and its subsequent work:
+
+```mermaid
+sequenceDiagram
+    participant Caller as Transaction owner
+    participant Store as FinancialGroupStore
+    participant DB as PostgreSQL
+
+    Caller->>DB: Begin physical transaction
+    Caller->>Store: ensureAndLock or lockExisting
+    opt ensureAndLock
+        Store->>DB: INSERT ... ON CONFLICT DO NOTHING
+    end
+    Store->>DB: SELECT ... FOR UPDATE
+    alt Root found
+        DB-->>Store: Root snapshot (row locked)
+        Store-->>Caller: Snapshot or populated lookup
+        Note over Caller,DB: Row lock survives store return
+    else Root absent (lockExisting)
+        DB-->>Store: No row
+        Store-->>Caller: Empty lookup (no row lock)
+    end
+    Caller->>Caller: Evaluate outcome and perform segment work
+    Caller->>DB: Commit or rollback
+    Note over DB: Release any acquired row lock
+```
 
 Both methods require a non-null group ID and an active caller-owned transaction segment within an operation scope, enforced through `JooqAccess` for database access. Returning the snapshot does not release the database lock; physical transaction completion does. Concurrent lock holders for the same root serialize, whereas distinct roots do not share a group-level lock. Rollback undoes an inserted root and releases the lock. Unexpected persistence errors, including lock failures, propagate to the transaction owner rather than being treated as absence or lifecycle rejection. Stronger isolation levels can require whole-transaction retry; the adapter does not retry or commit independently.
 
@@ -81,4 +110,4 @@ Both methods require a non-null group ID and an active caller-owned transaction 
 
 The backend's [test architecture](tests.md) separates database-free Unit tests, PostgreSQL Integration tests with rollback-only physical transactions, and E2E tests using independently provisioned databases for real commits. PostgreSQL tests exercise the migration/role setup, guarded jOOQ/JPA access, transaction visibility and failure behavior. Rollback-isolated tests cannot establish durable commit behavior; E2E tests cover that boundary.
 
-Finance schema tests exercise the migration, types, constraints, trigger and runtime privileges. Finance store Integration tests cover the port contract within an active segment; real-commit E2E tests exercise concurrent first inserts, root locking, rollback, independent groups and lock failure propagation. The [persistence stack design](../stack/persistence.md) describes the wider feature contracts.
+Finance schema tests exercise the required column, type, key, trigger and privilege contracts without constraining unrelated additive schema changes. Unit tests establish the readiness rule; Finance store Integration tests cover the port and readiness outcomes within an active segment; real-commit E2E tests exercise concurrent first inserts, root locking, rollback, independent groups and lock failure propagation. The [persistence stack design](../stack/persistence.md) describes the wider feature contracts.

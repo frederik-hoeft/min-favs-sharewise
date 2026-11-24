@@ -3,6 +3,7 @@ package de.hsh.favs.sharewise.finance.internal.persistence;
 import static de.hsh.favs.sharewise.finance.internal.persistence.generated.tables.Groups.GROUPS;
 
 import de.hsh.favs.sharewise.finance.internal.group.FinancialGroup;
+import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupLookup;
 import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupState;
 import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupStore;
 import de.hsh.favs.sharewise.finance.internal.persistence.generated.enums.GroupState;
@@ -37,9 +38,9 @@ class JooqFinancialGroupStore implements FinancialGroupStore {
     }
 
     @Override
-    public Optional<FinancialGroup> lockExisting(UUID groupId) {
+    public FinancialGroupLookup lockExisting(UUID groupId) {
         Objects.requireNonNull(groupId, "groupId");
-        return lock(database.dsl(), groupId);
+        return new FinancialGroupLookup(lock(database.dsl(), groupId));
     }
 
     private static Optional<FinancialGroup> lock(DSLContext db, UUID groupId) {

@@ -76,10 +76,10 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
-    void financePublishesNoApiAndDependsOnlyOnJooqAccess() {
+    void financePublishesNoApiAndDependsOnlyOnJooqAndResult() {
         ApplicationModule finance = modules.getModuleByName("finance")
                 .orElseThrow(() -> new AssertionError("module 'finance' must exist"));
-        assertEquals(List.of("shared::jooq"),
+        assertEquals(List.of("shared::jooq", "shared::result"),
                 ApplicationModuleInformation.of(finance.getBasePackage()).getDeclaredDependencies());
         assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules,
                 finance.getBasePackage().getName()));

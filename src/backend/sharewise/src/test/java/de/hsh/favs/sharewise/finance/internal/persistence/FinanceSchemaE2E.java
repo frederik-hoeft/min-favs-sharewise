@@ -2,6 +2,7 @@ package de.hsh.favs.sharewise.finance.internal.persistence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
 import java.sql.Connection;
@@ -25,41 +26,38 @@ class FinanceSchemaE2E {
     private static final String OTHER_GROUP = "'10000000-0000-0000-0000-000000000002'";
     private static final String USER = "'20000000-0000-0000-0000-000000000001'";
     private static final String OTHER_USER = "'20000000-0000-0000-0000-000000000002'";
+    private static final String ROOT_WHERE = " WHERE id = " + GROUP;
+    private static final String ACTOR_WHERE = " WHERE group_id = " + GROUP + " AND user_id = " + USER;
     private static final String ACTOR_COLUMNS = "INSERT INTO finance.actors (group_id, user_id, deleted, upstream_revision) VALUES ";
 
     @Test
-    void migratedSchemaHasExactColumnsLocalTypesKeysAndRuntimePrivileges() throws SQLException {
+    void migratedSchemaPreservesRequiredColumnsLocalTypesKeysAndRuntimePrivileges() throws SQLException {
         try (PostgresTestDatabase database = PostgresTestDatabase.createMigrated();
              Connection app = database.connectAsApplication();
              Connection migrator = database.connectAsMigrator()) {
-            assertEquals(List.of(
-                "actors.group_id:uuid", "actors.user_id:uuid", "actors.deleted:bool",
-                "actors.upstream_revision:bignatural1", "actors.created_at:timestamptz", "actors.updated_at:timestamptz",
-                "groups.id:uuid", "groups.state:group_state", "groups.current_revision:bignatural0", "groups.created_at:timestamptz"
-            ), strings(app, """
-                SELECT table_name || '.' || column_name || ':' || coalesce(domain_name, udt_name)
-                FROM information_schema.columns WHERE table_schema = 'finance'
-                ORDER BY table_name, ordinal_position
-                """));
-            assertEquals("10", scalar(app, """
-                SELECT count(*) FROM information_schema.columns
-                WHERE table_schema = 'finance' AND is_nullable = 'NO'
-                """));
-            assertEquals(List.of("actors.created_at", "actors.updated_at", "groups.created_at", "groups.current_revision", "groups.state"),
-                strings(app, """
-                    SELECT table_name || '.' || column_name FROM information_schema.columns
-                    WHERE table_schema = 'finance' AND column_default IS NOT NULL ORDER BY table_name, column_name
-                    """));
-            assertEquals(List.of("actors.upstream_revision:finance.bignatural1", "groups.current_revision:finance.bignatural0"),
-                strings(app, """
-                    SELECT table_name || '.' || column_name || ':' || domain_schema || '.' || domain_name
-                    FROM information_schema.columns WHERE table_schema = 'finance' AND domain_name IS NOT NULL
-                    ORDER BY table_name, column_name
-                    """));
+            // Required column contracts, not a snapshot of every column in the latest schema.
+            List<String> requiredColumns = List.of(
+                "actors.group_id:pg_catalog.uuid:NO:false", "actors.user_id:pg_catalog.uuid:NO:false",
+                "actors.deleted:pg_catalog.bool:NO:false", "actors.upstream_revision:finance.bignatural1:NO:false",
+                "actors.created_at:pg_catalog.timestamptz:NO:true", "actors.updated_at:pg_catalog.timestamptz:NO:true",
+                "groups.id:pg_catalog.uuid:NO:false", "groups.state:finance.group_state:NO:true",
+                "groups.current_revision:finance.bignatural0:NO:true", "groups.created_at:pg_catalog.timestamptz:NO:true"
+            );
+            List<String> actualColumns = strings(app, """
+                SELECT table_name || '.' || column_name || ':' || coalesce(domain_schema, udt_schema)
+                    || '.' || coalesce(domain_name, udt_name) || ':' || is_nullable
+                    || ':' || (column_default IS NOT NULL)::text
+                FROM information_schema.columns
+                WHERE table_schema = 'finance' AND table_name IN ('groups', 'actors')
+                """);
+            List<String> missingColumns = requiredColumns.stream().filter(column -> !actualColumns.contains(column)).toList();
+            assertTrue(missingColumns.isEmpty(), () -> "Missing or changed required columns: " + missingColumns
+                + "; actual: " + actualColumns);
             assertEquals(List.of("bignatural0:bigint", "bignatural1:bigint"), strings(migrator, """
                 SELECT t.typname || ':' || format_type(t.typbasetype, NULL)
                 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
-                WHERE n.nspname = 'finance' AND t.typtype = 'd' ORDER BY t.typname
+                WHERE n.nspname = 'finance' AND t.typtype = 'd'
+                    AND t.typname IN ('bignatural0', 'bignatural1') ORDER BY t.typname
                 """));
             assertEquals(List.of("provisioning", "open", "closed", "archived"), strings(app, """
                 SELECT enumlabel FROM pg_enum WHERE enumtypid = 'finance.group_state'::regtype ORDER BY enumsortorder
@@ -67,12 +65,11 @@ class FinanceSchemaE2E {
             assertEquals(List.of("actors.group_id", "actors.user_id", "groups.id"), strings(migrator, """
                 SELECT k.table_name || '.' || k.column_name
                 FROM information_schema.table_constraints c
-                JOIN information_schema.key_column_usage k USING (constraint_catalog, constraint_schema, constraint_name)
-                WHERE c.table_schema = 'finance' AND c.constraint_type = 'PRIMARY KEY'
+                JOIN information_schema.key_column_usage k
+                    USING (constraint_catalog, constraint_schema, constraint_name, table_catalog, table_schema, table_name)
+                WHERE c.table_schema = 'finance' AND c.table_name IN ('groups', 'actors')
+                    AND c.constraint_type = 'PRIMARY KEY'
                 ORDER BY k.table_name, k.ordinal_position
-                """));
-            assertEquals(List.of("actors_pkey", "groups_pkey"), strings(migrator, """
-                SELECT indexname FROM pg_indexes WHERE schemaname = 'finance' ORDER BY indexname
                 """));
             assertEquals(List.of("finance.actors.group_id->finance.groups.id:a:a"), strings(migrator, """
                 SELECT source_ns.nspname || '.' || source.relname || '.' || source_column.attname || '->'
@@ -87,14 +84,28 @@ class FinanceSchemaE2E {
                 JOIN pg_namespace target_ns ON target_ns.oid = target.relnamespace
                 JOIN pg_attribute target_column ON target_column.attrelid = target.oid
                     AND target_column.attnum = ANY(c.confkey)
-                WHERE source_ns.nspname = 'finance' AND c.contype = 'f'
+                WHERE c.contype = 'f' AND c.conrelid = 'finance.actors'::regclass
+                    AND c.confrelid = 'finance.groups'::regclass
+                    AND source_column.attname = 'group_id' AND target_column.attname = 'id'
+                    AND cardinality(c.conkey) = 1 AND cardinality(c.confkey) = 1
+                """));
+            // Finance-owned roots and actors must never depend on another context's tables.
+            assertEquals("0", scalar(migrator, """
+                SELECT count(*) FROM pg_constraint c
+                JOIN pg_class target ON target.oid = c.confrelid
+                WHERE c.contype = 'f'
+                    AND c.conrelid IN ('finance.groups'::regclass, 'finance.actors'::regclass)
+                    AND target.relnamespace <> 'finance'::regnamespace
                 """));
             assertEquals(List.of("actors:BEFORE:UPDATE:ROW"), strings(migrator, """
                 SELECT event_object_table || ':' || action_timing || ':' || event_manipulation || ':' || action_orientation
-                FROM information_schema.triggers WHERE trigger_schema = 'finance'
+                FROM information_schema.triggers
+                WHERE event_object_schema = 'finance' AND event_object_table = 'actors'
+                    AND trigger_name = 'actors_set_updated_at'
                 """));
             assertEquals(List.of("sharewise_migrator", "sharewise_migrator"), strings(migrator, """
-                SELECT tableowner FROM pg_tables WHERE schemaname = 'finance' ORDER BY tablename
+                SELECT tableowner FROM pg_tables WHERE schemaname = 'finance'
+                    AND tablename IN ('groups', 'actors') ORDER BY tablename
                 """));
             assertEquals(List.of("sharewise_migrator", "sharewise_migrator", "sharewise_migrator"), strings(migrator, """
                 SELECT pg_get_userbyid(typowner) FROM pg_type WHERE typnamespace = 'finance'::regnamespace
@@ -131,23 +142,23 @@ class FinanceSchemaE2E {
              Connection app = database.connectAsApplication()) {
             assertEquals("true", scalar(app, "INSERT INTO finance.groups (id) VALUES (" + GROUP + ")"
                 + " RETURNING (state = 'provisioning' AND current_revision = 0 AND created_at = now())::text"));
-            assertEquals("0", scalar(app, "SELECT count(*) FROM finance.actors"));
+            assertEquals("0", scalar(app, "SELECT count(*) FROM finance.actors WHERE group_id = " + GROUP));
             assertSqlState(app, "23502", "INSERT INTO finance.groups DEFAULT VALUES");
             assertSqlState(app, "23502", "INSERT INTO finance.groups (id) VALUES (NULL)");
             assertSqlState(app, "23505", "INSERT INTO finance.groups (id) VALUES (" + GROUP + ")");
-            assertSqlState(app, "23514", "UPDATE finance.groups SET current_revision = -1");
-            assertSqlState(app, "23502", "UPDATE finance.groups SET current_revision = NULL");
-            assertSqlState(app, "23502", "UPDATE finance.groups SET state = NULL");
-            assertSqlState(app, "22P02", "UPDATE finance.groups SET state = 'unknown'");
-            assertSqlState(app, "23502", "UPDATE finance.groups SET created_at = NULL");
+            assertSqlState(app, "23514", "UPDATE finance.groups SET current_revision = -1" + ROOT_WHERE);
+            assertSqlState(app, "23502", "UPDATE finance.groups SET current_revision = NULL" + ROOT_WHERE);
+            assertSqlState(app, "23502", "UPDATE finance.groups SET state = NULL" + ROOT_WHERE);
+            assertSqlState(app, "22P02", "UPDATE finance.groups SET state = 'unknown'" + ROOT_WHERE);
+            assertSqlState(app, "23502", "UPDATE finance.groups SET created_at = NULL" + ROOT_WHERE);
             assertEquals("9223372036854775807", scalar(app,
-                "UPDATE finance.groups SET current_revision = 9223372036854775807 RETURNING current_revision::text"));
+                "UPDATE finance.groups SET current_revision = 9223372036854775807" + ROOT_WHERE + " RETURNING current_revision::text"));
             for (String state : List.of("open", "closed", "archived", "provisioning")) {
-                assertEquals(state, scalar(app, "UPDATE finance.groups SET state = '" + state + "' RETURNING state::text"));
+                assertEquals(state, scalar(app, "UPDATE finance.groups SET state = '" + state + "'" + ROOT_WHERE + " RETURNING state::text"));
             }
-            assertEquals("0", scalar(app, "UPDATE finance.groups SET current_revision = 0 RETURNING current_revision::text"));
+            assertEquals("0", scalar(app, "UPDATE finance.groups SET current_revision = 0" + ROOT_WHERE + " RETURNING current_revision::text"));
             execute(app, "DELETE FROM finance.groups WHERE id = " + GROUP);
-            assertEquals("0", scalar(app, "SELECT count(*) FROM finance.groups"));
+            assertEquals("0", scalar(app, "SELECT count(*) FROM finance.groups" + ROOT_WHERE));
         }
     }
 
@@ -168,20 +179,20 @@ class FinanceSchemaE2E {
             assertSqlState(app, "23502", ACTOR_COLUMNS + actor(GROUP, USER, "false", "NULL"));
             assertSqlState(app, "23502", "INSERT INTO finance.actors (group_id, user_id, upstream_revision) VALUES (" + GROUP + "," + USER + ",1)");
             assertSqlState(app, "23502", "INSERT INTO finance.actors (group_id, user_id, deleted) VALUES (" + GROUP + "," + USER + ",false)");
-            assertSqlState(app, "23514", "UPDATE finance.actors SET upstream_revision = 0");
-            assertSqlState(app, "23514", "UPDATE finance.actors SET upstream_revision = -1");
-            assertSqlState(app, "23502", "UPDATE finance.actors SET created_at = NULL");
+            assertSqlState(app, "23514", "UPDATE finance.actors SET upstream_revision = 0" + ACTOR_WHERE);
+            assertSqlState(app, "23514", "UPDATE finance.actors SET upstream_revision = -1" + ACTOR_WHERE);
+            assertSqlState(app, "23502", "UPDATE finance.actors SET created_at = NULL" + ACTOR_WHERE);
             // The trigger supplies updated_at on UPDATE; NULL must still be rejected on INSERT.
             assertSqlState(app, "23502", "INSERT INTO finance.actors (group_id, user_id, deleted, upstream_revision, updated_at)"
                 + " VALUES (" + OTHER_GROUP + "," + OTHER_USER + ",false,1,NULL)");
             assertSqlState(app, "23503", "DELETE FROM finance.groups WHERE id = " + GROUP);
-            assertEquals("3", scalar(app, "SELECT count(*) FROM finance.actors"));
-            assertEquals("2", scalar(app, "SELECT count(*) FROM finance.groups"));
+            assertEquals("3", scalar(app, "SELECT count(*) FROM finance.actors WHERE group_id IN (" + GROUP + "," + OTHER_GROUP + ")"));
+            assertEquals("2", scalar(app, "SELECT count(*) FROM finance.groups WHERE id IN (" + GROUP + "," + OTHER_GROUP + ")"));
             assertEquals("9223372036854775807", scalar(app,
                 "SELECT upstream_revision::text FROM finance.actors WHERE group_id = " + OTHER_GROUP));
             // Schema-level DML is granted; future application operations own actor retention policy.
             execute(app, "DELETE FROM finance.actors WHERE group_id = " + OTHER_GROUP);
-            assertEquals("2", scalar(app, "SELECT count(*) FROM finance.actors"));
+            assertEquals("2", scalar(app, "SELECT count(*) FROM finance.actors WHERE group_id IN (" + GROUP + "," + OTHER_GROUP + ")"));
         }
     }
 
@@ -192,19 +203,18 @@ class FinanceSchemaE2E {
              Connection reader = database.connectAsApplication()) {
             execute(writer, "INSERT INTO finance.groups (id) VALUES (" + GROUP + ")");
             execute(writer, ACTOR_COLUMNS + actor(GROUP, USER, "false", "1"));
-            String createdAt = scalar(reader, "SELECT created_at::text FROM finance.actors");
+            String createdAt = scalar(reader, "SELECT created_at::text FROM finance.actors" + ACTOR_WHERE);
             writer.setAutoCommit(false);
             String updatedAt = scalar(writer, """
                 UPDATE finance.actors SET deleted = true, upstream_revision = 2,
                     updated_at = '2000-01-01T00:00:00Z'
-                RETURNING updated_at::text
-                """);
+                """ + ACTOR_WHERE + " RETURNING updated_at::text");
             assertEquals(updatedAt, scalar(writer, "SELECT now()::text"));
-            assertEquals("1", scalar(reader, "SELECT upstream_revision::text FROM finance.actors"));
+            assertEquals("1", scalar(reader, "SELECT upstream_revision::text FROM finance.actors" + ACTOR_WHERE));
             writer.commit();
-            assertEquals(updatedAt, scalar(reader, "SELECT updated_at::text FROM finance.actors"));
-            assertEquals(createdAt, scalar(reader, "SELECT created_at::text FROM finance.actors"));
-            assertEquals("true", scalar(reader, "SELECT (deleted AND upstream_revision = 2)::text FROM finance.actors"));
+            assertEquals(updatedAt, scalar(reader, "SELECT updated_at::text FROM finance.actors" + ACTOR_WHERE));
+            assertEquals(createdAt, scalar(reader, "SELECT created_at::text FROM finance.actors" + ACTOR_WHERE));
+            assertEquals("true", scalar(reader, "SELECT (deleted AND upstream_revision = 2)::text FROM finance.actors" + ACTOR_WHERE));
         }
     }
 
@@ -227,7 +237,7 @@ class FinanceSchemaE2E {
                 assertEquals("Existing", scalar(app, "SELECT display_name FROM identity.user_profiles WHERE user_id = '" + userId + "'"));
                 assertEquals("existing-hash", scalar(app, "SELECT password_hash FROM identity.users WHERE id = '" + userId + "'"));
                 execute(app, "INSERT INTO finance.groups (id) VALUES (" + GROUP + ")");
-                assertEquals("provisioning", scalar(app, "SELECT state::text FROM finance.groups"));
+                assertEquals("provisioning", scalar(app, "SELECT state::text FROM finance.groups" + ROOT_WHERE));
             }
             try (Connection migrator = database.connectAsMigrator()) {
                 assertEquals("1", scalar(migrator, """

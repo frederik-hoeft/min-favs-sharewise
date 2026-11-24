@@ -53,7 +53,7 @@ The application core decides when to commit through an operation-scoped `Transac
 
 Application services use domain-oriented outbound ports and interpret typed business results to select the disposition of each segment. Infrastructure adapters implement those ports with segment-bound jOOQ or JPA accessors; business APIs do not expose database connections, persistence sessions or transaction status. A segment is local to the owning application's data boundary, not an authorization to write another context's tables.
 
-Finance exposes an internal group-root persistence port on top of this transaction infrastructure. It can provision and lock a root in a caller-owned segment or lock an existing root without creating one. The port distinguishes absence from a snapshot of an existing lifecycle state; the lock remains held until physical transaction completion. Finance consumes only `shared::jooq` and publishes no cross-context API. See [Finance persistence](architecture/persistence.md#finance-persistence) for the schema and serialization contract.
+Finance exposes an internal group-root persistence port on top of this transaction infrastructure. It can provision and lock a root in a caller-owned segment or lock an existing root without creating one. The lookup result distinguishes absence from a snapshot of an existing lifecycle state and provides a typed readiness check; the lock remains held until physical transaction completion. Finance consumes only `shared::jooq` and `shared::result` and publishes no cross-context API. See [Finance persistence](architecture/persistence.md#finance-persistence) for the schema and serialization contract.
 
 ## Integration boundaries
 

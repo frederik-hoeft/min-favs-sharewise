@@ -48,16 +48,25 @@ Work on a local P3.1 feature branch; exchange patches against the last mutually 
 
 **Suggested commit:** `P3.1b: Add transaction-bound Finance group provisioning and locking`
 
-**Gate B:** Accepted by the maintainer following static review and the maintainer-reported green rerun after the test-only correction. The correction selects production-only JPA entity scanning in Finance E2Es and asserts the translated repository exception with its original transaction-guard cause in Integration tests. The port is ready for P3.2a/P3.4 without any P2 dependency. The typed not-ready *application outcome* remains the responsibility of future financial operations; the port's typed lifecycle state and absence are established here.
+**Gate B:** Accepted by the maintainer following static review and the maintainer-reported green rerun after the test-only correction. The correction selects production-only JPA entity scanning in Finance E2Es and asserts the translated repository exception with its original transaction-guard cause in Integration tests. The port is ready for P3.2a/P3.4 without any P2 dependency. The subsequent PR review correction extends the port with the shared typed readiness guard specified by the merged Phase 3 foundation; consuming operations remain responsible for authorization, their transaction disposition and outcome mapping.
 
 ## Phase C - Consolidated steady-state documentation
 
-- [ ] Reconcile `docs/architecture/persistence.md`, `docs/architecture.md`, `docs/data-model-design.md`, `docs/stack/persistence.md` and `docs/development.md` where affected, together with dependent overview, diagram and testing guidance. Describe actual schema ownership, the root lock contract, the Finance generation command and offline boundaries; search for other stale statements about Finance tables/modules. Keep shared event contracts in the Phase 3 foundation and planned P3.2/P3.4 behavior clearly distinct. Avoid repeating the task spec in durable docs.
-- [ ] Update plan progress and acceptance evidence only for verified, approved gates. Link the specification/plan from the backlog if helpful, but leave completion checkboxes unchecked until the final acceptance gate. Verify relative links, formatting and the full task diff.
+- [x] Reconcile `docs/architecture/persistence.md`, `docs/architecture.md`, `docs/data-model-design.md`, `docs/stack/persistence.md` and `docs/development.md` where affected, together with dependent overview, diagram and testing guidance. Describe actual schema ownership, the root lock contract, the Finance generation command and offline boundaries; search for other stale statements about Finance tables/modules. Keep shared event contracts in the Phase 3 foundation and planned P3.2/P3.4 behavior clearly distinct. Avoid repeating the task spec in durable docs.
+- [x] Update plan progress and acceptance evidence only for verified, approved gates. Link the specification/plan from the backlog if helpful, but leave completion checkboxes unchecked until the final acceptance gate. Verify relative links, formatting and the full task diff.
 
 **Suggested commit:** `P3.1-C: Reconcile Finance persistence and development documentation`
 
-**Gate C:** Pending human review of the consolidated documentation patch and complete integrated task diff. The documentation edits are prepared; the checkboxes remain open until approved.
+**Gate C:** The maintainer approved the consolidated documentation patch. Review corrections reconcile the affected steady-state documentation and target-design references with the final implementation.
+
+## PR review correction
+
+- [ ] Scope latest-schema catalog assertions to the P3.1 contracts rather than the entire Finance schema; retain behavioral database tests.
+- [ ] Implement `FinancialGroupLookup.requireReady()` under FIN-R06 and verify FIN-T07/FIN-T14, including the closed Finance module's `shared::result` dependency. Reconcile the specification, backlog and persistence architecture, including the root-lock sequence diagram.
+
+**Suggested commit:** `P3.1b: Centralize Finance readiness validation and strengthen persistence contracts`
+
+The maintainer approved the correction design after merging #33 (authoritative task revision `2aff3a5`). The correction passed the offline `-Punit-tests clean verify` gate with 348 Unit tests (including the four new readiness tests and Modulith verification); all database test sources compiled, but the PostgreSQL suites require a maintainer rerun. All 147 local links in the seven changed Markdown files were checked. Check off the correction only after review and database verification of the resulting patch.
 
 ## Verification commands and final acceptance
 

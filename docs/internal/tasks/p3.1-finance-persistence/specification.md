@@ -32,10 +32,16 @@ The port belongs to Finance's internal application-facing persistence boundary. 
 ```java
 interface FinancialGroupStore {
     FinancialGroup ensureAndLock(UUID groupId);
-    Optional<FinancialGroup> lockExisting(UUID groupId);
+    FinancialGroupLookup lockExisting(UUID groupId);
 }
 
 record FinancialGroup(UUID id, FinancialGroupState state, long currentRevision) {}
+
+record FinancialGroupLookup(Optional<FinancialGroup> group) {
+    // requireReady(): see FIN-R06
+}
+
+enum FinancialGroupFailure { NOT_READY }
 
 enum FinancialGroupState {
     PROVISIONING, OPEN, CLOSED, ARCHIVED
@@ -48,10 +54,10 @@ The interface is accessible to Finance-internal consumers only. The projection c
 | --- | --- |
 | FIN-R01 | `ensureAndLock` is reserved for operations processing trusted Group-originated facts. Its non-null group UUID identifies the root; it creates a default provisioning row if absent and returns the locked root. No actor, activation, revision increment or other side effect is implied. Trust establishment belongs to the future inbound operation, not the SQL adapter. |
 | FIN-R02 | Repeated calls preserve all existing root columns, including state, revision and creation timestamp, regardless of lifecycle. Provisioning cannot reopen a closed or archived root. |
-| FIN-R03 | `lockExisting` returns the locked root or `Optional.empty()` if absent; it never creates a row. A missing root has no row lock. Callers must not treat absence as authoritative Group nonexistence or permission to provision. Both methods reject null IDs. |
+| FIN-R03 | `lockExisting` returns a `FinancialGroupLookup` containing the locked root or an empty optional if absent; it never creates a row. A missing root has no row lock. Callers must not treat absence as authoritative Group nonexistence or permission to provision. Both methods reject null IDs. |
 | FIN-R04 | Both methods require an active caller-owned physical transaction segment within an operation scope. The lock persists until physical transaction completion, not the adapter method's return. The adapter neither starts nor commits a segment and does not retain an executable query or facade across segments. Calls without a compatible segment fail before DML. |
 | FIN-R05 | Competing operations on an existing or concurrently first-created root serialize on the same PostgreSQL row. Different roots do not share an application or table-wide serialization lock. Rollback undoes first insertion and releases the lock; the next trusted operation may provision anew. |
-| FIN-R06 | `PROVISIONING` is a typed not-ready lifecycle state distinct from absence, `OPEN`, `CLOSED` and `ARCHIVED`. Future financial operations must reject provisioning with their typed not-ready application outcome before mutation, using the state read under lock. No universal `isWritable` policy, application operation/result hierarchy or artificial consumer is introduced in P3.1: closed/archived policy depends on the later operation. P3.1b verifies the typed state and absence contract; operation-level rejection tests belong to the consuming tasks. |
+| FIN-R06 | `FinancialGroupLookup.requireReady()` returns `Result<FinancialGroup, FinancialGroupFailure>` through `shared::result`: `NOT_READY` for both absence and `PROVISIONING`, success for `OPEN`, `CLOSED` or `ARCHIVED`, independently of revision or membership. The raw optional preserves absence versus provisioning for technical callers. All group-scoped business operations (reads and mutations) use the shared readiness rule after scoped authorization, on the state from their lock or consistent read snapshot. The pure guard does not grant authority, check writability/actor eligibility, acquire locks or choose transaction disposition. No application service or read adapter is introduced here; operation-specific policies and rejection tests belong to consuming tasks. |
 | FIN-R07 | Persistence failure, unexpected loss of the ensured row, or transaction/locking failure propagates to the transaction owner. Do not turn infrastructure errors into missing/not-ready results, swallow errors, commit partial work or retry independently of the caller's transaction. |
 
 ### Physical serialization protocol
@@ -79,19 +85,20 @@ Use the repository's [test architecture](../../../architecture/tests.md) and [te
 
 | Test | Requirements | Setup and action | Expected observation | Level |
 | --- | --- | --- | --- | --- |
-| FIN-T01 | S01–S05 | Migrate fresh database and upgrade a database with the prior platform/IAM migrations and representative existing data. Inspect catalog and Flyway history. | Exact Finance columns, enum labels, domains, constraints, defaults, indexes, trigger, ownership and absence of external FKs; existing data unaffected. | E2E |
+| FIN-T01 | S01–S05 | Migrate fresh database and upgrade a database with the prior platform/IAM migrations and representative existing data. Inspect catalog and Flyway history. | Required Finance root/actor columns, types, nullability, defaults, primary keys, local FK, timestamp trigger, ownership and absence of external FKs on the owned tables; existing data unaffected. Assertions permit unrelated additive schema objects, columns, indexes and triggers. | E2E |
 | FIN-T02 | S01, S04 | Insert root using an arbitrary upstream UUID; query persisted row. Try missing/null ID, duplicate ID, negative/null revision, null/invalid state and null timestamp independently. Test revision zero and `Long.MAX_VALUE`. | Correct default state/revision/time; invalid rows rejected; both legal revision bounds accepted. No Group/IAM row required. | E2E |
 | FIN-T03 | S02, S04 | Insert actor under a provisioning root using opaque user UUID; insert another group with same user. Try duplicate pair, orphan group, null/missing required columns, zero/negative revision; attempt to delete root with actors. | Per-group identity, explicit deleted state and positive revision (including `Long.MAX_VALUE`); invalid inserts and parent deletion rejected; no cascade or external identity requirement. | E2E |
 | FIN-T04 | S03 | Insert actor, commit; in a later transaction update it with a deliberately supplied timestamp; inspect from another connection. | Defaults and trigger use their transaction's `now()`; `created_at` remains unchanged and trigger overrides supplied `updated_at`. No strict chronological ordering assertion. | E2E |
 | FIN-T05 | S05 | Use the runtime role for Finance DML and attempt DDL separately; inspect migration ownership. | DML succeeds, runtime DDL is denied; migration objects owned by migrator. | E2E |
 | FIN-T06 | S06, R04 | Generate from migrated DB; run ordinary Maven Unit build with generation disabled. | Checked-in generated metadata corresponds to migration; ordinary build and architecture verification require no database/codegen. | Generation review + Unit |
-| FIN-T07 | R01–R03, R06 | Ensure unknown group; repeat ensure against seeded roots in each lifecycle with nonzero revision and known timestamp. Lock existing and absent IDs; test null IDs. | Default root, immutable typed snapshot, preserved persisted columns and no actors; absence distinct from provisioning, no insertion from lock-only lookup. | Integration |
+| FIN-T07 | R01–R03, R06 | Ensure unknown group; repeat ensure against seeded roots in each lifecycle with nonzero revision and known timestamp. Lock existing and absent IDs; test null IDs. | Default root, immutable typed snapshot, preserved persisted columns and no actors; absence distinct from provisioning, both yield `NOT_READY`, activated states succeed; no insertion from lock-only lookup. | Integration |
 | FIN-T08 | R04, R07 | Resolve adapter in operation scope with no active segment, invoke both methods; exercise transaction-owner rollback. | Segment guard rejects unsupported access before write; no implicit transaction. | Integration/E2E as needed |
 | FIN-T09 | R01, R02, R05 | Start two independent operations/physical transactions against the same absent UUID; hold the first transaction after ensuring, start the second, then commit the first. | Second waits; both observe one root with the same identity and state, no duplicate or overwrite. | E2E |
 | FIN-T10 | R04, R05 | Seed root; hold lock in first transaction after adapter returns; second tries locking same root. First changes a fixture revision under lock and commits. | Second cannot complete before first transaction ends; observes committed revision. | E2E |
 | FIN-T11 | R05 | Hold root A lock while another operation ensures/locks root B and commits. | B completes without releasing A; no global serialization. | E2E |
 | FIN-T12 | R05, R07 | First ensure on absent root is held while second attempts ensure; first changes a fixture revision under lock and rolls back. Also roll back an existing-root mutation and reacquire its lock. | No committed state from rolled-back transaction; waiting operation can create/lock a default revision-zero root and commit; existing root retains prior state and lock is released. | E2E |
 | FIN-T13 | R04, R06 | Check actual Finance module via existing Modulith verification; exercise typed lifecycle mapping. | Module is closed, dependency whitelist is narrow and generated types do not leak into port; all lifecycle states map without implicit authorization. | Unit + Integration |
+| FIN-T14 | R06 | Exercise empty lookup and every lifecycle at revision zero and a positive revision, including invalid null optional. | Both uninitialized cases return `NOT_READY`; all activated states return the original snapshot; null optional rejected. | Unit |
 
 Concurrency cases use independent operations and database connections, explicit coordination and bounded waits, with cleanup in failure paths. Prefer observable PostgreSQL lock/wait evidence to sleeps or timing-only assertions. Include unexpected failure and boundary tests where the implementation warrants them. No test-only application operation may become a production API.
 
