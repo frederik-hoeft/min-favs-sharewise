@@ -3,6 +3,7 @@ package de.hsh.favs.sharewise.finance.internal.persistence;
 import static de.hsh.favs.sharewise.finance.internal.persistence.generated.tables.Actors.ACTORS;
 import static de.hsh.favs.sharewise.finance.internal.persistence.generated.tables.Groups.GROUPS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,6 +22,8 @@ import java.util.UUID;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 
 @Tag("integration")
 class JooqFinancialGroupStoreIT extends IntegrationTestBase {
@@ -82,17 +85,24 @@ class JooqFinancialGroupStoreIT extends IntegrationTestBase {
     void rejectsNullIdsAndRequiresAnActiveLogicalSegment() {
         runServiceTest(FinancialGroupStore.class, (store, scope) -> {
             UUID id = UUID.randomUUID();
-            assertThrows(IllegalStateException.class, () -> store.ensureAndLock(id));
-            assertThrows(IllegalStateException.class, () -> store.lockExisting(id));
+            assertNoActiveSegment(() -> store.ensureAndLock(id));
+            assertNoActiveSegment(() -> store.lockExisting(id));
             scope.resolve(Transactions.class).execute(() -> {
                 assertThrows(NullPointerException.class, () -> store.ensureAndLock(null));
                 assertThrows(NullPointerException.class, () -> store.lockExisting(null));
                 assertTrue(store.lockExisting(id).isEmpty(), "Rejected access must not have inserted a root");
                 return TransactionOutcome.abstain(null);
             });
-            assertThrows(IllegalStateException.class, () -> store.ensureAndLock(id));
-            assertThrows(IllegalStateException.class, () -> store.lockExisting(id));
+            assertNoActiveSegment(() -> store.ensureAndLock(id));
+            assertNoActiveSegment(() -> store.lockExisting(id));
         });
+    }
+
+    private static void assertNoActiveSegment(Executable operation) {
+        // The real @Repository proxy translates the transaction guard exception.
+        InvalidDataAccessApiUsageException failure = assertThrows(InvalidDataAccessApiUsageException.class, operation);
+        assertEquals("No active logical transaction segment",
+                assertInstanceOf(IllegalStateException.class, failure.getCause()).getMessage());
     }
 
     private static String tupleId(DSLContext db, UUID id) {

@@ -15,8 +15,10 @@ import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
+import de.hsh.favs.sharewise.testsupport.execution.TestCallbacks;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
+import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Optional;
@@ -41,12 +43,12 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
 
     @Test
     void concurrentFirstProvisioningWaitsForTheCommittedWinner() {
-        runTest(fixture -> assertConcurrentProvisioning(fixture, false));
+        runFinanceTest(fixture -> assertConcurrentProvisioning(fixture, false));
     }
 
     @Test
     void concurrentFirstProvisioningCanReplaceARolledBackInsert() {
-        runTest(fixture -> assertConcurrentProvisioning(fixture, true));
+        runFinanceTest(fixture -> assertConcurrentProvisioning(fixture, true));
     }
 
     private static void assertConcurrentProvisioning(IntegrationTestContext fixture, boolean rollback) {
@@ -76,17 +78,17 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
 
     @Test
     void existingRootLockSurvivesAdapterReturnAndWaiterReadsCommittedRevision() {
-        runTest(fixture -> assertExistingRootSerialization(fixture, false, false));
+        runFinanceTest(fixture -> assertExistingRootSerialization(fixture, false, false));
     }
 
     @Test
     void rollbackRestoresExistingRootAndReleasesTheLock() {
-        runTest(fixture -> assertExistingRootSerialization(fixture, true, false));
+        runFinanceTest(fixture -> assertExistingRootSerialization(fixture, true, false));
     }
 
     @Test
     void ensureOnExistingRootAlsoHoldsItsRowLockUntilCommit() {
-        runTest(fixture -> assertExistingRootSerialization(fixture, false, true));
+        runFinanceTest(fixture -> assertExistingRootSerialization(fixture, false, true));
     }
 
     private static void assertExistingRootSerialization(IntegrationTestContext fixture, boolean rollback,
@@ -119,7 +121,7 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
 
     @Test
     void unrelatedRootCanBeProvisionedAndCommittedWhileFirstRootIsLocked() {
-        runTest(fixture -> {
+        runFinanceTest(fixture -> {
             UUID firstId = UUID.randomUUID();
             UUID secondId = UUID.randomUUID();
             FinancialGroup first = seedOpenRoot(fixture, firstId);
@@ -147,7 +149,7 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
 
     @Test
     void rollbackOfFirstProvisioningLeavesNoCommittedRoot() {
-        runTest(fixture -> {
+        runFinanceTest(fixture -> {
             UUID id = UUID.randomUUID();
             inSegment(fixture, (store, db) -> {
                 assertEquals(new FinancialGroup(id, FinancialGroupState.PROVISIONING, 0), store.ensureAndLock(id));
@@ -163,7 +165,7 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
 
     @Test
     void lockFailurePropagatesInsteadOfReportingAbsence() {
-        runTest(fixture -> {
+        runFinanceTest(fixture -> {
             UUID id = UUID.randomUUID();
             FinancialGroup initial = seedOpenRoot(fixture, id);
             try (ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -181,6 +183,10 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
             }
             assertCommittedRoot(fixture, initial);
         });
+    }
+
+    private void runFinanceTest(TestCallbacks.Action<IntegrationTestContext> test) {
+        runTest(test, ProductionEntityScanConfiguration.class);
     }
 
     private static String sqlState(Throwable failure) {
