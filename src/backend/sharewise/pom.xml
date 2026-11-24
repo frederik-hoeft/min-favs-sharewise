@@ -206,7 +206,7 @@
                 <databaseTestIncludes>**/*E2E.java</databaseTestIncludes>
             </properties>
         </profile>
-        <!-- Opt-in, PostgreSQL-first jOOQ generation. Generated IAM schema sources are
+        <!-- Opt-in, PostgreSQL-first jOOQ generation. Generated context schema sources are
              committed under src/main/java so ordinary offline builds need no database or
              code generation plugin. Never run this against an unmigrated schema. -->
         <profile>
@@ -245,6 +245,50 @@
                                 </generate>
                                 <target>
                                     <packageName>de.hsh.favs.sharewise.identity.internal.auth.persistence.generated</packageName>
+                                    <directory>${project.basedir}/src/main/java</directory>
+                                </target>
+                            </generator>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>jooq-codegen-finance</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jooq</groupId>
+                        <artifactId>jooq-codegen-maven</artifactId>
+                        <version>${jooq.version}</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.postgresql</groupId>
+                                <artifactId>postgresql</artifactId>
+                                <version>${postgresql.version}</version>
+                            </dependency>
+                        </dependencies>
+                        <configuration>
+                            <jdbc>
+                                <driver>org.postgresql.Driver</driver>
+                                <url>${jooq.codegen.jdbc.url}</url>
+                                <user>${jooq.codegen.jdbc.user}</user>
+                                <password>${env.JOOQ_CODEGEN_PASSWORD}</password>
+                            </jdbc>
+                            <generator>
+                                <name>org.jooq.codegen.JavaGenerator</name>
+                                <database>
+                                    <name>org.jooq.meta.postgres.PostgresDatabase</name>
+                                    <inputSchema>finance</inputSchema>
+                                    <includes>.*</includes>
+                                </database>
+                                <generate>
+                                    <daos>false</daos>
+                                    <pojos>false</pojos>
+                                    <records>true</records>
+                                </generate>
+                                <target>
+                                    <packageName>de.hsh.favs.sharewise.finance.internal.persistence.generated</packageName>
                                     <directory>${project.basedir}/src/main/java</directory>
                                 </target>
                             </generator>
