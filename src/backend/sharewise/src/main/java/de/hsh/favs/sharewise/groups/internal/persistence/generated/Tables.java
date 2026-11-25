@@ -6,6 +6,7 @@ package de.hsh.favs.sharewise.groups.internal.persistence.generated;
 
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Groups;
+import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Invitations;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Users;
 
 
@@ -24,6 +25,11 @@ public class Tables {
      * The table <code>groups.groups</code>.
      */
     public static final Groups GROUPS_ = Groups.GROUPS_;
+
+    /**
+     * The table <code>groups.invitations</code>.
+     */
+    public static final Invitations INVITATIONS = Invitations.INVITATIONS;
 
     /**
      * The table <code>groups.users</code>.

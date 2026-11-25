@@ -6,6 +6,7 @@ package de.hsh.favs.sharewise.groups.internal.persistence.generated.tables;
 
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.Keys;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers.GroupMembersPath;
+import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Invitations.InvitationsPath;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Users.UsersPath;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.records.GroupsRecord;
 
@@ -168,6 +169,19 @@ public class Groups extends TableImpl<GroupsRecord> {
             _groupMembers = new GroupMembersPath(this, null, Keys.GROUP_MEMBERS__GROUP_MEMBERS_GROUP_ID_FKEY.getInverseKey());
 
         return _groupMembers;
+    }
+
+    private transient InvitationsPath _invitations;
+
+    /**
+     * Get the implicit to-many join path to the <code>groups.invitations</code>
+     * table
+     */
+    public InvitationsPath invitations() {
+        if (_invitations == null)
+            _invitations = new InvitationsPath(this, null, Keys.INVITATIONS__INVITATIONS_GROUP_ID_FKEY.getInverseKey());
+
+        return _invitations;
     }
 
     /**
