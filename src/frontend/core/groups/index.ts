@@ -19,6 +19,7 @@ export {
     type CreatedInvitation,
     type InvitationList,
     type InvitationSummary,
+    type InvitationPreview,
     type InvitationRedemption,
     type GroupDetails,
     type GroupList,

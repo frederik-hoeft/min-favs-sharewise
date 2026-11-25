@@ -16,7 +16,7 @@ import { MemberActionConfirmation } from "./MemberActionConfirmation";
 import { executeMembershipAction, type MembershipAction } from "./membership-actions";
 import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
 import { useGroupsApi } from "@/app/use-groups-api";
-import { useGroupResource } from "./use-group-resource";
+import { useGroupResource } from "@/app/use-group-resource";
 import styles from "./GroupInformationPanel.module.scss";
 
 /** Route composition owns the group resource; the shell has no Group Management dependency. */
@@ -32,7 +32,7 @@ function membershipFailureMessage(problem: GroupProblem): string {
     case "member_not_found": return "That membership is no longer available. No change was made.";
     case "last_member": return "A group must retain at least one member.";
     case "last_administrator": return "A group must retain at least one administrator.";
-    case "invalid_transfer": return "Administration cannot be transferred to yourself.";
+    case "self_role_change": return "You cannot change your own role.";
     case "invalid": return "The membership request was rejected.";
     default: return "The outcome of the membership change could not be confirmed. Review the current group before trying again.";
   }

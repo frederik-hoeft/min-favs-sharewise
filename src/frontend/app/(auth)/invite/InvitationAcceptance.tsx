@@ -3,12 +3,13 @@
 import { Alert, Button, Group, Loader, Paper, Stack, Text, Title } from "@mantine/core";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AuthenticatedApisProvider, useAuthState, useIdentity } from "@/app/identity-provider";
 import { INVITE_RETURN_QUERY } from "@/lib/navigation/invitation-routes";
 import { type InvitationContinuation, useInvitationContinuation } from "@/app/invitation-continuation";
 import { useGroupsApi } from "@/app/use-groups-api";
-import { classifyGroupProblem, isGroupId } from "@/core/groups";
+import { useGroupResource } from "@/app/use-group-resource";
+import { classifyGroupProblem, isGroupId, validateGroupMetadata } from "@/core/groups";
 import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
 import { groupRoutes, groupViewHref } from "@/lib/navigation/group-routes";
 import styles from "../_components/AuthenticationForm.module.scss";
@@ -61,7 +62,7 @@ export function InvitationAcceptance() {
           <Text c="dimmed">This invitation is unavailable. Open the original invitation link again, or ask a group administrator for a new one.</Text>
           <Button component={Link} href={groupRoutes.list} variant="light">Go to your groups</Button>
         </> : state.status === "authenticated" ? <AuthenticatedApisProvider key={lifetime} sessionId={state.sessionId}>
-          <JoinGroup key={revision} continuation={continuation} lifetime={lifetime} />
+          <JoinGroup key={revision} revision={revision} continuation={continuation} lifetime={lifetime} />
         </AuthenticatedApisProvider> : <>
           {state.status === "restoring" || (state.status === "reauthentication-required" && state.reason === "initial") ? <Group role="status"><Loader size="sm" /><Text>Checking sign-in…</Text></Group>
             : state.status === "reauthentication-required" && state.reason === "retryable" ? <>
@@ -79,20 +80,38 @@ export function InvitationAcceptance() {
   </div>;
 }
 
-function JoinGroup({ continuation, lifetime }: { continuation: InvitationContinuation; lifetime: number | undefined }) {
+function JoinGroup({ continuation, lifetime, revision }: { continuation: InvitationContinuation; lifetime: number | undefined; revision: number }) {
   const { session } = useIdentity();
   const api = useGroupsApi();
   const router = useRouter();
   const operation = useExclusiveOperation<"join">();
   const [notice, setNotice] = useState<string | null>(null);
 
+  const load = useCallback(async () => {
+    const token = continuation.forSession(lifetime);
+    if (!token || session.getAuthenticatedLifetime() !== lifetime || continuation.getSnapshot() !== revision) throw new Error("Invitation session changed");
+    const preview = await api.previewInvitation(token);
+    if (typeof preview?.groupName !== "string" || validateGroupMetadata({ name: preview.groupName, description: "" }).name) {
+      throw new Error("Invalid invitation preview");
+    }
+    if (session.getAuthenticatedLifetime() !== lifetime || continuation.getSnapshot() !== revision || continuation.forSession(lifetime) !== token) {
+      throw new Error("Invitation session changed");
+    }
+    return preview;
+  }, [api, continuation, lifetime, revision, session]);
+  const { state: preview, reload } = useGroupResource(load);
+  useEffect(() => {
+    if (preview.status === "failed" && preview.problem.kind === "invitation_unavailable" && continuation.getSnapshot() === revision && session.getAuthenticatedLifetime() === lifetime) continuation.clear();
+  }, [preview, continuation, revision, session, lifetime]);
+
   function join() {
-    if (session.getAuthenticatedLifetime() !== lifetime) return;
+    if (preview.status !== "ready") return;
+    if (session.getAuthenticatedLifetime() !== lifetime || continuation.getSnapshot() !== revision) return;
     const token = continuation.forSession(lifetime);
     if (!token) return;
     setNotice(null);
     operation.start("join", () => api.redeemInvitation(token), outcome => {
-      if (session.getAuthenticatedLifetime() !== lifetime || continuation.forSession(lifetime) !== token) return;
+      if (session.getAuthenticatedLifetime() !== lifetime || continuation.getSnapshot() !== revision || continuation.forSession(lifetime) !== token) return;
       if (outcome.status === "fulfilled" && isGroupId(outcome.value?.groupId) && (outcome.value.outcome === "joined" || outcome.value.outcome === "already_member")) {
         continuation.clear();
         router.replace(groupViewHref(outcome.value.groupId));
@@ -107,9 +126,16 @@ function JoinGroup({ continuation, lifetime }: { continuation: InvitationContinu
 
   const busy = operation.pending !== null;
   return <>
-    <Text c="dimmed">You have received a group invitation. Join using your current ShareWise account?</Text>
-    {notice ? <Alert role="alert" color="yellow">{notice}</Alert> : null}
-    <Button onClick={join} loading={busy} disabled={busy}>Join group</Button>
+    {preview.status === "loading" ? <Group role="status"><Loader size="sm" /><Text>Checking invitation…</Text></Group> : null}
+    {preview.status === "failed" && preview.problem.kind !== "invitation_unavailable" ? <>
+      <Alert role="alert" color="yellow">{preview.problem.kind === "user_unknown" ? "Your account is not yet available to group management. Try again later." : "Unable to check the invitation. Check your connection and retry."}</Alert>
+      <Button onClick={() => void reload()}>Retry invitation check</Button>
+    </> : null}
+    {preview.status === "ready" ? <>
+      <Text c="dimmed">You have received a group invitation to join <Text span fw={700} style={{ overflowWrap: "anywhere" }}>{preview.data.groupName}</Text>. Join using your current ShareWise account?</Text>
+      {notice ? <Alert role="alert" color="yellow">{notice}</Alert> : null}
+      <Button onClick={join} loading={busy} disabled={busy}>Join group</Button>
+    </> : null}
     <Button component={Link} href={groupRoutes.list} variant="subtle" disabled={busy} onClick={event => {
       if (operation.isRunning()) event.preventDefault();
       else continuation.clear();

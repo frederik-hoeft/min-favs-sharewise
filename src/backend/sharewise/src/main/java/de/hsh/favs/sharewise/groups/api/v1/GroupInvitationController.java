@@ -62,8 +62,15 @@ final class GroupInvitationController {
             .fold(status -> ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build(), GroupProblems::response);
     }
 
+    @PostMapping(value = "/invitations/preview", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<?> preview(@RequestBody InvitationTokenRequest request) {
+        return ingress.dispatch(GroupInvitationService.class, service -> service.preview(request.token()))
+            .fold(preview -> ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new InvitationPreviewResponse(preview.groupName())), GroupProblems::response);
+    }
+
     @PostMapping(value = "/invitations/redeem", consumes = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<?> redeem(@RequestBody RedeemInvitationRequest request) {
+    ResponseEntity<?> redeem(@RequestBody InvitationTokenRequest request) {
         Result<InvitationRedemption, GroupFailure> result = ingress.dispatch(GroupInvitationService.class,
             service -> service.redeem(request.token()));
         return result.fold(redeemed -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
@@ -91,10 +98,11 @@ final class GroupInvitationController {
                 summary.maxUses(), summary.useCount());
         }
     }
+    record InvitationPreviewResponse(String groupName) { }
     record RedeemInvitationResponse(UUID groupId, String outcome) { }
 
-    record RedeemInvitationRequest(String token) {
-        @Override public String toString() { return "RedeemInvitationRequest[redacted]"; }
+    record InvitationTokenRequest(String token) {
+        @Override public String toString() { return "InvitationTokenRequest[redacted]"; }
     }
 
     record CreatedInvitationResponse(InvitationResponse invitation, String token) {

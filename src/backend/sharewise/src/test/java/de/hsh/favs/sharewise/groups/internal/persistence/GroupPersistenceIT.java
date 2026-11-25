@@ -282,6 +282,10 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 assertEquals(1, statements.getAndSet(0));
                 assertEquals(Optional.empty(), invitations.listForMember(group, outsider));
                 assertEquals(1, statements.getAndSet(0));
+                assertEquals(TRIP.name().value(), invitations.previewContext(material.selector(), outsider).orElseThrow().groupName());
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(Optional.empty(), invitations.previewContext(material.selector(), unknown));
+                assertEquals(1, statements.getAndSet(0));
                 assertEquals(Optional.empty(), invitations.lockGroupForRedemption(material.selector(), unknown));
                 assertEquals(1, statements.getAndSet(0));
                 LockedGroup redemptionLock = invitations.lockGroupForRedemption(material.selector(), outsider).orElseThrow();

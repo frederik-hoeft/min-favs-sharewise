@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { useGroupResource } from "@/app/(app)/app/groups/_components/use-group-resource";
+import { useGroupResource } from "@/app/use-group-resource";
 import { deferred, type Deferred } from "./support";
 
 /** A loader whose calls each return a promise that the test settles explicitly. */

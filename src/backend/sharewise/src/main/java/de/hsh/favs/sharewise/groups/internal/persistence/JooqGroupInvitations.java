@@ -7,6 +7,7 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables
 import de.hsh.favs.sharewise.groups.internal.application.GroupInvitationPort;
 import de.hsh.favs.sharewise.groups.internal.application.InvitationIssuanceMaterial;
 import de.hsh.favs.sharewise.groups.internal.application.InvitationListing;
+import de.hsh.favs.sharewise.groups.internal.application.InvitationPreviewContext;
 import de.hsh.favs.sharewise.groups.internal.application.InvitationRedemptionContext;
 import de.hsh.favs.sharewise.groups.internal.application.InvitationSummary;
 import de.hsh.favs.sharewise.groups.internal.application.LockedGroup;
@@ -54,6 +55,18 @@ class JooqGroupInvitations implements GroupInvitationPort {
         List<InvitationSummary> summaries = rows.getFirst().get(INVITATIONS.ID) == null
             ? List.of() : rows.map(JooqGroupInvitations::summary);
         return Optional.of(new InvitationListing(rows.getFirst().value1(), summaries));
+    }
+
+    @Override
+    public Optional<InvitationPreviewContext> previewContext(UUID selector, UUID userId) {
+        Field<OffsetDateTime> now = wallClock();
+        return database.dsl().select(INVITATIONS.ID, INVITATIONS.CREATED_AT, INVITATIONS.EXPIRES_AT,
+                INVITATIONS.MAX_USES, INVITATIONS.USE_COUNT, INVITATIONS.VERIFIER_HASH, now, GROUPS_.NAME)
+            .from(INVITATIONS).join(GROUPS_).on(GROUPS_.ID.eq(INVITATIONS.GROUP_ID))
+            .where(INVITATIONS.ID.eq(selector).and(GroupProjections.knownUser(userId)))
+            .fetchOptional(row -> new InvitationPreviewContext(
+                new StoredInvitation(summary(row), row.get(INVITATIONS.VERIFIER_HASH)),
+                row.get(now).toInstant(), row.get(GROUPS_.NAME)));
     }
 
     @Override

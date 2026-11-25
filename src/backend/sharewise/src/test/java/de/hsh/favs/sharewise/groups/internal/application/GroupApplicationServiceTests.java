@@ -245,22 +245,20 @@ class GroupApplicationServiceTests {
     }
 
     @Test
-    void lastMemberAndLastAdministratorAreProtectedUntilTransfer() {
+    void lastMemberAndLastAdministratorAreProtectedUntilPromotion() {
         UUID group = store.seedGroup(TRIP, 7, Map.of(ALICE, GroupRole.ADMIN));
         UUID alice = assertOk(workspace(ALICE, group)).callerMembershipId();
         assertEquals(Result.err(new GroupFailure.LastMember()), change(ALICE, group, alice,
             new MembershipChange.Remove()));
-        assertEquals(Result.err(new GroupFailure.LastAdministrator()), change(ALICE, group, alice,
+        assertEquals(Result.err(new GroupFailure.SelfRoleChange()), change(ALICE, group, alice,
             new MembershipChange.SetRole(GroupRole.MEMBER)));
-        assertEquals(Result.err(new GroupFailure.InvalidTransfer()), change(ALICE, group, alice,
-            new MembershipChange.TransferAdministration()));
         store.addMembership(group, BOB, GroupRole.MEMBER);
         UUID bob = assertOk(workspace(BOB, group)).callerMembershipId();
         assertEquals(Result.err(new GroupFailure.LastAdministrator()), change(ALICE, group, alice,
             new MembershipChange.Remove()));
         assertEquals(0, store.writes());
-        assertTrue(change(ALICE, group, bob, new MembershipChange.TransferAdministration()).isSuccess());
-        assertEquals(Map.of(ALICE, GroupRole.MEMBER, BOB, GroupRole.ADMIN),
+        assertTrue(change(ALICE, group, bob, new MembershipChange.SetRole(GroupRole.ADMIN)).isSuccess());
+        assertEquals(Map.of(ALICE, GroupRole.ADMIN, BOB, GroupRole.ADMIN),
             store.stored(group).orElseThrow().members());
         assertTrue(change(ALICE, group, alice, new MembershipChange.Remove()).isSuccess());
         assertEquals(Map.of(BOB, GroupRole.ADMIN), store.stored(group).orElseThrow().members());
@@ -268,11 +266,11 @@ class GroupApplicationServiceTests {
     }
 
     @Test
-    void existingAdministratorCanBeTransferTargetAndStaleMembershipCannotBeRemoved() {
+    void existingAdministratorPromotionIsIdempotentAndStaleMembershipCannotBeRemoved() {
         UUID group = store.seedGroup(TRIP, 0, Map.of(ALICE, GroupRole.ADMIN, BOB, GroupRole.ADMIN));
         UUID alice = assertOk(workspace(ALICE, group)).callerMembershipId();
         UUID bob = assertOk(workspace(BOB, group)).callerMembershipId();
-        assertTrue(change(ALICE, group, bob, new MembershipChange.TransferAdministration()).isSuccess());
+        assertTrue(change(ALICE, group, bob, new MembershipChange.SetRole(GroupRole.ADMIN)).isSuccess());
         assertTrue(change(BOB, group, alice, new MembershipChange.Remove()).isSuccess());
         store.addMembership(group, ALICE, GroupRole.MEMBER);
         assertEquals(Result.err(new GroupFailure.MemberNotFound()), change(BOB, group, alice,
@@ -281,7 +279,8 @@ class GroupApplicationServiceTests {
             store.stored(group).orElseThrow().members());
         assertTrue(change(BOB, group, memberId(assertOk(workspace(BOB, group)), ALICE),
             new MembershipChange.SetRole(GroupRole.ADMIN)).isSuccess());
-        assertTrue(change(BOB, group, bob, new MembershipChange.SetRole(GroupRole.MEMBER)).isSuccess());
+        assertEquals(Result.err(new GroupFailure.SelfRoleChange()), change(BOB, group, bob, new MembershipChange.SetRole(GroupRole.MEMBER)));
+        assertTrue(change(ALICE, group, bob, new MembershipChange.SetRole(GroupRole.MEMBER)).isSuccess());
         assertEquals(GroupRole.MEMBER, store.stored(group).orElseThrow().members().get(BOB));
     }
 

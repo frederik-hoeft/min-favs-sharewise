@@ -46,8 +46,8 @@ final class GroupProblems {
                 "Last Group Member", "A group must retain at least one member.");
             case GroupFailure.LastAdministrator() -> ApiProblems.response(HttpStatus.CONFLICT, "group_last_administrator",
                 "Last Group Administrator", "A group must retain at least one administrator.");
-            case GroupFailure.InvalidTransfer() -> ApiProblems.response(HttpStatus.CONFLICT, "group_invalid_transfer",
-                "Invalid Administration Transfer", "Select another member to transfer administration.");
+            case GroupFailure.SelfRoleChange() -> ApiProblems.response(HttpStatus.CONFLICT, "group_self_role_change",
+                "Self Role Change", "An administrator cannot change their own role.");
             case GroupFailure.InvalidInvitation invalid -> throw RequestValidationException.from(invalid.errors());
             case GroupFailure.InvitationNotFound() -> ApiProblems.response(HttpStatus.NOT_FOUND, "group_invitation_not_found",
                 "Invitation Not Found", "This invitation is no longer available in the group.");

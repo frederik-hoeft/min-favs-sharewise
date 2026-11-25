@@ -9,5 +9,4 @@ public sealed interface MembershipChange {
         public SetRole { Objects.requireNonNull(role, "role"); }
     }
     record Remove() implements MembershipChange { }
-    record TransferAdministration() implements MembershipChange { }
 }

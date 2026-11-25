@@ -153,7 +153,7 @@ Suggested commit: `P2.2bc-H: Harden and validate group workflows`.
 
 - [x] Review complete feature branch against specification, shared code reuse, transaction/authorization paths, concurrency and data ownership, async resource/route lifetimes, secrets, static deployment and test quality. Iterate fixes with tests and run available checks. Browser inspection of the invitation UI remains a human acceptance item (managed Chromium navigation policy).
 - [x] Prepare final implementation checkpoint, aggregate summary, ordered replay manifest and manual acceptance scenarios. Earlier group screenshots were accepted at gate 1; no new invitation screenshots are claimed.
-- [ ] **STOP 2 (human):** Maintainer applies remaining patches, runs all real PostgreSQL suites/schema freshness and CI, production Compose smoke plus representative workflows, manual acceptance and aggregate review. Resolve findings with incremental follow-ups before documentation. Record tested revision and feedback.
+- [x] **STOP 2 (human):** Maintainer applies remaining patches, runs all real PostgreSQL suites/schema freshness and CI, production Compose smoke plus representative workflows, manual acceptance and aggregate review. Resolve findings with incremental follow-ups before documentation. Record tested revision and feedback.
 
 **Self-review record:**
 
@@ -192,7 +192,24 @@ Suggested commit: `P2.2bc-H.1: Consolidate Group persistence projections and cal
 - P3 - A revised list projection could expose mutable list results: preserve the service's immutable list contract.
 - P3 - Projection-count regression risk: assert the application port sequence and add a PostgreSQL Integration test counting actual jOOQ executions through a locally derived, segment-guarded configuration.
 
-**Checkpoint evidence:** Original Phase H tree `e24b466987a3147c9aa27e70a4070efc600c9286` reproduced the reported class of parallel failures (19 tests, six failures). Corrected targeted component suites passed with four workers before new tests were added. Full offline `mvn -B -ntp -o -Dmaven.repo.local=<isolated-cache> -Punit-tests -DtestParallelism=4 clean verify` passed 406 tests; final `-DtestParallelism=16 clean verify` (matching GitLab CI) passed 406 tests, zero failures/errors/skips, including Modulith verification and compilation of Integration/E2E tests. The new SQL-count Integration test and existing real PostgreSQL concurrency/rollback tests are not executed in the offline environment. No frontend, dependency, migration or generated-schema change. Human gate 2 remains open.
+**Checkpoint evidence:** Original Phase H tree `e24b466987a3147c9aa27e70a4070efc600c9286` reproduced the reported class of parallel failures (19 tests, six failures). Corrected targeted component suites passed with four workers before new tests were added. Full offline `mvn -B -ntp -o -Dmaven.repo.local=<isolated-cache> -Punit-tests -DtestParallelism=4 clean verify` passed 406 tests; final `-DtestParallelism=16 clean verify` (matching GitLab CI) passed 406 tests, zero failures/errors/skips, including Modulith verification and compilation of Integration/E2E tests. The new SQL-count Integration test and existing real PostgreSQL concurrency/rollback tests are not executed in the offline environment. No frontend, dependency, migration or generated-schema change. Maintainer subsequently accepted the implementation from an acceptance-test and code standpoint, subject to the H.2 requests. Exact H.1 CI and Compose results were not supplied.
+
+## Phase H.2 - Invitation preview and membership simplification
+
+Suggested commit: `P2.2bc-H.2: Preview invited group and simplify administration`.
+
+- [x] Apply the maintainer's accepted scope revision: display the invited group name after authenticated preview; remove transfer endpoint and UI; prohibit actual self-role changes while retaining promotion/demotion of other members and leave.
+- [x] Reuse shared token validation and the Group resource hook, verify one-statement preview projection without lock/writes, test invalid links, stale continuation, cross-session results and retained membership invariants.
+- [x] Review the implementation and publish the incremental checkpoint before reconciling documentation.
+
+**Self-review record:**
+
+- P2 - A replacement invitation could be cleared by an earlier preview rejection: gate preview and redemption continuations on both session lifetime and capability revision; test replacement and account-switch races.
+- P3 - Existing invitation status test reused an ID for two rows: give the expired fixture its own identifier to exercise distinct list entries.
+
+**Checkpoint evidence:** Offline backend clean verify passed 407 tests at 16 JUnit workers, including Modulith verification and Integration/E2E compilation. Frontend 340 tests, ESLint, both TypeScript checks, standalone and static builds, and static HTTP route/asset verification passed. No database or dependency changes. Browser screenshot inspection of the revised acceptance view remains a human check.
+
+**Maintainer evidence:** The maintainer reported acceptance tests and code LGTM and provided an invitation acceptance screenshot. The two requested behavior changes are covered by H.2 and require a targeted human recheck. No explicit final CI or Compose result for H.1/H.2 was supplied. Database-backed tests compile locally but cannot be executed in this environment.
 
 ## Phase I - Documentation reconciliation
 

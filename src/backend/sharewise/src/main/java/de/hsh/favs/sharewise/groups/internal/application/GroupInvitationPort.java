@@ -9,6 +9,9 @@ public interface GroupInvitationPort {
     /** Member-scoped snapshot; only administrators receive invitation metadata. */
     Optional<InvitationListing> listForMember(UUID groupId, UUID userId);
 
+    /** Read-only, known-user-scoped snapshot; the application must verify the bearer. */
+    Optional<InvitationPreviewContext> previewContext(UUID selector, UUID userId);
+
     /** Locks only the group root selected by the invitation for a known local user. Not authorization. */
     Optional<LockedGroup> lockGroupForRedemption(UUID selector, UUID userId);
 

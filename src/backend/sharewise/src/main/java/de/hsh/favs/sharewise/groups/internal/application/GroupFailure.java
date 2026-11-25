@@ -32,7 +32,7 @@ public sealed interface GroupFailure {
     record MemberNotFound() implements GroupFailure { }
     record LastMember() implements GroupFailure { }
     record LastAdministrator() implements GroupFailure { }
-    record InvalidTransfer() implements GroupFailure { }
+    record SelfRoleChange() implements GroupFailure { }
     record InvalidInvitation(ValidationErrors errors) implements GroupFailure { }
     record InvitationNotFound() implements GroupFailure { }
     record InvitationUnavailable() implements GroupFailure { }

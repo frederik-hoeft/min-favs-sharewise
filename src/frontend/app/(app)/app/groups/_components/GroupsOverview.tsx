@@ -10,7 +10,7 @@ import { groupRoutes, groupViewHref } from "../../_components/app-routes";
 import { memberCountLabel } from "./group-format";
 import { GroupLoadingState, GroupProblemState } from "./GroupProblemState";
 import { GroupAvatar } from "./GroupAvatar";
-import { useGroupResource } from "./use-group-resource";
+import { useGroupResource } from "@/app/use-group-resource";
 import styles from "./GroupsOverview.module.scss";
 
 export function GroupsOverview() {

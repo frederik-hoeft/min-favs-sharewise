@@ -71,6 +71,10 @@ export interface CreatedInvitation {
     readonly token: string;
 }
 
+export interface InvitationPreview {
+    readonly groupName: string;
+}
+
 export interface InvitationRedemption {
     readonly groupId: string;
     readonly outcome: 'joined' | 'already_member';
@@ -85,7 +89,7 @@ export const GROUP_PROBLEM_CODES = {
     memberNotFound: 'group_member_not_found',
     lastMember: 'group_last_member',
     lastAdministrator: 'group_last_administrator',
-    invalidTransfer: 'group_invalid_transfer',
+    selfRoleChange: 'group_self_role_change',
     invitationUnavailable: 'group_invitation_unavailable',
     invitationNotFound: 'group_invitation_not_found',
     validationFailed: 'validation_failed',

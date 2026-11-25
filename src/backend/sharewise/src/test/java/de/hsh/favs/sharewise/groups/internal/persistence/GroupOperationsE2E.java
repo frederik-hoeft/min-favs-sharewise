@@ -225,15 +225,15 @@ class GroupOperationsE2E extends E2ETestBase {
     }
 
     @Test
-    void transferAndRejoinPreserveMembershipIdentityAndMetadataConcurrency() {
+    void promotionAndRejoinPreserveMembershipIdentityAndMetadataConcurrency() {
         runTest(fixture -> {
             GroupTestFixture.provision(fixture, ALICE, BOB);
             UUID group = ok(create(fixture, ALICE, "Trip")).id();
             GroupTestFixture.addMember(fixture, group, BOB, GroupRole.MEMBER);
             UUID aliceId = workspace(fixture, ALICE, group).callerMembershipId();
             UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
-            ok(change(fixture, ALICE, group, bobId, new MembershipChange.TransferAdministration()));
-            assertEquals(GroupRole.MEMBER, workspace(fixture, ALICE, group).group().callerRole());
+            ok(change(fixture, ALICE, group, bobId, new MembershipChange.SetRole(GroupRole.ADMIN)));
+            assertEquals(GroupRole.ADMIN, workspace(fixture, ALICE, group).group().callerRole());
             assertEquals(GroupRole.ADMIN, workspace(fixture, BOB, group).group().callerRole());
             assertEquals(bobId, workspace(fixture, BOB, group).callerMembershipId());
             assertEquals(1, ok(replace(fixture, BOB, group, "Renamed", 0)).version());
@@ -249,20 +249,20 @@ class GroupOperationsE2E extends E2ETestBase {
     }
 
     @Test
-    void failedSecondTransferWriteRollsBackTheFirst() {
+    void failedPromotionLeavesMembershipUnchanged() {
         runTest(fixture -> {
             GroupTestFixture.provision(fixture, ALICE, BOB);
             UUID group = ok(create(fixture, ALICE, "Trip")).id();
             GroupTestFixture.addMember(fixture, group, BOB, GroupRole.MEMBER);
             UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
-            // Force a database rejection of the initiating administrator's demotion, not the promotion.
+            // Force a database rejection of the target member's promotion.
             try (Connection migrator = fixture.database().connectAsMigrator();
                  Statement ddl = migrator.createStatement()) {
-                ddl.execute("ALTER TABLE groups.group_members ADD CONSTRAINT test_alice_admin CHECK "
-                    + "(user_id <> '" + ALICE + "'::uuid OR role = 'admin')");
+                ddl.execute("ALTER TABLE groups.group_members ADD CONSTRAINT test_bob_member CHECK "
+                    + "(user_id <> '" + BOB + "'::uuid OR role = 'member')");
             }
             assertThrows(RuntimeException.class, () -> change(fixture, ALICE, group, bobId,
-                new MembershipChange.TransferAdministration()));
+                new MembershipChange.SetRole(GroupRole.ADMIN)));
             assertEquals(GroupRole.ADMIN, workspace(fixture, ALICE, group).group().callerRole());
             assertEquals(GroupRole.MEMBER, workspace(fixture, BOB, group).group().callerRole());
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);

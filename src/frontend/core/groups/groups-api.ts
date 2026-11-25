@@ -4,6 +4,7 @@ import type {
     CreateInvitationRequest,
     CreatedInvitation,
     InvitationList,
+    InvitationPreview,
     InvitationRedemption,
     GroupDetails,
     GroupList,
@@ -45,10 +46,6 @@ export class GroupsApi {
         return this.client.delete<void>(memberPath(groupId, membershipId), { expectedStatus: 204 });
     }
 
-    transferAdministration(groupId: string, membershipId: string): Promise<void> {
-        return this.client.post<void>(`${memberPath(groupId, membershipId)}/transfer-administration`, undefined, { expectedStatus: 204 });
-    }
-
     listInvitations(groupId: string): Promise<InvitationList> {
         return this.client.get<InvitationList>(`${groupPath(groupId)}/invitations`);
     }
@@ -59,6 +56,10 @@ export class GroupsApi {
 
     revokeInvitation(groupId: string, invitationId: string): Promise<void> {
         return this.client.delete<void>(`${groupPath(groupId)}/invitations/${encodeURIComponent(invitationId)}`, { expectedStatus: 204 });
+    }
+
+    previewInvitation(token: string): Promise<InvitationPreview> {
+        return this.client.post<InvitationPreview>('/groups/v1/invitations/preview', { token }, { expectedStatus: 200 });
     }
 
     redeemInvitation(token: string): Promise<InvitationRedemption> {

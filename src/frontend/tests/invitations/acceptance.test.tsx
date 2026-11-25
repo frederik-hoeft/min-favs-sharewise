@@ -12,6 +12,7 @@ import { deferred, GROUP_ID, json, problem, scriptedClient } from "../groups/sup
 import type { ReactNode } from "react";
 
 const TOKEN = `${GROUP_ID}.${"A".repeat(43)}`;
+const PREVIEW = "/api/groups/v1/invitations/preview";
 const REDEEM = "/api/groups/v1/invitations/redeem";
 const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -33,7 +34,8 @@ afterEach(() => { runtime.dispose(); window.history.replaceState({}, "", "/"); }
 function Root({ children }: { children: ReactNode }) {
   return <TestProviders><IdentityProvider runtime={runtime}><InvitationContinuationProvider>{children}</InvitationContinuationProvider></IdentityProvider></TestProviders>;
 }
-function renderInvite(signedIn = true) {
+function renderInvite(signedIn = true, preview = json(200, { groupName: "Mallorca 2027" })) {
+  if (signedIn) fake.respond("POST", PREVIEW, preview);
   if (signedIn) runtime.session.accept(authenticationResponse());
   else runtime.session.invalidate("expired");
   return render(<Root><InvitationAcceptance /></Root>);
@@ -46,10 +48,11 @@ describe("GI-FT17 invitation continuation", () => {
     const button = await screen.findByRole("button", { name: "Join group" });
     expect(window.location.hash).toBe("");
     expect(JSON.stringify(window.history.state)).not.toContain(TOKEN);
-    expect(fake.requests).toHaveLength(0);
+    expect(screen.getByText("Mallorca 2027")).toBeVisible();
+    expect(fake.requests).toEqual([{ method: "POST", path: PREVIEW, body: { token: TOKEN } }]);
     await userEvent.setup().click(button);
     await waitFor(() => expect(replace).toHaveBeenCalledWith(`/app/groups/view?id=${GROUP_ID}`));
-    expect(fake.requests).toEqual([{ method: "POST", path: REDEEM, body: { token: TOKEN } }]);
+    expect(fake.requests).toEqual([{ method: "POST", path: PREVIEW, body: { token: TOKEN } }, { method: "POST", path: REDEEM, body: { token: TOKEN } }]);
     expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
   });
 
@@ -58,7 +61,7 @@ describe("GI-FT17 invitation continuation", () => {
     fake.respond("POST", REDEEM, response.promise);
     renderInvite();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Join group" }));
-    await waitFor(() => expect(fake.requests).toHaveLength(1));
+    await waitFor(() => expect(fake.requests.filter(request => request.path === REDEEM)).toHaveLength(1));
     act(() => runtime.session.accept(authenticationResponse("new-token", undefined, SESSION_TWO)));
     await act(async () => { response.resolve(json(200, { groupId: GROUP_ID, outcome: "joined" })); });
     expect(replace).not.toHaveBeenCalled();
@@ -72,11 +75,60 @@ describe("GI-FT17 invitation continuation", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Join group" }));
     expect(await screen.findByText(/join could not be confirmed/i)).toBeVisible();
-    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests.filter(request => request.path === REDEEM)).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Join group" }));
     expect(await screen.findByText(/invitation is unavailable/i)).toBeVisible();
-    expect(fake.requests).toHaveLength(2);
+    expect(fake.requests.filter(request => request.path === REDEEM)).toHaveLength(2);
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("does not offer joining until a valid preview is available, and clears an unavailable link", async () => {
+    renderInvite(true, problem(404, "group_invitation_unavailable"));
+    await screen.findByText(/invitation is unavailable/i);
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+    expect(fake.requests.filter(request => request.path === REDEEM)).toHaveLength(0);
+  });
+
+  it("ignores a rejected preview of an invitation that was replaced in the same session", async () => {
+    const old = deferred<Response>();
+    runtime.session.accept(authenticationResponse());
+    fake.respond("POST", PREVIEW, old.promise, json(200, { groupName: "Replacement group" }));
+    render(<Root><InvitationAcceptance /></Root>);
+    await waitFor(() => expect(fake.requests).toHaveLength(1));
+    const replacementToken = `${GROUP_ID}.${"B".repeat(42)}A`;
+    window.history.replaceState({}, "", `/invite#${replacementToken}`);
+    act(() => window.dispatchEvent(new HashChangeEvent("hashchange")));
+    expect(await screen.findByText("Replacement group")).toBeVisible();
+    await act(async () => { old.resolve(problem(404, "group_invitation_unavailable")); });
+    expect(screen.getByText("Replacement group")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Join group" })).toBeEnabled();
+    expect(fake.requests).toEqual([
+      { method: "POST", path: PREVIEW, body: { token: TOKEN } },
+      { method: "POST", path: PREVIEW, body: { token: replacementToken } },
+    ]);
+  });
+
+  it("does not disclose a delayed preview to a replacement session", async () => {
+    const old = deferred<Response>();
+    runtime.session.accept(authenticationResponse());
+    fake.respond("POST", PREVIEW, old.promise);
+    render(<Root><InvitationAcceptance /></Root>);
+    await waitFor(() => expect(fake.requests).toHaveLength(1));
+    act(() => runtime.session.accept(authenticationResponse("new-token", undefined, SESSION_TWO)));
+    await act(async () => { old.resolve(json(200, { groupName: "Private group" })); });
+    expect(screen.queryByText("Private group")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+    expect(screen.getByText(/invitation is unavailable/i)).toBeVisible();
+  });
+
+  it("allows a preview retry without redeeming", async () => {
+    renderInvite(true, problem(500, "internal_error"));
+    const retry = await screen.findByRole("button", { name: "Retry invitation check" });
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+    fake.respond("POST", PREVIEW, json(200, { groupName: "Trip" }));
+    await userEvent.setup().click(retry);
+    expect(await screen.findByText("Trip")).toBeVisible();
+    expect(fake.requests.filter(request => request.path === REDEEM)).toHaveLength(0);
   });
 
   it("preserves the exact nonsecret continuation when switching login and registration", async () => {
@@ -107,6 +159,7 @@ describe("GI-FT17 invitation continuation", () => {
     await user.type(screen.getByLabelText(/^Password/), "correct horse battery staple");
     await user.click(screen.getByRole("button", { name: mode === "register" ? "Create account" : "Sign in" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/invite"));
+    fake.respond("POST", PREVIEW, json(200, { groupName: "Mallorca 2027" }));
     window.history.replaceState({}, "", "/invite");
     view.rerender(<Root><InvitationAcceptance /></Root>);
     await screen.findByRole("button", { name: "Join group" });

@@ -14,7 +14,7 @@ export type GroupProblem =
     | { readonly kind: 'member_not_found' }
     | { readonly kind: 'last_member' }
     | { readonly kind: 'last_administrator' }
-    | { readonly kind: 'invalid_transfer' }
+    | { readonly kind: 'self_role_change' }
     | { readonly kind: 'invitation_unavailable' }
     | { readonly kind: 'invitation_not_found' }
     | { readonly kind: 'invalid'; readonly error: ApiError }
@@ -54,8 +54,8 @@ export function classifyGroupProblem(error: unknown): GroupProblem {
     if (error.status === 409 && error.code === GROUP_PROBLEM_CODES.lastAdministrator) {
         return { kind: 'last_administrator' };
     }
-    if (error.status === 409 && error.code === GROUP_PROBLEM_CODES.invalidTransfer) {
-        return { kind: 'invalid_transfer' };
+    if (error.status === 409 && error.code === GROUP_PROBLEM_CODES.selfRoleChange) {
+        return { kind: 'self_role_change' };
     }
     if (error.status === 400) {
         return { kind: 'invalid', error };

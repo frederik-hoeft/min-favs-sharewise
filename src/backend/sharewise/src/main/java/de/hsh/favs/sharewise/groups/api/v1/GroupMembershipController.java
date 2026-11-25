@@ -14,7 +14,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,11 +40,6 @@ final class GroupMembershipController {
     @DeleteMapping("/{groupId}/members/{membershipId}")
     ResponseEntity<?> remove(@PathVariable UUID groupId, @PathVariable UUID membershipId) {
         return change(new MembershipChangeCommand(groupId, membershipId, new MembershipChange.Remove()));
-    }
-
-    @PostMapping("/{groupId}/members/{membershipId}/transfer-administration")
-    ResponseEntity<?> transfer(@PathVariable UUID groupId, @PathVariable UUID membershipId) {
-        return change(new MembershipChangeCommand(groupId, membershipId, new MembershipChange.TransferAdministration()));
     }
 
     private ResponseEntity<?> change(MembershipChangeCommand command) {

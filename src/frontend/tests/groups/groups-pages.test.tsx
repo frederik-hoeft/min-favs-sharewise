@@ -557,49 +557,32 @@ describe("GM-FT05 membership administration", () => {
     ]);
   });
 
-  it("transfers administration atomically, then removes administrative affordances", async () => {
-    search = `id=${GROUP_ID}`;
-    const transferred = { ...initial, group: { ...initial.group, callerRole: "member" as const }, members: initial.members.map(member => ({ ...member, role: member.id === target.id ? "admin" as const : "member" as const })) };
-    fake.respond("GET", WORKSPACE, json(200, initial), json(200, transferred));
-    fake.respond("POST", `${targetPath}/transfer-administration`, noContent());
-    const user = userEvent.setup();
-    renderPage(<GroupViewPage />);
-    await openMenu(user);
-    await user.click(screen.getByRole("menuitem", { name: "Transfer administration" }));
-    const dialog = screen.getByRole("dialog", { name: "Transfer administration?" });
-    expect(dialog).toHaveTextContent("you become a regular member in the same operation");
-    await user.click(within(dialog).getByRole("button", { name: "Transfer administration" }));
-    await screen.findByLabelText("Your role: Member");
-    expect(screen.queryByRole("button", { name: /^Manage member/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
-    expect(memberRow(target.userId)).toHaveTextContent("Administrator");
-  });
-
-  it("blocks leaving or self-demotion as the final administrator, while permitting transfer", async () => {
+  it("offers promotion but no self-role menu or transfer, and protects the final administrator", async () => {
     search = `id=${GROUP_ID}`;
     fake.respond("GET", WORKSPACE, json(200, initial));
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
     expect(await screen.findByRole("button", { name: "Leave group" })).toBeDisabled();
-    await openMenu(user, caller);
-    expect(screen.getByRole("menuitem", { name: "Make member" })).toBeDisabled();
-    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("button", { name: "Manage your membership" })).not.toBeInTheDocument();
     await openMenu(user);
-    expect(screen.getByRole("menuitem", { name: "Transfer administration" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Make administrator" })).toBeEnabled();
+    expect(screen.queryByRole("menuitem", { name: "Transfer administration" })).not.toBeInTheDocument();
   });
 
-  it("requires confirmation of self-demotion and handles a concurrent final-admin conflict", async () => {
+  it("allows another administrator's demotion and does not offer self-demotion", async () => {
     search = `id=${GROUP_ID}`;
     const twoAdmins = { ...initial, members: initial.members.map(member => member.id === target.id ? { ...member, role: "admin" as const } : member) };
     fake.respond("GET", WORKSPACE, json(200, twoAdmins), json(200, initial));
-    fake.respond("PUT", `${callerPath}/role`, problem(409, "group_last_administrator"));
+    fake.respond("PUT", `${targetPath}/role`, noContent());
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
-    await openMenu(user, caller);
+    expect(await screen.findByRole("button", { name: "Leave group" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Manage your membership" })).not.toBeInTheDocument();
+    await openMenu(user);
     await user.click(screen.getByRole("menuitem", { name: "Make member" }));
-    const dialog = screen.getByRole("dialog", { name: "Give up administration?" });
+    const dialog = screen.getByRole("dialog", { name: "Make member?" });
     await user.click(within(dialog).getByRole("button", { name: "Make member" }));
-    expect(await screen.findByText("A group must retain at least one administrator.")).toBeInTheDocument();
+    await screen.findByText("Membership updated.");
     expect(screen.getByRole("button", { name: "Leave group" })).toBeDisabled();
   });
 
@@ -904,7 +887,7 @@ describe("GI-FT16 invitation management", () => {
   });
 
   it("shows expired and exhausted links, supports custom constraints, and is structurally accessible", async () => {
-    const expired = { ...invitation, expiresAt: "2000-01-01T00:00:00Z" };
+    const expired = { ...invitation, id: `${INVITATION_ID.slice(0, -1)}3`, expiresAt: "2000-01-01T00:00:00Z" };
     const exhausted = { ...invitation, id: `${INVITATION_ID.slice(0, -1)}2`, useCount: 1 };
     fake.respond("GET", INVITATIONS, json(200, { items: [expired, exhausted] }), json(200, { items: [expired, exhausted, invitation] }));
     fake.respond("POST", INVITATIONS, json(201, { invitation, token: INVITATION_TOKEN }));

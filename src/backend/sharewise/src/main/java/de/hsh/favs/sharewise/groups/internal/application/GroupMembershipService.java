@@ -47,9 +47,9 @@ public class GroupMembershipService {
         }
         GroupMember member = target.get();
         return switch (command.change()) {
-            case MembershipChange.SetRole(GroupRole role) -> setRole(group, member, role, context.hasOtherAdministrators());
+            case MembershipChange.SetRole(GroupRole role) -> self && member.role() != role
+                ? Result.err(new GroupFailure.SelfRoleChange()) : setRole(group, member, role, context.hasOtherAdministrators());
             case MembershipChange.Remove() -> remove(group, member, context);
-            case MembershipChange.TransferAdministration() -> transfer(group, caller, member);
         };
     }
 
@@ -72,18 +72,6 @@ public class GroupMembershipService {
             return Result.err(new GroupFailure.LastAdministrator());
         }
         members.removeMember(group, member.id());
-        return completed();
-    }
-
-    private Result<MembershipChangeStatus, GroupFailure> transfer(LockedGroup group, GroupMember caller,
-            GroupMember target) {
-        if (caller.id().equals(target.id())) {
-            return Result.err(new GroupFailure.InvalidTransfer());
-        }
-        if (!target.role().isAdministrator()) {
-            members.setRole(group, target.id(), GroupRole.ADMIN);
-        }
-        members.setRole(group, caller.id(), GroupRole.MEMBER);
         return completed();
     }
 

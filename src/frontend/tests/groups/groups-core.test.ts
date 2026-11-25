@@ -44,19 +44,16 @@ describe("GroupsApi", () => {
     const membershipId = workspace().members[1].id;
     const path = `/api/groups/v1/groups/${GROUP_ID}/members/${membershipId}`;
     fake.respond("PUT", `${path}/role`, new Response(null, { status: 204 }));
-    fake.respond("DELETE", path, new Response(null, { status: 204 }));
-    fake.respond("POST", `${path}/transfer-administration`, new Response(null, { status: 204 }), json(200, {}));
+    fake.respond("DELETE", path, new Response(null, { status: 204 }), json(200, {}));
     const api = new GroupsApi(fake.client);
     await api.setMemberRole(GROUP_ID, membershipId, "admin");
     await api.removeMember(GROUP_ID, membershipId);
-    await api.transferAdministration(GROUP_ID, membershipId);
-    await expect(api.transferAdministration(GROUP_ID, membershipId)).rejects.toBeInstanceOf(ApiError);
+    await expect(api.removeMember(GROUP_ID, membershipId)).rejects.toBeInstanceOf(ApiError);
     await expect(api.removeMember(GROUP_ID, "../another")).rejects.toMatchObject({ code: "invalid_api_path" });
     expect(fake.requests).toEqual([
       { method: "PUT", path: `${path}/role`, body: { role: "admin" } },
       { method: "DELETE", path, body: undefined },
-      { method: "POST", path: `${path}/transfer-administration`, body: undefined },
-      { method: "POST", path: `${path}/transfer-administration`, body: undefined },
+      { method: "DELETE", path, body: undefined },
     ]);
   });
 
@@ -64,7 +61,7 @@ describe("GroupsApi", () => {
     [404, "group_member_not_found", "member_not_found"],
     [409, "group_last_member", "last_member"],
     [409, "group_last_administrator", "last_administrator"],
-    [409, "group_invalid_transfer", "invalid_transfer"],
+    [409, "group_self_role_change", "self_role_change"],
   ])("classifies membership problem %s %s", (status, code, kind) => {
     expect(classifyGroupProblem(new ApiError({ status, code, title: "", detail: "" })).kind).toBe(kind);
   });

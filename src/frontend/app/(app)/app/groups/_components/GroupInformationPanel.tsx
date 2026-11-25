@@ -45,22 +45,22 @@ export function GroupInformationPanel({ workspace, onEdit, onInvitations, onMemb
                 <Text size="sm" fw={600} className={styles.wrap}>{member.userId}{own ? " (You)" : ""}</Text>
                 <RoleBadge role={member.role} own={own} />
               </Stack>
-              {options.length > 0 ? <MemberMenu member={member} own={own} options={options} disabled={controlsDisabled} onSelect={onMemberAction} /> : null}
+              {options.length > 0 ? <MemberMenu member={member} options={options} disabled={controlsDisabled} onSelect={onMemberAction} /> : null}
             </Group>
           </li>;
         })}
       </ul>
       <Divider />
       {group.callerRole === "admin" ? <Button variant="light" fullWidth disabled={controlsDisabled} leftSection={<LinkSimpleIcon aria-hidden="true" />} onClick={onInvitations}>Manage invitation links</Button> : null}
-      {leaveBlocked ? <Text size="xs" c="dimmed">{members.length <= 1 ? "You cannot leave as the only member. Invite another member first." : "You cannot leave as the only administrator. Promote another member or transfer administration first."}</Text> : null}
+      {leaveBlocked ? <Text size="xs" c="dimmed">{members.length <= 1 ? "You cannot leave as the only member. Invite another member first." : "You cannot leave as the only administrator. Promote another member first."}</Text> : null}
       <Button variant="subtle" color="red" fullWidth disabled={controlsDisabled || leaveBlocked || !caller} leftSection={<SignOutIcon aria-hidden="true" />} onClick={event => { if (caller) onMemberAction({ kind: "leave", member: caller }, event.currentTarget); }}>Leave group</Button>
     </Stack>
   );
 }
 
-function MemberMenu({ member, own, options, disabled, onSelect }: { member: GroupMember; own: boolean; options: MembershipOption[]; disabled: boolean; onSelect: (action: MembershipAction, origin: HTMLElement | null) => void }) {
+function MemberMenu({ member, options, disabled, onSelect }: { member: GroupMember; options: MembershipOption[]; disabled: boolean; onSelect: (action: MembershipAction, origin: HTMLElement | null) => void }) {
   const trigger = useRef<HTMLButtonElement>(null);
-  const label = own ? "Manage your membership" : `Manage member ${member.userId}`;
+  const label = `Manage member ${member.userId}`;
   return <Menu position="bottom-end" width="14rem" withinPortal={false}>
     <Menu.Target>
       <ActionIcon ref={trigger} variant="subtle" color="gray" size="lg" aria-label={label} title={label} disabled={disabled}><DotsThreeIcon weight="bold" size="1.25rem" aria-hidden="true" /></ActionIcon>

@@ -124,6 +124,24 @@ class GroupInvitationServiceTests {
         assertEquals(unavailable, call(OUTSIDER, service -> service.redeem(single.token().value())));
     }
 
+    @Test void previewDisclosesOnlyValidGroupNameWithoutConsuming() {
+        CreatedInvitation link = create(invitations.now.plusSeconds(10), 1);
+        assertEquals(new InvitationPreview("Trip"), ok(call(OUTSIDER, service -> service.preview(link.token().value()))));
+        assertEquals(0, ok(call(ADMIN, service -> service.list(group))).getFirst().useCount());
+        Result<InvitationPreview, GroupFailure> unavailable = Result.err(new GroupFailure.InvitationUnavailable());
+        assertEquals(unavailable, call(OUTSIDER, service -> service.preview("broken")));
+        assertEquals(unavailable, call(OUTSIDER, service -> service.preview(generator.generate(link.invitation().id()).value())));
+        assertEquals(Result.err(new GroupFailure.UnknownUser()), call(UNKNOWN, service -> service.preview(link.token().value())));
+        assertEquals(InvitationRedemption.Outcome.JOINED, redeem(OUTSIDER, link).outcome());
+        assertEquals(unavailable, call(OUTSIDER, service -> service.preview(link.token().value())));
+        CreatedInvitation expired = create(invitations.now.plusSeconds(10), null);
+        invitations.now = expired.invitation().expiresAt();
+        assertEquals(unavailable, call(OUTSIDER, service -> service.preview(expired.token().value())));
+        CreatedInvitation revoked = create(null, null);
+        ok(call(ADMIN, service -> service.revoke(group, revoked.invitation().id())));
+        assertEquals(unavailable, call(OUTSIDER, service -> service.preview(revoked.token().value())));
+    }
+
     private CreatedInvitation create(Instant expires, Integer limit) {
         return ok(call(ADMIN, service -> service.create(new CreateInvitationCommand(group, expires, limit))));
     }

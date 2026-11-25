@@ -70,6 +70,17 @@ public class GroupInvitationService {
                 : Result.err(new GroupFailure.InvitationNotFound()))));
     }
 
+    public Result<InvitationPreview, GroupFailure> preview(String bearer) {
+        UUID userId = admission.requireAuthenticated();
+        Optional<ApplicationToken> presented = parser.parse(bearer);
+        return transactions.execute(() -> GroupOutcomes.read(presented
+            .map(token -> admission.resolveProjection(invitations.previewContext(token.selector(), userId),
+                new GroupFailure.InvitationUnavailable()).flatMap(context ->
+                    valid(context.invitation(), context.evaluatedAt(), token)
+                        ? Result.ok(new InvitationPreview(context.groupName())) : unavailable()))
+            .orElseGet(() -> admission.admit().flatMap(caller -> unavailable()))));
+    }
+
     public Result<InvitationRedemption, GroupFailure> redeem(String bearer) {
         UUID userId = admission.requireAuthenticated();
         Optional<ApplicationToken> presented = parser.parse(bearer);
@@ -118,7 +129,7 @@ public class GroupInvitationService {
             return unavailable();
         }
         InvitationRedemptionContext context = current.get();
-        if (!context.invitation().matches(token) || !context.invitation().summary().availableAt(context.evaluatedAt())) {
+        if (!valid(context.invitation(), context.evaluatedAt(), token)) {
             return unavailable();
         }
         if (context.alreadyMember()) {
@@ -127,6 +138,10 @@ public class GroupInvitationService {
         members.addMember(group, userId);
         invitations.consume(group, token.selector());
         return Result.ok(new InvitationRedemption(group.id(), InvitationRedemption.Outcome.JOINED));
+    }
+
+    private static boolean valid(StoredInvitation invitation, Instant evaluatedAt, ApplicationToken token) {
+        return invitation.matches(token) && invitation.summary().availableAt(evaluatedAt);
     }
 
     private static <T> Result<T, GroupFailure> unavailable() {

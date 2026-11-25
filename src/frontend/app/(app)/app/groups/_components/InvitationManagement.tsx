@@ -9,7 +9,7 @@ import { ConfirmationDialog } from "@/components/feedback/ConfirmationDialog";
 import { classifyGroupProblem, isInvitationToken, type GroupProblem, type InvitationSummary } from "@/core/groups";
 import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
 import { GroupLoadingState, GroupProblemState } from "./GroupProblemState";
-import { useGroupResource } from "./use-group-resource";
+import { useGroupResource } from "@/app/use-group-resource";
 import styles from "./GroupInformationPanel.module.scss";
 
 const MAX_USES = 2147483647;
