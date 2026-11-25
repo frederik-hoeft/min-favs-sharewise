@@ -38,7 +38,7 @@ final class InMemoryInvitations implements GroupInvitationPort {
 
     @Override public Optional<InvitationPreviewContext> previewContext(UUID selector, UUID userId) {
         groups.recordCall("previewContext");
-        if (!groups.isKnown(userId)) return Optional.empty();
+        if (!groups.containsUser(userId)) return Optional.empty();
         return Optional.ofNullable(entries.get(selector)).flatMap(entry -> groups.stored(entry.groupId())
             .map(group -> new InvitationPreviewContext(new StoredInvitation(entry.summary(), entry.verifier()),
                 now, group.metadata().name().value())));

@@ -80,10 +80,8 @@ public class GroupInvitationService {
         UUID userId = admission.requireAuthenticated();
         Optional<ApplicationToken> presented = parser.parse(bearer);
         return transactions.execute(() -> GroupOutcomes.read(presented
-            .map(token -> admission.resolveProjection(invitations.previewContext(token.selector(), userId),
-                new GroupFailure.InvitationUnavailable()).flatMap(context ->
-                    valid(context.invitation(), context.evaluatedAt(), token)
-                        ? Result.ok(new InvitationPreview(context.groupName())) : unavailable()))
+            .map(token -> validatePresentedInvitation(userId, token)
+                .map(context -> new InvitationPreview(context.groupName())))
             .orElseGet(() -> admission.admit().flatMap(caller -> unavailable()))));
     }
 
@@ -124,9 +122,18 @@ public class GroupInvitationService {
     }
 
     private Result<InvitationRedemption, GroupFailure> redeem(UUID userId, ApplicationToken token) {
-        // The selector locates the root, never authorizes redemption. Re-read after the lock wait.
-        return admission.resolveProjection(invitations.lockGroupForRedemption(token.selector(), userId),
-            new GroupFailure.InvitationUnavailable()).flatMap(group -> redeemLocked(group, userId, token));
+        // Screen invalid credentials without entering the group synchronization boundary.
+        // The pre-lock snapshot cannot authorize a write; revalidate after acquiring the lock.
+        return validatePresentedInvitation(userId, token)
+            .flatMap(verified -> admission.resolveProjection(invitations.lockGroupForRedemption(token.selector(), userId),
+                new GroupFailure.InvitationUnavailable()))
+            .flatMap(group -> redeemLocked(group, userId, token));
+    }
+
+    private Result<InvitationPreviewContext, GroupFailure> validatePresentedInvitation(UUID userId, ApplicationToken token) {
+        return admission.resolveProjection(invitations.previewContext(token.selector(), userId),
+            new GroupFailure.InvitationUnavailable()).flatMap(context ->
+                valid(context.invitation(), context.evaluatedAt(), token) ? Result.ok(context) : unavailable());
     }
 
     private Result<InvitationRedemption, GroupFailure> redeemLocked(LockedGroup group, UUID userId, ApplicationToken token) {

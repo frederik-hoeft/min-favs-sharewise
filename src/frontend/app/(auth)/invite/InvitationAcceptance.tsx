@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AuthenticatedApisProvider, useAuthState, useIdentity } from "@/app/identity-provider";
-import { INVITE_RETURN_QUERY } from "@/lib/navigation/invitation-routes";
+import { INVITE_PATH, INVITE_RETURN_QUERY, invitationTokenFromFragment } from "@/lib/navigation/invitation-routes";
 import { type InvitationContinuation, useInvitationContinuation } from "@/app/invitation-continuation";
 import { useGroupsApi } from "@/app/use-groups-api";
 import { useGroupResource } from "@/app/use-group-resource";
@@ -24,15 +24,16 @@ export function InvitationAcceptance() {
     if (!continuation) return;
     const owner = continuation;
     function capture() {
-      const fragment = window.location.hash.slice(1);
-      if (!fragment) {
+      if (window.location.pathname !== INVITE_PATH) return;
+      const token = invitationTokenFromFragment(window.location.hash);
+      if (token === undefined) {
         if (owner.getSnapshot() === 0) owner.capture("");
         return;
       }
       // Next copies its internal route state and synchronizes its canonical URL for external
       // history changes. Passing the existing internal state would bypass that synchronization.
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
-      owner.capture(fragment);
+      owner.capture(token);
       owner.bind(session.getAuthenticatedLifetime());
     }
     // The router installs its native-history integration in a parent effect. Capture after

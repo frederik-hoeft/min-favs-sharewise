@@ -813,7 +813,7 @@ describe("GI-FT16 invitation management", () => {
     await screen.findByText("No invitation links yet.");
     expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Create link" }));
-    expect(await screen.findByLabelText("Invitation link")).toHaveValue(`${window.location.origin}/invite#${INVITATION_TOKEN}`);
+    expect(await screen.findByLabelText("Invitation link")).toHaveValue(`${window.location.origin}/invite#token=${INVITATION_TOKEN}`);
     expect(fake.requests.find(r => r.method === "POST")?.body).toMatchObject({ maxUses: 1, expiresAt: expect.any(String) });
     vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("not permitted"));
     await user.click(screen.getByRole("button", { name: "Copy link" }));

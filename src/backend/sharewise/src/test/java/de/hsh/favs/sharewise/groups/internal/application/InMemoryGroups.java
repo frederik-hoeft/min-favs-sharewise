@@ -81,10 +81,15 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
         return List.copyOf(calls);
     }
 
+    /** Internal fixture predicate for a joined projection; not a registry port invocation. */
+    synchronized boolean containsUser(UUID userId) {
+        return users.contains(userId);
+    }
+
     @Override
     public synchronized boolean isKnown(UUID userId) {
         calls.add("isKnown");
-        return users.contains(userId);
+        return containsUser(userId);
     }
 
     @Override

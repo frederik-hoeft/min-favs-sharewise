@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import AuthLayout from "@/app/(auth)/layout";
 import { InvitationAcceptance } from "@/app/(auth)/invite/InvitationAcceptance";
 import { AuthenticationForm } from "@/app/(auth)/_components/AuthenticationForm";
 import { IdentityProvider } from "@/app/identity-provider";
@@ -26,7 +27,7 @@ let runtime: IdentityRuntime;
 beforeEach(() => {
   fake = scriptedClient();
   runtime = createIdentityRuntime({ fetchImpl: fake.fetchImpl, locks: () => new ControlledLocks().manager });
-  window.history.replaceState({}, "", `/invite#${TOKEN}`);
+  window.history.replaceState({}, "", `/invite#token=${TOKEN}`);
   replace.mockReset();
 });
 afterEach(() => { runtime.dispose(); window.history.replaceState({}, "", "/"); });
@@ -54,6 +55,48 @@ describe("GI-FT17 invitation continuation", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith(`/app/groups/view?id=${GROUP_ID}`));
     expect(fake.requests).toEqual([{ method: "POST", path: PREVIEW, body: { token: TOKEN } }, { method: "POST", path: REDEEM, body: { token: TOKEN } }]);
     expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+  });
+
+  it("preserves the preview and explicit join when using the actual layout skip link", async () => {
+    runtime.session.accept(authenticationResponse());
+    fake.respond("POST", PREVIEW, json(200, { groupName: "Mallorca 2027" }));
+    fake.respond("POST", REDEEM, json(200, { groupId: GROUP_ID, outcome: "joined" }));
+    render(<Root><AuthLayout><InvitationAcceptance /></AuthLayout></Root>);
+    await screen.findByRole("button", { name: "Join group" });
+    const user = userEvent.setup();
+    await user.tab();
+    expect(screen.getByRole("link", { name: "Skip to content" })).toHaveFocus();
+    const hashChanged = new Promise<void>(resolve => {
+      window.addEventListener("hashchange", () => resolve(), { once: true });
+    });
+    await user.keyboard("{Enter}");
+    await act(async () => { await hashChanged; });
+    expect(window.location.hash).toBe("#main");
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main");
+    expect(screen.getByText("Mallorca 2027")).toBeVisible();
+    expect(fake.requests).toEqual([{ method: "POST", path: PREVIEW, body: { token: TOKEN } }]);
+    await user.click(screen.getByRole("button", { name: "Join group" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(`/app/groups/view?id=${GROUP_ID}`));
+    expect(fake.requests.at(-1)).toEqual({ method: "POST", path: REDEEM, body: { token: TOKEN } });
+  });
+
+  it.each(["#token=", "#token=bad-token"])("clears a pending invitation on malformed replacement %s", async hash => {
+    renderInvite();
+    await screen.findByRole("button", { name: "Join group" });
+    window.history.replaceState({}, "", `/invite${hash}`);
+    act(() => window.dispatchEvent(new HashChangeEvent("hashchange")));
+    expect(await screen.findByText(/invitation is unavailable/i)).toBeVisible();
+    expect(window.location.hash).toBe("");
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+    expect(fake.requests).toHaveLength(1);
+  });
+
+  it("leaves unrelated fragments untouched without inventing a continuation", async () => {
+    window.history.replaceState({}, "", "/invite#main");
+    renderInvite(false);
+    expect(await screen.findByText(/invitation is unavailable/i)).toBeVisible();
+    expect(window.location.hash).toBe("#main");
+    expect(fake.requests).toHaveLength(0);
   });
 
   it("discards a capability when the session changes while redemption is pending", async () => {
@@ -96,7 +139,7 @@ describe("GI-FT17 invitation continuation", () => {
     render(<Root><InvitationAcceptance /></Root>);
     await waitFor(() => expect(fake.requests).toHaveLength(1));
     const replacementToken = `${GROUP_ID}.${"B".repeat(42)}A`;
-    window.history.replaceState({}, "", `/invite#${replacementToken}`);
+    window.history.replaceState({}, "", `/invite#token=${replacementToken}`);
     act(() => window.dispatchEvent(new HashChangeEvent("hashchange")));
     expect(await screen.findByText("Replacement group")).toBeVisible();
     await act(async () => { old.resolve(problem(404, "group_invitation_unavailable")); });
@@ -168,7 +211,7 @@ describe("GI-FT17 invitation continuation", () => {
   });
 
   it("does not accept malformed fragments or a fabricated continuation return path", async () => {
-    window.history.replaceState({}, "", "/invite#bad-token");
+    window.history.replaceState({}, "", "/invite#token=bad-token");
     const view = renderInvite(false);
     expect(await screen.findByText(/invitation is unavailable/i)).toBeVisible();
     expect(window.location.hash).toBe("");
@@ -193,7 +236,7 @@ describe("GI-FT17 invitation continuation", () => {
     expect(screen.getByText(/invitation is unavailable/i)).toBeVisible();
     expect(fake.requests).toHaveLength(0);
     // A new link can be opened, but not retained through unrelated navigation.
-    window.history.replaceState({}, "", `/invite#${TOKEN}`);
+    window.history.replaceState({}, "", `/invite#token=${TOKEN}`);
     act(() => window.dispatchEvent(new HashChangeEvent("hashchange")));
     await screen.findByRole("link", { name: "Sign in" });
     function PendingIndicator() { return <span>{useInvitationContinuation().pending ? "pending" : "empty"}</span>; }

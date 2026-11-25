@@ -81,11 +81,14 @@ class GroupInvitationServiceTests {
         assertEquals(List.of(link.invitation()), ok(call(ADMIN, service -> service.list(group))));
         assertEquals(List.of("invitationList"), groups.calls());
         groups.clearCalls();
+        assertEquals(new InvitationPreview("Trip"), ok(call(OUTSIDER, service -> service.preview(link.token().value()))));
+        assertEquals(List.of("previewContext"), groups.calls());
+        groups.clearCalls();
         assertEquals(InvitationRedemption.Outcome.JOINED, redeem(OUTSIDER, link).outcome());
-        assertEquals(List.of("redemptionLock", "redemptionContext", "addMember", "consumeInvitation"), groups.calls());
+        assertEquals(List.of("previewContext", "redemptionLock", "redemptionContext", "addMember", "consumeInvitation"), groups.calls());
         groups.clearCalls();
         assertEquals(InvitationRedemption.Outcome.ALREADY_MEMBER, redeem(OUTSIDER, link).outcome());
-        assertEquals(List.of("redemptionLock", "redemptionContext"), groups.calls());
+        assertEquals(List.of("previewContext", "redemptionLock", "redemptionContext"), groups.calls());
         groups.clearCalls();
         assertEquals(InvitationRevocationStatus.REVOKED, ok(call(ADMIN, service -> service.revoke(group, link.invitation().id()))));
         assertEquals(List.of("lock", "role", "revokeInvitation"), groups.calls());
@@ -128,6 +131,21 @@ class GroupInvitationServiceTests {
         assertEquals(unavailable, call(ADMIN, service -> service.redeem(single.token().value())));
         assertEquals(InvitationRevocationStatus.REVOKED, ok(call(ADMIN, service -> service.revoke(group, single.invitation().id()))));
         assertEquals(unavailable, call(OUTSIDER, service -> service.redeem(single.token().value())));
+    }
+
+    @Test void invalidCredentialsNeverReachTheRootLock() {
+        CreatedInvitation expired = create(invitations.now.plusSeconds(10), null);
+        CreatedInvitation exhausted = create(null, 1);
+        CreatedInvitation active = create(null, null);
+        redeem(OUTSIDER, exhausted);
+        invitations.now = expired.invitation().expiresAt();
+        Result<InvitationRedemption, GroupFailure> unavailable = Result.err(new GroupFailure.InvitationUnavailable());
+        for (String token : List.of(expired.token().value(), exhausted.token().value(),
+                generator.generate(active.invitation().id()).value())) {
+            groups.clearCalls();
+            assertEquals(unavailable, call(OUTSIDER, service -> service.redeem(token)));
+            assertEquals(List.of("previewContext"), groups.calls());
+        }
     }
 
     @Test void previewDisclosesOnlyValidGroupNameWithoutConsuming() {
