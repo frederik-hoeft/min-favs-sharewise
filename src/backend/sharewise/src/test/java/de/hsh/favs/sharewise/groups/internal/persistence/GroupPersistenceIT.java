@@ -330,13 +330,18 @@ class GroupPersistenceIT extends IntegrationTestBase {
 
             transactions.execute(() -> {
                 DSLContext db = jooq.dsl();
-                assertEquals(List.of("group_members|sharewise_migrator", "groups|sharewise_migrator",
-                        "users|sharewise_migrator"),
-                    db.fetch("SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'groups' ORDER BY 1")
-                        .map(row -> row.get(0) + "|" + row.get(1)));
+                List<String> tables = db.fetch("SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'groups'")
+                    .map(row -> row.get(0) + "|" + row.get(1));
+                assertTrue(tables.containsAll(List.of("group_members|sharewise_migrator", "groups|sharewise_migrator",
+                        "users|sharewise_migrator", "invitations|sharewise_migrator")));
+                assertTrue(tables.stream().allMatch(table -> table.endsWith("|sharewise_migrator")));
+                // These core tables retain the original default grants. Invitation-specific
+                // column privileges are covered by GroupInvitationSchemaE2E.
                 for (String table : List.of("groups.users", "groups.groups", "groups.group_members")) {
-                    assertEquals(Boolean.TRUE, db.fetchValue(
-                        "SELECT has_table_privilege('sharewise_app', ?, 'SELECT, INSERT, UPDATE, DELETE')", table), table);
+                    for (String privilege : List.of("SELECT", "INSERT", "UPDATE", "DELETE")) {
+                        assertEquals(Boolean.TRUE, db.fetchValue(
+                            "SELECT has_table_privilege('sharewise_app', ?, ?)", table, privilege), table + " " + privilege);
+                    }
                     assertEquals(Boolean.FALSE, db.fetchValue(
                         "SELECT has_table_privilege('sharewise_app', ?, 'TRUNCATE, REFERENCES, TRIGGER')", table), table);
                 }

@@ -88,9 +88,19 @@ Suggested commit: `P2.2c-D: Extract reusable opaque application token primitives
 
 Suggested commit: `P2.2c-E: Define invitation persistence schema`.
 
-- [ ] Create additive Group Flyway migration with ER-defined columns/domains/checks/index and least-privilege grants consistent with repository conventions. Add schema contract tests not requiring the as-yet-ungenerated mappings. No runtime invitation adapter depending on missing types.
-- [ ] Run offline Unit/module gate; review migration/DDL and privileges; publish checkpoint with exact migration path, cumulative phase status and generation instructions. Explicitly record temporary schema freshness failure expected until generation.
+- [x] Create additive Group Flyway migration with ER-defined columns/domains/checks/index and least-privilege grants consistent with repository conventions. Add schema contract tests not requiring the as-yet-ungenerated mappings. No runtime invitation adapter depending on missing types.
+- [x] Run offline Unit/module gate; review migration/DDL and privileges; publish checkpoint with exact migration path, cumulative phase status and generation instructions. Explicitly record temporary schema freshness failure expected until generation.
 - [ ] **STOP 1 (human):** Apply ordered patches, migrate the development database, run Group-only jOOQ code generation as documented in [development setup](../../../development.md), inspect generated diff, check CI and return the generated patch and feedback. Expected generator command from backend root in dev container: `./mvnw -Pjooq-codegen -Djooq.codegen.jdbc.url=jdbc:postgresql://postgres:5432/sharewise -Djooq.codegen.jdbc.user=sharewise_migrator org.jooq:jooq-codegen-maven:generate@groups` (with configured `JOOQ_CODEGEN_PASSWORD`). Migration must have run first; no source edits to bypass generation. Human may commit migration and generated sources together upstream if appropriate while retaining the ordered local checkpoint history.
+
+**Checkpoint evidence:** Additive migration `src/backend/sharewise/src/main/resources/db/migration/groups/V202611251310__groups_invitations.sql`; Group-owned integer domains, UUIDv7 default, local NO ACTION FK and index, verifier/expiration/usage constraints. Default SELECT/INSERT/DELETE retained, table-level UPDATE revoked and column-level UPDATE granted only for `use_count`. Four real PostgreSQL schema E2E cases cover metadata/ownership/index/privileges, defaults/FK/duplicate identity and revocation, invalid values and overflow, and upgrade preservation. These tests and affected Integration tests compiled; 400 backend Unit/component tests and Modulith verification passed in the offline `clean verify` gate. The first invocation was interrupted after tests during packaging; the complete repeat succeeded. Database migration execution, physical constraints and jOOQ generation remain unverified locally; schema freshness is expected to fail until generated sources accompany the migration. No invitation runtime code or hand-written generated mappings added.
+
+**Self-review record:**
+
+- P2 - Existing Group schema test rejected additive tables: adjusted the ownership contract to require the core and invitation tables and migrator ownership of all Group tables, without forbidding future additive tables.
+- P2 - Runtime privilege test accepted any one CRUD grant: verify each required grant separately for the existing core tables; test invitation-specific update restrictions separately.
+- P3 - Missing explicit null tests for required schema fields: added rejection cases for null selector and creation timestamp alongside the other constraints.
+
+**Human handoff:** Phases A–E are locally self-reviewed and published, not accepted. Apply the ordered patch sequence, migrate PostgreSQL, regenerate only Group schema sources and return the generated diff; keep freshness enabled. Real database and browser acceptance remain outstanding. No merge into baseline or changes to authoritative steady-state documentation yet.
 
 ## Phase F - Generated schema integration and invitation backend
 
