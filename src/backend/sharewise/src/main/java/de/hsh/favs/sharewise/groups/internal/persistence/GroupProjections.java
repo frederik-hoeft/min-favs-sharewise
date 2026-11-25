@@ -4,6 +4,7 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.application.GroupSummary;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
@@ -45,9 +46,18 @@ final class GroupProjections {
             .as("caller_role");
     }
 
+    static GroupMember member(Record row, GroupMembers members) {
+        return new GroupMember(row.get(members.ID), row.get(members.USER_ID),
+            toDomain(row.get(members.ROLE)), row.get(members.JOINED_AT).toInstant());
+    }
+
     static GroupDetails details(Record row, Field<GroupRole> callerRole) {
+        return details(row, callerRole, row.get(MEMBER_COUNT));
+    }
+
+    static GroupDetails details(Record row, Field<GroupRole> callerRole, int memberCount) {
         return new GroupDetails(row.get(GROUPS_.ID), metadata(row), row.get(GROUPS_.CREATED_AT).toInstant(),
-                row.get(GROUPS_.VERSION), row.get(MEMBER_COUNT), row.get(callerRole));
+                row.get(GROUPS_.VERSION), memberCount, row.get(callerRole));
     }
 
     static GroupSummary summary(Record row, Field<GroupRole> callerRole) {

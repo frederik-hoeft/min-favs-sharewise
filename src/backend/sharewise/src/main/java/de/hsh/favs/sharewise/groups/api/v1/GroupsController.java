@@ -4,9 +4,14 @@ import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
 import de.hsh.favs.sharewise.groups.internal.application.GroupCreationService;
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
+import de.hsh.favs.sharewise.groups.internal.application.GroupMembershipService;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMetadataService;
 import de.hsh.favs.sharewise.groups.internal.application.GroupQueryService;
 import de.hsh.favs.sharewise.groups.internal.application.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChange;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeCommand;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeStatus;
 import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
@@ -19,6 +24,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,7 +34,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Group creation, the caller's group list, group details and metadata replacement.
+ * Group creation, member-scoped reads, metadata replacement and membership administration.
  *
  * <p>Route admission requires a verified primary IAM bearer before a handler runs. Each handler
  * dispatches one operation through the request's ingress, so the operation receives the verified
@@ -81,6 +87,35 @@ final class GroupsController {
         Result<GroupDetails, GroupFailure> result =
             ingress.dispatch(GroupMetadataService.class, service -> service.replace(command));
         return result.fold(group -> ResponseEntity.ok(GroupDetailsResponse.of(group)), GroupProblems::response);
+    }
+
+    @GetMapping("/{groupId}/workspace")
+    ResponseEntity<?> workspace(@PathVariable UUID groupId) {
+        Result<GroupWorkspace, GroupFailure> result =
+            ingress.dispatch(GroupQueryService.class, service -> service.workspace(groupId));
+        return result.fold(workspace -> ResponseEntity.ok(GroupWorkspaceResponse.of(workspace)), GroupProblems::response);
+    }
+
+    @PutMapping(value = "/{groupId}/members/{membershipId}/role", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<?> setRole(@PathVariable UUID groupId, @PathVariable UUID membershipId,
+            @RequestBody SetMemberRoleRequest request) {
+        return change(valid(GroupCommands.setRole(groupId, membershipId, request)));
+    }
+
+    @DeleteMapping("/{groupId}/members/{membershipId}")
+    ResponseEntity<?> remove(@PathVariable UUID groupId, @PathVariable UUID membershipId) {
+        return change(new MembershipChangeCommand(groupId, membershipId, new MembershipChange.Remove()));
+    }
+
+    @PostMapping("/{groupId}/members/{membershipId}/transfer-administration")
+    ResponseEntity<?> transfer(@PathVariable UUID groupId, @PathVariable UUID membershipId) {
+        return change(new MembershipChangeCommand(groupId, membershipId, new MembershipChange.TransferAdministration()));
+    }
+
+    private ResponseEntity<?> change(MembershipChangeCommand command) {
+        Result<MembershipChangeStatus, GroupFailure> result = ingress.dispatch(GroupMembershipService.class,
+            service -> service.change(command));
+        return result.fold(status -> ResponseEntity.noContent().build(), GroupProblems::response);
     }
 
     private static <T> T valid(Result<T, ValidationErrors> input) {

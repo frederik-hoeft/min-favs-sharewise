@@ -11,7 +11,8 @@ import org.springframework.context.annotation.Scope;
  * application's own component scan.
  */
 @TestConfiguration(proxyBeanMethods = false)
-@Import({CallerAdmission.class, GroupCreationService.class, GroupQueryService.class, GroupMetadataService.class})
+@Import({CallerAdmission.class, GroupCreationService.class, GroupQueryService.class, GroupMetadataService.class,
+    GroupAccess.class, GroupMembershipService.class})
 class GroupApplicationTestConfiguration {
 
     @Bean

@@ -192,6 +192,97 @@ class GroupApplicationServiceTests {
         assertEquals(List.of(), transactions.decisions());
     }
 
+    @Test
+    void workspaceUsesOnlyTheAdmittedMembersSnapshot() {
+        UUID group = store.seedGroup(TRIP, 7, Map.of(ALICE, GroupRole.ADMIN, BOB, GroupRole.MEMBER));
+        GroupWorkspace workspace = assertOk(workspace(BOB, group));
+        assertEquals(GroupRole.MEMBER, workspace.group().callerRole());
+        assertEquals(2, workspace.group().memberCount());
+        assertEquals(memberId(workspace, BOB), workspace.callerMembershipId());
+        assertEquals(Result.err(new GroupFailure.GroupNotFound()), workspace(STRANGER, group));
+        assertEquals(Result.err(new GroupFailure.GroupNotFound()), workspace(BOB, UUID.randomUUID()));
+        assertEquals(Result.err(new GroupFailure.UnknownUser()), workspace(UNKNOWN, group));
+    }
+
+    @Test
+    void unauthorizedCallerCannotProbeTargetsAndRoleNoOpDoesNotWrite() {
+        UUID group = store.seedGroup(TRIP, 7, Map.of(ALICE, GroupRole.ADMIN, BOB, GroupRole.MEMBER));
+        GroupWorkspace workspace = assertOk(workspace(ALICE, group));
+        UUID bob = memberId(workspace, BOB);
+        UUID foreign = UUID.randomUUID();
+        store.clearCalls();
+        assertEquals(Result.err(new GroupFailure.AdministratorRequired()), change(BOB, group, foreign,
+            new MembershipChange.Remove()));
+        assertEquals(List.of("isKnown", "lock", "role"), store.calls());
+        assertEquals(Result.err(new GroupFailure.GroupNotFound()), change(STRANGER, group, bob,
+            new MembershipChange.Remove()));
+        assertEquals(Result.err(new GroupFailure.UnknownUser()), change(UNKNOWN, group, bob,
+            new MembershipChange.Remove()));
+        assertEquals(Result.err(new GroupFailure.MemberNotFound()), change(ALICE, group, foreign,
+            new MembershipChange.Remove()));
+        assertTrue(change(ALICE, group, bob, new MembershipChange.SetRole(GroupRole.MEMBER)).isSuccess());
+        assertEquals(0, store.writes());
+        assertTrue(change(ALICE, group, bob, new MembershipChange.SetRole(GroupRole.ADMIN)).isSuccess());
+        GroupWorkspace updated = assertOk(workspace(ALICE, group));
+        assertEquals(bob, memberId(updated, BOB));
+        assertEquals(7, updated.group().version());
+        assertEquals(GroupRole.ADMIN, store.stored(group).orElseThrow().members().get(BOB));
+    }
+
+    @Test
+    void lastMemberAndLastAdministratorAreProtectedUntilTransfer() {
+        UUID group = store.seedGroup(TRIP, 7, Map.of(ALICE, GroupRole.ADMIN));
+        UUID alice = assertOk(workspace(ALICE, group)).callerMembershipId();
+        assertEquals(Result.err(new GroupFailure.LastMember()), change(ALICE, group, alice,
+            new MembershipChange.Remove()));
+        assertEquals(Result.err(new GroupFailure.LastAdministrator()), change(ALICE, group, alice,
+            new MembershipChange.SetRole(GroupRole.MEMBER)));
+        assertEquals(Result.err(new GroupFailure.InvalidTransfer()), change(ALICE, group, alice,
+            new MembershipChange.TransferAdministration()));
+        store.addMembership(group, BOB, GroupRole.MEMBER);
+        UUID bob = assertOk(workspace(BOB, group)).callerMembershipId();
+        assertEquals(Result.err(new GroupFailure.LastAdministrator()), change(ALICE, group, alice,
+            new MembershipChange.Remove()));
+        assertEquals(0, store.writes());
+        assertTrue(change(ALICE, group, bob, new MembershipChange.TransferAdministration()).isSuccess());
+        assertEquals(Map.of(ALICE, GroupRole.MEMBER, BOB, GroupRole.ADMIN),
+            store.stored(group).orElseThrow().members());
+        assertTrue(change(ALICE, group, alice, new MembershipChange.Remove()).isSuccess());
+        assertEquals(Map.of(BOB, GroupRole.ADMIN), store.stored(group).orElseThrow().members());
+        assertEquals(7, store.stored(group).orElseThrow().version());
+    }
+
+    @Test
+    void existingAdministratorCanBeTransferTargetAndStaleMembershipCannotBeRemoved() {
+        UUID group = store.seedGroup(TRIP, 0, Map.of(ALICE, GroupRole.ADMIN, BOB, GroupRole.ADMIN));
+        UUID alice = assertOk(workspace(ALICE, group)).callerMembershipId();
+        UUID bob = assertOk(workspace(BOB, group)).callerMembershipId();
+        assertTrue(change(ALICE, group, bob, new MembershipChange.TransferAdministration()).isSuccess());
+        assertTrue(change(BOB, group, alice, new MembershipChange.Remove()).isSuccess());
+        store.addMembership(group, ALICE, GroupRole.MEMBER);
+        assertEquals(Result.err(new GroupFailure.MemberNotFound()), change(BOB, group, alice,
+            new MembershipChange.Remove()));
+        assertEquals(Map.of(ALICE, GroupRole.MEMBER, BOB, GroupRole.ADMIN),
+            store.stored(group).orElseThrow().members());
+        assertTrue(change(BOB, group, memberId(assertOk(workspace(BOB, group)), ALICE),
+            new MembershipChange.SetRole(GroupRole.ADMIN)).isSuccess());
+        assertTrue(change(BOB, group, bob, new MembershipChange.SetRole(GroupRole.MEMBER)).isSuccess());
+        assertEquals(GroupRole.MEMBER, store.stored(group).orElseThrow().members().get(BOB));
+    }
+
+    private Result<GroupWorkspace, GroupFailure> workspace(UUID user, UUID group) {
+        return withUser(user, () -> dispatcher.dispatch(GroupQueryService.class, service -> service.workspace(group)));
+    }
+
+    private Result<MembershipChangeStatus, GroupFailure> change(UUID user, UUID group, UUID target, MembershipChange change) {
+        return withUser(user, () -> dispatcher.dispatch(GroupMembershipService.class,
+            service -> service.change(new MembershipChangeCommand(group, target, change))));
+    }
+
+    private static UUID memberId(GroupWorkspace workspace, UUID user) {
+        return workspace.members().stream().filter(member -> member.userId().equals(user)).findFirst().orElseThrow().id();
+    }
+
     private Result<GroupDetails, GroupFailure> create(UUID caller, CreateGroupCommand command) {
         return withUser(caller, () -> dispatcher.dispatch(GroupCreationService.class, service -> service.create(command)));
     }

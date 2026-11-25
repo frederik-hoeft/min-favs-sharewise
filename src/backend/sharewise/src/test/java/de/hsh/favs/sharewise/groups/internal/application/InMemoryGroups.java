@@ -24,12 +24,14 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
 
     private final Set<UUID> users = new HashSet<>();
     private final Map<UUID, StoredGroup> groups = new LinkedHashMap<>();
+    private final Map<UUID, Map<UUID, UUID>> membershipIds = new LinkedHashMap<>();
     private final List<String> calls = new ArrayList<>();
     private int writes;
 
     synchronized void reset() {
         users.clear();
         groups.clear();
+        membershipIds.clear();
         calls.clear();
         writes = 0;
     }
@@ -38,6 +40,9 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     synchronized UUID seedGroup(GroupMetadata metadata, long version, Map<UUID, GroupRole> members) {
         UUID id = UUID.randomUUID();
         groups.put(id, new StoredGroup(id, metadata, version, new LinkedHashMap<>(members)));
+        Map<UUID, UUID> ids = new LinkedHashMap<>();
+        members.keySet().forEach(user -> ids.put(user, UUID.randomUUID()));
+        membershipIds.put(id, ids);
         return id;
     }
 
@@ -107,9 +112,64 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized Optional<GroupRole> memberRole(LockedGroup group, UUID userId) {
+    public synchronized Optional<GroupWorkspace> findWorkspace(UUID groupId, UUID userId) {
+        calls.add("workspace");
+        StoredGroup group = groups.get(groupId);
+        if (group == null || !group.members().containsKey(userId)) {
+            return Optional.empty();
+        }
+        List<GroupMember> roster = group.members().keySet().stream().map(user -> member(group, user))
+            .sorted(Comparator.comparing(GroupMember::joinedAt).thenComparing(GroupMember::id)).toList();
+        return Optional.of(new GroupWorkspace(details(group, userId), membershipIds.get(groupId).get(userId), roster));
+    }
+
+    @Override
+    public synchronized Optional<GroupMember> memberForUser(LockedGroup group, UUID userId) {
         calls.add("role");
-        return Optional.ofNullable(groups.get(group.id()).members().get(userId));
+        StoredGroup current = groups.get(group.id());
+        return current.members().containsKey(userId) ? Optional.of(member(current, userId)) : Optional.empty();
+    }
+
+    @Override
+    public synchronized Optional<GroupMember> memberById(LockedGroup group, UUID membershipId) {
+        calls.add("target");
+        StoredGroup current = groups.get(group.id());
+        return current.members().keySet().stream().map(user -> member(current, user))
+            .filter(member -> member.id().equals(membershipId)).findFirst();
+    }
+
+    @Override
+    public synchronized int countMembers(LockedGroup group, Optional<GroupRole> role) {
+        calls.add("count");
+        return (int) groups.get(group.id()).members().values().stream()
+            .filter(value -> role.isEmpty() || role.get() == value).count();
+    }
+
+    @Override
+    public synchronized void setRole(LockedGroup group, UUID membershipId, GroupRole role) {
+        GroupMember target = memberById(group, membershipId).orElseThrow();
+        groups.get(group.id()).members().put(target.userId(), role);
+        calls.add("setRole");
+        writes++;
+    }
+
+    @Override
+    public synchronized void removeMember(LockedGroup group, UUID membershipId) {
+        GroupMember target = memberById(group, membershipId).orElseThrow();
+        groups.get(group.id()).members().remove(target.userId());
+        membershipIds.get(group.id()).remove(target.userId());
+        calls.add("remove");
+        writes++;
+    }
+
+    synchronized void addMembership(UUID groupId, UUID userId, GroupRole role) {
+        groups.get(groupId).members().put(userId, role);
+        membershipIds.get(groupId).put(userId, UUID.randomUUID());
+    }
+
+    private GroupMember member(StoredGroup group, UUID userId) {
+        return new GroupMember(membershipIds.get(group.id()).get(userId), userId,
+            group.members().get(userId), CREATED_AT);
     }
 
     @Override

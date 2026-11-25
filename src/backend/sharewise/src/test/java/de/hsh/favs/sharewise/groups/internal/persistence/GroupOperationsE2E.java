@@ -11,6 +11,11 @@ import de.hsh.favs.sharewise.groups.internal.application.GroupCreationService;
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMetadataService;
+import de.hsh.favs.sharewise.groups.internal.application.GroupMembershipService;
+import de.hsh.favs.sharewise.groups.internal.application.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChange;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeCommand;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeStatus;
 import de.hsh.favs.sharewise.groups.internal.application.GroupQueryService;
 import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
@@ -32,6 +37,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -156,6 +162,141 @@ class GroupOperationsE2E extends E2ETestBase {
             assertEquals(List.of("Trip|0"), query(fixture,
                 "SELECT name, version FROM groups.groups", row -> row.getString(1) + "|" + row.getLong(2)));
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void simultaneousAdministratorDeparturesCannotRemoveTheLastMember() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
+            UUID aliceId = workspace(fixture, ALICE, group).callerMembershipId();
+            UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
+            try (Connection holder = lockGroup(fixture, group);
+                 ExecutorService callers = Executors.newFixedThreadPool(2)) {
+                Future<Result<MembershipChangeStatus, GroupFailure>> alice = callers.submit(() ->
+                    change(fixture, ALICE, group, aliceId, new MembershipChange.Remove()));
+                Future<Result<MembershipChangeStatus, GroupFailure>> bob = callers.submit(() ->
+                    change(fixture, BOB, group, bobId, new MembershipChange.Remove()));
+                awaitLockWaiters(fixture, 2);
+                holder.commit();
+                List<Result<MembershipChangeStatus, GroupFailure>> results = List.of(
+                    alice.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS),
+                    bob.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+                assertEquals(1, results.stream().filter(Result::isSuccess).count());
+                assertTrue(results.contains(Result.err(new GroupFailure.LastMember())), results::toString);
+            }
+            assertEquals(List.of("admin"), query(fixture, "SELECT role FROM groups.group_members", row -> row.getString(1)));
+            assertEquals(List.of(0L), query(fixture, "SELECT version FROM groups.groups", row -> row.getLong(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void competingDemotionsObserveCommittedAuthorizationAndKeepAnAdministrator() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
+            UUID aliceId = workspace(fixture, ALICE, group).callerMembershipId();
+            UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
+            try (Connection holder = lockGroup(fixture, group);
+                 ExecutorService callers = Executors.newFixedThreadPool(2)) {
+                Future<Result<MembershipChangeStatus, GroupFailure>> alice = callers.submit(() ->
+                    change(fixture, ALICE, group, bobId, new MembershipChange.SetRole(GroupRole.MEMBER)));
+                Future<Result<MembershipChangeStatus, GroupFailure>> bob = callers.submit(() ->
+                    change(fixture, BOB, group, aliceId, new MembershipChange.SetRole(GroupRole.MEMBER)));
+                awaitLockWaiters(fixture, 2);
+                holder.commit();
+                List<Result<MembershipChangeStatus, GroupFailure>> results = List.of(
+                    alice.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS),
+                    bob.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+                assertEquals(1, results.stream().filter(Result::isSuccess).count());
+                assertTrue(results.contains(Result.err(new GroupFailure.AdministratorRequired())), results::toString);
+            }
+            assertEquals(List.of("admin", "member"), query(fixture,
+                "SELECT role::text FROM groups.group_members ORDER BY role::text", row -> row.getString(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void transferAndRejoinPreserveMembershipIdentityAndMetadataConcurrency() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.MEMBER);
+            UUID aliceId = workspace(fixture, ALICE, group).callerMembershipId();
+            UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
+            ok(change(fixture, ALICE, group, bobId, new MembershipChange.TransferAdministration()));
+            assertEquals(GroupRole.MEMBER, workspace(fixture, ALICE, group).group().callerRole());
+            assertEquals(GroupRole.ADMIN, workspace(fixture, BOB, group).group().callerRole());
+            assertEquals(bobId, workspace(fixture, BOB, group).callerMembershipId());
+            assertEquals(1, ok(replace(fixture, BOB, group, "Renamed", 0)).version());
+            ok(change(fixture, ALICE, group, aliceId, new MembershipChange.Remove()));
+            GroupTestFixture.addMember(fixture, group, ALICE, GroupRole.MEMBER);
+            assertEquals(Result.err(new GroupFailure.MemberNotFound()), change(fixture, BOB, group, aliceId,
+                new MembershipChange.Remove()));
+            GroupWorkspace joined = workspace(fixture, ALICE, group);
+            assertEquals(1, joined.group().version());
+            assertEquals(2, joined.group().memberCount());
+            assertTrue(!aliceId.equals(joined.callerMembershipId()));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void failedSecondTransferWriteRollsBackTheFirst() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.MEMBER);
+            UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
+            // Force a database rejection of the initiating administrator's demotion, not the promotion.
+            try (Connection migrator = fixture.database().connectAsMigrator();
+                 Statement ddl = migrator.createStatement()) {
+                ddl.execute("ALTER TABLE groups.group_members ADD CONSTRAINT test_alice_admin CHECK "
+                    + "(user_id <> '" + ALICE + "'::uuid OR role = 'admin')");
+            }
+            assertThrows(RuntimeException.class, () -> change(fixture, ALICE, group, bobId,
+                new MembershipChange.TransferAdministration()));
+            assertEquals(GroupRole.ADMIN, workspace(fixture, ALICE, group).group().callerRole());
+            assertEquals(GroupRole.MEMBER, workspace(fixture, BOB, group).group().callerRole());
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void competingRemovalsCannotDeleteBothAdministrators() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
+            UUID aliceId = workspace(fixture, ALICE, group).callerMembershipId();
+            UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
+            try (Connection holder = lockGroup(fixture, group);
+                 ExecutorService callers = Executors.newFixedThreadPool(2)) {
+                Future<Result<MembershipChangeStatus, GroupFailure>> alice = callers.submit(() ->
+                    change(fixture, ALICE, group, bobId, new MembershipChange.Remove()));
+                Future<Result<MembershipChangeStatus, GroupFailure>> bob = callers.submit(() ->
+                    change(fixture, BOB, group, aliceId, new MembershipChange.Remove()));
+                awaitLockWaiters(fixture, 2);
+                holder.commit();
+                List<Result<MembershipChangeStatus, GroupFailure>> results = List.of(
+                    alice.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS),
+                    bob.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+                assertEquals(1, results.stream().filter(Result::isSuccess).count());
+                assertTrue(results.contains(Result.err(new GroupFailure.GroupNotFound())), results::toString);
+            }
+            assertEquals(List.of("admin"), query(fixture, "SELECT role FROM groups.group_members", row -> row.getString(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    private static GroupWorkspace workspace(IntegrationTestContext fixture, UUID caller, UUID group) {
+        return ok(withUser(caller, () -> dispatcher(fixture).dispatch(GroupQueryService.class,
+            service -> service.workspace(group))));
+    }
+
+    private static Result<MembershipChangeStatus, GroupFailure> change(IntegrationTestContext fixture, UUID caller,
+            UUID group, UUID target, MembershipChange change) {
+        return withUser(caller, () -> dispatcher(fixture).dispatch(GroupMembershipService.class,
+            service -> service.change(new MembershipChangeCommand(group, target, change))));
     }
 
     private static Result<GroupDetails, GroupFailure> create(IntegrationTestContext fixture, UUID caller, String name) {

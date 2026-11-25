@@ -12,10 +12,12 @@ For backend phases run supplied Maven offline `mvn -B -ntp -o -Dmaven.repo.local
 
 Suggested commit: `P2.2b-A: Implement membership and role management`.
 
-- [ ] Extend Group query and mutation ports/adapters using existing generated tables; coherent authorized workspace projection, scoped membership IDs, counts and stable ordering. Preserve metadata details and list endpoints.
-- [ ] Add operation-scoped membership policies/services and typed failures; reuse admission, lock ordering, transactions and HTTP problem infrastructure. Implement role, remove/leave and atomic transfer endpoints. Preserve metadata version semantics.
-- [ ] Design and implement T01–T06, including independent-connection race and rollback coverage, real SQL projection tests and HTTP denial/validation cases.
-- [ ] Gate: backend Unit/module checks green; database tests compiled, unavailable execution explicitly recorded; critical self-review and incremental patch.
+- [x] Extend Group query and mutation ports/adapters using existing generated tables; coherent authorized workspace projection, scoped membership IDs, counts and stable ordering. Preserve metadata details and list endpoints.
+- [x] Add operation-scoped membership policies/services and typed failures; reuse admission, lock ordering, transactions and HTTP problem infrastructure. Implement role, remove/leave and atomic transfer endpoints. Preserve metadata version semantics.
+- [x] Design and implement T01–T06, including independent-connection race and rollback coverage, real SQL projection tests and HTTP denial/validation cases.
+- [x] Gate: backend Unit/module checks green; database tests compiled, unavailable execution explicitly recorded; critical self-review and incremental patch.
+
+**Checkpoint evidence:** 398 Unit/component tests passed with the supplied offline Maven, including the Modulith architecture checks; all Integration/E2E sources compiled. Added workspace/role/target authorization, final member/admin, transfer and stale-membership Unit coverage; real PostgreSQL projection, competing departure/removal/demotion, transfer rollback and HTTP cases await execution. Self-review consolidated locked caller authorization with metadata replacement, scoped every target write to the group, removed the unused role-only lookup, used one roster SQL projection, and moved request conversion into `GroupCommands`. Database correctness remains unverified until the human gate.
 
 ## Phase B - Configurable workspace shell and list
 

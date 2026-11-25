@@ -1,6 +1,8 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
 import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChange;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeCommand;
 import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
@@ -59,6 +61,16 @@ final class GroupCommands {
             ? new ValidationError(EXPECTED_VERSION_FIELD, "required", "The version of the group you edited is required.")
             : new ValidationError(EXPECTED_VERSION_FIELD, "invalid", "The group version cannot be negative."));
         return Result.err(new ValidationErrors(errors));
+    }
+
+    static Result<MembershipChangeCommand, ValidationErrors> setRole(UUID groupId, UUID membershipId,
+            SetMemberRoleRequest request) {
+        if (request == null) {
+            return Result.err(missingBody());
+        }
+        return GroupRoles.fromApi(request.role()).<Result<MembershipChangeCommand, ValidationErrors>>map(role ->
+            Result.ok(new MembershipChangeCommand(groupId, membershipId, new MembershipChange.SetRole(role))))
+            .orElseGet(() -> Result.err(ValidationErrors.single("role", "invalid", "Select member or admin.")));
     }
 
     /** Field errors for metadata that the application service rejected. */

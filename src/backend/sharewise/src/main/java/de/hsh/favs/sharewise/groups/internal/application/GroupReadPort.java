@@ -12,4 +12,7 @@ public interface GroupReadPort {
 
     /** The group if it exists and the user is a member; otherwise empty. */
     Optional<GroupDetails> findForMember(UUID groupId, UUID userId);
+
+    /** The metadata and roster from a single member-scoped database statement. */
+    Optional<GroupWorkspace> findWorkspace(UUID groupId, UUID userId);
 }

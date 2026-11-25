@@ -27,4 +27,9 @@ public sealed interface GroupFailure {
 
     /** The caller's expected group version is not the current version. */
     record VersionConflict() implements GroupFailure { }
+
+    record MemberNotFound() implements GroupFailure { }
+    record LastMember() implements GroupFailure { }
+    record LastAdministrator() implements GroupFailure { }
+    record InvalidTransfer() implements GroupFailure { }
 }

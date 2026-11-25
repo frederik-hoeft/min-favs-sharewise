@@ -39,8 +39,15 @@ public class GroupQueryService {
             GroupOutcomes.read(admission.admit().flatMap(caller -> found(groups.findForMember(groupId, caller.userId())))));
     }
 
-    private static Result<GroupDetails, GroupFailure> found(Optional<GroupDetails> group) {
-        return group.<Result<GroupDetails, GroupFailure>>map(Result::ok)
+    public Result<GroupWorkspace, GroupFailure> workspace(UUID groupId) {
+        Objects.requireNonNull(groupId, "groupId");
+        admission.requireAuthenticated();
+        return transactions.execute(() -> GroupOutcomes.read(admission.admit()
+            .flatMap(caller -> found(groups.findWorkspace(groupId, caller.userId())))));
+    }
+
+    private static <T> Result<T, GroupFailure> found(Optional<T> group) {
+        return group.<Result<T, GroupFailure>>map(Result::ok)
             .orElseGet(() -> Result.err(new GroupFailure.GroupNotFound()));
     }
 }

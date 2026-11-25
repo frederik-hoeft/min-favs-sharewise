@@ -1,13 +1,11 @@
 package de.hsh.favs.sharewise.groups.internal.application;
 
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
@@ -23,11 +21,13 @@ public class GroupMetadataService {
 
     private final CallerAdmission admission;
     private final GroupMutationPort groups;
+    private final GroupAccess access;
     private final Transactions transactions;
 
-    GroupMetadataService(CallerAdmission admission, GroupMutationPort groups, Transactions transactions) {
+    GroupMetadataService(CallerAdmission admission, GroupMutationPort groups, GroupAccess access, Transactions transactions) {
         this.admission = Objects.requireNonNull(admission, "admission");
         this.groups = Objects.requireNonNull(groups, "groups");
+        this.access = Objects.requireNonNull(access, "access");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
     }
 
@@ -46,21 +46,14 @@ public class GroupMetadataService {
 
     private Result<GroupDetails, GroupFailure> replaceLocked(
             ReplaceGroupMetadataCommand command, GroupMetadata metadata, CallerAdmission.AdmittedCaller caller) {
-        Optional<LockedGroup> locked = groups.lockGroup(command.groupId());
-        if (locked.isEmpty()) {
-            return Result.err(new GroupFailure.GroupNotFound());
-        }
-        LockedGroup group = locked.get();
-        Optional<GroupRole> role = groups.memberRole(group, caller.userId());
-        if (role.isEmpty()) {
-            return Result.err(new GroupFailure.GroupNotFound());
-        }
-        if (!role.get().isAdministrator()) {
-            return Result.err(new GroupFailure.AdministratorRequired());
-        }
-        if (group.version() != command.expectedVersion()) {
-            return Result.err(new GroupFailure.VersionConflict());
-        }
-        return Result.ok(groups.replaceMetadata(group, caller.userId(), metadata));
+        return access.lockForMember(command.groupId(), caller.userId())
+            .flatMap(GroupAccess.Access::requireAdministrator)
+            .flatMap(authorized -> {
+                LockedGroup group = authorized.group();
+                if (group.version() != command.expectedVersion()) {
+                    return Result.err(new GroupFailure.VersionConflict());
+                }
+                return Result.ok(groups.replaceMetadata(group, caller.userId(), metadata));
+            });
     }
 }

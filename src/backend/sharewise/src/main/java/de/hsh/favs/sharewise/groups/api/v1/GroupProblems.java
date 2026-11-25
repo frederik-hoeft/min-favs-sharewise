@@ -40,6 +40,14 @@ final class GroupProblems {
                 "Group Not Found", "The group does not exist or you are not a member.");
             case GroupFailure.AdministratorRequired() -> ApiProblems.response(HttpStatus.FORBIDDEN, ADMIN_REQUIRED,
                 "Group Administrator Required", "Only a group administrator can change the group.");
+            case GroupFailure.MemberNotFound() -> ApiProblems.response(HttpStatus.NOT_FOUND, "group_member_not_found",
+                "Group Member Not Found", "This membership is no longer available in the group.");
+            case GroupFailure.LastMember() -> ApiProblems.response(HttpStatus.CONFLICT, "group_last_member",
+                "Last Group Member", "A group must retain at least one member.");
+            case GroupFailure.LastAdministrator() -> ApiProblems.response(HttpStatus.CONFLICT, "group_last_administrator",
+                "Last Group Administrator", "A group must retain at least one administrator.");
+            case GroupFailure.InvalidTransfer() -> ApiProblems.response(HttpStatus.CONFLICT, "group_invalid_transfer",
+                "Invalid Administration Transfer", "Select another member to transfer administration.");
             case GroupFailure.VersionConflict() -> ApiProblems.response(HttpStatus.CONFLICT, VERSION_CONFLICT,
                 "Group Version Conflict", "The group has changed since you last read it.");
         };
