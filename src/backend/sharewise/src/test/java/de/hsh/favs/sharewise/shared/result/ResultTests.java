@@ -41,6 +41,19 @@ class ResultTests {
     }
 
     @Test
+    void flatMapChainsSuccessfulStepsAndShortCircuitsErrors() {
+        Result<String, SampleError> ok = Result.ok("created");
+        assertEquals(Result.ok(7), ok.flatMap(value -> Result.ok(value.length())));
+        assertEquals(Result.err(SampleError.NOT_FOUND), ok.flatMap(value -> Result.err(SampleError.NOT_FOUND)));
+
+        Result<String, SampleError> err = Result.err(SampleError.CONFLICT);
+        assertEquals(Result.err(SampleError.CONFLICT), err.flatMap(value -> {
+            throw new AssertionError("step must not run after an error");
+        }));
+        assertThrows(NullPointerException.class, () -> ok.flatMap(value -> null));
+    }
+
+    @Test
     void nullValuesAndMappersAreRejected() {
         assertThrows(NullPointerException.class, () -> Result.ok(null));
         assertThrows(NullPointerException.class, () -> Result.err(null));
@@ -48,6 +61,7 @@ class ResultTests {
         Result<String, SampleError> ok = Result.ok("v");
         assertThrows(NullPointerException.class, () -> ok.map(null));
         assertThrows(NullPointerException.class, () -> ok.mapError(null));
+        assertThrows(NullPointerException.class, () -> ok.flatMap(null));
         assertThrows(NullPointerException.class, () -> ok.fold(null, Enum::name));
         assertThrows(NullPointerException.class, () -> ok.fold(v -> v, null));
     }

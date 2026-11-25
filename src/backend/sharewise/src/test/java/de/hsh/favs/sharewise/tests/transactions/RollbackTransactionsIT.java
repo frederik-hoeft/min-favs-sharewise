@@ -131,7 +131,7 @@ class RollbackTransactionsIT extends IntegrationTestBase {
             });
             assertEquals(TransactionDecision.ROLLBACK, transactions.observation().requestedDecision());
             assertEquals(0, jdbc.queryForObject(
-                "select count(*) from groups.rollback_tx_probe where id = 601", Integer.class));
+                "select count(*) from test_probes.rollback_tx_probe where id = 601", Integer.class));
             return null;
         });
     }
@@ -146,7 +146,7 @@ class RollbackTransactionsIT extends IntegrationTestBase {
                 RollbackTransactions transactions = scope.resolve(RollbackTransactions.class);
                 assertEquals(expected, transactions.execute(() -> {
                     scope.resolve(JooqAccess.class).dsl().execute(
-                        "insert into groups.rollback_tx_probe (id, label) values (?, ?)", rowId, expected);
+                        "insert into test_probes.rollback_tx_probe (id, label) values (?, ?)", rowId, expected);
                     return new TransactionOutcome<>(expected, decision);
                 }));
                 TransactionObservation observed = transactions.observation();
@@ -158,11 +158,11 @@ class RollbackTransactionsIT extends IntegrationTestBase {
                 // This is an ordinary test-side JDBC read within the still-open physical
                 // transaction, not a new application segment or the Phase D inspector.
                 assertEquals(expected, jdbc.queryForObject(
-                    "select label from groups.rollback_tx_probe where id = ?", String.class, rowId));
+                    "select label from test_probes.rollback_tx_probe where id = ?", String.class, rowId));
                 return null;
             });
             assertEquals(0, jdbc.queryForObject(
-                "select count(*) from groups.rollback_tx_probe where id = ?", Integer.class, rowId));
+                "select count(*) from test_probes.rollback_tx_probe where id = ?", Integer.class, rowId));
         }
     }
 
@@ -276,9 +276,9 @@ class RollbackTransactionsIT extends IntegrationTestBase {
                 EntityManager em = probe.jpa().entityManager();
                 dsl.set(db);
                 entityManager.set(em);
-                deferredJooq.set(db.query("select count(*) from groups.rollback_tx_probe"));
+                deferredJooq.set(db.query("select count(*) from test_probes.rollback_tx_probe"));
                 deferredJpa.set(em.createQuery("select count(p) from RollbackTestProbeRow p"));
-                db.execute("insert into groups.rollback_tx_probe (id, label) values (501, 'pending')");
+                db.execute("insert into test_probes.rollback_tx_probe (id, label) values (501, 'pending')");
                 em.persist(new RollbackTestProbeRow(502, "from JPA"));
                 em.flush();
                 TransactionSegmentAccess.SegmentLease current = probe.segments().captureCurrentSegment();
@@ -292,10 +292,10 @@ class RollbackTransactionsIT extends IntegrationTestBase {
             assertGuardRejected(() -> deferredJooq.get().execute());
             assertGuardRejected(() -> entityManager.get().find(RollbackTestProbeRow.class, 502));
             assertGuardRejected(() -> deferredJpa.get().getResultList());
-            assertEquals(2, jdbc.queryForObject("select count(*) from groups.rollback_tx_probe", Integer.class));
+            assertEquals(2, jdbc.queryForObject("select count(*) from test_probes.rollback_tx_probe", Integer.class));
             return null;
         });
-        assertEquals(0, jdbc.queryForObject("select count(*) from groups.rollback_tx_probe", Integer.class));
+        assertEquals(0, jdbc.queryForObject("select count(*) from test_probes.rollback_tx_probe", Integer.class));
     }
 
     @Test
@@ -309,7 +309,7 @@ class RollbackTransactionsIT extends IntegrationTestBase {
                     DSLContext db = probe.jooq().dsl();
                     EntityManager em = probe.jpa().entityManager();
                     TransactionSegmentAccess.SegmentLease lease = probe.segments().captureCurrentSegment();
-                    assertEquals(0, db.fetchCount(DSL.table("groups.rollback_tx_probe")));
+                    assertEquals(0, db.fetchCount(DSL.table("test_probes.rollback_tx_probe")));
                     TransactionTemplate nested = new TransactionTemplate(physicalManager);
                     nested.setPropagationBehavior(propagation);
                     nested.execute(status -> {
@@ -323,7 +323,7 @@ class RollbackTransactionsIT extends IntegrationTestBase {
                         return null;
                     });
                     lease.requireCurrent();
-                    assertEquals(0, db.fetchCount(DSL.table("groups.rollback_tx_probe")));
+                    assertEquals(0, db.fetchCount(DSL.table("test_probes.rollback_tx_probe")));
                     return TransactionOutcome.rollback(null);
                 });
                 return null;

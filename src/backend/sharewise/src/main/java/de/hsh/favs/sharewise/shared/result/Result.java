@@ -54,6 +54,18 @@ public sealed interface Result<T, E> permits Result.Ok, Result.Err {
     }
 
     /**
+     * Continues with a result-producing step if this result is successful, leaving an error
+     * unchanged without invoking the step.
+     */
+    default <U> Result<U, E> flatMap(Function<? super T, ? extends Result<U, E>> mapper) {
+        Objects.requireNonNull(mapper, "mapper must not be null");
+        return switch (this) {
+            case Ok<T, E>(T value) -> Objects.requireNonNull(mapper.apply(value), "mapper returned null");
+            case Err<T, E>(E error) -> new Err<>(error);
+        };
+    }
+
+    /**
      * Transforms the error value if present, leaving a success value unchanged.
      */
     default <F> Result<T, F> mapError(Function<? super E, ? extends F> mapper) {

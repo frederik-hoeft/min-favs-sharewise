@@ -1,6 +1,6 @@
 # Local Docker deployment
 
-This directory contains the single-host production-style ShareWise stack for local acceptance: static Next.js via HTTPS Nginx, Spring Boot, and PostgreSQL 18. Only Nginx publishes host ports. This is **not** public-host provisioning, production certificate management, backups, or automated rollout (P2.6c/d).
+This directory contains the single-host production-style ShareWise stack for local acceptance: static Next.js via HTTPS Nginx, Spring Boot, and PostgreSQL 18. Only Nginx publishes host ports by default; PostgreSQL can be explicitly published for local devcontainer inspection. This is **not** public-host provisioning, production certificate management, backups, or automated rollout (P2.6c/d).
 
 ## First-time setup
 
@@ -34,7 +34,7 @@ For stronger reproducibility, a reviewed follow-up should resolve **current, ver
 
 ## Local browser URLs and TLS
 
-By default, open **https://localhost:8443/** in a browser on the **Docker daemon host**. The HTTP URL, http://localhost:18080/, redirects to HTTPS. Both host ports bind to `127.0.0.1`; neither Spring nor PostgreSQL is published. These distinct ports avoid conflict with the devcontainer's `3000`/`8080` development forwards.
+By default, open **https://localhost:8443/** in a browser on the **Docker daemon host**. The HTTP URL, http://localhost:18080/, redirects to HTTPS. Both host ports bind to `127.0.0.1`; neither Spring nor PostgreSQL is published by default. These distinct ports avoid conflict with the devcontainer's `3000`/`8080` development forwards.
 
 The TLS certificate is self-signed and **not automatically trusted** by Chrome or your operating system. Trust it explicitly for browser acceptance, or use a certificate already trusted by your machine. Chrome's `ERR_SSL_UNRECOGNIZED_NAME_ALERT` means Nginx rejected the TLS SNI hostname, which can happen when `SHAREWISE_PUBLIC_HOST` does not match the URL you opened. It is different from a certificate-authority warning. Use the hostname configured in `deploy/.env`; for the default setup that is `localhost`.
 
@@ -162,6 +162,33 @@ The database/TLS importer is idempotent when files are unchanged; it rejects cha
 
 A devcontainer and the Docker host share the daemon, **not** a network namespace. Open the published HTTPS URL from the daemon host browser/terminal. The acceptance script communicates through Compose service DNS inside the deployment networks, so it does not depend on `localhost` from the devcontainer.
 
+## Optional PostgreSQL access from the devcontainer
+
+The default deployment keeps PostgreSQL private on the `data` Compose network. The VS Code devcontainer uses Docker-outside-of-Docker: it shares the Docker **daemon** with the deployed stack but does not share its network namespace, so a PostgreSQL connection to `localhost:5432` inside the devcontainer does not reach the deployed database. The devcontainer supplies `host.docker.internal` through Docker's `host-gateway` mapping for reaching ports published on the daemon host.
+
+On Docker Desktop, publish PostgreSQL on host loopback by uncommenting only the following setting in `deploy/.env`, which is also shown in [`.env.example`](.env.example):
+
+```dotenv
+COMPOSE_FILE=compose.yaml:compose.postgres-host.yaml
+```
+
+The [host-access Compose override](compose.postgres-host.yaml) defaults to `127.0.0.1:15432` on the Docker host; the devcontainer reaches that published port at `host.docker.internal:15432`. This is confirmed for the local Docker Desktop setup, but Docker Desktop configurations may differ. The override stays disabled unless explicitly selected, and bootstrap preserves an existing `.env` without trying to discover network addresses.
+
+On native Linux Docker Engine, loopback publishing generally cannot be reached from an ordinary bridge-networked devcontainer. Set `SHAREWISE_POSTGRES_BIND` explicitly to a suitable daemon-host bridge address (inspect it with `docker network inspect bridge`) instead. `SHAREWISE_POSTGRES_PORT` optionally changes the host port. Do not use the IP returned by resolving `host.docker.internal` as a publishing address: container-to-host destinations and host bind addresses are different concepts. Avoid `0.0.0.0` unless exposing the database on all host interfaces is intentional.
+
+From `deploy/`, validate the merged Compose configuration and recreate the affected service without deleting the database volume:
+
+```bash
+docker compose config
+docker compose up -d --force-recreate postgres
+```
+
+In the devcontainer's PostgreSQL extension, connect to host `host.docker.internal`, port `15432` (or `SHAREWISE_POSTGRES_PORT`), database `sharewise`, user `sharewise_app`, and the application-role password held in ignored `deploy/.local/secrets/sharewise.database.app-password`. Prefer this least-privileged role for inspection; use `sharewise_migrator` only when migration privileges are genuinely necessary. The deployed PostgreSQL instance is separate from the devcontainer's `postgres` service and its development database.
+
+The override adds a second, non-internal Docker bridge to PostgreSQL so Docker can publish its host port while retaining its existing internal `data` network for the backend. **Enabling it reduces network isolation:** other containers that can reach the bound host interface may connect to PostgreSQL, subject to database authentication. Use it only for a trusted local acceptance environment; never enable this override on a public or production host. The disposable `test-compose.sh` stack always uses the base private topology regardless of this local setting.
+
+To disable host access, remove or comment out `COMPOSE_FILE` and the PostgreSQL bind/port variables in `deploy/.env`, then run `docker compose up -d --force-recreate postgres` from `deploy/`. This recreates the container without the published port and preserves the existing database volume. Verify with `docker compose ps` and `docker compose port postgres 5432` (which should report no published binding).
+
 ## Disposable end-to-end acceptance
 
 From `deploy/`, run:
@@ -170,7 +197,7 @@ From `deploy/`, run:
 ./scripts/test-compose.sh
 ```
 
-The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security, and verifies data persistence after a database restart. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
+The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security (including IAM and Group Management workflows), and verifies data persistence after a database restart. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
 
 For inspection after a successful run, opt out of automatic cleanup:
 
@@ -186,7 +213,9 @@ SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh 
 
 If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
 
-The disposable Compose smoke performs CSRF bootstrap, registration and login through the real HTTPS proxy, then verifies both access JWT signatures against the exported public-only IAM key. It generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Run it on a Docker host with Python 3 and OpenSSL; it complements rather than replaces PostgreSQL-backed E2E tests.
+The disposable Compose smoke performs CSRF bootstrap, registration and login through the real HTTPS proxy, rotates the refresh cookie while retaining the session ID, validates the replacement JWT against the exported public-only IAM key, and confirms that logout clears the cookie and prevents further refresh. It also checks the static Groups list, workspace and invitation routes and exercises a two-account Group lifecycle through the HTTPS API: creation and listing, outsider denial, invitation creation, preview and single-use redemption, administrator-only access, promotion, revocation and departure. It verifies that the existing bearer observes the promoted role without renewal. Until IAM-to-Group provisioning is integrated, the probe inserts only the two verified IAM user IDs into `groups.users` using the application database role; all business state changes use the public API.
+
+The smoke generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Group API bearer headers and invitation secrets are passed via stdin, not process arguments. Run it on a Docker host with Python 3 and OpenSSL. The probe complements rather than replaces PostgreSQL-backed E2E tests or interactive browser acceptance. Major implementation phases must satisfy the [local smoke gate](../docs/development/ai-development-workflow.md#6-perform-local-deployment-smoke-and-manual-acceptance) before merge.
 
 For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
 

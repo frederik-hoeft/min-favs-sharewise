@@ -26,7 +26,7 @@ The font stack is local (`Inter`, `Segoe UI`, `Arial`, sans-serif), without remo
 
 ## Layout, navigation and responsive behavior
 
-The public site's fixed `AppShell.Header` is inset and centered above an editorial content column. The workspace's `AppShell` uses `layout="alt"`, placing the sidebar along the full left edge and the header beside it. Main content is centered within the remaining workspace, not the entire viewport, so it stays visually centered as navigation changes width.
+The public site's fixed `AppShell.Header` is inset and centered above an editorial content column. The workspace's `AppShell` uses `layout="alt"`, placing the sidebar along the full left edge and the header beside it. Main content is centered within the remaining workspace, not the entire viewport, so it stays visually centered as navigation changes width. Group pages also provide a right-side information panel for metadata, membership and invitation actions. It remains visible on wider screens and becomes a header-triggered Drawer on narrower ones, preserving the central workspace.
 
 Workspace navigation has three forms: a persistent expanded sidebar on wide screens, a collapsible icon rail at intermediate widths and a Mantine Drawer on mobile. Rail expansion overlays content rather than changing its layout position. Selecting a route collapses the rail, including when the pointer remains over its previous position. On mobile, the hamburger belongs to the header and the brand appears inside the navigation drawer. The public shell retains its own header and links, independent of workspace navigation state.
 

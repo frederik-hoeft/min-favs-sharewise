@@ -1,9 +1,14 @@
 import type { AuthenticationResponse } from "@/core/identity";
 
+export const SESSION_ONE = 'a7bce821-a603-40aa-9c38-f138e6d1c909';
+export const SESSION_TWO = 'b3de2204-294a-4e7d-ac40-d71f38c49d60';
+
 export const credentials = { email: "person@example.com", password: "correct horse battery staple" };
 
-export function authenticationResponse(token = "opaque.jwt.value", expiresAt = new Date(Date.now() + 300_000).toISOString()): AuthenticationResponse {
-  return { accessToken: token, tokenType: "Bearer", expiresAt };
+export function authenticationResponse(
+  token = "opaque.jwt.value", expiresAt = new Date(Date.now() + 300_000).toISOString(), sessionId = SESSION_ONE,
+): AuthenticationResponse {
+  return { accessToken: token, tokenType: "Bearer", expiresAt, sessionId };
 }
 
 export function jsonResponse(body: unknown, status = 200): Response {
@@ -43,4 +48,29 @@ export class ControlledLocks {
       return result;
     },
   } as LockManager;
+}
+
+/** Routes cross-tab messages to other instances, without sharing any bearer. */
+export class ControlledChannels {
+  private readonly endpoints = new Set<{
+    listeners: Set<(event: MessageEvent) => void>;
+  }>();
+
+  get activeCount(): number { return this.endpoints.size; }
+
+  create = (): BroadcastChannel => {
+    const endpoint = { listeners: new Set<(event: MessageEvent) => void>() };
+    this.endpoints.add(endpoint);
+    return {
+      postMessage: (data: unknown) => {
+        for (const other of this.endpoints) {
+          if (other === endpoint) continue;
+          for (const listener of other.listeners) listener({ data } as MessageEvent);
+        }
+      },
+      addEventListener: (_name: string, listener: (event: MessageEvent) => void) => { endpoint.listeners.add(listener); },
+      removeEventListener: (_name: string, listener: (event: MessageEvent) => void) => { endpoint.listeners.delete(listener); },
+      close: () => { this.endpoints.delete(endpoint); },
+    } as unknown as BroadcastChannel;
+  };
 }

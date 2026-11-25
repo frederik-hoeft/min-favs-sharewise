@@ -1,6 +1,6 @@
 # Phase 2 implementation foundation: IAM and Group Management
 
-**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login now exist under P2.1a. Group business tables, IAM-to-Group event delivery, projection bootstrap and refresh/logout remain future work. The schema descriptions below retain ER provenance; check the committed IAM Flyway migration for implemented physical DDL.
+**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). IAM registration/login, refresh/logout, authoritative account/session eligibility and Group creation, metadata replacement, membership administration and invitations are implemented. IAM-to-Group event delivery and local-miss provisioning remain future work. The schema descriptions below retain ER provenance; the committed IAM and Group Flyway migrations define implemented physical DDL.
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
@@ -35,7 +35,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
     dispatcher.dispatch(GroupOperation.class, GroupOperation::run));
 ```
 
-The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login/session creation is implemented, but live session eligibility and renewal remain P2.1d/P2.1b work. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
+The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login, session creation and refresh/logout are implemented, and IAM publishes [live eligibility verification](../../architecture/authorization.md#synchronous-authority-verification); Group does not yet use it for local-miss provisioning. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
 Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 
@@ -57,7 +57,7 @@ flowchart TD
 
 Event delivery keeps the projection up to date; the published IAM query is a later fallback for users who have not yet appeared locally. The fallback does not run for already-known users.
 
-During the **event-only** stage, a legitimate recently registered user may be absent from the Group projection and receive a temporary denial (`403`, without automatic JWT refresh retry). P2.1d later provides a narrow **authoritative IAM current-account/session eligibility query** through a published Java capability; P2.2e calls it **only on a local user miss**. An eligible result permits local provisioning followed by the Group operation; deleted, disabled or invalid-session identities are rejected, and infrastructure failures fail closed. This is not merely offline JWT signature validation. Already-known local users retain the [security design's bounded token and event staleness](../../stack/security.md#revocation-distributed-services-and-verification) unless a stronger policy is separately approved.
+During the **event-only** stage, a legitimate recently registered user may be absent from the Group projection and receive a temporary denial (`403`, without automatic JWT refresh retry). P2.1d provides a narrow **authoritative IAM current-account/session eligibility query** through a published Java capability; P2.2e will call it **only on a local user miss**. An eligible result permits local provisioning followed by the Group operation; deleted, disabled or invalid-session identities are rejected, and infrastructure failures fail closed. This is not merely offline JWT signature validation. Already-known local users retain the [security design's bounded token and event staleness](../../stack/security.md#revocation-distributed-services-and-verification) unless a stronger policy is separately approved.
 
 Account deletion is **not** a simple `DELETE` cascade from IAM into Group Management. Before a deletion event becomes active, the owning feature must decide how the final member/administrator invariants survive, whether members or history remain, and how out-of-order `UserRegistered`/`UserDeleted` deliveries cannot resurrect an identity. No `groups.users.deleted_at`, inbox or cascade is mandated by the current ER. This is an explicit P2.1e/P2.2d/P2.4a review gate, not a license to accept unsafe ordering.
 
@@ -69,7 +69,7 @@ The [ER PDF](../../assets/er-data-model.pdf) and [SVG](../../assets/er-data-mode
 
 **Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../../data-model-design.md); **Security** comes from [security.md](../../stack/security.md); **Messaging** comes from [messaging.md](../../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
 
-P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a subsequently added the `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables and the committed IAM jOOQ model. **`identity.user_profiles`, Group business tables and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM DDL.
+P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; P2.1c added the optional `identity.user_profiles` table and generated IAM jOOQ mapping. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. **`groups.invitations` and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
 
 ### IAM: `identity.users`
 
@@ -88,12 +88,12 @@ This is the authoritative account/credential row. Email is normalized in the bac
 
 ### IAM: `identity.user_profiles`
 
-Profile data is separated from credentials. An IAM user may have **zero or one** profile physically, using the shared ID as both PK and FK; ensuring immediate profile creation during registration is an application behavior, not guaranteed by the FK alone.
+Profile data is separated from credentials. An IAM user has **zero or one** profile row, using `user_id` as both PK and FK. Registration does not create a profile; an authenticated update creates or updates the row as needed. A missing row and a null display name are equivalent to callers. The profile migration enforces the reviewed display-name storage constraints; the complete user-facing validation rule belongs to the [P2.1c specification](../tasks/p2.1c-account-updates/specification.md#profile-storage-and-behavior).
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
 | `user_id` (PK, FK → `identity.users.id`) | `uuid` | One-to-zero/one user profile relationship (**Domain, ER**); same-schema FK permits physical integrity. |
-| `display_name` | `text NULL` | Optional user-facing profile name (**ER** proposal aligned with **Backlog P2.1c** profile management); not yet an independently mandated registration field. |
+| `display_name` | `text NULL` | Optional user-facing profile name (**ER**; implemented by **P2.1c**); not a registration requirement. |
 
 ### IAM: `identity.sessions`
 
@@ -132,6 +132,8 @@ The ER specifies `CHECK (octet_length(verifier_hash) = 32)`, `UNIQUE(session_id)
 
 There is **no FK** to `identity.users`, no copied credentials, and no tombstone in this initial design. Event ordering and account-deletion effects are deliberately deferred to the reviewed lifecycle integration.
 
+Group Management writes this table through an idempotent provisioning operation (`INSERT … ON CONFLICT DO NOTHING`) of an ID supplied by a trusted source. Test fixtures and the [developer provisioning procedure](../../development.md#provision-local-group-users) supply IDs; P2.2d event delivery and P2.2e eligible-lookup provisioning will use the same operation. Every Group operation requires the authenticated caller to be locally known. Member-scoped projections establish this through the membership foreign keys; creation and ambiguous misses use the dedicated caller admission capability. An unknown caller receives `403 group_user_unknown` and causes no Group writes. Admission establishes local existence only, not access to any particular group. P2.2e extends the local-miss path with IAM verification and local provisioning before retrying the appropriate Group operation; see [Group persistence](../../architecture/persistence.md#group-persistence).
+
 ### Group Management: `groups.groups`
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
@@ -140,8 +142,9 @@ There is **no FK** to `identity.users`, no copied credentials, and no tombstone 
 | `name` | `varchar(64)` | Editable group metadata (**Backlog P2.2a, Domain**); size selected by **ER**. |
 | `description` | `varchar(512) NULL` | Optional group description (**ER** metadata choice); length/optionality not mandated by the domain spec. |
 | `created_at` | `timestamptz DEFAULT now()` | Creation/sorting metadata (**ER**), not a membership-history journal. |
+| `version` | `bigint DEFAULT 0` | Optimistic concurrency for metadata replacement (**P2.2a extension to the ER**). A replacement names the version it was based on and increments it by exactly one; a stale version gets `409 group_version_conflict`. Membership and invitation changes do not increment this version; the future `membership_revision` has a separate replication contract. |
 
-The ER requires `CHECK (length(btrim(name)) > 0)`. Group name is not globally unique. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
+The ER requires `CHECK (length(btrim(name)) > 0)`; the migration adds `CHECK (version >= 0)`. Group name is not globally unique. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
 
 ### Group Management: `groups.group_members`
 
@@ -150,18 +153,20 @@ The ER requires `CHECK (length(btrim(name)) > 0)`. Group name is not globally un
 | `id` (PK) | `uuid DEFAULT uuidv7()` | Group-owned membership entity identity (**Domain, ER/P1.2**). |
 | `group_id` (FK → `groups.groups.id`) | `uuid` | Membership belongs to exactly one group (**Domain, ER**). |
 | `user_id` (FK → `groups.users.id`, indexed) | `uuid` | Local membership subject, only for a locally known IAM identity (**Domain, Backlog P2.2, ER**). |
-| `role` | `group_role` (`member`, `admin`) | Organizational authorization and administrator-transfer rules (**Domain, Backlog P2.2b**); enum representation and values are **ER-selected**. |
+| `role` | `group_role` (`member`, `admin`) | Organizational authorization and membership role rules (**Domain, Backlog P2.2b**); enum representation and values are **ER-selected**. |
 | `joined_at` | `timestamptz DEFAULT now()` | Membership join metadata (**ER**), not a requirement to retain former memberships. |
 
-`UNIQUE(group_id, user_id)` prevents duplicate membership and supplies the leading-column group lookup index. The separate `user_id` index supports user-centric queries. At least one member and one administrator must remain in a surviving group; last-member removal, concurrent administrator transfer, and group deletion require a **group-scoped transactional protocol**. An IAM account deletion must not casually cascade through these rows and break those invariants.
+`UNIQUE(group_id, user_id)` prevents duplicate membership and supplies the leading-column group lookup index. The separate `user_id` index supports user-centric queries. At least one member and one administrator must remain in a surviving group; last-member removal, concurrent role changes or departures, and eventual group deletion require a **group-scoped transactional protocol**. An IAM account deletion must not casually cascade through these rows and break those invariants.
+
+Mutations of an existing group use the [group-root locking protocol](../../architecture/persistence.md#group-persistence). The application checks current caller and target membership in a fresh post-lock projection and preserves the final-member and final-administrator invariants. Role changes target other members; the sole administrator may promote another member before leaving. Creation inserts the group and first `admin` membership in one segment; the `user_id` FK rejects an unadmitted creator, leaving neither row. A locally known nonmember receives the same `404 group_not_found` as for a missing group, so group IDs reveal neither existence nor membership.
 
 ### Group Management: `groups.invitations`
 
-Invitation links are **shareable bearer capabilities**, not messages addressed to specific accounts. Administrators create/revoke links; an authenticated caller redeems one to create a **regular `member`**. Redeeming a link never promotes an existing member or grants `admin`. Revocation is modeled as **hard deletion**; there is no `revoked_at` or `assigned_role` column. Links may expire or be limited to a number of successful new memberships (**Domain, Backlog P2.2c, ER**).
+Invitation links are **shareable bearer capabilities**, not messages addressed to specific accounts. Administrators create, list and revoke links; an authenticated, locally known caller can preview the group name using a valid link and explicitly redeem it to become a **regular `member`**. Redeeming a link never promotes an existing member or grants `admin`. Revocation is modeled as **hard deletion**; there is no `revoked_at` or `assigned_role` column. Links may expire or be limited to a number of successful new memberships (**Domain, Backlog P2.2c, ER**).
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
-| `id` (PK) | `uuid DEFAULT uuidv7()` | Link-record selector; token format `<id>.<base64url(secret)>` (**ER**). |
+| `id` (PK) | `uuid DEFAULT uuidv7()` | Link-record selector; token format `<id>.<base64url(secret)>` (**ER**; see [opaque application tokens](../../architecture/authorization.md#opaque-application-tokens)). |
 | `group_id` (FK → `groups.groups.id`, indexed) | `uuid` | Invitation is owned by one Group; listing and group deletion invalidation (**Domain, ER**). |
 | `verifier_hash` | `bytea` | SHA-256 verifier of 32 CSPRNG secret bytes; link secret may only be returned on creation and must not be stored or logged (**ER** security choice supporting **Backlog P2.2c** forged-link rejection). |
 | `created_at` | `timestamptz DEFAULT now()` | Link creation and expiration baseline (**ER**). |
@@ -169,7 +174,7 @@ Invitation links are **shareable bearer capabilities**, not messages addressed t
 | `max_uses` | `natural1 NULL` | Optional positive redemption limit; `NULL` means unlimited (**Domain, ER**). |
 | `use_count` | `natural0 DEFAULT 0` | Count successful *new* memberships to enforce finite/single-use links (**Backlog P2.2c, ER**). |
 
-The ER enforces `octet_length(verifier_hash) = 32`, `max_uses IS NULL OR use_count <= max_uses`, and `expires_at IS NULL OR expires_at > created_at`. The `natural1`/`natural0` value constraints supply positivity and non-negativity. Revocation/removal races must serialize with redemption; verification, membership creation and usage increment must commit together. Existing members do not consume a use. Group deletion invalidates its links; the physical FK delete action remains subject to the group lifecycle decision.
+The migration enforces `octet_length(verifier_hash) = 32`, `max_uses IS NULL OR use_count <= max_uses`, and `expires_at IS NULL OR expires_at > created_at`. Group-owned integer domains `natural1` and `natural0` enforce positivity and non-negativity; the runtime role has update privileges only on `use_count`. The group FK uses `ON DELETE NO ACTION`. Redemption and revocation serialize through the group root; a successful new membership consumes one use even for unlimited links, while an already-member redemption of a still-valid link consumes none. Invalid, revoked, expired or exhausted links grant neither preview nor membership. The integer counter ceiling also makes an otherwise unlimited link unavailable, avoiding overflow. Preview is read-only and does not reserve capacity. A future group deletion operation must explicitly invalidate its links within the deletion transaction; group deletion itself is deferred.
 
 ### Delivery infrastructure: Spring Modulith registry
 
@@ -182,8 +187,8 @@ The ER fixes useful local keys and checks, but does not substitute for business 
 | Invariant or flow | Owner and verification |
 | --- | --- |
 | Login session deadlines, refresh rotation, hashed verifier validation and reuse revocation | **IAM (P2.1):** physical PostgreSQL concurrency/commit tests and HTTP/session tests; a verifier mismatch cannot revoke another session. |
-| Valid Group membership and final-administrator preservation | **Group (P2.2):** authoritative Group row/role checks in one transaction; test concurrent departures/transfers and group creation. |
-| Single-use invitation redemption and concurrent revocation | **Group (P2.2c):** serialize invitation operations; no count increment on failed/already-member join. |
+| Valid Group membership and final-administrator preservation | **Group (P2.2):** authoritative Group row/role checks in one transaction; test concurrent departures, removals, role changes and group creation. |
+| Single-use invitation redemption and concurrent revocation | **Group (P2.2c):** serialize invitation mutations; preview does not reserve or consume a use, and failed/already-member joins do not increment the count. |
 | IAM user projection: duplicate/reordered registration and eventual deletion | **P2.4a/P2.2d/P2.1e:** persistent publisher, idempotent consumer, recovery/bootstrap, lifecycle/order policy before deletion activation. |
 | Local-miss identity validation | **P2.1d/P2.2e:** explicit current IAM account/session query, distinguish ineligible from unavailable, guard local provisioning and event races. |
 | Group attestation issuance and consumption | **P2.5:** issuer/subject/session correlation and scoped authorization; no additional attestation table is required by the current short-lived JWT model. |

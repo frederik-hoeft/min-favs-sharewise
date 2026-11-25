@@ -47,18 +47,25 @@ public final class SharedIntegrationContextExtension implements BeforeAllCallbac
         private final IntegrationTestContext fixture;
 
         private SharedFixture() {
-            fixture = IntegrationTestContext.start(
+            fixture = IntegrationTestContext.startShared(
                 PostgresTestDatabase.ConnectionSettings.fromEnvironment(), database -> {
                     try (Connection migrator = database.connectAsMigrator();
                          Statement statement = migrator.createStatement()) {
-                        statement.execute("create table groups.p13c_rollback_probe ("
+                        // Probe tables live in a test-owned schema, never in a bounded context's
+                        // schema, so context-level checks (for example generated-schema
+                        // freshness) see only production tables.
+                        statement.execute("create schema test_probes");
+                        statement.execute("grant usage on schema test_probes to sharewise_app");
+                        statement.execute("alter default privileges in schema test_probes "
+                            + "grant select, insert, update, delete on tables to sharewise_app");
+                        statement.execute("create table test_probes.p13c_rollback_probe ("
                             + "id integer primary key, label varchar(255) not null)");
-                        statement.execute("create table groups.rollback_tx_probe ("
+                        statement.execute("create table test_probes.rollback_tx_probe ("
                             + "id integer primary key, label varchar(255) not null)");
                     }
                     IntegrationTestContext.seedCommitted(database, connection -> {
                         try (PreparedStatement statement = connection.prepareStatement(
-                                "insert into groups.p13c_rollback_probe (id,label) values (1,'baseline')")) {
+                                "insert into test_probes.p13c_rollback_probe (id,label) values (1,'baseline')")) {
                             statement.executeUpdate();
                         }
                     });

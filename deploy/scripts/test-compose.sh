@@ -23,6 +23,9 @@ esac
 
 deploy_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$deploy_dir/scripts/lib-compose.sh"
+# Disposable acceptance must never inherit the optional local PostgreSQL host binding.
+# COMPOSE_FILE in deploy/.env is for the ordinary developer deployment only.
+export COMPOSE_FILE=compose.yaml
 cli="$container_cli"
 # A separate project prevents this test from touching the normal local stack.
 project="${SHAREWISE_COMPOSE_TEST_PROJECT:-sharewise-p26ab-smoke}"
@@ -94,8 +97,15 @@ http_response="$("${compose[@]}" exec -T backend curl --silent --show-error --fa
     printf 'Unexpected HTTPS API readiness response: %s\n' "$http_response" >&2
     exit 1
 }
-"${compose[@]}" exec -T backend curl --silent --show-error --fail --insecure \
-    --connect-to "$host:443:frontend:443" "https://$host/" >/dev/null
+for path in / /app/groups /app/groups/view /invite; do
+    route_status="$("${compose[@]}" exec -T backend curl --silent --show-error --insecure \
+        --output /dev/null --write-out '%{http_code}' --max-time 10 \
+        --connect-to "$host:443:frontend:443" "https://$host$path")"
+    [[ "$route_status" == 200 ]] || {
+        printf 'Expected HTTP 200 for static route %s; got %s\n' "$path" "$route_status" >&2
+        exit 1
+    }
+done
 
 # Verify the public redirect/host trust boundary using the real Compose proxy.
 https_port="$("${compose[@]}" exec -T frontend sh -ec 'printf %s "$SHAREWISE_HTTPS_PORT"')"
@@ -116,11 +126,11 @@ wrong_host_status="$("${compose[@]}" exec -T backend curl --silent --insecure \
 }
 
 # Exercise the real HTTPS proxy, CSRF/Origin filters, initial authentication,
-# and signing key distribution. All account fixtures remain disposable.
+# signing key distribution and Group Management. All account fixtures remain disposable.
 export CONTAINER_CLI="$cli"
 issuer="$SHAREWISE_IAM_ISSUER"
 audience="${SHAREWISE_IAM_AUDIENCE:-sharewise-api}"
-python3 "$deploy_dir/scripts/iam-http-smoke.py" --host "$host" --port "$https_port" \
+python3 "$deploy_dir/scripts/api-http-smoke.py" --host "$host" --port "$https_port" \
     --issuer "$issuer" --audience "$audience"
 
 # A psql process reads the password within its own container; no credentials

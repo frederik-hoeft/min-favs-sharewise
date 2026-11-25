@@ -6,6 +6,7 @@ package de.hsh.favs.sharewise.identity.internal.auth.persistence.generated;
 
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.RefreshTokens;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Sessions;
+import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.UserProfiles;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Users;
 
 
@@ -24,6 +25,11 @@ public class Tables {
      * The table <code>identity.sessions</code>.
      */
     public static final Sessions SESSIONS = Sessions.SESSIONS;
+
+    /**
+     * The table <code>identity.user_profiles</code>.
+     */
+    public static final UserProfiles USER_PROFILES = UserProfiles.USER_PROFILES;
 
     /**
      * The table <code>identity.users</code>.

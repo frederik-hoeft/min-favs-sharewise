@@ -7,7 +7,7 @@ import jakarta.persistence.Table;
 
 /** Dedicated entity for the rollback integration suite, outside production entity discovery. */
 @Entity(name = "RollbackTestProbeRow")
-@Table(name = "rollback_tx_probe", schema = "groups")
+@Table(name = "rollback_tx_probe", schema = "test_probes")
 public class RollbackTestProbeRow {
     @Id
     private Integer id;

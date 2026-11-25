@@ -6,18 +6,19 @@ A verified credential is therefore **evidence**, not an authorization grant. Its
 
 ## Responsibilities and trust boundaries
 
-The architecture separates four related questions, each answered at a different boundary:
+The architecture separates five related questions, each answered at a different boundary:
 
 | Responsibility | Question answered | Owner |
 | --- | --- | --- |
 | **Credential verification** | Is this credential authentic, intended for the expected audience and profile, currently valid, and, where necessary, bound to the primary principal? | Trusted source-specific verification and credential providers |
 | **Evidence access** | Which verified assertions and their origins are available to this operation? | Operation-scoped `AuthorizationContext` |
 | **Semantic interpretation** | What application concept does that evidence establish, such as the caller's IAM identity? | Context-owned semantic services such as `IdentityContext` |
+| **Authority-state verification** | Is the admitted caller still eligible according to current authority-owned state? | IAM through `IdentityPort` |
 | **Business authorization** | May the caller perform this action on this resource in its current state? | The resource-owning application context |
 
 This division matters whenever multiple authorities can assert facts about a caller. Claims may have identical names while referring to different resources, sessions, or issuers, so a generic list of claim values would be insufficient for reliable interpretation. Instead, the shared security infrastructure preserves the boundaries between credentials, and semantic contexts interpret those credentials in their own domain. In particular, the IAM identity derived from a primary credential does not also establish Group membership or authorize mutations in another context.
 
-The published contracts follow the same division: `shared::security` provides JWT verification and signing, `shared::claims` exposes accepted evidence, and `shared::di` supplies the operation lifetime. IAM publishes `identity.IdentityContext` as the consumer-facing interpretation of primary identity. Application services can therefore depend on semantic contracts without introducing transport or cryptographic concerns into their domain logic.
+The published contracts follow the same division: `shared::security` provides JWT verification and signing as well as opaque application token mechanics, `shared::claims` exposes accepted evidence, and `shared::di` supplies the operation lifetime. IAM publishes `identity.IdentityContext` for interpreting primary identity and `identity.IdentityPort` for synchronous verification against its current state. Application services can therefore depend on semantic contracts without introducing transport or cryptographic concerns into their domain logic.
 
 ## Credential evidence model
 
@@ -61,9 +62,15 @@ For primary IAM credentials, the verified subject (`sub`) is a canonical user UU
 
 A subordinate credential introduces an additional trust dependency: its own valid signature is insufficient unless its assertions are bound to an **already verified primary credential**. The subordinate profile names the exact issuer-qualified primary profiles it accepts, rather than trusting every primary token issued by an approved authority. Thus, an IAM issuer's unrelated primary token cannot substitute for its access token merely because both carry the same user and session. After checking the primary's kind and accepted `(issuer, profile)` identity, the verifier correlates the subordinate's subject, `principal_iss`, and `principal_sid` with that primary credential. This establishes that the subordinate assertions concern the admitted principal/session; interpreting their resource-specific meaning remains the responsibility of a domain context. The [security design](../stack/security.md#issuing-and-using-domain-attestations) and [semantic-context proposal](../stack/claims-context-proposal.md) describe the domain-attestation and policy model separately.
 
+## Opaque application tokens
+
+IAM refresh and Group invitations share the generation, parsing and verifier comparison mechanism in `shared::security`. An opaque application token contains a canonical lowercase UUID selector, a dot and 32 cryptographically random secret bytes encoded as canonical unpadded Base64URL. The caller allocates the selector and persists the SHA-256 verifier of the decoded bytes, never the bearer itself. `ApplicationTokenGenerator` returns the generated bearer and a defensive copy of the verifier; the owning operation releases the bearer only after its corresponding transaction commits. `ApplicationTokenParser` rejects noncanonical encodings and returns an `ApplicationToken` containing the selector and verifier, not the plaintext secret. Matching requires selector equality and constant-time comparison of fixed-length verifiers. Token types redact their string representations.
+
+The shared mechanism has no credential-store or lifecycle authority. IAM and Group resolve selectors in their respective stores and independently decide validity, rotation, expiration, revocation and allowed effects. An invitation token is a capability to request organizational membership, not a primary authentication credential or an attestation. It cannot establish `IdentityContext` or authorize Finance operations. See the [security design](../stack/security.md#group-invitations) for its admission and disclosure boundaries.
+
 ## From inbound request to operation identity
 
-An HTTP request and an application operation have different lifetimes, so verified request evidence must cross an explicit boundary before it can become an operation-scoped dependency. The application-wide `/api/**` security chain is assembled at the Spring Boot composition root from an IAM-owned `identity::transport` contribution. The shared chain applies IAM primary bearer verification to every context's HTTP endpoints, including future Group APIs, without moving IAM trust policy into `shared` or creating parallel context-specific filter chains. Its bearer filter verifies the primary IAM token and keeps the immutable result in request-local state. When no bearer is supplied, the request has no primary evidence to contribute; when a bearer *is* supplied but fails verification, the request is rejected before application dispatch rather than silently treated as anonymous.
+An HTTP request and an application operation have different lifetimes, so verified request evidence must cross an explicit boundary before it can become an operation-scoped dependency. The application-wide `/api/**` security chain is assembled at the Spring Boot composition root from an IAM-owned `identity::transport` contribution. The shared chain applies IAM primary bearer verification to every context's HTTP endpoints, including Group APIs, without moving IAM trust policy into `shared` or creating parallel context-specific filter chains. Its bearer filter verifies the primary IAM token and keeps the immutable result in request-local state. When no bearer is supplied, the request has no primary evidence to contribute; when a bearer *is* supplied but fails verification, the request is rejected before application dispatch rather than silently treated as anonymous.
 
 ```mermaid
 flowchart LR
@@ -85,11 +92,21 @@ The same scope boundary also serves non-HTTP callers. Such adapters supply expli
 
 ### Semantic identity and authorization
 
-`IdentityContext` interprets the evidence snapshot by selecting the credential matching the configured primary IAM issuer and profile. From that credential it derives a canonical user UUID and requires a non-empty session binding, rejecting multiple candidate identities rather than choosing arbitrarily. Its public API expresses this interpretation as `userId()`, `isAuthenticated()`, and `requireUserId()`, so consumers need not inspect raw claims to ask whether the operation has an authenticated IAM principal.
+`IdentityContext` interprets the evidence snapshot by selecting the credential matching the configured primary IAM issuer and profile. From that credential it derives canonical user and session UUIDs, rejecting malformed session claims or multiple candidate identities rather than choosing arbitrarily. Its public API exposes the verified `userId()` and `sessionId()` together, with required-value accessors for authenticated operations. Both identifiers originate from the same primary credential; the session UUID identifies a login session but is not a credential or proof of its current database eligibility. Consumers do not need to inspect raw claims to determine the operation's caller or session.
 
 When no credential is present, identity is anonymous and the owning application service decides whether that is acceptable. By contrast, an evidence snapshot containing credentials but no valid primary IAM credential, or containing ambiguous primary identity, cannot be interpreted as a legitimate anonymous operation. This distinction protects the domain-facing identity contract from becoming a fallback for rejected or unrelated evidence.
 
 Identity and evidence remain stable throughout one application operation, even when its work spans several sequential [transaction segments](transactions.md). Because they belong to the operation scope rather than to a database connection, HTTP request attribute, or process-global security context, concurrent operations can use the same Spring singletons without sharing credential state.
+
+### Synchronous authority verification
+
+Credential admission and current IAM eligibility answer different questions. `IdentityContext` identifies the caller from evidence accepted for the operation; `IdentityPort` synchronously verifies that same caller against IAM's authoritative account and session state. Application services can request a fresh decision for the admitted caller without supplying another identity, repeating credential verification or accessing IAM's persistence.
+
+IAM confirms that the account exists and is enabled and that the admitted session belongs to it and is active: the session has been created, has not been revoked and has reached neither its idle nor its absolute expiration deadline. Login lockout restricts password authentication rather than invalidating existing sessions. Verification is read-only and does not renew the session.
+
+A successful verification returns the checked user and session identifiers together with the evaluation instant. `INELIGIBLE` means IAM denied eligibility; `UNAVAILABLE` means a reliable decision could not be obtained. Anonymous callers are rejected, and unexpected errors or transaction-completion failures propagate. Consumers requiring fresh verification fail closed unless it succeeds. IAM completes its own read transaction before returning a result, following the [transaction boundaries](transactions.md#architectural-boundaries) for synchronous authority calls.
+
+The decision establishes **call-time domain validity**, not a new credential admission or a guarantee of continuing eligibility. IAM evaluates session deadlines after reading account and session state, so a delayed read cannot extend temporal validity. Account or session state can change after the read. The resource-owning context remains responsible for authorizing its own operation.
 
 ## Failure and enforcement boundaries
 

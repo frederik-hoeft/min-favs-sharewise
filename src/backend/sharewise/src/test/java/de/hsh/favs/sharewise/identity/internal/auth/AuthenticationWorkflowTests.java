@@ -13,13 +13,13 @@ import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.CredentialEncoder;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.LoginSession;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenRecord;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -54,12 +54,12 @@ class AuthenticationWorkflowTests {
         assertEquals(authentication.userId(), rig.accounts.userId);
         assertEquals(authentication.sessionId(), rig.sessions.created.getFirst().id());
         assertEquals(authentication.sessionId(), rig.tokens.created.getFirst().sessionId());
-        assertEquals(authentication.refreshCredential().tokenId(), rig.tokens.created.getFirst().id());
+        assertEquals(authentication.refreshCredential().selector(), rig.tokens.created.getFirst().id());
         assertEquals(32, rig.tokens.created.getFirst().verifierHash().length);
         assertEquals(NOW.plusSeconds(300), authentication.accessToken().expiresAt());
-        assertTrue(authentication.refreshCredential().cookieValue().startsWith(
-                authentication.refreshCredential().tokenId().toString() + "."));
-        assertFalse(authentication.toString().contains(authentication.refreshCredential().cookieValue()));
+        assertTrue(authentication.refreshCredential().value().startsWith(
+                authentication.refreshCredential().selector().toString() + "."));
+        assertFalse(authentication.toString().contains(authentication.refreshCredential().value()));
         assertEquals(List.of(authentication.userId()), rig.events.registered);
         assertEquals(List.of(NOW), rig.events.registeredAt);
     }
@@ -216,7 +216,7 @@ class AuthenticationWorkflowTests {
         final FakeEncoder encoder = new FakeEncoder();
         final FakeIssuer issuer = new FakeIssuer();
         final InitialAuthentication initial = new InitialAuthentication(sessions, tokens,
-                new RefreshCredentialGenerator(), SessionPolicy.initial(), issuer);
+                new ApplicationTokenGenerator(), SessionPolicy.initial(), issuer);
         final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         final RecordingUserEvents events = new RecordingUserEvents();
         final RegistrationService register = new RegistrationService(transactions, accounts, encoder, initial,
@@ -330,6 +330,25 @@ class AuthenticationWorkflowTests {
         @Override
         public Optional<AccountSnapshot> findByEmailForUpdate(EmailAddress requested) {
             return findByEmail(requested);
+        }
+
+        @Override
+        public Optional<AccountSnapshot> findById(UUID requested) {
+            return requested.equals(userId) ? snapshot() : Optional.empty();
+        }
+
+        @Override
+        public Optional<AccountSnapshot> findByIdForUpdate(UUID requested) {
+            return findById(requested);
+        }
+
+        @Override
+        public void replacePassword(UUID requested, String previous, String replacement) {
+            if (!requested.equals(userId) || !passwordHash.equals(previous)) {
+                throw new IllegalStateException("Stale IAM verifier");
+            }
+            passwordHash = replacement;
+            failureState = new LoginLockoutPolicy.State(0, null);
         }
 
         private Optional<AccountSnapshot> snapshot() {

@@ -33,6 +33,8 @@
         <skipUnitTests>false</skipUnitTests>
         <skipDatabaseTests>false</skipDatabaseTests>
         <databaseTestIncludes>**/*IT.java,**/*E2E.java</databaseTestIncludes>
+        <!-- One bounded JUnit worker by default; override with -DtestParallelism=N. -->
+        <testParallelism>1</testParallelism>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -138,13 +140,25 @@
                 <configuration>
                     <classesDirectory>${project.build.outputDirectory}</classesDirectory>
                     <skipITs>${skipDatabaseTests}</skipITs>
-                    <!-- A single fork guarantees one JUnit-root-owned database per Integration execution. -->
+                    <!-- One JUnit launcher and one Integration fixture per Failsafe fork. -->
                     <forkCount>1</forkCount>
                     <reuseForks>true</reuseForks>
                     <includes>
                         <include>${databaseTestIncludes}</include>
                     </includes>
                     <failIfNoTests>true</failIfNoTests>
+                    <!-- Spring Boot's logging initialization mutates a JVM-global Logback context.
+                         Concurrent disposable application contexts must not reconfigure it. -->
+                    <systemPropertyVariables>
+                        <org.springframework.boot.logging.LoggingSystem>none</org.springframework.boot.logging.LoggingSystem>
+                        <spring.main.banner-mode>off</spring.main.banner-mode>
+                        <junit.jupiter.execution.parallel.enabled>true</junit.jupiter.execution.parallel.enabled>
+                        <junit.jupiter.execution.parallel.mode.default>same_thread</junit.jupiter.execution.parallel.mode.default>
+                        <junit.jupiter.execution.parallel.mode.classes.default>concurrent</junit.jupiter.execution.parallel.mode.classes.default>
+                        <junit.jupiter.execution.parallel.config.strategy>fixed</junit.jupiter.execution.parallel.config.strategy>
+                        <junit.jupiter.execution.parallel.config.fixed.parallelism>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.parallelism>
+                        <junit.jupiter.execution.parallel.config.fixed.max-pool-size>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.max-pool-size>
+                    </systemPropertyVariables>
                 </configuration>
                 <executions>
                     <execution>
@@ -160,6 +174,18 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <skipTests>${skipUnitTests}</skipTests>
+                    <!-- Spring Boot's logging initialization mutates a JVM-global Logback context.
+                         Concurrent disposable application contexts must not reconfigure it. -->
+                    <systemPropertyVariables>
+                        <org.springframework.boot.logging.LoggingSystem>none</org.springframework.boot.logging.LoggingSystem>
+                        <spring.main.banner-mode>off</spring.main.banner-mode>
+                        <junit.jupiter.execution.parallel.enabled>true</junit.jupiter.execution.parallel.enabled>
+                        <junit.jupiter.execution.parallel.mode.default>same_thread</junit.jupiter.execution.parallel.mode.default>
+                        <junit.jupiter.execution.parallel.mode.classes.default>concurrent</junit.jupiter.execution.parallel.mode.classes.default>
+                        <junit.jupiter.execution.parallel.config.strategy>fixed</junit.jupiter.execution.parallel.config.strategy>
+                        <junit.jupiter.execution.parallel.config.fixed.parallelism>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.parallelism>
+                        <junit.jupiter.execution.parallel.config.fixed.max-pool-size>${testParallelism}</junit.jupiter.execution.parallel.config.fixed.max-pool-size>
+                    </systemPropertyVariables>
                     <includes>
                         <include>**/*Tests.java</include>
                         <include>**/*Test.java</include>
@@ -190,13 +216,48 @@
                 <databaseTestIncludes>**/*E2E.java</databaseTestIncludes>
             </properties>
         </profile>
-        <!-- Opt-in, PostgreSQL-first jOOQ generation. Generated IAM schema sources are
-             committed under src/main/java so ordinary offline builds need no database or
-             code generation plugin. Never run this against an unmigrated schema. -->
+        <!-- Opt-in, PostgreSQL-first jOOQ generation: one execution per context schema, each
+             writing into its owning module's private persistence package. Generated sources are
+             committed under src/main/java, so ordinary builds need neither a database nor this
+             plugin. Run it only against a Flyway-migrated database; a missing schema fails the run:
+             ./mvnw -Pjooq-codegen -Djooq.codegen.jdbc.url=... -Djooq.codegen.jdbc.user=... generate-sources
+             A single context regenerates with org.jooq:jooq-codegen-maven:generate@<execution-id>.
+             Generator settings shared by all contexts are declared once below; Maven merges them
+             into each execution, which only names its schema and target package. -->
         <profile>
-            <id>jooq-codegen-identity</id>
+            <id>jooq-codegen</id>
             <build>
                 <plugins>
+                    <!-- Explicit migration goal for disposable generation databases; never bound
+                         to a lifecycle phase or resolved by ordinary builds. -->
+                    <plugin>
+                        <groupId>org.flywaydb</groupId>
+                        <artifactId>flyway-maven-plugin</artifactId>
+                        <version>${flyway.version}</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.flywaydb</groupId>
+                                <artifactId>flyway-database-postgresql</artifactId>
+                                <version>${flyway.version}</version>
+                            </dependency>
+                            <dependency>
+                                <groupId>org.postgresql</groupId>
+                                <artifactId>postgresql</artifactId>
+                                <version>${postgresql.version}</version>
+                            </dependency>
+                        </dependencies>
+                        <configuration>
+                            <url>${jooq.codegen.jdbc.url}</url>
+                            <user>${jooq.codegen.jdbc.user}</user>
+                            <password>${env.JOOQ_CODEGEN_PASSWORD}</password>
+                            <locations>
+                                <location>filesystem:${project.basedir}/src/main/resources/db/migration</location>
+                            </locations>
+                            <defaultSchema>flyway</defaultSchema>
+                            <schemas><schema>flyway</schema></schemas>
+                            <outOfOrder>false</outOfOrder>
+                        </configuration>
+                    </plugin>
                     <plugin>
                         <groupId>org.jooq</groupId>
                         <artifactId>jooq-codegen-maven</artifactId>
@@ -209,6 +270,11 @@
                             </dependency>
                         </dependencies>
                         <configuration>
+                            <!-- An unmigrated database has no context schema. jOOQ would treat the
+                                 schema as empty and delete the committed sources of its package
+                                 while reporting success; failing on metadata problems aborts the
+                                 run before any file is written or removed. -->
+                            <onMetadataProblem>FAIL</onMetadataProblem>
                             <jdbc>
                                 <driver>org.postgresql.Driver</driver>
                                 <url>${jooq.codegen.jdbc.url}</url>
@@ -219,7 +285,6 @@
                                 <name>org.jooq.codegen.JavaGenerator</name>
                                 <database>
                                     <name>org.jooq.meta.postgres.PostgresDatabase</name>
-                                    <inputSchema>identity</inputSchema>
                                     <includes>.*</includes>
                                 </database>
                                 <generate>
@@ -227,12 +292,64 @@
                                     <pojos>false</pojos>
                                     <records>true</records>
                                 </generate>
-                                <target>
-                                    <packageName>de.hsh.favs.sharewise.identity.internal.auth.persistence.generated</packageName>
-                                    <directory>${project.basedir}/src/main/java</directory>
-                                </target>
                             </generator>
                         </configuration>
+                        <executions>
+                            <execution>
+                                <id>identity</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <generator>
+                                        <database>
+                                            <inputSchema>identity</inputSchema>
+                                        </database>
+                                        <target>
+                                            <packageName>de.hsh.favs.sharewise.identity.internal.auth.persistence.generated</packageName>
+                                            <directory>${project.basedir}/src/main/java</directory>
+                                        </target>
+                                    </generator>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>groups</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <generator>
+                                        <database>
+                                            <inputSchema>groups</inputSchema>
+                                        </database>
+                                        <target>
+                                            <packageName>de.hsh.favs.sharewise.groups.internal.persistence.generated</packageName>
+                                            <directory>${project.basedir}/src/main/java</directory>
+                                        </target>
+                                    </generator>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>finance</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <generator>
+                                        <database>
+                                            <inputSchema>finance</inputSchema>
+                                        </database>
+                                        <target>
+                                            <packageName>de.hsh.favs.sharewise.finance.internal.persistence.generated</packageName>
+                                            <directory>${project.basedir}/src/main/java</directory>
+                                        </target>
+                                    </generator>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

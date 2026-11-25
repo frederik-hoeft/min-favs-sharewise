@@ -4,24 +4,30 @@ import de.hsh.favs.sharewise.identity.internal.auth.AuthenticationResult;
 import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.LoginFailure;
 import de.hsh.favs.sharewise.identity.internal.auth.LoginService;
+import de.hsh.favs.sharewise.identity.internal.auth.LogoutStatus;
+import de.hsh.favs.sharewise.identity.internal.auth.SessionLifecycleFailure;
+import de.hsh.favs.sharewise.identity.internal.auth.SessionLifecycleService;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationFailure;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationService;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthResponse;
 import de.hsh.favs.sharewise.identity.internal.web.dto.CsrfBootstrap;
+import de.hsh.favs.sharewise.identity.internal.web.dto.SessionBindingRequest;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -100,6 +106,84 @@ final class IamAuthenticationController {
                         "invalid_credentials", "Authentication Failed", "Invalid credentials.")));
     }
 
+    /** Rotates the committed refresh generation without requiring a primary access bearer. */
+    @PostMapping(value = "/refresh", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<?> refresh(@RequestBody SessionBindingRequest input,
+            HttpServletRequest request, HttpServletResponse response) {
+        UUID expectedSessionId = sessionBinding(input);
+        Result<AuthenticationResult, SessionLifecycleFailure> result = ingress.dispatch(
+                SessionLifecycleService.class,
+                service -> service.refresh(presentedRefreshCookie(request), expectedSessionId));
+        return result.fold(
+                success -> succeeded(success, HttpStatus.OK, request, response),
+                IamAuthenticationController::lifecycleFailure);
+    }
+
+    /** Revokes the verified session, or succeeds idempotently when no usable cookie exists. */
+    @PostMapping(value = "/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<?> logout(@RequestBody SessionBindingRequest input,
+            HttpServletRequest request, HttpServletResponse response) {
+        UUID expectedSessionId = sessionBinding(input);
+        Result<LogoutStatus, SessionLifecycleFailure> result = ingress.dispatch(
+                SessionLifecycleService.class,
+                service -> service.logout(presentedRefreshCookie(request), expectedSessionId));
+        return result.fold(ignored -> {
+            csrfTokens.saveToken(null, request, response);
+            response.addHeader(HttpHeaders.SET_COOKIE, ResponseCookie.from(REFRESH_COOKIE, "")
+                    .httpOnly(true).secure(true).sameSite("Strict").path("/")
+                    .maxAge(Duration.ZERO).build().toString());
+            return ResponseEntity.noContent().build();
+        }, IamAuthenticationController::lifecycleFailure);
+    }
+
+    private static ResponseEntity<?> lifecycleFailure(SessionLifecycleFailure failure) {
+        return switch (failure) {
+            case REFRESH_UNAVAILABLE -> ApiProblems.response(HttpStatus.UNAUTHORIZED,
+                    "refresh_unavailable", "Refresh Unavailable", "Sign in again to continue.");
+            case SESSION_CONTEXT_CHANGED -> ApiProblems.response(HttpStatus.CONFLICT,
+                    "session_context_changed", "Sign-in Changed", "Reload to use the current session.");
+        };
+    }
+
+    /** A missing binding is allowed only when the browser is restoring its current cookie context. */
+    private static UUID sessionBinding(SessionBindingRequest input) {
+        if (input == null) {
+            throw RequestValidationException.ofSingleField("request", "required", "Request body is required.");
+        }
+        String expected = input.expectedSessionId();
+        if (expected == null) {
+            return null;
+        }
+        try {
+            UUID parsed = UUID.fromString(expected);
+            if (parsed.toString().equals(expected)) {
+                return parsed;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Report the same field error for all invalid UUID encodings.
+        }
+        throw RequestValidationException.ofSingleField("expectedSessionId", "invalid",
+                "Expected session ID must be a canonical UUID.");
+    }
+
+    /** Duplicate cookie names are ambiguous and cannot authorize a session mutation. */
+    private static String presentedRefreshCookie(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        String value = null;
+        for (Cookie cookie : cookies) {
+            if (REFRESH_COOKIE.equals(cookie.getName())) {
+                if (value != null) {
+                    return null;
+                }
+                value = cookie.getValue();
+            }
+        }
+        return value;
+    }
+
     private RegistrationCommand registration(AuthCredentialsRequest input) {
         return registrations.createFrom(input).fold(
                 command -> command,
@@ -116,11 +200,11 @@ final class IamAuthenticationController {
             HttpServletRequest request, HttpServletResponse response) {
         // This is reached only when Transactions.execute has returned after confirmed commit.
         Instant now = clock.instant();
-        long maxAge = Math.max(0, Duration.between(now, result.refreshExpiresAt()).getSeconds());
-        if (maxAge == 0) {
-            throw new IllegalStateException("Committed IAM session has expired before cookie issuance");
-        }
-        ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, result.refreshCredential().cookieValue())
+        // A slow response can cross the deadline after the transaction committed.
+        // Still deliver the successor instead of failing after consumption; IAM
+        // rejects it once the authoritative session deadline has passed.
+        long maxAge = Math.max(1, Duration.between(now, result.refreshExpiresAt()).getSeconds());
+        ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, result.refreshCredential().value())
                 .httpOnly(true).secure(true).sameSite("Strict").path("/")
                 .maxAge(Duration.ofSeconds(maxAge)).build();
         // Prevent a token pair obtained before authentication from being reused later.
@@ -130,7 +214,7 @@ final class IamAuthenticationController {
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         return ResponseEntity.status(status)
                 .body(new AuthResponse(result.accessToken().value(), "Bearer",
-                        result.accessToken().expiresAt()));
+                        result.accessToken().expiresAt(), result.sessionId()));
     }
 
 }

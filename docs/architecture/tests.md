@@ -11,9 +11,9 @@ The distinction matters most for persistence: a transaction that requests `COMMI
 | **Unit** | In-process JUnit with fakes/mocks; optionally a lightweight Spring context or MockMvc | No external database, container runtime or network dependency. Tests application decisions, validation, scoped wiring and architectural constraints. |
 | **Integration** | Real PostgreSQL and production Spring services, with explicitly selected rollback-test components | One migrated database and application context shared by the test suite; each test execution owns a fresh physical transaction and operation DI scope. All physical writes roll back. Tests database adapter behavior and SQL-visible pending state. |
 | **E2E** | Real PostgreSQL, production Spring configuration and application services | One independently migrated, disposable database and application context **per test**. Physical commits and independent-connection observations establish durable and multi-segment behavior. |
-| **Smoke / system-level E2E** *(deferred)* | A deployed system spanning multiple application contexts and their infrastructure | Establishes cross-context messaging, replication, network and deployment behavior. It has no executable suite or CI gate yet. |
+| **Smoke / system-level E2E** | A deployed system and its infrastructure | The disposable production Compose probe establishes HTTPS ingress, IAM, representative Group workflows and deployment behavior; automated cross-context messaging and replication scenarios remain deferred. |
 
-E2E here denotes an application scenario with a real database and commit boundaries. It need not use a browser or a deployed system. HTTP-level scenarios within one context can belong to E2E; cross-process delivery and system recovery belong to the deferred smoke category.
+E2E here denotes an application scenario with a real database and commit boundaries. It need not use a browser or a deployed system. HTTP-level scenarios within one context can belong to E2E; cross-process delivery and system recovery belong to the smoke category. The [deployment guide](../../deploy/README.md#disposable-end-to-end-acceptance) describes the local Compose probe; it is separate from Maven and the three backend CI suites.
 
 The three active suites are independently selectable Maven test executions and separate GitLab CI gates. They share neither a database fixture nor an active transaction across CI jobs. There is no second application module or separate test DI container.
 
@@ -58,9 +58,11 @@ The database abstraction exposes the operations application-facing tests need; P
 
 ## Isolation, concurrency and external effects
 
+Component tests that share a cached Spring context also share its mutable singleton fixtures. Such fixtures require independent state or a common JUnit resource lock covering setup, test execution and cleanup; locking individual fixture methods cannot protect a whole scenario. Group component suites use a fixture-lifecycle lock while unrelated tests remain parallel.
+
 The shared Integration fixture is safe for parallel execution **under explicit constraints**, not simply because its transactions roll back. Tests own independent transaction bindings, operation scopes and connections; the suite's committed seed is immutable after initialization. Concurrent tests use disjoint write keys and avoid conflicting row locks, global schema or role mutations, and assumptions that PostgreSQL sequences roll back. The shared context may still contain singletons, so tests cannot mutate shared singleton state without independent synchronization or isolation.
 
-An Integration test cannot allow unrelated asynchronous consumers, external API calls or side effects to escape its rollback-owned operation. Those effects cannot be undone by the database rollback and may be triggered on another thread or after a physical commit that never occurs here. A test needing real event publication, cross-transaction visibility or external effects belongs in E2E or, when multiple deployed contexts are involved, in the deferred smoke suite.
+An Integration test cannot allow unrelated asynchronous consumers, external API calls or side effects to escape its rollback-owned operation. Those effects cannot be undone by the database rollback and may be triggered on another thread or after a physical commit that never occurs here. A test needing real event publication, cross-transaction visibility or external effects belongs in E2E or, when multiple deployed contexts are involved, in system-level smoke coverage.
 
 E2E isolation is a database ownership guarantee, not a guarantee that arbitrary cluster-global or external effects are isolated. Its scenarios must still avoid changing shared server roles and other cluster-wide state unless the test explicitly owns and restores it.
 

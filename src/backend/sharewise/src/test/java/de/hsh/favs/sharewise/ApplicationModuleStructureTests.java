@@ -3,7 +3,10 @@ package de.hsh.favs.sharewise;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.identity.IdentityPort;
+import de.hsh.favs.sharewise.identity.IdentityVerificationFailure;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
+import de.hsh.favs.sharewise.identity.VerifiedIdentity;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -67,8 +70,31 @@ class ApplicationModuleStructureTests {
                 .map(type -> type.getName())
                 .filter(name -> !name.endsWith(".package-info"))
                 .collect(Collectors.toSet());
-        assertEquals(Set.of(IdentityContext.class.getName(), UnauthenticatedCallerException.class.getName()),
-                publishedTypes);
+        assertEquals(Set.of(IdentityContext.class.getName(), UnauthenticatedCallerException.class.getName(),
+                IdentityPort.class.getName(), VerifiedIdentity.class.getName(),
+                IdentityVerificationFailure.class.getName()), publishedTypes);
+    }
+
+    @Test
+    void groupsDeclaresExactlyItsConsumedContractsAndPublishesNoTypes() {
+        ApplicationModule groups = modules.getModuleByName("groups")
+                .orElseThrow(() -> new AssertionError("module 'groups' must exist"));
+        assertEquals(List.of("identity", "shared::di", "shared::jooq", "shared::result", "shared::security", "shared::transactions",
+                "shared::validation", "shared::web"),
+                ApplicationModuleInformation.of(groups.getBasePackage()).getDeclaredDependencies(),
+                "groups may consume only the IAM identity contract and its declared shared contracts");
+        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules, groups.getBasePackage().getName()),
+                "groups publishes no Java API until a consumer needs one");
+    }
+
+    @Test
+    void financePublishesNoApiAndDependsOnlyOnJooqAndResult() {
+        ApplicationModule finance = modules.getModuleByName("finance")
+                .orElseThrow(() -> new AssertionError("module 'finance' must exist"));
+        assertEquals(List.of("shared::jooq", "shared::result"),
+                ApplicationModuleInformation.of(finance.getBasePackage()).getDeclaredDependencies());
+        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules,
+                finance.getBasePackage().getName()));
     }
 
     @Test

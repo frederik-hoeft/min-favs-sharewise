@@ -1,0 +1,23 @@
+.panel {
+  padding: 1.25rem;
+}
+
+.wrap {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: center;
+  max-width: 100%;
+}
+
+.members {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}

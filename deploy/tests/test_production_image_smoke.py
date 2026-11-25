@@ -131,6 +131,8 @@ class ProductionImageSmokeTests(unittest.TestCase):
         self.assertIn("exec smoke-frontend wget -q -O /dev/null http://127.0.0.1:8081/health", calls)
         self.assertIn("exec smoke-frontend wget -S -O /dev/null --no-check-certificate https://sharewise-smoke.test/no-such-route", calls)
         self.assertIn("exec smoke-frontend wget -q --no-check-certificate -O /dev/null https://sharewise-smoke.test/_next/static/chunk.js", calls)
+        for path in ("/app/groups", "/app/groups/view", "/invite"):
+            self.assertIn(f"https://sharewise-smoke.test{path}", calls)
         self.assertNotIn(" -p ", calls)
         self.assertNotIn("port smoke-frontend", calls)
         self.assertIn("rm -f smoke-frontend", calls)

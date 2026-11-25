@@ -4,15 +4,20 @@ import de.hsh.favs.sharewise.testsupport.execution.TestCallbacks;
 import de.hsh.favs.sharewise.testsupport.transactions.RollbackTransactions;
 import java.util.Objects;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Shared PostgreSQL application context, but an independent rollback-only physical transaction
- * and operation DI scope for every invocation. A service under test owns its logical segment;
- * the helper must not open a second one on its behalf.
+ * and operation DI scope for every invocation. Test methods may run concurrently because
+ * transaction bindings and operation scopes are thread-local; tests must use disjoint write
+ * keys and must not mutate the shared Spring context or its singleton state.
+ * A service under test owns its logical segment; the helper must not open a second one.
  */
 @Tag("integration")
+@Execution(ExecutionMode.CONCURRENT)
 @ExtendWith(SharedIntegrationContextExtension.class)
 public abstract class IntegrationTestBase {
 

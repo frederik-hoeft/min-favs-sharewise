@@ -8,6 +8,7 @@ import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.Domain
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.Identity;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.Keys;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Sessions.SessionsPath;
+import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.UserProfiles.UserProfilesPath;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.records.UsersRecord;
 
 import java.time.OffsetDateTime;
@@ -189,6 +190,19 @@ public class Users extends TableImpl<UsersRecord> {
             _sessions = new SessionsPath(this, null, Keys.SESSIONS__SESSIONS_USER_ID_FKEY.getInverseKey());
 
         return _sessions;
+    }
+
+    private transient UserProfilesPath _userProfiles;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>identity.user_profiles</code> table
+     */
+    public UserProfilesPath userProfiles() {
+        if (_userProfiles == null)
+            _userProfiles = new UserProfilesPath(this, null, Keys.USER_PROFILES__USER_PROFILES_USER_ID_FKEY.getInverseKey());
+
+        return _userProfiles;
     }
 
     @Override

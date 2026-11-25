@@ -133,7 +133,7 @@
       <text x="1788.8145" xml:space="preserve" y="537.778" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">0..*</text>
       <path fill="none" d="M1548.2377 347.8162 L1548.2377 327.8057 L1823.1978 327.8057 L1823.1978 347.8271" clip-path="url(#clipPath2)"/>
       <text x="1810.9681" xml:space="preserve" y="342.5196" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">1</text>
-      <text x="1555.082" xml:space="preserve" y="342.5196" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">1..*</text>
+      <text x="1555.082" xml:space="preserve" y="342.5196" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">0..*</text>
       <path fill="none" d="M1783.0642 458.8735 L1821.3673 458.8735 L1821.3673 397.9388" clip-path="url(#clipPath2)"/>
       <text x="1785.4668" xml:space="preserve" y="451.6692" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">0..*</text>
       <text x="1808.9221" xml:space="preserve" y="413.7383" clip-path="url(#clipPath2)" font-family="sans-serif" stroke="none">1</text>

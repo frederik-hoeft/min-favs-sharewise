@@ -33,6 +33,24 @@ To run a focused class instead of a full suite, use Surefire's `-Dtest` or Fails
 
 Maven Surefire selects the Unit `*Test`/`*Tests` classes; Failsafe selects `*IT` or `*E2E` under the corresponding PostgreSQL profile. Each database-backed profile skips Unit execution; the Unit profile skips the database-backed suites. Plain `./mvnw clean verify` runs all three when PostgreSQL is available. The three selectors are implemented in the backend `pom.xml`, not separate Maven modules.
 
+### Bounded parallel execution
+
+All backend suites use one JUnit worker by default, so `./mvnw clean verify` retains sequential test execution. Set the Maven property `testParallelism` to a positive integer to use the same bounded JUnit worker count for Unit, Integration and E2E tests without changing Maven forks or enabling parallel module builds:
+
+```bash
+./mvnw -B -ntp clean verify                          # sequential (default: 1)
+./mvnw -B -ntp -DtestParallelism=2 clean verify       # all three suites, 2 workers each
+./mvnw -B -ntp -Pe2e-tests -DtestParallelism=3 verify # E2E only, 3 workers
+```
+
+JUnit runs Unit test classes concurrently, but keeps the methods within each unannotated class sequential. Tests extending `IntegrationTestBase` or `E2ETestBase` explicitly permit method-level concurrency; both use JUnit's default per-method test instances. Individual classes or methods can override the inherited setting with `@Execution(ExecutionMode.SAME_THREAD)` when they depend on shared mutable state, ordering, or other non-isolated resources. The pool size is bounded per test runner rather than globally across Maven or CI jobs.
+
+When component tests import the same mutable Spring fixture, give them a shared JUnit resource lock (or independent fixture instances) rather than relying on sequential execution. Run affected suites at CI worker counts to expose context-cache and fixture-lifecycle races.
+
+Integration methods share one migrated database and Spring application context, but each operation owns an independent rollback-only physical transaction, operation scope and connection. Their concurrency contract requires disjoint write keys, no cross-test modification of committed fixture state, and no mutable application singletons shared between test methods. The existing Integration tests follow these constraints, including the dedicated concurrent-rollback test. New tests that cannot meet them must opt out of concurrent execution or use a separate E2E fixture. E2Es generally own a database and Spring context per method; tests that create additional contexts still need to account for server and JVM-global resources.
+
+Spring Boot's per-context logging initialization reconfigures a JVM-global Logback instance and is not safe when test-created contexts start simultaneously. The test runners disable Boot's logging-system initialization and use a static test-only Logback configuration at WARN level, with startup banners disabled. This preserves failure diagnostics without interleaving framework startup banners, and does not affect production logging. Disposable E2E contexts use a test-only Hikari pool of at most three connections with no minimum idle connections; this bounds connection demand when many contexts share one PostgreSQL server while leaving the shared Integration context sized for concurrent rollback operations. The limit also applies to the Spring TestContext-managed E2E fixtures, and does not change production datasource settings. Parallel PostgreSQL suites still increase startup, migration and database load; tune the worker count against the actual server rather than assuming that more workers are always faster. GitLab CI uses 16 JUnit workers per backend Unit, Integration and E2E job, independently of how many GitLab runners execute jobs. The default unparameterized local build remains sequential.
+
 An offline development environment can run the Unit gate with cached Maven dependencies:
 
 ```bash
@@ -97,9 +115,10 @@ An Integration operation permits one logical segment. It must not commit seed ch
 
 ### E2E: a database and context owned by each test
 
-Extend `E2ETestBase` and use its callback-owned lifecycle:
+Extend `E2ETestBase`, declare `@Tag("e2e")` on the concrete test class and use its callback-owned lifecycle. For application tests, select `ProductionEntityScanConfiguration` explicitly so Hibernate validates only context-owned production entities:
 
 ```java
+@Tag("e2e")
 class SomeApplicationE2E extends E2ETestBase {
 
     @Test
@@ -109,20 +128,24 @@ class SomeApplicationE2E extends E2ETestBase {
             try (Connection connection = fixture.connectAsApplication()) {
                 assertTrue(connection.isValid(2));
             }
-        });
+        }, ProductionEntityScanConfiguration.class);
     }
 }
 ```
 
-The E2E example uses JUnit's `@Test`, `assertNotNull` and `assertTrue` plus `java.sql.Connection`. The helper creates, migrates, configures and closes the fixture, including on assertion failure. `runServiceTest(MyService.class, (service, fixture) -> { ... })` resolves an application service inside a production operation scope while allowing it to commit real physical transactions. `runTestWithSchema(ddl, ...)` is for infrastructure tests requiring additional schema objects, not normal application tests; normal production tables come from Flyway migrations.
+The E2E example uses JUnit's `@Tag`, `@Test`, `assertNotNull` and `assertTrue`, `java.sql.Connection` and `testsupport.postgres.ProductionEntityScanConfiguration`. The helper creates, migrates, configures and closes the fixture, including on assertion failure. `runServiceTest(MyService.class, (service, fixture) -> { ... })` resolves an application service inside a production operation scope while allowing it to commit real physical transactions. `runTestWithSchema(ddl, ...)` is for infrastructure tests requiring additional schema objects, not normal application tests; normal production tables come from Flyway migrations. Tests that need JPA probe entities select their own entity scan and matching schema setup. Without a constrained scan, Hibernate can discover probe entities on the test classpath whose tables do not exist in a normal migrated database.
 
 Use `fixture.connectAsApplication()` for assertions from an independent connection after a real commit or rollback. For legacy infrastructure tests, the base class also supports `start(...)` in `@BeforeEach` and closes the fixture in `@AfterEach`. Tests intentionally inspecting provisioning or failure during startup may use the lower-level `IntegrationTestContext` and `TestDatabase` APIs directly. The fixture's PostgreSQL-specific implementation is `PostgresTestDatabase` when server administration or PostgreSQL semantics are the subject.
 
 The higher-order callbacks allow checked exceptions without adding `throws` declarations to each test. They preserve assertion failures, wrap unexpected exceptions as assertion failures with the original cause and suppressed cleanup failures, and retain thread interruption. The test must still assert **expected** failures explicitly; the callback wrapper is not a substitute for `assertThrows`.
 
+### Authenticated callers
+
+Tests bind callers in one of two ways, depending on whether HTTP ingress is part of the subject. Service-level tests import `IdentityTestConfiguration` and wrap each dispatch in `IdentityTestFixture.withUser(...)`. The fixture supplies `IdentityContext` directly, bypassing credential verification. HTTP tests instead exercise the real API security chain and bearer ingress. They import `TestAccessTokenConfiguration` and send `Authorization: Bearer` headers from `TestAccessTokens`. The configuration publishes the fixture codec as IAM's primary codec, so production code verifies the test-signed tokens and derives `IdentityContext` from them. `TestAccessTokens` also issues expired and wrong-profile tokens for rejection tests. An HTTP test must not import `IdentityTestConfiguration`, because its primary `IdentityContext` would replace the bearer-derived identity. Import `TestAccessTokenConfiguration` only into contexts with IAM authentication disabled, because IAM's authentication configuration defines the primary codec when enabled. HTTP E2E scenarios start the servlet application with `IntegrationTestContext.startServlet(...)`, as `GroupHttpE2E` does, and send requests to its random port.
+
 ## CI and diagnostics
 
-`.gitlab-ci.yml` first runs source-only checks in `pre-build`: tracked-source encoding checks (the same checker used by the opt-in Git pre-commit hook), frontend lint and application/test typechecks, GitLab SAST and secret detection, offline-handoff tooling tests, CI image-version/registry-contract tests, and the production deployment/Nginx regression suite. Both `build-backend` and `build-frontend` then gate the shared `test` stage containing backend Unit, frontend Vitest and static-export verification. Backend Unit gates Integration through `needs`, and Integration gates E2E; those PostgreSQL suites can overlap independent test jobs, but image publishing waits for every preceding stage. GitLab security analyzers retain their template-defined failure policies. Each backend suite recompiles its own sources instead of downloading the packaged JAR, and publishes Surefire/Failsafe JUnit reports, including on failure. Both PostgreSQL jobs have their **own** `postgres:18-trixie` service and wait for its TCP port before running Maven. The suite fixture still owns database creation and Flyway migration; GitLab owns only the server process. `build-backend` packages the application without running the tests.
+`.gitlab-ci.yml` first runs source-only checks in `pre-build`: tracked-source encoding checks (the same checker used by the opt-in Git pre-commit hook), frontend lint and application/test typechecks, GitLab SAST and secret detection, offline-handoff tooling tests, CI image-version/registry-contract tests, and the production deployment/Nginx regression suite. Both `build-backend` and `build-frontend` then gate the shared `test` stage containing backend Unit, frontend Vitest and static-export verification. Backend Unit gates Integration through `needs`, and Integration gates E2E; those PostgreSQL suites can overlap independent test jobs, but image publishing waits for every preceding stage. GitLab security analyzers retain their template-defined failure policies. Each backend suite recompiles its own sources instead of downloading the packaged JAR, and publishes Surefire/Failsafe JUnit reports, including on failure. Both PostgreSQL test-suite jobs have their **own** `postgres:18-trixie` service and wait for its TCP port before running Maven. The suite fixture still owns database creation and Flyway migration; GitLab owns only the server process. `build-backend` packages the application without running the tests. The independent `verify-backend-jooq-codegen` job also depends on Unit, runs in the `integration-tests` stage with its own PostgreSQL service, and verifies committed metadata using the [actual generation profile](../development.md#database). It is a mandatory CI gate, not a JUnit suite or a normal build dependency.
 
 The `test-deployment-contract` job runs `python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v` against the production Nginx version, installing Python, OpenSSL, Bash and Git and requiring `nginx`, `envsubst` and `tar` as well. The job fails if prerequisites are missing instead of silently skipping the Nginx/TLS tests. Docker and PostgreSQL integration remain independent acceptance checks: these source-level tests use mock Docker clients and a disposable HTTP backend, not a live Compose stack. Their success gates image publication but does not prove production deployment.
 

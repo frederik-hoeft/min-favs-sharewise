@@ -51,6 +51,9 @@ workflow:
 .backend-maven:
   image: eclipse-temurin:25-jdk
   interruptible: true
+  variables:
+    # JUnit workers per backend test job, not GitLab runner instances.
+    BACKEND_TEST_PARALLELISM: '16'
   cache: &backend_maven_cache
     key:
       files:
@@ -147,7 +150,7 @@ test-backend-unit:
   stage: test
   dependencies: [] # No backend packaging artifact is needed.
   script:
-    - ./mvnw -B -ntp -Punit-tests clean verify
+    - ./mvnw -B -ntp -Punit-tests -DtestParallelism="${BACKEND_TEST_PARALLELISM}" clean verify
 
 test-backend-integration:
   extends: [.postgres-tests, .backend-test-reports]
@@ -156,7 +159,49 @@ test-backend-integration:
     - job: test-backend-unit
       artifacts: false
   script:
-    - ./mvnw -B -ntp -Pintegration-tests clean verify
+    - ./mvnw -B -ntp -Pintegration-tests -DtestParallelism="${BACKEND_TEST_PARALLELISM}" clean verify
+
+# Run the actual Maven generator against a fresh PostgreSQL service. Its checkout
+# is disposable; Git detects changed, deleted and newly generated sources.
+verify-backend-jooq-codegen:
+  extends: .postgres-tests
+  stage: integration-tests
+  needs:
+    - job: test-backend-unit
+      artifacts: false
+  cache:
+    <<: *backend_maven_cache
+    key:
+      files:
+        - src/backend/sharewise/pom.xml
+        - src/backend/sharewise/.mvn/wrapper/maven-wrapper.properties
+      prefix: backend-codegen
+    policy: pull-push
+  variables:
+    POSTGRES_DB: sharewise_codegen
+    JOOQ_CODEGEN_PASSWORD: sharewise_migrator_dev
+  script:
+    - apt-get update && apt-get install -y --no-install-recommends postgresql-client git
+    - |
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -X -v ON_ERROR_STOP=1 \
+        -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -f src/test/resources/db/bootstrap/01-create-roles.sql \
+        -f src/test/resources/db/bootstrap/02-grant-database-access.sql
+    # Remove tracked metadata in this disposable checkout so an omitted execution
+    # or relocated output cannot leave stale files looking unchanged.
+    - git ls-files -z ':(glob)src/main/java/**/persistence/generated/**' | xargs -0 -r rm --
+    - |
+      ./mvnw -B -ntp -Pjooq-codegen \
+        -Djooq.codegen.jdbc.url="jdbc:postgresql://postgres:5432/$POSTGRES_DB" \
+        -Djooq.codegen.jdbc.user=sharewise_migrator \
+        org.flywaydb:flyway-maven-plugin:migrate generate-sources
+    - |
+      changes=$(git status --porcelain=v1 --untracked-files=all -- src/main/java)
+      if [ -n "$changes" ]; then
+        printf 'Committed jOOQ metadata is stale:\n%s\n' "$changes" >&2
+        git diff -- src/main/java
+        exit 1
+      fi
 
 test-backend-e2e:
   extends: [.postgres-tests, .backend-test-reports]
@@ -165,7 +210,7 @@ test-backend-e2e:
     - job: test-backend-integration
       artifacts: false
   script:
-    - ./mvnw -B -ntp -Pe2e-tests clean verify
+    - ./mvnw -B -ntp -Pe2e-tests -DtestParallelism="${BACKEND_TEST_PARALLELISM}" clean verify
 
 test-frontend-lint:
   extends: .frontend-npm

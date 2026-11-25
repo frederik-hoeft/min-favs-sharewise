@@ -7,6 +7,7 @@ import de.hsh.favs.sharewise.shared.infra.di.ServiceScope;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.testsupport.postgres.PostgresTestDatabase;
+import de.hsh.favs.sharewise.testsupport.postgres.IsolatedPostgresPool;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -51,6 +52,7 @@ class ShareWiseApplicationPostgresE2E {
     @DynamicPropertySource
     static void postgres(DynamicPropertyRegistry registry) {
         database = PostgresTestDatabase.createBootstrapped();
+        IsolatedPostgresPool.register(registry);
         registry.add("spring.datasource.url", database::jdbcUrl);
         registry.add("spring.datasource.username", () -> PostgresTestDatabase.APPLICATION_USER);
         registry.add("spring.datasource.password", () -> PostgresTestDatabase.APPLICATION_PASSWORD);

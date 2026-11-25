@@ -29,7 +29,9 @@
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
         "shd101wyy.markdown-preview-enhanced",
-        "ms-ossdata.vscode-pgsql"
+        "ms-ossdata.vscode-pgsql",
+        "anthropic.claude-code",
+        "eamodio.gitlens"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",

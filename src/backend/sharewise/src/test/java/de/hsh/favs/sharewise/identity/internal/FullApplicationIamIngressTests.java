@@ -17,25 +17,18 @@ import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.identity.internal.web.IamBearerIngressFilter;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
-import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
-import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
+import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokens;
 import jakarta.servlet.Filter;
-import java.security.GeneralSecurityException;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.spec.ECGenParameterSpec;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,9 +37,9 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.boot.web.servlet.DelegatingFilterProxyRegistrationBean;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.web.FilterChainProxy;
@@ -77,13 +70,11 @@ import org.springframework.web.bind.annotation.RestController;
 @AutoConfigureMockMvc
 class FullApplicationIamIngressTests {
 
-    private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
-    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    private static final Instant NOW = TestAccessTokens.NOW;
+    private static final Clock CLOCK = TestAccessTokens.CLOCK;
     private static final UUID ALICE = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
-    private static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
-        "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
-        JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
-    private static final KeyPair KEY = generateKey();
+    private static final UUID SESSION = UUID.fromString("12345678-1234-4123-8123-1234567890ac");
+    private static final JwtCredentialProfile PROFILE = TestAccessTokens.PROFILE;
 
     @Autowired MockMvc mvc;
     @Autowired ApplicationContext context;
@@ -93,7 +84,6 @@ class FullApplicationIamIngressTests {
     // real readiness probe so this test verifies HTTP security, not database wiring.
     @MockitoBean(name = "dataSourceReadinessIndicator", enforceOverride = true)
     ReadinessIndicator dataSourceReadinessIndicator;
-    @Autowired @Qualifier("iamPrimaryJwtCredentialCodec") JwtCredentialCodec iamPrimaryJwtCredentialCodec;
 
     @Test
     void bootRegistersOneOrderedSecurityProxyWithoutDuplicatingBearerVerification() {
@@ -188,6 +178,10 @@ class FullApplicationIamIngressTests {
             .andExpect(jsonPath("$.userId").value(ALICE.toString()));
         mvc.perform(get(endpoint))
             .andExpect(status().isUnauthorized());
+        mvc.perform(get(endpoint).cookie(new jakarta.servlet.http.Cookie(
+                    "__Host-sharewise-refresh", "opaque-refresh-credential")))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("authentication_required"));
         mvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer broken"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value("invalid_credential"));
@@ -247,9 +241,8 @@ class FullApplicationIamIngressTests {
         JwtCredentialProfile largeProfile = new JwtCredentialProfile(PROFILE.name(), PROFILE.issuer(),
             PROFILE.tokenType(), PROFILE.audiences(), PROFILE.kind(), PROFILE.trustedPrimaryProfiles(),
             PROFILE.maximumLifetime(), PROFILE.clockSkew(), 16_384);
-        JwtCredentialCodec largeCodec = new JwtCredentialCodec(largeProfile,
-            new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
-        String largeToken = largeCodec.sign(new JwtIssueRequest(ALICE, "session-a", "large-token",
+        JwtCredentialCodec largeCodec = TestAccessTokens.codec(largeProfile, CLOCK);
+        String largeToken = largeCodec.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "large-token",
             NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180),
             Optional.empty(), Map.of("padding", "x".repeat(6300))));
         org.junit.jupiter.api.Assertions.assertTrue(largeToken.length() > 8192);
@@ -284,33 +277,15 @@ class FullApplicationIamIngressTests {
     }
 
     private String token() {
-        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, "session-a", "test-token",
-            NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
+        return TestAccessTokens.accessToken(ALICE, SESSION.toString());
     }
 
     private String expiredToken() {
-        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, "session-a", "expired-token",
-            NOW.minusSeconds(240), NOW.minusSeconds(240), NOW.minusSeconds(35), Optional.empty(), Map.of()));
+        return TestAccessTokens.expiredAccessToken(ALICE);
     }
 
     private String wrongProfileToken() {
-        JwtCredentialProfile otherProfile = new JwtCredentialProfile(
-            "refresh", PROFILE.issuer(), "sw-refresh+jwt", PROFILE.audiences(),
-            JwtCredentialProfile.Kind.PRIMARY, Set.of(), PROFILE.maximumLifetime(), PROFILE.clockSkew(), 4096);
-        JwtCredentialCodec otherCodec = new JwtCredentialCodec(otherProfile,
-            new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
-        return otherCodec.sign(new JwtIssueRequest(ALICE, "session-a", "wrong-profile-token",
-            NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
-    }
-
-    private static KeyPair generateKey() {
-        try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
-            generator.initialize(new ECGenParameterSpec("secp256r1"));
-            return generator.generateKeyPair();
-        } catch (GeneralSecurityException exception) {
-            throw new ExceptionInInitializerError(exception);
-        }
+        return TestAccessTokens.wrongProfileAccessToken(ALICE);
     }
 
     @TestComponent
@@ -378,6 +353,7 @@ class FullApplicationIamIngressTests {
     }
 
     @TestConfiguration(proxyBeanMethods = false)
+    @Import(TestAccessTokenConfiguration.class)
     static class Fixture {
         @Bean
         de.hsh.favs.sharewise.shared.infra.web.ApiCustomAccessPolicy testHeaderPolicy() {
@@ -388,12 +364,6 @@ class FullApplicationIamIngressTests {
                 }
             };
         }
-        @Bean
-        JwtCredentialCodec iamPrimaryJwtCredentialCodec() {
-            return new JwtCredentialCodec(PROFILE,
-                new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")), CLOCK);
-        }
-
         @Bean
         CrossContextProbeController crossContextProbeController(OperationIngressDispatcher ingress) {
             return new CrossContextProbeController(ingress);

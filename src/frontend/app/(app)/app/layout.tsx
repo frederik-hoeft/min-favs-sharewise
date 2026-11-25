@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
-import { ApplicationShell } from "./_components/ApplicationShell";
+import { RequireAuthentication } from "@/components/auth/RequireAuthentication";
 
 export const metadata: Metadata = {
   title: { default: "Workspace | ShareWise", template: "%s | ShareWise" },
   description: "ShareWise application workspace",
 };
 
-/** The /app route subtree shares one navigable shell; public pages use their own AppShell. */
+/** Every workspace route requires an active sign-in; public and auth routes use separate layouts. */
 export default function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <ApplicationShell>{children}</ApplicationShell>;
+  return <RequireAuthentication>{children}</RequireAuthentication>;
 }
