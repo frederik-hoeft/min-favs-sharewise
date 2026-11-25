@@ -3,13 +3,14 @@
 import { Burger } from "@mantine/core";
 import { usePathname } from "next/navigation";
 import { AccountMenu } from "./AccountMenu";
-import { appBreadcrumbs } from "./app-routes";
+import type { ReactNode } from "react";
+import { appBreadcrumbs, type AppBreadcrumb } from "./app-routes";
 import styles from "./ApplicationHeader.module.scss";
 import { ResponsiveBreadcrumbs } from "./ResponsiveBreadcrumbs";
 
-export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolean; toggleNavigation: () => void }) {
+export function ApplicationHeader({ opened, toggleNavigation, breadcrumbs, asideControl }: { opened: boolean; toggleNavigation: () => void; breadcrumbs?: AppBreadcrumb[]; asideControl?: ReactNode }) {
   const pathname = usePathname();
-  const crumbs = appBreadcrumbs(pathname);
+  const crumbs = breadcrumbs ?? appBreadcrumbs(pathname);
 
   return (
     <div className={styles.content}>
@@ -25,6 +26,7 @@ export function ApplicationHeader({ opened, toggleNavigation }: { opened: boolea
       />
       <ResponsiveBreadcrumbs key={pathname} crumbs={crumbs} />
       <div className={styles.account}>
+        {asideControl}
         <AccountMenu />
       </div>
     </div>

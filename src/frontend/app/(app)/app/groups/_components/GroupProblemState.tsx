@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { GroupProblem } from "@/core/groups";
 import { groupRoutes } from "../../_components/app-routes";
 
-type PageProblem = Exclude<GroupProblem["kind"], "version_conflict" | "invalid" | "admin_required">;
+type PageProblem = "unauthenticated" | "user_unknown" | "not_found" | "unavailable";
 
 const content: Record<PageProblem, { title: string; text: string }> = {
   unauthenticated: {
@@ -30,8 +30,8 @@ const content: Record<PageProblem, { title: string; text: string }> = {
 /** Page-level state for a request that could not show its content. */
 export function GroupProblemState({ problem, onRetry }: { problem: GroupProblem; onRetry?: () => void }) {
   // Form-level problems reaching a page indicate a contract mismatch; offer a retry.
-  const kind: PageProblem = problem.kind === "version_conflict" || problem.kind === "invalid"
-    || problem.kind === "admin_required" ? "unavailable" : problem.kind;
+  const kind: PageProblem = problem.kind === "unauthenticated" || problem.kind === "user_unknown" || problem.kind === "not_found"
+    ? problem.kind : "unavailable";
   const { title, text } = content[kind];
 
   return (

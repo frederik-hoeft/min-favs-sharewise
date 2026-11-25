@@ -13,12 +13,12 @@ import de.hsh.favs.sharewise.identity.internal.auth.account.EmailAddress;
 import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.CredentialEncoder;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -70,7 +70,7 @@ class IamAuthenticationIT extends IntegrationTestBase {
             assertNull(scope.observation().failure());
             assertEquals(7, registered.userId().version());
             assertEquals(7, registered.sessionId().version());
-            assertEquals(7, registered.refreshCredential().tokenId().version());
+            assertEquals(7, registered.refreshCredential().selector().version());
             assertEquals(NOW.plusSeconds(300), registered.accessToken().expiresAt());
 
             scope.inspect(inspector -> {
@@ -93,11 +93,11 @@ class IamAuthenticationIT extends IntegrationTestBase {
                 assertEquals(1, inspector.queryForObject(
                         "select count(*) from identity.refresh_tokens where id = ? and session_id = ? "
                                 + "and consumed_at is null", Integer.class,
-                        registered.refreshCredential().tokenId(), registered.sessionId()));
+                        registered.refreshCredential().selector(), registered.sessionId()));
                 assertEquals(HexFormat.of().formatHex(registered.refreshCredential().verifierHash()),
                         inspector.queryForObject("select encode(verifier_hash, 'hex') "
                                 + "from identity.refresh_tokens where id = ?", String.class,
-                                registered.refreshCredential().tokenId()));
+                                registered.refreshCredential().selector()));
                 return null;
             });
             assertEquals(0, independentAccountCount(registered.userId()));
@@ -253,7 +253,7 @@ class IamAuthenticationIT extends IntegrationTestBase {
 
     private static InitialAuthentication initialAuthentication(IntegrationTestScope scope, AccessTokenIssuer issuer) {
         return new InitialAuthentication(scope.resolve(SessionStore.class),
-                scope.resolve(RefreshTokenStore.class), new RefreshCredentialGenerator(),
+                scope.resolve(RefreshTokenStore.class), new ApplicationTokenGenerator(),
                 SessionPolicy.initial(), issuer);
     }
 

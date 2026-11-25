@@ -1,11 +1,11 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
-import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMutationPort;
-import de.hsh.favs.sharewise.groups.internal.application.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupLockPort;
+import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMutationPort;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
@@ -24,7 +24,7 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 @Scope("operation")
-class JooqGroupMutations implements GroupMutationPort {
+class JooqGroupMutations implements GroupLockPort, GroupMutationPort {
 
     private final JooqAccess database;
 
@@ -33,26 +33,15 @@ class JooqGroupMutations implements GroupMutationPort {
     }
 
     @Override
-    public Optional<LockedGroup> lockGroup(UUID groupId) {
+    public Optional<LockedGroup> lockGroupForMember(UUID groupId, UUID userId) {
         Objects.requireNonNull(groupId, "groupId");
+        Objects.requireNonNull(userId, "userId");
         return database.dsl()
                 .select(GROUPS_.ID, GROUPS_.VERSION)
                 .from(GROUPS_)
-                .where(GROUPS_.ID.eq(groupId))
+                .where(GROUPS_.ID.eq(groupId).and(GroupProjections.isMember(userId)))
                 .forUpdate()
                 .fetchOptional(row -> new LockedGroup(row.get(GROUPS_.ID), row.get(GROUPS_.VERSION)));
-    }
-
-    @Override
-    public Optional<GroupRole> memberRole(LockedGroup group, UUID userId) {
-        Objects.requireNonNull(group, "group");
-        Objects.requireNonNull(userId, "userId");
-        Field<GroupRole> role = GroupProjections.role(GROUP_MEMBERS);
-        return database.dsl()
-                .select(role)
-                .from(GROUP_MEMBERS)
-                .where(GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(GROUP_MEMBERS.USER_ID.eq(userId)))
-                .fetchOptional(role);
     }
 
     /**

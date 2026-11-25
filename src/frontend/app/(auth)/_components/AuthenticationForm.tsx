@@ -6,8 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
 import { ApiError } from "@/lib/api";
 import { safeAppReturnPath } from "@/lib/navigation/return-path";
+import { INVITE_PATH, INVITE_RETURN_QUERY } from "@/lib/navigation/invitation-routes";
+import { useInvitationContinuation } from "@/app/invitation-continuation";
 import { useIdentity } from "@/app/identity-provider";
 import { validateCredentials, type CredentialErrors } from "./credentials-validation";
 import styles from "./AuthenticationForm.module.scss";
@@ -48,12 +51,14 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
   const isRegistration = mode === 'register';
   const router = useRouter();
   const { auth } = useIdentity();
+  const { pending: invitationPending, continuation } = useInvitationContinuation();
+  const invitationDetour = invitationPending && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("next") === INVITE_PATH;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<CredentialErrors>({});
   const [message, setMessage] = useState<string>();
-  const [pending, setPending] = useState(false);
-  const submitting = useRef(false);
+  const operation = useExclusiveOperation<"authenticate">();
+  const pending = operation.pending !== null;
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
@@ -77,9 +82,9 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
     else if (fields.password) passwordRef.current?.focus();
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting.current) return;
+    if (operation.isRunning()) return;
     const trimmedEmail = email.trim();
     setEmail(trimmedEmail);
     const validation = validateCredentials(mode, trimmedEmail, password);
@@ -89,22 +94,22 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
       focusFirstError(validation);
       return;
     }
-    submitting.current = true;
-    setPending(true);
-    try {
-      await auth[mode]({ email: trimmedEmail, password });
-      // Validate the requested page path before using it as a router destination.
-      const next = isRegistration ? '/app' : safeAppReturnPath(new URLSearchParams(window.location.search).get('next'));
-      router.replace(next);
-    } catch (error) {
-      const failure = mapFailure(error, mode);
+    const path = window.location.pathname + window.location.search;
+    const candidate = new URLSearchParams(window.location.search).get('next');
+    operation.start("authenticate", () => auth[mode]({ email: trimmedEmail, password }), outcome => {
+      // Authentication itself may have committed, but an abandoned form cannot direct navigation.
+      if (window.location.pathname + window.location.search !== path) return;
+      if (outcome.status === "fulfilled") {
+        const next = candidate === INVITE_PATH && continuation?.pending ? INVITE_PATH
+          : isRegistration ? '/app' : safeAppReturnPath(candidate);
+        router.replace(next);
+        return;
+      }
+      const failure = mapFailure(outcome.error, mode);
       setErrors(failure.fields);
       setMessage(failure.message);
       if (failure.fields.email || failure.fields.password) deferredFocus.current = failure.fields;
-    } finally {
-      submitting.current = false;
-      setPending(false);
-    }
+    });
   }
 
   return (
@@ -159,7 +164,7 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
           </form>
           <Text size="sm" ta="center" c="dimmed">
             {isRegistration ? 'Already have an account?' : 'New to ShareWise?'}{' '}
-            <Link href={isRegistration ? '/auth/login' : '/auth/register'} className={styles.textLink}>
+            <Link href={`${isRegistration ? '/auth/login' : '/auth/register'}${invitationDetour ? INVITE_RETURN_QUERY : ''}`} className={styles.textLink}>
               {isRegistration ? 'Sign in' : 'Create an account'}
             </Link>
           </Text>

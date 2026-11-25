@@ -5,7 +5,7 @@ public enum GroupRole {
     MEMBER,
     ADMIN;
 
-    /** Whether this role may administer the group's metadata and, later, its membership. */
+    /** Whether this role may administer the group's metadata and its membership. */
     public boolean isAdministrator() {
         return this == ADMIN;
     }

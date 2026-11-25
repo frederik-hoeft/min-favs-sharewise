@@ -204,7 +204,7 @@ final class IamAuthenticationController {
         // Still deliver the successor instead of failing after consumption; IAM
         // rejects it once the authoritative session deadline has passed.
         long maxAge = Math.max(1, Duration.between(now, result.refreshExpiresAt()).getSeconds());
-        ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, result.refreshCredential().cookieValue())
+        ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, result.refreshCredential().value())
                 .httpOnly(true).secure(true).sameSite("Strict").path("/")
                 .maxAge(Duration.ofSeconds(maxAge)).build();
         // Prevent a token pair obtained before authentication from being reused later.

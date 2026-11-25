@@ -1,11 +1,14 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
-import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
-import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeCommand;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
+import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.ValidationError;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
@@ -61,6 +64,16 @@ final class GroupCommands {
         return Result.err(new ValidationErrors(errors));
     }
 
+    static Result<MembershipChangeCommand, ValidationErrors> setRole(UUID groupId, UUID membershipId,
+            SetMemberRoleRequest request) {
+        if (request == null) {
+            return Result.err(missingBody());
+        }
+        return GroupRoles.fromApi(request.role()).<Result<MembershipChangeCommand, ValidationErrors>>map(role ->
+            Result.ok(new MembershipChangeCommand(groupId, membershipId, new MembershipChange.SetRole(role))))
+            .orElseGet(() -> Result.err(ValidationErrors.single("role", "invalid", "Select member or admin.")));
+    }
+
     /** Field errors for metadata that the application service rejected. */
     static ValidationErrors validationErrors(List<MetadataViolation> violations) {
         return new ValidationErrors(fieldErrors(violations));
@@ -92,6 +105,12 @@ final class GroupCommands {
             case TOO_LONG -> "too_long";
             case CONTROL_CHARACTER -> "control_character";
         };
+    }
+
+    static <T> T valid(Result<T, ValidationErrors> input) {
+        return input.fold(value -> value, errors -> {
+            throw RequestValidationException.from(errors);
+        });
     }
 
     private static ValidationErrors missingBody() {

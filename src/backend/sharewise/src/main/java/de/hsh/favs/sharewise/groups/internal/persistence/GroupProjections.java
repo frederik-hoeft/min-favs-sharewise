@@ -2,9 +2,13 @@ package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.USERS;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.admin;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.member;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
-import de.hsh.favs.sharewise.groups.internal.application.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
@@ -12,6 +16,7 @@ import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import java.util.Optional;
 import java.util.UUID;
+import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
@@ -32,6 +37,17 @@ final class GroupProjections {
     private GroupProjections() {
     }
 
+    /** Local existence predicate for aggregate root selection, not group authorization. */
+    static Condition knownUser(UUID userId) {
+        return DSL.exists(DSL.selectOne().from(USERS).where(USERS.ID.eq(userId)));
+    }
+
+    /** Membership predicate for the enclosing group row, evaluated before lock acquisition. */
+    static Condition isMember(UUID userId) {
+        return DSL.exists(DSL.selectOne().from(CALLER)
+            .where(CALLER.GROUP_ID.eq(GROUPS_.ID).and(CALLER.USER_ID.eq(userId))));
+    }
+
     /** A membership role column, read as the domain role. */
     static Field<GroupRole> role(GroupMembers members) {
         return members.ROLE.convertFrom(GroupProjections::toDomain);
@@ -45,9 +61,18 @@ final class GroupProjections {
             .as("caller_role");
     }
 
+    static GroupMember member(Record row, GroupMembers members) {
+        return new GroupMember(row.get(members.ID), row.get(members.USER_ID),
+            toDomain(row.get(members.ROLE)), row.get(members.JOINED_AT).toInstant());
+    }
+
     static GroupDetails details(Record row, Field<GroupRole> callerRole) {
+        return details(row, callerRole, row.get(MEMBER_COUNT));
+    }
+
+    static GroupDetails details(Record row, Field<GroupRole> callerRole, int memberCount) {
         return new GroupDetails(row.get(GROUPS_.ID), metadata(row), row.get(GROUPS_.CREATED_AT).toInstant(),
-                row.get(GROUPS_.VERSION), row.get(MEMBER_COUNT), row.get(callerRole));
+                row.get(GROUPS_.VERSION), memberCount, row.get(callerRole));
     }
 
     static GroupSummary summary(Record row, Field<GroupRole> callerRole) {
@@ -56,8 +81,8 @@ final class GroupProjections {
 
     static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole toDatabase(GroupRole role) {
         return switch (role) {
-            case MEMBER -> de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.member;
-            case ADMIN -> de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.admin;
+            case MEMBER -> member;
+            case ADMIN -> admin;
         };
     }
 

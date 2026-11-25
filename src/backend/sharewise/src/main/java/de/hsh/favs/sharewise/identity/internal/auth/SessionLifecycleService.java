@@ -1,14 +1,15 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
 import de.hsh.favs.sharewise.identity.internal.auth.session.LoginSession;
-import de.hsh.favs.sharewise.identity.internal.auth.session.PresentedRefreshCredential;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenRecord;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionLifecycleStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenParser;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
@@ -32,7 +33,8 @@ public final class SessionLifecycleService {
     private final Transactions transactions;
     private final SessionLifecycleStore sessions;
     private final RefreshTokenStore refreshTokens;
-    private final RefreshCredentialGenerator credentials;
+    private final ApplicationTokenGenerator credentials;
+    private final ApplicationTokenParser tokenParser;
     private final SessionPolicy policy;
     private final AccessTokenIssuer accessTokens;
     private final Clock clock;
@@ -44,17 +46,19 @@ public final class SessionLifecycleService {
      * @param sessions persistence operations serialized by the owning session row
      * @param refreshTokens allocates and stores replacement refresh generations
      * @param credentials generates high-entropy refresh bearer credentials
+     * @param tokenParser parses untrusted opaque refresh tokens
      * @param policy bounds idle, absolute, and access-token lifetimes
      * @param accessTokens issues the replacement access JWT inside the transaction segment
      * @param clock authoritative server-side time source
      */
     public SessionLifecycleService(Transactions transactions, SessionLifecycleStore sessions,
-            RefreshTokenStore refreshTokens, RefreshCredentialGenerator credentials,
+            RefreshTokenStore refreshTokens, ApplicationTokenGenerator credentials, ApplicationTokenParser tokenParser,
             SessionPolicy policy, AccessTokenIssuer accessTokens, Clock clock) {
         this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.refreshTokens = Objects.requireNonNull(refreshTokens, "refreshTokens");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
+        this.tokenParser = Objects.requireNonNull(tokenParser, "tokenParser");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.accessTokens = Objects.requireNonNull(accessTokens, "accessTokens");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -72,7 +76,7 @@ public final class SessionLifecycleService {
      */
     public Result<AuthenticationResult, SessionLifecycleFailure> refresh(
             String cookieValue, UUID expectedSessionId) {
-        Optional<PresentedRefreshCredential> presented = PresentedRefreshCredential.parse(cookieValue);
+        Optional<ApplicationToken> presented = tokenParser.parse(cookieValue);
         if (presented.isEmpty()) {
             return Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE);
         }
@@ -107,7 +111,7 @@ public final class SessionLifecycleService {
             sessions.consume(match.token().id(), now);
             sessions.extendIdle(session.id(), nextDeadlines.idleExpiresAt());
             UUID successorId = refreshTokens.newTokenId();
-            RefreshCredentialGenerator.GeneratedCredential successor = credentials.generate(successorId);
+            ApplicationTokenGenerator.GeneratedToken successor = credentials.generate(successorId);
             refreshTokens.insert(new RefreshTokenRecord(successorId, session.id(),
                     successor.verifierHash(), now, null));
             Instant expiresAt = policy.accessExpiresAt(now, nextDeadlines);
@@ -131,7 +135,7 @@ public final class SessionLifecycleService {
      * @return the logout outcome or a session-context mismatch that must not clear the cookie
      */
     public Result<LogoutStatus, SessionLifecycleFailure> logout(String cookieValue, UUID expectedSessionId) {
-        Optional<PresentedRefreshCredential> presented = PresentedRefreshCredential.parse(cookieValue);
+        Optional<ApplicationToken> presented = tokenParser.parse(cookieValue);
         if (presented.isEmpty()) {
             return Result.ok(LogoutStatus.NO_SESSION);
         }
@@ -156,8 +160,8 @@ public final class SessionLifecycleService {
         });
     }
 
-    private Optional<VerifiedSession> verifyUnderSessionLock(PresentedRefreshCredential presented) {
-        Optional<UUID> owner = sessions.findSessionId(presented.tokenId());
+    private Optional<VerifiedSession> verifyUnderSessionLock(ApplicationToken presented) {
+        Optional<UUID> owner = sessions.findSessionId(presented.selector());
         if (owner.isEmpty()) {
             return Optional.empty();
         }
@@ -170,12 +174,12 @@ public final class SessionLifecycleService {
         if (!sessionId.equals(locked.session().id())) {
             throw new IllegalStateException("IAM lifecycle store locked an inconsistent session");
         }
-        Optional<RefreshTokenRecord> token = sessions.findToken(presented.tokenId());
+        Optional<RefreshTokenRecord> token = sessions.findToken(presented.selector());
         if (token.isEmpty()) {
             return Optional.empty();
         }
         RefreshTokenRecord record = token.orElseThrow();
-        if (!sessionId.equals(record.sessionId()) || !presented.matches(record)) {
+        if (!sessionId.equals(record.sessionId()) || !presented.matches(record.id(), record.verifierHash())) {
             return Optional.empty();
         }
         return Optional.of(new VerifiedSession(locked, record));

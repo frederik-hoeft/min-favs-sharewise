@@ -1,5 +1,17 @@
 package de.hsh.favs.sharewise.groups.internal.application;
 
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupLockPort;
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
+import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMutationPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupReadPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipPort;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeContext;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import java.time.Instant;
@@ -18,26 +30,34 @@ import java.util.UUID;
  * It records port calls so tests can verify the order of the group mutation protocol.
  * Database semantics (atomicity, locking, constraints) are verified against PostgreSQL instead.
  */
-final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, GroupReadPort, GroupMutationPort {
+final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, GroupReadPort, GroupLockPort, GroupMutationPort, GroupMembershipPort {
 
     private static final Instant CREATED_AT = Instant.parse("2026-11-21T12:00:00Z");
 
     private final Set<UUID> users = new HashSet<>();
     private final Map<UUID, StoredGroup> groups = new LinkedHashMap<>();
+    private final Map<UUID, Map<UUID, UUID>> membershipIds = new LinkedHashMap<>();
     private final List<String> calls = new ArrayList<>();
     private int writes;
 
     synchronized void reset() {
         users.clear();
         groups.clear();
+        membershipIds.clear();
         calls.clear();
         writes = 0;
     }
 
     /** Seeds a group with explicit memberships, bypassing the services. */
     synchronized UUID seedGroup(GroupMetadata metadata, long version, Map<UUID, GroupRole> members) {
+        if (!users.containsAll(members.keySet())) {
+            throw new IllegalStateException("Unknown seeded member");
+        }
         UUID id = UUID.randomUUID();
         groups.put(id, new StoredGroup(id, metadata, version, new LinkedHashMap<>(members)));
+        Map<UUID, UUID> ids = new LinkedHashMap<>();
+        members.keySet().forEach(user -> ids.put(user, UUID.randomUUID()));
+        membershipIds.put(id, ids);
         return id;
     }
 
@@ -49,6 +69,10 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
         calls.clear();
     }
 
+    synchronized void recordCall(String call) {
+        calls.add(call);
+    }
+
     synchronized int writes() {
         return writes;
     }
@@ -57,10 +81,15 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
         return List.copyOf(calls);
     }
 
+    /** Internal fixture predicate for a joined projection; not a registry port invocation. */
+    synchronized boolean containsUser(UUID userId) {
+        return users.contains(userId);
+    }
+
     @Override
     public synchronized boolean isKnown(UUID userId) {
         calls.add("isKnown");
-        return users.contains(userId);
+        return containsUser(userId);
     }
 
     @Override
@@ -81,15 +110,18 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized List<GroupSummary> listForMember(UUID userId) {
+    public synchronized Optional<List<GroupSummary>> listForMember(UUID userId) {
         calls.add("list");
-        return groups.values().stream()
+        if (!users.contains(userId)) {
+            return Optional.empty();
+        }
+        return Optional.of(groups.values().stream()
             .filter(group -> group.members().containsKey(userId))
             .sorted(Comparator.comparing((StoredGroup group) -> group.metadata().name().value().toLowerCase())
                 .thenComparing(StoredGroup::id))
             .map(group -> new GroupSummary(group.id(), group.metadata(), group.members().size(),
                 group.members().get(userId)))
-            .toList();
+            .toList());
     }
 
     @Override
@@ -101,15 +133,100 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized Optional<LockedGroup> lockGroup(UUID groupId) {
+    public synchronized Optional<LockedGroup> lockGroupForMember(UUID groupId, UUID userId) {
         calls.add("lock");
+        return Optional.ofNullable(groups.get(groupId))
+            .filter(group -> group.members().containsKey(userId))
+            .map(group -> new LockedGroup(group.id(), group.version()));
+    }
+
+    synchronized Optional<LockedGroup> lockGroupForRedemption(UUID groupId, UUID userId) {
+        calls.add("redemptionLock");
+        if (!users.contains(userId)) {
+            return Optional.empty();
+        }
         return Optional.ofNullable(groups.get(groupId)).map(group -> new LockedGroup(group.id(), group.version()));
     }
 
     @Override
-    public synchronized Optional<GroupRole> memberRole(LockedGroup group, UUID userId) {
+    public synchronized Optional<GroupWorkspace> findWorkspace(UUID groupId, UUID userId) {
+        calls.add("workspace");
+        StoredGroup group = groups.get(groupId);
+        if (group == null || !group.members().containsKey(userId)) {
+            return Optional.empty();
+        }
+        List<GroupMember> roster = group.members().keySet().stream().map(user -> member(group, user))
+            .sorted(Comparator.comparing(GroupMember::joinedAt).thenComparing(GroupMember::id)).toList();
+        return Optional.of(new GroupWorkspace(details(group, userId), membershipIds.get(groupId).get(userId), roster));
+    }
+
+    @Override
+    public synchronized Optional<GroupMember> memberForUser(LockedGroup group, UUID userId) {
         calls.add("role");
-        return Optional.ofNullable(groups.get(group.id()).members().get(userId));
+        StoredGroup current = groups.get(group.id());
+        return current.members().containsKey(userId) ? Optional.of(member(current, userId)) : Optional.empty();
+    }
+
+    private synchronized Optional<GroupMember> memberById(LockedGroup group, UUID membershipId) {
+        StoredGroup current = groups.get(group.id());
+        return current.members().keySet().stream().map(user -> member(current, user))
+            .filter(member -> member.id().equals(membershipId)).findFirst();
+    }
+
+    @Override
+    public synchronized Optional<MembershipChangeContext> changeContext(LockedGroup group, UUID userId, UUID membershipId) {
+        calls.add("changeContext");
+        StoredGroup current = groups.get(group.id());
+        if (!current.members().containsKey(userId)) {
+            return Optional.empty();
+        }
+        GroupMember caller = member(current, userId);
+        Optional<GroupMember> target = caller.role().isAdministrator() || caller.id().equals(membershipId)
+            ? memberById(group, membershipId) : Optional.empty();
+        return Optional.of(new MembershipChangeContext(caller, target,
+            target.isPresent() && current.members().size() > 1,
+            target.isPresent() && current.members().entrySet().stream().anyMatch(entry ->
+                !entry.getKey().equals(target.get().userId()) && entry.getValue().isAdministrator())));
+    }
+
+    @Override
+    public synchronized void setRole(LockedGroup group, UUID membershipId, GroupRole role) {
+        GroupMember target = memberById(group, membershipId).orElseThrow();
+        groups.get(group.id()).members().put(target.userId(), role);
+        calls.add("setRole");
+        writes++;
+    }
+
+    @Override
+    public synchronized void removeMember(LockedGroup group, UUID membershipId) {
+        GroupMember target = memberById(group, membershipId).orElseThrow();
+        groups.get(group.id()).members().remove(target.userId());
+        membershipIds.get(group.id()).remove(target.userId());
+        calls.add("remove");
+        writes++;
+    }
+
+    @Override
+    public synchronized void addMember(LockedGroup group, UUID userId) {
+        if (groups.get(group.id()).members().containsKey(userId)) {
+            throw new IllegalStateException("Membership already exists");
+        }
+        addMembership(group.id(), userId, GroupRole.MEMBER);
+        calls.add("addMember");
+        writes++;
+    }
+
+    synchronized void addMembership(UUID groupId, UUID userId, GroupRole role) {
+        if (!users.contains(userId)) {
+            throw new IllegalStateException("Unknown member");
+        }
+        groups.get(groupId).members().put(userId, role);
+        membershipIds.get(groupId).put(userId, UUID.randomUUID());
+    }
+
+    private GroupMember member(StoredGroup group, UUID userId) {
+        return new GroupMember(membershipIds.get(group.id()).get(userId), userId,
+            group.members().get(userId), CREATED_AT);
     }
 
     @Override

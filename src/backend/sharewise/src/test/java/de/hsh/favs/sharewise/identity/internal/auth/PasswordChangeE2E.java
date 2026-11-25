@@ -190,7 +190,7 @@ class PasswordChangeE2E extends E2ETestBase {
             FutureTask<Result<LogoutStatus, SessionLifecycleFailure>> signingOut = new FutureTask<>(() -> {
                 assertTrue(start.await(10, TimeUnit.SECONDS));
                 return dispatcher.dispatch(SessionLifecycleService.class, service -> service.logout(
-                        first.refreshCredential().cookieValue(), first.sessionId()));
+                        first.refreshCredential().value(), first.sessionId()));
             });
             Thread.ofVirtual().start(changing);
             Thread.ofVirtual().start(signingOut);
@@ -267,7 +267,7 @@ class PasswordChangeE2E extends E2ETestBase {
     private static Result<AuthenticationResult, SessionLifecycleFailure> refresh(OperationDispatcher dispatcher,
             AuthenticationResult result) {
         return dispatcher.dispatch(SessionLifecycleService.class,
-                service -> service.refresh(result.refreshCredential().cookieValue(), result.sessionId()));
+                service -> service.refresh(result.refreshCredential().value(), result.sessionId()));
     }
 
     private static Result<PasswordChangeStatus, PasswordChangeFailure> change(OperationDispatcher dispatcher,

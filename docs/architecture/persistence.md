@@ -2,7 +2,7 @@
 
 ShareWise uses PostgreSQL as its relational database and Flyway migrations as the authority for the physical schema. Spring Boot configures an application `DataSource` and a separate Flyway migration connection with schema-changing privileges. jOOQ and JPA/Hibernate are integrated with Spring's explicit transaction segments through operation-scoped persistence accessors.
 
-The shared persistence infrastructure supplies transaction-bound database access to independently owned business schemas. IAM uses it for accounts, optional profiles, sessions and refresh tokens; Group Management for its registry of locally known IAM users, groups and memberships; Finance for group-root provisioning and locking. The [application architecture](../architecture.md) explains module ownership, and [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
+The shared persistence infrastructure supplies transaction-bound database access to independently owned business schemas. IAM uses it for accounts, optional profiles, sessions and refresh tokens; Group Management for its registry of locally known IAM users, groups, memberships and invitations; Finance for group-root provisioning and locking. The [application architecture](../architecture.md) explains module ownership, and [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
 
 ## Database topology and ownership
 
@@ -11,7 +11,7 @@ A single PostgreSQL database contains the following schemas:
 | Schema | Current responsibility |
 | --- | --- |
 | `identity` | IAM accounts, optional profiles, sessions and refresh tokens. |
-| `groups` | Group Management's registry of locally known IAM user IDs, groups and memberships. |
+| `groups` | Group Management's registry of locally known IAM user IDs, groups, memberships and invitations. |
 | `finance` | Finance group roots and retained actor identities. |
 | `files`, `notifications` | Reserved bounded-context namespaces. |
 | `flyway` | Flyway's migration history, separate from the context namespaces. |
@@ -31,7 +31,7 @@ Database initialization separates two credentials and responsibilities:
 
 Development and test provisioning scripts establish their roles using disposable credentials. The [production Compose startup](../development/production-compose.md) instead reads required role passwords from protected files and creates the roles only when initializing an empty PostgreSQL data volume. On a populated volume, rotation and recovery are explicit administrative operations. Flyway's baseline migration creates the five context schemas, grants `USAGE` to the runtime role, and configures default table and sequence privileges for objects created by the migration role. Those default privileges depend on the **object-creating role**; creating an object under a different role does not automatically grant the application access.
 
-Application requests use the runtime connection; they do not inherit the migrator's DDL authority. IAM and Finance revoke default `PUBLIC` usage on their domain types and explicitly grant it to the runtime role; Group Management does the same for its role enum, and Finance does the same for its lifecycle enum. Configuration and bootstrap commands are documented in [Backend development](../development.md#database).
+Application requests use the runtime connection; they do not inherit the migrator's DDL authority. IAM and Finance revoke default `PUBLIC` usage on their domain types and explicitly grant it to the runtime role; Group Management does the same for its role enum and invitation count domains, and Finance does the same for its lifecycle enum. The runtime role may insert, read and delete invitation rows, but may update only their usage counter. Configuration and bootstrap commands are documented in [Backend development](../development.md#database).
 
 ### Database-first SQL metadata
 
@@ -66,9 +66,15 @@ The returned facades belong to their originating segment and owning operation/th
 
 jOOQ statements execute against the active transaction, while Hibernate may buffer entity changes until flush and retain managed state in its first-level cache. The two access models can participate in the same Spring transaction, but their caches and write timing do not automatically synchronize. See [transaction management](transactions.md#persistence-participation-and-lifetimes) for segment lifecycle and completion behavior.
 
-## Group metadata persistence
+## Group persistence
 
-Group Management's domain values own Unicode-aware normalization and business validation of names and descriptions. The database enforces structural integrity, character-length limits, nonnegative metadata versions and inexpensive storage sanity checks: names must be nonempty, trimmed of ordinary spaces and free of ASCII control characters; descriptions are nullable or nonempty, trimmed of ordinary spaces and line breaks, and may contain LF or CRLF but no other ASCII control characters. These backstops do not reproduce the domain's Unicode whitespace and control-character classification. Adapters persist validated domain values and reconstruct those values on reads rather than silently repairing invalid stored metadata.
+Group Management owns its local user registry, group roots, memberships and invitations. Membership foreign keys establish local existence of both the user and group. Member-scoped reads use that invariant instead of checking user existence in a separate query; the group list distinguishes a known caller with no memberships from an unknown caller. Operations requiring local existence independently, and ambiguous projection misses, use the caller admission capability. The [Phase 2 handoff](../internal/integration/phase-2-foundation.md#group-management-groupsusers) specifies the physical schema and the deferred IAM integration. Neither group authorization nor identity provisioning uses cross-context SQL.
+
+Mutations of an existing group serialize on its root row lock. Metadata, membership and invitation administration select the root only if the caller belongs to that group in the selection snapshot; a known nonmember receives the same not-found outcome as for a missing group without waiting on its root row lock. Selection is not authorization: the separate post-lock statement observes a fresh READ COMMITTED snapshot, including changes made by a transaction that previously held the lock. Membership mutation projections join the caller and authorized target and evaluate existence predicates for other members and administrators; the application service decides whether the requested transition is permitted. Group creation inserts the root and first administrator in one transaction. Metadata replacement alone advances the metadata version; membership and invitation operations do not. The future membership replication revision is a separate contract in the [Phase 3 handoff](../internal/integration/phase-3-foundation.md).
+
+Invitation issuance and revocation use the same root lock as membership changes. Redemption first uses a nonlocking, locally admitted invitation projection to verify the secret and availability in the application. Invalid credentials do not enter the group synchronization boundary. For a credential that passes this screening, redemption selects and locks the root by selector and local-user existence, then retrieves a fresh projection of the verifier, availability constraints, database evaluation time and existing membership. The application repeats validation and decides whether to join; membership insertion and usage advancement commit together. The physical foreign keys and row-level constraints complement rather than replace these transactional policies. Invitation policy fields and the verifier remain immutable after issuance.
+
+Read-only operations do not take the mutation lock. Workspace details and roster share one statement snapshot, as do the administrator role and visible invitation list. Authenticated invitation preview obtains only the group name for a valid capability; its projection supplies the facts needed for token and availability validation without reserving a use. Redemption uses the same nonlocking projection and validation policy for preliminary screening, and repeats the checks after locking. A successful new-member redemption uses five SQL statements; the additional screening query runs before the root lock. Operation-oriented projections keep relational work in PostgreSQL while leaving authorization and policy in the application layer. Integration tests count actual SQL executions on selected successful paths; E2E tests exercise commit, rollback and contention rather than treating component fixtures as proof of database behavior.
 
 ## Finance persistence
 

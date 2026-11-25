@@ -10,10 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionLifecycleStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenParser;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
@@ -59,23 +60,23 @@ class SessionLifecycleE2E extends E2ETestBase {
             execute(fixture, "update identity.sessions set idle_expires_at = ? where id = ?",
                     NOW.plusSeconds(10), initial.sessionId());
             assertEquals(NOW.plusSeconds(10), deadlines(fixture, initial.sessionId()).idle());
-            AuthenticationResult rotated = successful(refresh(dispatcher, initial.refreshCredential().cookieValue(),
+            AuthenticationResult rotated = successful(refresh(dispatcher, initial.refreshCredential().value(),
                     initial.sessionId()));
             assertEquals(originalDeadlines, deadlines(fixture, initial.sessionId()));
 
             assertEquals(initial.userId(), rotated.userId());
             assertEquals(initial.sessionId(), rotated.sessionId());
-            assertNotEquals(initial.refreshCredential().tokenId(), rotated.refreshCredential().tokenId());
+            assertNotEquals(initial.refreshCredential().selector(), rotated.refreshCredential().selector());
             assertEquals(initial.refreshExpiresAt(), rotated.refreshExpiresAt());
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens where consumed_at is null"));
             assertEquals(2, count(fixture, "select count(*) from identity.refresh_tokens"));
-            assertTrue(consumed(fixture, initial.refreshCredential().tokenId()));
-            assertFalse(consumed(fixture, rotated.refreshCredential().tokenId()));
+            assertTrue(consumed(fixture, initial.refreshCredential().selector()));
+            assertFalse(consumed(fixture, rotated.refreshCredential().selector()));
             assertNull(revokedAt(fixture, initial.sessionId()));
-            assertEquals(7, rotated.refreshCredential().tokenId().version());
+            assertEquals(7, rotated.refreshCredential().selector().version());
 
             AuthenticationResult restored = successful(refresh(dispatcher,
-                    rotated.refreshCredential().cookieValue(), null));
+                    rotated.refreshCredential().value(), null));
             assertEquals(initial.sessionId(), restored.sessionId());
             assertEquals(3, count(fixture, "select count(*) from identity.refresh_tokens"));
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens where consumed_at is null"));
@@ -88,19 +89,19 @@ class SessionLifecycleE2E extends E2ETestBase {
             OperationDispatcher dispatcher = dispatcher(fixture);
             AuthenticationResult initial = register(dispatcher);
             UUID wrongSession = UUID.randomUUID();
-            String wrongSecret = new RefreshCredentialGenerator()
-                    .generate(initial.refreshCredential().tokenId()).cookieValue();
+            String wrongSecret = new ApplicationTokenGenerator()
+                    .generate(initial.refreshCredential().selector()).value();
 
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
                     refresh(dispatcher, wrongSecret, initial.sessionId()));
             assertEquals(Result.err(SessionLifecycleFailure.SESSION_CONTEXT_CHANGED),
-                    refresh(dispatcher, initial.refreshCredential().cookieValue(), wrongSession));
+                    refresh(dispatcher, initial.refreshCredential().value(), wrongSession));
             assertEquals(Result.err(SessionLifecycleFailure.SESSION_CONTEXT_CHANGED),
-                    logout(dispatcher, initial.refreshCredential().cookieValue(), wrongSession));
+                    logout(dispatcher, initial.refreshCredential().value(), wrongSession));
             assertNull(revokedAt(fixture, initial.sessionId()));
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens"));
-            assertFalse(consumed(fixture, initial.refreshCredential().tokenId()));
-            assertTrue(refresh(dispatcher, initial.refreshCredential().cookieValue(),
+            assertFalse(consumed(fixture, initial.refreshCredential().selector()));
+            assertTrue(refresh(dispatcher, initial.refreshCredential().value(),
                     initial.sessionId()).isSuccess());
         });
     }
@@ -111,20 +112,20 @@ class SessionLifecycleE2E extends E2ETestBase {
             OperationDispatcher dispatcher = dispatcher(fixture);
             AuthenticationResult initial = register(dispatcher);
             AuthenticationResult successor = successful(refresh(dispatcher,
-                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    initial.refreshCredential().value(), initial.sessionId()));
 
             // A guessed selector or a wrong secret for consumed history must not revoke the family.
-            String impostor = new RefreshCredentialGenerator()
-                    .generate(initial.refreshCredential().tokenId()).cookieValue();
+            String impostor = new ApplicationTokenGenerator()
+                    .generate(initial.refreshCredential().selector()).value();
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
                     refresh(dispatcher, impostor, initial.sessionId()));
             assertNull(revokedAt(fixture, initial.sessionId()));
 
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                    refresh(dispatcher, initial.refreshCredential().cookieValue(), UUID.randomUUID()));
+                    refresh(dispatcher, initial.refreshCredential().value(), UUID.randomUUID()));
             assertNotNull(revokedAt(fixture, initial.sessionId()));
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                    refresh(dispatcher, successor.refreshCredential().cookieValue(), initial.sessionId()));
+                    refresh(dispatcher, successor.refreshCredential().value(), initial.sessionId()));
             assertEquals(2, count(fixture, "select count(*) from identity.refresh_tokens"));
             // Revocation preserves the successor verifier and history; it does not physically delete it.
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens where consumed_at is null"));
@@ -138,14 +139,14 @@ class SessionLifecycleE2E extends E2ETestBase {
             AuthenticationResult initial = register(dispatcher);
             assertEquals(Result.ok(LogoutStatus.NO_SESSION), logout(dispatcher, null, initial.sessionId()));
             assertEquals(Result.ok(LogoutStatus.REVOKED), logout(dispatcher,
-                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    initial.refreshCredential().value(), initial.sessionId()));
             Instant firstRevocation = revokedAt(fixture, initial.sessionId());
             assertEquals(NOW, firstRevocation);
             assertEquals(Result.ok(LogoutStatus.REVOKED), logout(dispatcher,
-                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    initial.refreshCredential().value(), initial.sessionId()));
             assertEquals(firstRevocation, revokedAt(fixture, initial.sessionId()));
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                    refresh(dispatcher, initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    refresh(dispatcher, initial.refreshCredential().value(), initial.sessionId()));
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens"));
         });
     }
@@ -165,12 +166,12 @@ class SessionLifecycleE2E extends E2ETestBase {
                                     PasswordPolicy.initial()))));
 
             AuthenticationResult rotated = successful(refresh(dispatcher,
-                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    initial.refreshCredential().value(), initial.sessionId()));
             assertNull(revokedAt(fixture, initial.sessionId()));
             assertEquals(Result.ok(LogoutStatus.REVOKED), logout(dispatcher,
-                    rotated.refreshCredential().cookieValue(), initial.sessionId()));
+                    rotated.refreshCredential().value(), initial.sessionId()));
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                    refresh(dispatcher, rotated.refreshCredential().cookieValue(), initial.sessionId()));
+                    refresh(dispatcher, rotated.refreshCredential().value(), initial.sessionId()));
         });
     }
 
@@ -183,13 +184,13 @@ class SessionLifecycleE2E extends E2ETestBase {
                     .getBean(IamAuthenticationE2E.FakeIssuer.class);
             issuer.fail.set(true);
             assertThrows(IllegalStateException.class, () -> refresh(dispatcher,
-                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    initial.refreshCredential().value(), initial.sessionId()));
             issuer.fail.set(false);
 
-            assertFalse(consumed(fixture, initial.refreshCredential().tokenId()));
+            assertFalse(consumed(fixture, initial.refreshCredential().selector()));
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens"));
             assertNull(revokedAt(fixture, initial.sessionId()));
-            assertTrue(refresh(dispatcher, initial.refreshCredential().cookieValue(),
+            assertTrue(refresh(dispatcher, initial.refreshCredential().value(),
                     initial.sessionId()).isSuccess());
             assertEquals(2, count(fixture, "select count(*) from identity.refresh_tokens"));
         });
@@ -202,10 +203,10 @@ class SessionLifecycleE2E extends E2ETestBase {
             AuthenticationResult initial = register(dispatcher);
             execute(fixture, "update identity.users set disabled_at = ? where id = ?", NOW, initial.userId());
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                    refresh(dispatcher, initial.refreshCredential().cookieValue(), initial.sessionId()));
-            assertFalse(consumed(fixture, initial.refreshCredential().tokenId()));
+                    refresh(dispatcher, initial.refreshCredential().value(), initial.sessionId()));
+            assertFalse(consumed(fixture, initial.refreshCredential().selector()));
             assertEquals(Result.ok(LogoutStatus.REVOKED), logout(dispatcher,
-                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    initial.refreshCredential().value(), initial.sessionId()));
         });
         runLifecycleTest(fixture -> {
             OperationDispatcher dispatcher = dispatcher(fixture);
@@ -214,10 +215,10 @@ class SessionLifecycleE2E extends E2ETestBase {
             execute(fixture, "update identity.sessions set created_at = ?, idle_expires_at = ? where id = ?",
                     NOW.minusSeconds(7200), NOW.minusSeconds(1), initial.sessionId());
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                    refresh(dispatcher, initial.refreshCredential().cookieValue(), initial.sessionId()));
-            assertFalse(consumed(fixture, initial.refreshCredential().tokenId()));
+                    refresh(dispatcher, initial.refreshCredential().value(), initial.sessionId()));
+            assertFalse(consumed(fixture, initial.refreshCredential().selector()));
             assertEquals(Result.ok(LogoutStatus.REVOKED), logout(dispatcher,
-                    initial.refreshCredential().cookieValue(), initial.sessionId()));
+                    initial.refreshCredential().value(), initial.sessionId()));
         });
     }
 
@@ -226,7 +227,7 @@ class SessionLifecycleE2E extends E2ETestBase {
         runLifecycleTest(fixture -> {
             OperationDispatcher dispatcher = dispatcher(fixture);
             AuthenticationResult initial = register(dispatcher);
-            String original = initial.refreshCredential().cookieValue();
+            String original = initial.refreshCredential().value();
             CountDownLatch start = new CountDownLatch(1);
             FutureTask<Result<AuthenticationResult, SessionLifecycleFailure>> a =
                     new FutureTask<>(() -> concurrentRefresh(dispatcher, start, original, initial.sessionId()));
@@ -244,7 +245,7 @@ class SessionLifecycleE2E extends E2ETestBase {
             assertNotNull(revokedAt(fixture, initial.sessionId()));
             assertEquals(2, count(fixture, "select count(*) from identity.refresh_tokens"));
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens where consumed_at is null"));
-            assertTrue(consumed(fixture, initial.refreshCredential().tokenId()));
+            assertTrue(consumed(fixture, initial.refreshCredential().selector()));
         });
     }
 
@@ -253,7 +254,7 @@ class SessionLifecycleE2E extends E2ETestBase {
         runLifecycleTest(fixture -> {
             OperationDispatcher dispatcher = dispatcher(fixture);
             AuthenticationResult initial = register(dispatcher);
-            String original = initial.refreshCredential().cookieValue();
+            String original = initial.refreshCredential().value();
             CountDownLatch start = new CountDownLatch(1);
             FutureTask<Result<AuthenticationResult, SessionLifecycleFailure>> renewal =
                     new FutureTask<>(() -> concurrentRefresh(dispatcher, start, original, initial.sessionId()));
@@ -279,7 +280,7 @@ class SessionLifecycleE2E extends E2ETestBase {
             if (renewalOutcome.isSuccess()) {
                 AuthenticationResult issued = successful(renewalOutcome);
                 assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                        refresh(dispatcher, issued.refreshCredential().cookieValue(), issued.sessionId()));
+                        refresh(dispatcher, issued.refreshCredential().value(), issued.sessionId()));
             } else {
                 assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE), renewalOutcome);
             }
@@ -292,7 +293,7 @@ class SessionLifecycleE2E extends E2ETestBase {
             OperationDispatcher dispatcher = dispatcher(fixture);
             AuthenticationResult initial = register(dispatcher);
             UUID sessionId = initial.sessionId();
-            UUID tokenId = initial.refreshCredential().tokenId();
+            UUID tokenId = initial.refreshCredential().selector();
 
             // Spring's @Repository proxy translates adapter contract violations to DAO exceptions.
             InvalidDataAccessApiUsageException duplicate = assertThrows(
@@ -318,7 +319,7 @@ class SessionLifecycleE2E extends E2ETestBase {
                     assertInstanceOf(IllegalStateException.class, regression.getCause()).getMessage());
             assertEquals(1, count(fixture, "select count(*) from identity.refresh_tokens"));
             assertNull(revokedAt(fixture, sessionId));
-            assertTrue(refresh(dispatcher, initial.refreshCredential().cookieValue(), sessionId).isSuccess());
+            assertTrue(refresh(dispatcher, initial.refreshCredential().value(), sessionId).isSuccess());
         });
     }
 
@@ -438,9 +439,9 @@ class SessionLifecycleE2E extends E2ETestBase {
         @Bean
         @Scope("operation")
         SessionLifecycleService sessionLifecycleService(Transactions transactions, SessionLifecycleStore sessions,
-                RefreshTokenStore refreshTokens, RefreshCredentialGenerator credentials,
+                RefreshTokenStore refreshTokens, ApplicationTokenGenerator credentials, ApplicationTokenParser tokenParser,
                 SessionPolicy policy, IamAuthenticationE2E.FakeIssuer issuer, Clock clock) {
-            return new SessionLifecycleService(transactions, sessions, refreshTokens, credentials,
+            return new SessionLifecycleService(transactions, sessions, refreshTokens, credentials, tokenParser,
                     policy, issuer, clock);
         }
     }

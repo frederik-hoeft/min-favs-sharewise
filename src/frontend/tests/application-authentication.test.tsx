@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider, useAuthenticatedApis } from "@/app/identity-provider";
 import AppLayout from "@/app/(app)/app/layout";
+import StandardLayout from "@/app/(app)/app/(standard)/layout";
 import { createIdentityRuntime } from "@/core/identity";
 import { TestProviders } from "./support/TestProviders";
 import { ControlledLocks, SESSION_TWO, authenticationResponse, deferred, jsonResponse, problemResponse } from "./identity/support";
@@ -19,7 +20,7 @@ function mount(runtime: ReturnType<typeof createIdentityRuntime>, children: Reac
   runtimes.push(runtime);
   return render(
     <TestProviders><IdentityProvider runtime={runtime}>
-      <AppLayout>{children}</AppLayout>
+      <AppLayout><StandardLayout>{children}</StandardLayout></AppLayout>
     </IdentityProvider></TestProviders>,
   );
 }

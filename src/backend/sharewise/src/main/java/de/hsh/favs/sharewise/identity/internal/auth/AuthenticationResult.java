@@ -1,7 +1,7 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -12,7 +12,7 @@ public record AuthenticationResult(
         UUID userId,
         UUID sessionId,
         IssuedAccessToken accessToken,
-        RefreshCredentialGenerator.GeneratedCredential refreshCredential,
+        ApplicationTokenGenerator.GeneratedToken refreshCredential,
         Instant refreshExpiresAt) {
     public AuthenticationResult {
         Objects.requireNonNull(userId, "userId");

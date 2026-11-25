@@ -1,18 +1,17 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
-import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
-import de.hsh.favs.sharewise.groups.internal.application.GroupCreationService;
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMetadataService;
-import de.hsh.favs.sharewise.groups.internal.application.GroupQueryService;
-import de.hsh.favs.sharewise.groups.internal.application.GroupSummary;
-import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMetadataService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupQueryService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.group.ReplaceGroupMetadataCommand;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
-import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
-import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
 import java.net.URI;
 import java.util.List;
 import java.util.Objects;
@@ -28,7 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Group creation, the caller's group list, group details and metadata replacement.
+ * Group creation, member-scoped reads, metadata replacement.
  *
  * <p>Route admission requires a verified primary IAM bearer before a handler runs. Each handler
  * dispatches one operation through the request's ingress, so the operation receives the verified
@@ -37,10 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @ApiAccess
-@RequestMapping(GroupsController.GROUPS_PATH)
+@RequestMapping(GroupApiPaths.GROUPS)
 final class GroupsController {
-
-    static final String GROUPS_PATH = "/api/groups/v1/groups";
 
     private final OperationIngressDispatcher ingress;
 
@@ -50,11 +47,11 @@ final class GroupsController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<?> create(@RequestBody CreateGroupRequest request) {
-        CreateGroupCommand command = valid(GroupCommands.create(request));
+        CreateGroupCommand command = GroupCommands.valid(GroupCommands.create(request));
         Result<GroupDetails, GroupFailure> result =
             ingress.dispatch(GroupCreationService.class, service -> service.create(command));
         return result.fold(
-            group -> ResponseEntity.created(URI.create(GROUPS_PATH + "/" + group.id()))
+            group -> ResponseEntity.created(URI.create(GroupApiPaths.GROUPS + "/" + group.id()))
                 .body(GroupDetailsResponse.of(group)),
             GroupProblems::response);
     }
@@ -77,15 +74,17 @@ final class GroupsController {
 
     @PutMapping(value = "/{groupId}", consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<?> replaceMetadata(@PathVariable UUID groupId, @RequestBody ReplaceGroupMetadataRequest request) {
-        ReplaceGroupMetadataCommand command = valid(GroupCommands.replace(groupId, request));
+        ReplaceGroupMetadataCommand command = GroupCommands.valid(GroupCommands.replace(groupId, request));
         Result<GroupDetails, GroupFailure> result =
             ingress.dispatch(GroupMetadataService.class, service -> service.replace(command));
         return result.fold(group -> ResponseEntity.ok(GroupDetailsResponse.of(group)), GroupProblems::response);
     }
 
-    private static <T> T valid(Result<T, ValidationErrors> input) {
-        return input.fold(value -> value, errors -> {
-            throw RequestValidationException.from(errors);
-        });
+    @GetMapping("/{groupId}/workspace")
+    ResponseEntity<?> workspace(@PathVariable UUID groupId) {
+        Result<GroupWorkspace, GroupFailure> result =
+            ingress.dispatch(GroupQueryService.class, service -> service.workspace(groupId));
+        return result.fold(workspace -> ResponseEntity.ok(GroupWorkspaceResponse.of(workspace)), GroupProblems::response);
     }
+
 }

@@ -40,6 +40,19 @@ final class GroupProblems {
                 "Group Not Found", "The group does not exist or you are not a member.");
             case GroupFailure.AdministratorRequired() -> ApiProblems.response(HttpStatus.FORBIDDEN, ADMIN_REQUIRED,
                 "Group Administrator Required", "Only a group administrator can change the group.");
+            case GroupFailure.MemberNotFound() -> ApiProblems.response(HttpStatus.NOT_FOUND, "group_member_not_found",
+                "Group Member Not Found", "This membership is no longer available in the group.");
+            case GroupFailure.LastMember() -> ApiProblems.response(HttpStatus.CONFLICT, "group_last_member",
+                "Last Group Member", "A group must retain at least one member.");
+            case GroupFailure.LastAdministrator() -> ApiProblems.response(HttpStatus.CONFLICT, "group_last_administrator",
+                "Last Group Administrator", "A group must retain at least one administrator.");
+            case GroupFailure.SelfRoleChange() -> ApiProblems.response(HttpStatus.CONFLICT, "group_self_role_change",
+                "Self Role Change", "An administrator cannot change their own role.");
+            case GroupFailure.InvalidInvitation invalid -> throw RequestValidationException.from(invalid.errors());
+            case GroupFailure.InvitationNotFound() -> ApiProblems.response(HttpStatus.NOT_FOUND, "group_invitation_not_found",
+                "Invitation Not Found", "This invitation is no longer available in the group.");
+            case GroupFailure.InvitationUnavailable() -> ApiProblems.response(HttpStatus.NOT_FOUND, "group_invitation_unavailable",
+                "Invitation Unavailable", "This invitation is invalid or no longer available.");
             case GroupFailure.VersionConflict() -> ApiProblems.response(HttpStatus.CONFLICT, VERSION_CONFLICT,
                 "Group Version Conflict", "The group has changed since you last read it.");
         };

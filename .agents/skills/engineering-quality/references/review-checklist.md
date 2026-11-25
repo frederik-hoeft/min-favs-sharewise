@@ -9,8 +9,8 @@ Use selectively for meaningful implementation or design changes. Trace executed 
 - **State:** Logical identity, versioning, lifecycle transitions, ownership consistency, invariants after every exit path, historical/provenance guarantees.
 - **Concurrency:** Locking and consistency scope, stale updates, retry/idempotency, cancellation, races, transaction finalization, no partial or orphaned state.
 - **Integration:** Published contracts, event ordering/deduplication, auth/permissions, cross-module consistency, negative-path behavior and recovery from drift.
-- **Performance:** Appropriate in-database evaluation, narrow projections, joins and indexes, no excessive materialization, N+1 operations or redundant computation.
+- **Performance:** Operation-oriented persistence projections, database-side joins/existence predicates and aggregations, foreign-key implications, bounded round trips, no redundant admission queries or N+1 operations. Does consolidation preserve required post-lock snapshots and failure semantics?
 - **Quality:** Cohesive names and packages, removal of superseded paths, precise error results, tests and steady-state documentation.
-- **Validation:** Actual compiler/test/analysis outcomes, relevant integration tests, and honest disclosure of any environment or verification limitations.
+- **Validation:** Actual compiler/test/analysis outcomes, relevant integration tests, fixture isolation under configured parallelism, and honest disclosure of any environment or verification limitations.
 
 For useful refactoring opportunities, assess risk and scope: make small improvements directly; undertake larger low-risk consolidations when their contracts remain stable; recommend disruptive redesigns and obtain maintainer agreement before executing them.

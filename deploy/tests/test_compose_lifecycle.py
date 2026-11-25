@@ -41,7 +41,10 @@ case "$service" in
     backend)
         case "$*" in
             *--write-out*http://localhost/example*) echo '308 https://localhost:18443/example' ;;
-            *--write-out*) echo 421 ;;
+            *'Host: forged.invalid'*) echo 421 ;;
+            *--write-out*https://localhost/invite)
+                if [ "${MOCK_FAILURE:-}" = invite-route ]; then echo 404; else echo 200; fi ;;
+            *--write-out*) echo 200 ;;
             *https://localhost/api/system/v1/health*)
                 if [ "${MOCK_FAILURE:-}" = health ]; then echo '{"status":"DOWN"}';
                 else echo '{"status":"UP"}'; fi ;;
@@ -69,13 +72,14 @@ class ComposeLifecycleTests(unittest.TestCase):
         importer = scripts / "import-assets.sh"
         importer.write_text("#!/bin/sh\nexit 0\n")
         importer.chmod(0o755)
-        # The real disposable smoke now exercises IAM HTTP/JWT too. Mock only
+        # The real disposable smoke exercises IAM and Group HTTP too. Mock only
         # that inner probe here; the lifecycle test concerns Compose cleanup.
-        iam_smoke = scripts / "iam-http-smoke.py"
-        iam_smoke.write_text(
-            "import sys\n"
+        api_smoke = scripts / "api-http-smoke.py"
+        api_smoke.write_text(
+            "import os, sys\n"
             "assert '--host' in sys.argv and '--port' in sys.argv\n"
             "assert '--issuer' in sys.argv and '--audience' in sys.argv\n"
+            "assert os.environ.get('MOCK_FAILURE') != 'api-smoke'\n"
         )
         (self.deploy / ".env").write_text("COMPOSE_PROJECT_NAME=sharewise-p26ab-local\n")
         self.cli = root / "docker"
@@ -111,6 +115,8 @@ class ComposeLifecycleTests(unittest.TestCase):
         ])
         self.assertNotIn("sharewise-p26ab-local", " ".join(self.down_calls()))
         self.assertTrue((self.deploy / ".env").exists())
+        for path in ("/app/groups", "/app/groups/view", "/invite"):
+            self.assertTrue(any(call.endswith("https://localhost" + path) for call in self.calls()))
 
     def test_smoke_ignores_local_compose_override(self):
         result = self.run_smoke(
@@ -139,6 +145,18 @@ class ComposeLifecycleTests(unittest.TestCase):
 
     def test_failed_acceptance_preserves_diagnostics(self):
         result = self.run_smoke(MOCK_FAILURE="health")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("preserved for diagnosis", result.stderr)
+        self.assertEqual(self.down_calls(), [])
+
+    def test_missing_invitation_route_fails_and_preserves_stack(self):
+        result = self.run_smoke(MOCK_FAILURE="invite-route")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Expected HTTP 200 for static route /invite; got 404", result.stderr)
+        self.assertEqual(self.down_calls(), [])
+
+    def test_api_smoke_failure_preserves_stack(self):
+        result = self.run_smoke(MOCK_FAILURE="api-smoke")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("preserved for diagnosis", result.stderr)
         self.assertEqual(self.down_calls(), [])
