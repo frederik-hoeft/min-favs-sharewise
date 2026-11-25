@@ -33,26 +33,29 @@ The application uses **PostgreSQL 18**. The [persistence architecture](architect
 
 Flyway applies the migrations in `src/main/resources/db/migration/` at startup. Each bounded context owns one schema (`identity`, `groups`, `finance`, `files`, `notifications`); the Flyway history lives in schema `flyway`. Hibernate only validates its mappings (`spring.jpa.hibernate.ddl-auto=validate`). Migration files follow `db/migration/<context>/V<yyyyMMddHHmm>__<context>_<description>.sql` (cross-cutting migrations such as the schema baseline use `db/migration/platform/`) and are immutable once committed and pushed; local work-in-progress migrations may be edited after resetting the local database.
 
-IAM and Finance use committed jOOQ schema classes generated against **migrated PostgreSQL**, not handwritten table definitions. After changing a context's Flyway schema, start the development database and apply the migrations, then regenerate only that context's metadata from `src/backend/sharewise`. Choose `jooq-codegen-identity` for IAM or `jooq-codegen-finance` for Finance. For example, to regenerate Finance:
+Persistence adapters use committed jOOQ schema classes generated against **migrated PostgreSQL**, not handwritten table definitions. The opt-in `jooq-codegen` Maven profile declares one execution per context schema, each writing into its owning module's private `…persistence.generated` package. After a Flyway schema change, regenerate from the development container with the database running and migrated:
 
 ```bash
 cd src/backend/sharewise
-./mvnw -Pjooq-codegen-finance \
+./mvnw -Pjooq-codegen \
   -Djooq.codegen.jdbc.url=jdbc:postgresql://postgres:5432/sharewise \
   -Djooq.codegen.jdbc.user=sharewise_migrator \
-  org.jooq:jooq-codegen-maven:generate
+  generate-sources
 ```
 
-The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role and adjust the JDBC URL for the migrated database. Review the generated diff and commit it alongside the migration. The context-specific targets, relative to `src/main/java/de/hsh/favs/sharewise/`, are:
+To regenerate a single context, replace `generate-sources` with `org.jooq:jooq-codegen-maven:generate@<execution-id>`, for example `generate@finance`. The executions and their generated package directories, relative to `src/main/java/de/hsh/favs/sharewise/`, are:
 
-| Maven profile | Generated package directory |
+| Execution | Generated package directory |
 | --- | --- |
-| `jooq-codegen-identity` | `identity/internal/auth/persistence/generated/` |
-| `jooq-codegen-finance` | `finance/internal/persistence/generated/` |
+| `identity` | `identity/internal/auth/persistence/generated/` |
+| `groups` | `groups/internal/persistence/generated/` |
+| `finance` | `finance/internal/persistence/generated/` |
 
-Run `./mvnw -Punit-tests clean verify` to check compilation and module boundaries, and the applicable PostgreSQL suites to verify schema and adapter behavior. Ordinary builds use the checked-in sources; both opt-in generator profiles require PostgreSQL and plugin artifacts outside the Maven-only offline handoff.
+The development container supplies the development-only `JOOQ_CODEGEN_PASSWORD`; outside it, set that environment variable explicitly for the migration role and adjust the JDBC URL for the migrated database. Review the generated diff and commit it alongside the migration. The profile fails on jOOQ metadata problems, so a database that lacks a context schema stops the run with `No schemata were loaded` before any file is written or removed. Flyway normally migrates the development database at application startup. For an already bootstrapped database, the opt-in generation profile also exposes an explicit `org.flywaydb:flyway-maven-plugin:migrate` goal using the same JDBC connection and migration role. Run that goal before `generate-sources` (in the same Maven invocation if desired) to migrate without compiling or starting the application. It uses the same migration files and `flyway` history schema, with out-of-order execution disabled. Run `./mvnw -Punit-tests clean verify` to check compilation and module boundaries, and the applicable PostgreSQL suites to verify schema and adapter behavior. Ordinary Maven builds use the checked-in sources and do not contact PostgreSQL for code generation. The generator profile is opt-in and requires its plugin artifacts, which are not included in the Maven-only offline handoff.
 
-`application.properties` contains dev-only defaults for the dev-container database. The production image uses the `production` profile and required password files via the [Compose runtime configuration](development/production-compose.md). Other non-production environments may override the dev values with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
+The mandatory GitLab job `verify-backend-jooq-codegen` bootstraps its own PostgreSQL 18 service using the existing role and database grants, applies Flyway migrations, removes tracked generated metadata in its disposable checkout, and invokes the actual Maven generation profile. It fails on any modification, deletion or untracked source under `src/main/java`, including stale files from an omitted generator execution. The job has a separate Maven cache; normal Unit, Integration and E2E builds do not resolve the generation or migration-tool plugins. See [CI and diagnostics](development/tests.md#ci-and-diagnostics).
+
+`application.properties` contains dev-only defaults for the dev-container database. The production image uses the `production` profile and required password files via the [Compose runtime configuration](development/production-compose.md). Other non-production environments may override the dev values with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_FLYWAY_USER` and `SPRING_FLYWAY_PASSWORD`. To inspect the database, use the PostgreSQL extension installed in the dev container (server `postgres`) or `docker exec <folder>_devcontainer-postgres-1 psql -U postgres -d sharewise`, where `<folder>` is the name of your checkout folder (`docker ps --filter name=postgres` shows the exact name). Rebuilding the dev container keeps this volume, so the database and its Flyway history survive a rebuild. To reset the local database, stop the dev container and remove the `<folder>_devcontainer_postgres-data` volume (`docker volume ls --filter name=postgres-data`); the roles are recreated on the next start.
 
 The backend has independent **Unit**, **Integration** and **E2E** test gates. Unit tests run offline; Integration and E2E tests require PostgreSQL 18. The [test architecture](architecture/tests.md) explains their isolation and evidence boundaries; [Backend testing](development/tests.md) documents local configuration, fixture APIs, CI and diagnostics. The deferred Smoke / system-level E2E suite has no execution gate yet.
 
@@ -75,6 +78,25 @@ Session and lockout settings are bound from `sharewise.iam.auth` and validated a
 **Browser credential entry.** `GET /api/iam/v1/auth/csrf` returns a masked request token with `Cache-Control: no-store` and a host-only `__Host-sharewise-csrf` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`). Registration and login POSTs require the matching `X-XSRF-TOKEN` request header, CSRF cookie, and an exact same-origin `Origin` header. The Spring Security CSRF and Origin filters reject missing/invalid proof before the IAM operation is dispatched. Accepted registration returns `201` and login `200`, with a short-lived bearer JWT in JSON and a distinct `__Host-sharewise-refresh` cookie, also `Secure`, `HttpOnly`, `SameSite=Strict`, host-only, and `Path=/`. The refresh cookie expires no later than the committed session's idle/absolute deadline; its value is never sent in JSON. Successful authentication clears the CSRF cookie; the browser obtains a new token before any later mutation. Rejected credentials, invalid requests, and duplicate registrations never issue refresh cookies.
 
 Local HTTP test clients may inspect the `Secure` cookies, but actual browser cookie storage and sending must be verified through a real **HTTPS** origin. The production Nginx TLS terminator forwards the external origin through its trusted proxy network; Spring's production profile interprets only those proxy-provided forwarded headers. Do not enable forwarded-header trust for arbitrary untrusted client traffic. The same CSRF and Origin boundary protects `/api/iam/v1/auth/refresh` and `/api/iam/v1/auth/logout`. A valid refresh rotates its verifier generation and returns a new access JWT and cookie; logout revokes the session and clears refresh/CSRF cookies. Both operations accept a nullable `expectedSessionId` to bind subsequent mutations to the tab's known session; an unbound refresh is used only when restoring an unknown cookie context. Invalid/missing refresh credentials cannot renew, while a valid cookie belonging to another session returns `409 session_context_changed` without cookie mutation. Refresh/logout require no access bearer and never authenticate other API operations through cookies alone. See [the security architecture](stack/security.md#api-boundaries-and-client-behavior). Before public exposure, configure edge-level request size/rate limits and benchmark PBKDF2 load.
+
+## Provision local Group users
+
+Group Management admits a caller only if their IAM user ID is in its local `groups.users` registry; otherwise every Group request returns `403 group_user_unknown` and the Groups pages show "Account not yet available". Nothing fills that registry automatically yet: IAM-to-Group event delivery (P2.2d) and the lookup on a local miss (P2.2e) are planned. Until then, provision the accounts you test with explicitly. This procedure is a **temporary development stand-in for P2.2d**. It is not a production path and not a Flyway migration, and it becomes unnecessary once registration events reach Group Management.
+
+First find the account's IAM user ID. Run the backend with IAM authentication enabled (see the previous section), then register or sign in. The `/api/iam/v1/auth/register` and `/login` responses carry an `accessToken` whose `sub` claim is the user ID; in the browser, copy it from the response in the developer tools' Network tab. Decode it in the dev container:
+
+```bash
+TOKEN='<accessToken>'
+python3 -c 'import base64, json, sys; p = sys.argv[1].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))["sub"])' "$TOKEN"
+```
+
+Then insert the ID as the **application role** `sharewise_app`, which holds the DML privileges on Group tables; the migration role is reserved for schema changes. In the dev container's PostgreSQL extension, connect to server `postgres`, database `sharewise`, user `sharewise_app` with password `sharewise_app_dev`, and run:
+
+```sql
+INSERT INTO groups.users (id) VALUES ('<user-id>') ON CONFLICT DO NOTHING;
+```
+
+The statement is idempotent, matching the provisioning operation that P2.2d will call. Provision each test account separately: every registration creates a new user ID, and resetting the database volume removes all provisioned rows. Member management arrives with P2.2b; to test another account as a plain member, add a membership row the same way, for example `INSERT INTO groups.group_members (group_id, user_id, role) VALUES ('<group-id>', '<user-id>', 'member');` for an already provisioned user.
 
 ## Build, test and run
 
@@ -281,7 +303,7 @@ tar -xzf sharewise-offline-deps-linux-x64.tar.gz -C deps
 ./deps/verify-offline.sh verify deps --source /path/to/sharewise
 ```
 
-The Maven cache is populated by running the actual `-Punit-tests clean verify` lifecycle, including Spring Boot repackaging and Surefire/Failsafe plugins, rather than prefetching every plugin managed by the Spring Boot parent. The opt-in jOOQ generation profiles (`jooq-codegen-identity` and `jooq-codegen-finance`) are excluded: generated sources are already committed, and the handoff does not provide PostgreSQL. Running code generation separately requires a migrated PostgreSQL schema and its plugin dependencies.
+The Maven cache is populated by running the actual `-Punit-tests clean verify` lifecycle, including Spring Boot repackaging and Surefire/Failsafe plugins, rather than prefetching every plugin managed by the Spring Boot parent. The opt-in `jooq-codegen` profile is excluded: generated sources are already committed, and the handoff does not provide PostgreSQL. Running code generation separately requires a migrated PostgreSQL schema and its plugin dependencies.
 
 The verifier hashes the required original toolchain archives, extracts them to temporary storage, checks the selected source dependency descriptors and runs the corresponding backend tests and/or frontend lint/build without network access. If the vendor archives live elsewhere, supply `--toolchains /path/to/archives`. Verification needs Linux x64, `tar` and basic Unix checksum utilities, plus Python 3 when verifying Maven builds (to unpack the original Maven ZIP), but not preinstalled language toolchains. See `README-OFFLINE.md` within the dependency archive for more information.
 

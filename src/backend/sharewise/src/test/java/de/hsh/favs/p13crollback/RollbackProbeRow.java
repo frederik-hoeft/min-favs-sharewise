@@ -7,7 +7,7 @@ import jakarta.persistence.Table;
 
 /** JPA-only PostgreSQL probe; never included in production entity scanning. */
 @Entity
-@Table(schema = "groups", name = "p13c_rollback_probe")
+@Table(schema = "test_probes", name = "p13c_rollback_probe")
 public class RollbackProbeRow {
 
     @Id

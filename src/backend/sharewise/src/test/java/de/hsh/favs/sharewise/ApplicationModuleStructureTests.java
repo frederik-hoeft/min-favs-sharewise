@@ -76,6 +76,18 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
+    void groupsDeclaresExactlyItsConsumedContractsAndPublishesNoTypes() {
+        ApplicationModule groups = modules.getModuleByName("groups")
+                .orElseThrow(() -> new AssertionError("module 'groups' must exist"));
+        assertEquals(List.of("identity", "shared::di", "shared::jooq", "shared::result", "shared::transactions",
+                "shared::validation", "shared::web"),
+                ApplicationModuleInformation.of(groups.getBasePackage()).getDeclaredDependencies(),
+                "groups may consume only the IAM identity contract and its declared shared contracts");
+        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules, groups.getBasePackage().getName()),
+                "groups publishes no Java API until a consumer needs one");
+    }
+
+    @Test
     void financePublishesNoApiAndDependsOnlyOnJooqAndResult() {
         ApplicationModule finance = modules.getModuleByName("finance")
                 .orElseThrow(() -> new AssertionError("module 'finance' must exist"));

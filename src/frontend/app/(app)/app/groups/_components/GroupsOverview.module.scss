@@ -1,0 +1,23 @@
+// Columns follow the content width left by the workspace navigation, not the viewport.
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: var(--mantine-spacing-lg);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  height: 100%;
+}
+
+.name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}

@@ -1,6 +1,6 @@
 # Phase 2 implementation foundation: IAM and Group Management
 
-**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login now exist under P2.1a. Group business tables, IAM-to-Group event delivery and projection bootstrap remain future work; refresh/logout use the existing IAM tables and are implemented by P2.1b. The schema descriptions below retain ER provenance; check the committed IAM Flyway migration for implemented physical DDL.
+**Status:** Phase 2 schema and integration handoff, based on the reviewed [technical ER diagram](../../assets/er-data-model.pdf). The `identity.users`, `identity.sessions` and `identity.refresh_tokens` tables, their migrations, and initial production registration/login exist under P2.1a; refresh/logout use the existing IAM tables and are implemented by P2.1b. The `groups.users`, `groups.groups` and `groups.group_members` tables, group creation, the caller's group overview and metadata replacement exist under P2.2a. Invitations, IAM-to-Group event delivery and projection bootstrap remain future work. The schema descriptions below retain ER provenance; check the committed IAM and Group Flyway migrations for implemented physical DDL.
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
@@ -69,7 +69,7 @@ The [ER PDF](../../assets/er-data-model.pdf) and [SVG](../../assets/er-data-mode
 
 **Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../../data-model-design.md); **Security** comes from [security.md](../../stack/security.md); **Messaging** comes from [messaging.md](../../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
 
-P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; P2.1c added the optional `identity.user_profiles` table and generated IAM jOOQ mapping. **Group business tables and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM DDL.
+P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; P2.1c added the optional `identity.user_profiles` table and generated IAM jOOQ mapping. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. **`groups.invitations` and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
 
 ### IAM: `identity.users`
 
@@ -132,6 +132,8 @@ The ER specifies `CHECK (octet_length(verifier_hash) = 32)`, `UNIQUE(session_id)
 
 There is **no FK** to `identity.users`, no copied credentials, and no tombstone in this initial design. Event ordering and account-deletion effects are deliberately deferred to the reviewed lifecycle integration.
 
+Group Management writes this table only through one idempotent provisioning operation (`INSERT … ON CONFLICT DO NOTHING`) of an ID supplied by a trusted source. In P2.2a only test fixtures and the [developer provisioning procedure](../../development.md#provision-local-group-users) supply IDs; P2.2d's event consumer and P2.2e's eligible-lookup provisioning are expected to call the same operation. Every Group operation first **admits** the caller: one Group-internal service takes the ID from `IdentityContext.requireUserId()` and checks it against this table in the operation's transaction segment. An unknown caller receives `403 group_user_unknown` for every operation, including reads, and causes no Group writes. Admission establishes local existence only; access to a particular group is then decided from current `groups.group_members` rows. P2.2e's local-miss lookup belongs inside this admission step, so no Group operation changes when it is added.
+
 ### Group Management: `groups.groups`
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
@@ -140,8 +142,9 @@ There is **no FK** to `identity.users`, no copied credentials, and no tombstone 
 | `name` | `varchar(64)` | Editable group metadata (**Backlog P2.2a, Domain**); size selected by **ER**. |
 | `description` | `varchar(512) NULL` | Optional group description (**ER** metadata choice); length/optionality not mandated by the domain spec. |
 | `created_at` | `timestamptz DEFAULT now()` | Creation/sorting metadata (**ER**), not a membership-history journal. |
+| `version` | `bigint DEFAULT 0` | Optimistic concurrency for metadata replacement (**P2.2a extension to the ER**). A replacement names the version it was based on and increments it by exactly one; a stale version gets `409 group_version_conflict`. P2.2b decides whether membership changes also increment it. |
 
-The ER requires `CHECK (length(btrim(name)) > 0)`. Group name is not globally unique. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
+The ER requires `CHECK (length(btrim(name)) > 0)`; the migration adds `CHECK (version >= 0)`. Group name is not globally unique. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
 
 ### Group Management: `groups.group_members`
 
@@ -154,6 +157,8 @@ The ER requires `CHECK (length(btrim(name)) > 0)`. Group name is not globally un
 | `joined_at` | `timestamptz DEFAULT now()` | Membership join metadata (**ER**), not a requirement to retain former memberships. |
 
 `UNIQUE(group_id, user_id)` prevents duplicate membership and supplies the leading-column group lookup index. The separate `user_id` index supports user-centric queries. At least one member and one administrator must remain in a surviving group; last-member removal, concurrent administrator transfer, and group deletion require a **group-scoped transactional protocol**. An IAM account deletion must not casually cascade through these rows and break those invariants.
+
+P2.2a establishes that protocol for mutations of an existing group. The operation **locks the `groups.groups` row first** (`SELECT … FOR UPDATE`), then reads the caller's current membership and performs the change in the same segment. Under PostgreSQL's READ COMMITTED isolation every statement after the lock sees the latest committed membership state, so an authorization check cannot rely on a role that a concurrent, committed group mutation has already revoked. Metadata replacement is its first user; P2.2b's final-member and final-administrator checks and P2.2c's redemption versus revocation are expected to adopt it, or refine it in their own specifications. Creation needs no lock: it inserts the group and the creator's `admin` membership in one segment, and the `user_id` FK rejects an unadmitted creator, leaving neither row. Reads take no locks and return single-statement projections. A non-member receives the same `404 group_not_found` as for a missing group, so group IDs reveal neither existence nor membership.
 
 ### Group Management: `groups.invitations`
 

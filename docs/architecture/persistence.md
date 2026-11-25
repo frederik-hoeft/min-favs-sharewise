@@ -2,7 +2,7 @@
 
 ShareWise uses PostgreSQL as its relational database and Flyway migrations as the authority for the physical schema. Spring Boot configures an application `DataSource` and a separate Flyway migration connection with schema-changing privileges. jOOQ and JPA/Hibernate are integrated with Spring's explicit transaction segments through operation-scoped persistence accessors.
 
-The shared persistence infrastructure supplies transaction-bound database access to independently owned business schemas. IAM uses it for accounts, optional profiles, sessions and refresh tokens; Finance uses it for group-root provisioning and locking. The [application architecture](../architecture.md) explains module ownership, and [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
+The shared persistence infrastructure supplies transaction-bound database access to independently owned business schemas. IAM uses it for accounts, optional profiles, sessions and refresh tokens; Group Management for its registry of locally known IAM users, groups and memberships; Finance for group-root provisioning and locking. The [application architecture](../architecture.md) explains module ownership, and [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
 
 ## Database topology and ownership
 
@@ -11,8 +11,9 @@ A single PostgreSQL database contains the following schemas:
 | Schema | Current responsibility |
 | --- | --- |
 | `identity` | IAM accounts, optional profiles, sessions and refresh tokens. |
+| `groups` | Group Management's registry of locally known IAM user IDs, groups and memberships. |
 | `finance` | Finance group roots and retained actor identities. |
-| `groups`, `files`, `notifications` | Reserved bounded-context namespaces. |
+| `files`, `notifications` | Reserved bounded-context namespaces. |
 | `flyway` | Flyway's migration history, separate from the context namespaces. |
 
 Schema boundaries make ownership visible in the physical layout, but do not provide database-enforced isolation between contexts: the single runtime database role has privileges across all five context schemas. The backend's [Spring Modulith boundaries](../architecture.md#module-structure-and-published-apis) govern dependencies between application modules; schema separation does not authorize cross-context data access.
@@ -30,11 +31,13 @@ Database initialization separates two credentials and responsibilities:
 
 Development and test provisioning scripts establish their roles using disposable credentials. The [production Compose startup](../development/production-compose.md) instead reads required role passwords from protected files and creates the roles only when initializing an empty PostgreSQL data volume. On a populated volume, rotation and recovery are explicit administrative operations. Flyway's baseline migration creates the five context schemas, grants `USAGE` to the runtime role, and configures default table and sequence privileges for objects created by the migration role. Those default privileges depend on the **object-creating role**; creating an object under a different role does not automatically grant the application access.
 
-Application requests use the runtime connection; they do not inherit the migrator's DDL authority. IAM and Finance revoke default `PUBLIC` usage on their domain types and explicitly grant it to the runtime role; Finance does the same for its lifecycle enum. Configuration and bootstrap commands are documented in [Backend development](../development.md#database).
+Application requests use the runtime connection; they do not inherit the migrator's DDL authority. IAM and Finance revoke default `PUBLIC` usage on their domain types and explicitly grant it to the runtime role; Group Management does the same for its role enum, and Finance does the same for its lifecycle enum. Configuration and bootstrap commands are documented in [Backend development](../development.md#database).
 
 ### Database-first SQL metadata
 
-IAM and Finance use jOOQ metadata generated from their Flyway-migrated PostgreSQL schemas. Each context keeps its generated tables, records and types internal to its persistence adapters; its ports expose application-owned values instead. The generated Java sources are committed alongside migrations so ordinary builds compile against the same metadata without accessing a database or invoking the generator. The [development guide](../development.md#database) describes regeneration.
+IAM, Group Management and Finance use jOOQ metadata generated from their Flyway-migrated PostgreSQL schemas. Each context keeps its generated tables, records and types internal to its persistence adapters; its ports expose application-owned values instead. The generated Java sources are committed alongside migrations so ordinary builds compile against the same metadata without accessing a database or invoking the generator.
+
+One opt-in `jooq-codegen` Maven profile generates every context's metadata. It has one execution per context schema; shared generator settings are declared once, and each execution names only its schema and its owning module's private target package, so a context that introduces tables adds an execution rather than a second mechanism. The profile fails on jOOQ metadata problems, so generating against a database that lacks a context schema aborts instead of replacing that context's committed sources with an empty package. The dedicated CI generation gate runs this actual Maven profile against a freshly Flyway-migrated database and compares the regenerated tree with committed sources. Generator and migration-tool plugin dependencies are confined to the opt-in profile; ordinary compilation and tests use only the checked-in metadata. The [development guide](../development.md#database) describes regeneration.
 
 ## Transaction-bound persistence access
 
@@ -62,6 +65,10 @@ flowchart LR
 The returned facades belong to their originating segment and owning operation/thread. They expire when the segment callback exits, even if the operation scope continues and opens another segment. A retained facade or its derived executable query cannot silently acquire the later segment's resources. The guards cover the supported jOOQ/JPA execution paths, not arbitrary JDBC access or references escaped outside them.
 
 jOOQ statements execute against the active transaction, while Hibernate may buffer entity changes until flush and retain managed state in its first-level cache. The two access models can participate in the same Spring transaction, but their caches and write timing do not automatically synchronize. See [transaction management](transactions.md#persistence-participation-and-lifetimes) for segment lifecycle and completion behavior.
+
+## Group metadata persistence
+
+Group Management's domain values own Unicode-aware normalization and business validation of names and descriptions. The database enforces structural integrity, character-length limits, nonnegative metadata versions and inexpensive storage sanity checks: names must be nonempty, trimmed of ordinary spaces and free of ASCII control characters; descriptions are nullable or nonempty, trimmed of ordinary spaces and line breaks, and may contain LF or CRLF but no other ASCII control characters. These backstops do not reproduce the domain's Unicode whitespace and control-character classification. Adapters persist validated domain values and reconstruct those values on reads rather than silently repairing invalid stored metadata.
 
 ## Finance persistence
 
@@ -110,4 +117,4 @@ Both methods require a non-null group ID and an active caller-owned transaction 
 
 The backend's [test architecture](tests.md) separates database-free Unit tests, PostgreSQL Integration tests with rollback-only physical transactions, and E2E tests using independently provisioned databases for real commits. PostgreSQL tests exercise the migration/role setup, guarded jOOQ/JPA access, transaction visibility and failure behavior. Rollback-isolated tests cannot establish durable commit behavior; E2E tests cover that boundary.
 
-Finance schema tests exercise the required column, type, key, trigger and privilege contracts without constraining unrelated additive schema changes. Unit tests establish the readiness rule; Finance store Integration tests cover the port and readiness outcomes within an active segment; real-commit E2E tests exercise concurrent first inserts, root locking, rollback, independent groups and lock failure propagation. The [persistence stack design](../stack/persistence.md) describes the wider feature contracts.
+Group Management's Integration tests cover its schema constraints, registry and read projections; E2E tests exercise concurrent metadata replacement and the lock ordering of a replacement against a concurrent role change. Finance schema tests exercise the required column, type, key, trigger and privilege contracts without constraining unrelated additive schema changes. Unit tests establish the readiness rule; Finance store Integration tests cover the port and readiness outcomes within an active segment; real-commit E2E tests exercise concurrent first inserts, root locking, rollback, independent groups and lock failure propagation. The [persistence stack design](../stack/persistence.md) describes the wider feature contracts.

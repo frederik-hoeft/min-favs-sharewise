@@ -59,7 +59,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                 assertSame(manager, scope.resolve(TransactionSegmentAccess.class));
                 assertEquals("operation-result", manager.execute(() -> {
                     scope.resolve(JooqAccess.class).dsl().execute(
-                        "insert into groups.p13c_rollback_probe (id,label) values (2,'pending')");
+                        "insert into test_probes.p13c_rollback_probe (id,label) values (2,'pending')");
                     return new TransactionOutcome<>("operation-result", decision);
                 }));
                 TransactionObservation observed = scope.observation();
@@ -69,9 +69,9 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                 assertFalse(observed.rollbackOnly());
                 assertTrue(observed.completed());
                 assertEquals("pending", scope.inspect(inspector -> inspector.queryForObject(
-                    "select label from groups.p13c_rollback_probe where id = ?", String.class, 2)));
+                    "select label from test_probes.p13c_rollback_probe where id = ?", String.class, 2)));
                 assertEquals(List.of("baseline", "pending"), scope.inspect(inspector -> inspector.query(
-                    "select label from groups.p13c_rollback_probe order by id",
+                    "select label from test_probes.p13c_rollback_probe order by id",
                     (row, rowNumber) -> row.getString(1))));
                 Integer independentlyCommitted = assertDoesNotThrow(() -> independentlyVisible(fixture, 2));
                 assertEquals(0, independentlyCommitted.intValue());
@@ -118,7 +118,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                 return TransactionOutcome.commit(null);
             });
             Integer unflushed = scope.inspect(inspector -> inspector.queryForObject(
-                "select count(*) from groups.p13c_rollback_probe where id = 3", Integer.class));
+                "select count(*) from test_probes.p13c_rollback_probe where id = 3", Integer.class));
             assertEquals(0, unflushed.intValue());
             return null;
         });
@@ -131,7 +131,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                 return TransactionOutcome.commit(null);
             });
             assertEquals("explicitly-flushed", scope.inspect(inspector -> inspector.queryForObject(
-                "select label from groups.p13c_rollback_probe where id = 4", String.class)));
+                "select label from test_probes.p13c_rollback_probe where id = 4", String.class)));
             return null;
         });
         assertEquals(0, independentlyVisible(fixture, 4));
@@ -180,7 +180,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
             assertSame(expected, scope.observation().failure());
             assertNull(scope.observation().requestedDecision());
             Integer pending = scope.inspect(inspector -> inspector.queryForObject(
-                "select count(*) from groups.p13c_rollback_probe where id=5", Integer.class));
+                "select count(*) from test_probes.p13c_rollback_probe where id=5", Integer.class));
             assertEquals(1, pending.intValue());
             return null;
         });
@@ -269,7 +269,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                 retainedQuery.set(dsl.query("select 1"));
                 retainedJpa.set(jpa);
                 retainedJpaQuery.set(jpa.createQuery("select count(r) from RollbackProbeRow r"));
-                dsl.execute("insert into groups.p13c_rollback_probe (id,label) values (8,'pending')");
+                dsl.execute("insert into test_probes.p13c_rollback_probe (id,label) values (8,'pending')");
                 return TransactionOutcome.commit(null);
             });
             assertThrows(IllegalStateException.class, () -> scope.resolve(JooqAccess.class).dsl());
@@ -279,7 +279,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
             assertGuardRejected(() -> retainedJpa.get().find(RollbackProbeRow.class, 8));
             assertGuardRejected(() -> retainedJpaQuery.get().getResultList());
             Integer pending = scope.inspect(inspector -> inspector.queryForObject(
-                "select count(*) from groups.p13c_rollback_probe where id=8", Integer.class));
+                "select count(*) from test_probes.p13c_rollback_probe where id=8", Integer.class));
             assertEquals(1, pending.intValue());
             return null;
         });
@@ -323,7 +323,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                         callbackEntered.set(true);
                         // Direct JDBC deliberately bypasses IntegrationTestScope's own guard:
                         // this must be rejected by RollbackTransactions before user code runs.
-                        jdbc.update("insert into groups.p13c_rollback_probe (id,label) values (?,?)",
+                        jdbc.update("insert into test_probes.p13c_rollback_probe (id,label) values (?,?)",
                             rowId, "escaped");
                         return TransactionOutcome.commit(null);
                     }));
@@ -364,7 +364,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                     });
                     lease.requireCurrent();
                     assertEquals(1, dsl.fetchCount(org.jooq.impl.DSL.table(
-                        "groups.p13c_rollback_probe")));
+                        "test_probes.p13c_rollback_probe")));
                     return TransactionOutcome.rollback(null);
                 });
                 return null;
@@ -402,7 +402,7 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
                 throw new IllegalStateException(failure);
             }
             Integer pending = scope.inspect(inspector -> inspector.queryForObject(
-                "select count(*) from groups.p13c_rollback_probe where id = ?", Integer.class, id));
+                "select count(*) from test_probes.p13c_rollback_probe where id = ?", Integer.class, id));
             assertEquals(1, pending.intValue());
             try {
                 assertEquals(0, independentlyVisible(fixture, id));
@@ -427,13 +427,13 @@ class PostgresRollbackOperationIT extends IntegrationTestBase {
     private static void insert(de.hsh.favs.sharewise.testsupport.integration.IntegrationTestScope scope,
             int id, String label) {
         scope.resolve(JooqAccess.class).dsl().execute(
-            "insert into groups.p13c_rollback_probe (id,label) values (?,?)", id, label);
+            "insert into test_probes.p13c_rollback_probe (id,label) values (?,?)", id, label);
     }
 
     private static int independentlyVisible(IntegrationTestContext fixture, int id) throws SQLException {
         try (Connection connection = fixture.connectAsApplication();
              PreparedStatement statement = connection.prepareStatement(
-                 "select count(*) from groups.p13c_rollback_probe where id = ?")) {
+                 "select count(*) from test_probes.p13c_rollback_probe where id = ?")) {
             statement.setInt(1, id);
             try (ResultSet result = statement.executeQuery()) {
                 assertTrue(result.next());
