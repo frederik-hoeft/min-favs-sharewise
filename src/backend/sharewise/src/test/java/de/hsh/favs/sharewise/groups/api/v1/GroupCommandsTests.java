@@ -3,11 +3,11 @@ package de.hsh.favs.sharewise.groups.api.v1;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
-import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
-import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
+import de.hsh.favs.sharewise.groups.internal.application.group.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.ReplaceGroupMetadataCommand;
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation.Field;
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation.Reason;
+import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.ValidationError;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;

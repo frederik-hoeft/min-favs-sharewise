@@ -5,21 +5,22 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupCreationPort;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationIssuanceMaterial;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationListing;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationRedemptionContext;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationSummary;
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMutationPort;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMembershipPort;
-import de.hsh.favs.sharewise.groups.internal.application.GroupReadPort;
-import de.hsh.favs.sharewise.groups.internal.application.GroupSummary;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMember;
-import de.hsh.favs.sharewise.groups.internal.application.GroupWorkspace;
-import de.hsh.favs.sharewise.groups.internal.application.GroupUserRegistry;
-import de.hsh.favs.sharewise.groups.internal.application.LockedGroup;
-import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeContext;
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupLockPort;
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
+import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMutationPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupReadPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationIssuanceMaterial;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationListing;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemptionContext;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationSummary;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipPort;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeContext;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
@@ -33,10 +34,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jooq.DSLContext;
 import org.jooq.ExecuteContext;
 import org.jooq.ExecuteListener;
 import org.jooq.impl.DefaultExecuteListenerProvider;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -172,7 +173,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
             GroupUserRegistry users = scope.resolve(GroupUserRegistry.class);
             GroupCreationPort creation = scope.resolve(GroupCreationPort.class);
             GroupReadPort reads = scope.resolve(GroupReadPort.class);
-            GroupMutationPort mutations = scope.resolve(GroupMutationPort.class);
+            GroupLockPort locks = scope.resolve(GroupLockPort.class);
             GroupMembershipPort memberships = scope.resolve(GroupMembershipPort.class);
             JooqAccess jooq = scope.resolve(JooqAccess.class);
             UUID alice = UUID.randomUUID();
@@ -191,7 +192,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                     .thenComparing(member -> member.id().toString())).toList(), snapshot.members());
                 assertEquals(Optional.empty(), reads.findWorkspace(foreign, alice));
                 assertEquals(Optional.empty(), reads.findWorkspace(UUID.randomUUID(), alice));
-                LockedGroup locked = mutations.lockGroup(group, alice).orElseThrow();
+                LockedGroup locked = locks.lockGroup(group, alice).orElseThrow();
                 UUID target = snapshot.callerMembershipId();
                 assertEquals(Optional.empty(), memberships.changeContext(locked, alice,
                     reads.findWorkspace(foreign, bob).orElseThrow().callerMembershipId()).orElseThrow().target());
@@ -340,6 +341,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
         runTransactionTest((transactions, scope) -> {
             GroupUserRegistry users = scope.resolve(GroupUserRegistry.class);
             GroupCreationPort creation = scope.resolve(GroupCreationPort.class);
+            GroupLockPort locks = scope.resolve(GroupLockPort.class);
             GroupMutationPort mutations = scope.resolve(GroupMutationPort.class);
             GroupMembershipPort memberships = scope.resolve(GroupMembershipPort.class);
             JooqAccess jooq = scope.resolve(JooqAccess.class);
@@ -354,9 +356,9 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 UUID group = creation.createWithAdministrator(admin, metadata("Trip", "Old")).id();
                 GroupTestFixture.addMember(jooq.dsl(), group, member, GroupRole.MEMBER);
 
-                assertEquals(Optional.empty(), mutations.lockGroup(UUID.randomUUID(), admin));
-                assertEquals(Optional.empty(), mutations.lockGroup(group, UUID.randomUUID()));
-                LockedGroup locked = mutations.lockGroup(group, admin).orElseThrow();
+                assertEquals(Optional.empty(), locks.lockGroup(UUID.randomUUID(), admin));
+                assertEquals(Optional.empty(), locks.lockGroup(group, UUID.randomUUID()));
+                LockedGroup locked = locks.lockGroup(group, admin).orElseThrow();
                 assertEquals(new LockedGroup(group, 0), locked);
                 assertEquals(Optional.of(GroupRole.ADMIN), memberships.memberForUser(locked, admin).map(GroupMember::role));
                 assertEquals(Optional.of(GroupRole.MEMBER), memberships.memberForUser(locked, member).map(GroupMember::role));

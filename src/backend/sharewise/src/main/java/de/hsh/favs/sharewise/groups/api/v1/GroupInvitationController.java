@@ -1,15 +1,15 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
-import de.hsh.favs.sharewise.groups.internal.application.CreateInvitationCommand;
-import de.hsh.favs.sharewise.groups.internal.application.CreatedInvitation;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
-import de.hsh.favs.sharewise.groups.internal.application.GroupInvitationService;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationRedemption;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationSummary;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.CreateInvitationCommand;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.CreatedInvitation;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.GroupInvitationService;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemption;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationSummary;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
-import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
+import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;

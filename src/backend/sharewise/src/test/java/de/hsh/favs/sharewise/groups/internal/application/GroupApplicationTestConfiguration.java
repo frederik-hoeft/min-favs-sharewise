@@ -1,5 +1,12 @@
 package de.hsh.favs.sharewise.groups.internal.application;
 
+import de.hsh.favs.sharewise.groups.internal.application.access.CallerAdmission;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMetadataService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupQueryService;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.GroupInvitationService;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupAccess;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipService;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenParser;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -9,7 +16,7 @@ import org.springframework.context.annotation.Scope;
 
 /**
  * Explicitly imported wiring for Group application-service tests: the production services
- * of this package, in-memory ports and recording transactions. Never discovered by the
+ * of the Group application, in-memory ports and recording transactions. Never discovered by the
  * application's own component scan.
  */
 @TestConfiguration(proxyBeanMethods = false)

@@ -7,6 +7,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.groups.internal.application.group.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMetadataService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupQueryService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.group.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipService;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeCommand;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeStatus;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;

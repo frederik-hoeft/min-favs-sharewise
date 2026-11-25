@@ -1,5 +1,17 @@
 package de.hsh.favs.sharewise.groups.internal.application;
 
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupLockPort;
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
+import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMutationPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupReadPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipPort;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeContext;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import java.time.Instant;
@@ -18,7 +30,7 @@ import java.util.UUID;
  * It records port calls so tests can verify the order of the group mutation protocol.
  * Database semantics (atomicity, locking, constraints) are verified against PostgreSQL instead.
  */
-final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, GroupReadPort, GroupMutationPort, GroupMembershipPort {
+final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, GroupReadPort, GroupLockPort, GroupMutationPort, GroupMembershipPort {
 
     private static final Instant CREATED_AT = Instant.parse("2026-11-21T12:00:00Z");
 

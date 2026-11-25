@@ -1,10 +1,10 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMembershipService;
-import de.hsh.favs.sharewise.groups.internal.application.MembershipChange;
-import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeCommand;
-import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeStatus;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipService;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeCommand;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeStatus;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.shared.result.Result;

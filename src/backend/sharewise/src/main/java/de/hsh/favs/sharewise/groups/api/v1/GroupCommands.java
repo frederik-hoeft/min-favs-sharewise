@@ -1,15 +1,15 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
-import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
-import de.hsh.favs.sharewise.groups.internal.application.MembershipChange;
-import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeCommand;
-import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
+import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeCommand;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
-import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
+import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.ValidationError;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
 import java.util.ArrayList;

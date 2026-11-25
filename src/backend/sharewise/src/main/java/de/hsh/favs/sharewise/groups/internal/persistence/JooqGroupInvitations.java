@@ -4,14 +4,14 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.INVITATIONS;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupInvitationPort;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationIssuanceMaterial;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationListing;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationPreviewContext;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationRedemptionContext;
-import de.hsh.favs.sharewise.groups.internal.application.InvitationSummary;
-import de.hsh.favs.sharewise.groups.internal.application.LockedGroup;
-import de.hsh.favs.sharewise.groups.internal.application.StoredInvitation;
+import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.GroupInvitationPort;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationIssuanceMaterial;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationListing;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationPreviewContext;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemptionContext;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationSummary;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.StoredInvitation;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.time.Instant;

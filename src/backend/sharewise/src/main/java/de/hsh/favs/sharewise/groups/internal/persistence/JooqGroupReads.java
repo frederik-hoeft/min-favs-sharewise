@@ -4,11 +4,11 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.USERS;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMember;
-import de.hsh.favs.sharewise.groups.internal.application.GroupReadPort;
-import de.hsh.favs.sharewise.groups.internal.application.GroupSummary;
-import de.hsh.favs.sharewise.groups.internal.application.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupReadPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;

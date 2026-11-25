@@ -1,14 +1,14 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
-import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
-import de.hsh.favs.sharewise.groups.internal.application.GroupCreationService;
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
-import de.hsh.favs.sharewise.groups.internal.application.GroupMetadataService;
-import de.hsh.favs.sharewise.groups.internal.application.GroupQueryService;
-import de.hsh.favs.sharewise.groups.internal.application.GroupSummary;
-import de.hsh.favs.sharewise.groups.internal.application.GroupWorkspace;
-import de.hsh.favs.sharewise.groups.internal.application.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupMetadataService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupQueryService;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.group.ReplaceGroupMetadataCommand;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.web.ApiAccess;
 import de.hsh.favs.sharewise.shared.result.Result;

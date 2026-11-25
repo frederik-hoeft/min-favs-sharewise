@@ -1,6 +1,6 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import java.time.Instant;
 import java.util.UUID;

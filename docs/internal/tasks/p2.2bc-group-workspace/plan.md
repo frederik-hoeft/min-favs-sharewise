@@ -244,3 +244,16 @@ Suggested commit: `P2.2bc-I.1: Exercise Group Management in production Compose s
 - P2 - Response parsing could expose unexpected status text in an exception: validate the status framing and report a fixed diagnostic; verify bearer and invitation data travel via stdin and malformed responses do not disclose secrets.
 
 **Checkpoint evidence:** The existing production Compose smoke passed according to the maintainer. The extended smoke is a deployment-only change and does not modify product code or schemas. All 70 deployment tests passed (`python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v`), including 14 HTTP orchestration tests; Bash syntax, source encoding and Git whitespace checks passed. A real local curl request verified the stdin configuration and JSON encoding without a Compose stack. Real Docker/PostgreSQL execution remains a human gate.
+
+
+## Phase I.2 - Group application package organization
+
+Suggested commit: `P2.2bc-I.2: Organize Group application capabilities by responsibility`.
+
+- [x] Group application services, commands, ports and projections into cohesive `group`, `membership`, `invitation` and `access` packages. Keep shared failures and transaction outcomes at the application root.
+- [x] Separate the group-root locking port from metadata mutation to avoid a package cycle. Retain the existing adapter, DI scopes, SQL, mutation protocol and public HTTP contracts.
+- [x] Update imports and fixture wiring, add a production-bytecode architecture test for package cycles and root-to-feature dependencies, and reconcile the application architecture documentation.
+
+**Self-review record:** The package dependency review identified a cycle if membership authorization continued to depend on the group metadata port; extract `GroupLockPort` while retaining one adapter. The initial compilation caught missing static test imports during relocation; restore those imports. No unresolved review findings.
+
+**Checkpoint evidence:** Offline `mvn -B -ntp -o -Dmaven.repo.local=<isolated-cache> -Punit-tests -DtestParallelism=16 clean verify` passed 408 tests with zero failures, errors or skips, including Modulith and application package-cycle verification. Integration/E2E sources compile; PostgreSQL execution remains unavailable locally. No HTTP, SQL, migration, frontend or dependency changes. The I.1 real Compose smoke and final independent review remain maintainer gates.
