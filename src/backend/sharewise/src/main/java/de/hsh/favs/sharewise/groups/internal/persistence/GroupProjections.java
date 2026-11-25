@@ -1,6 +1,8 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.admin;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.member;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
@@ -66,8 +68,8 @@ final class GroupProjections {
 
     static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole toDatabase(GroupRole role) {
         return switch (role) {
-            case MEMBER -> de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.member;
-            case ADMIN -> de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.admin;
+            case MEMBER -> member;
+            case ADMIN -> admin;
         };
     }
 

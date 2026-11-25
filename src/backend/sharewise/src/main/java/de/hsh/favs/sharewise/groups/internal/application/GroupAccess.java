@@ -12,12 +12,15 @@ import org.springframework.stereotype.Component;
 class GroupAccess {
     private final GroupMutationPort groups;
 
-    GroupAccess(GroupMutationPort groups) {
+    private final GroupMembershipPort members;
+
+    GroupAccess(GroupMutationPort groups, GroupMembershipPort members) {
+        this.members = Objects.requireNonNull(members, "members");
         this.groups = Objects.requireNonNull(groups, "groups");
     }
 
     Result<Access, GroupFailure> lockForMember(UUID groupId, UUID userId) {
-        return groups.lockGroup(groupId).flatMap(group -> groups.memberForUser(group, userId)
+        return groups.lockGroup(groupId).flatMap(group -> members.memberForUser(group, userId)
             .map(member -> new Access(group, member)))
             .<Result<Access, GroupFailure>>map(Result::ok)
             .orElseGet(() -> Result.err(new GroupFailure.GroupNotFound()));

@@ -9,6 +9,7 @@ import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
 import de.hsh.favs.sharewise.shared.result.Result;
+import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.validation.ValidationError;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
 import java.util.ArrayList;
@@ -104,6 +105,12 @@ final class GroupCommands {
             case TOO_LONG -> "too_long";
             case CONTROL_CHARACTER -> "control_character";
         };
+    }
+
+    static <T> T valid(Result<T, ValidationErrors> input) {
+        return input.fold(value -> value, errors -> {
+            throw RequestValidationException.from(errors);
+        });
     }
 
     private static ValidationErrors missingBody() {

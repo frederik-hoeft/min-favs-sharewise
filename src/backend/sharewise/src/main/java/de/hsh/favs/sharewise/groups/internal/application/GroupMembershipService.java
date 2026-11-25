@@ -14,14 +14,14 @@ import org.springframework.stereotype.Component;
 public class GroupMembershipService {
     private final CallerAdmission admission;
     private final GroupAccess access;
-    private final GroupMutationPort groups;
+    private final GroupMembershipPort members;
     private final Transactions transactions;
 
-    GroupMembershipService(CallerAdmission admission, GroupAccess access, GroupMutationPort groups,
+    GroupMembershipService(CallerAdmission admission, GroupAccess access, GroupMembershipPort members,
             Transactions transactions) {
         this.admission = Objects.requireNonNull(admission, "admission");
         this.access = Objects.requireNonNull(access, "access");
-        this.groups = Objects.requireNonNull(groups, "groups");
+        this.members = Objects.requireNonNull(members, "members");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
     }
 
@@ -41,7 +41,7 @@ public class GroupMembershipService {
             return Result.err(new GroupFailure.AdministratorRequired());
         }
         Optional<GroupMember> target = self ? Optional.of(caller)
-            : groups.memberById(locked.group(), command.membershipId());
+            : members.memberById(locked.group(), command.membershipId());
         if (target.isEmpty()) {
             return Result.err(new GroupFailure.MemberNotFound());
         }
@@ -60,18 +60,18 @@ public class GroupMembershipService {
         if (isLastAdministrator(group, member)) {
             return Result.err(new GroupFailure.LastAdministrator());
         }
-        groups.setRole(group, member.id(), role);
+        members.setRole(group, member.id(), role);
         return completed();
     }
 
     private Result<MembershipChangeStatus, GroupFailure> remove(LockedGroup group, GroupMember member) {
-        if (groups.countMembers(group, Optional.empty()) <= 1) {
+        if (members.countMembers(group, Optional.empty()) <= 1) {
             return Result.err(new GroupFailure.LastMember());
         }
         if (isLastAdministrator(group, member)) {
             return Result.err(new GroupFailure.LastAdministrator());
         }
-        groups.removeMember(group, member.id());
+        members.removeMember(group, member.id());
         return completed();
     }
 
@@ -81,14 +81,14 @@ public class GroupMembershipService {
             return Result.err(new GroupFailure.InvalidTransfer());
         }
         if (!target.role().isAdministrator()) {
-            groups.setRole(group, target.id(), GroupRole.ADMIN);
+            members.setRole(group, target.id(), GroupRole.ADMIN);
         }
-        groups.setRole(group, caller.id(), GroupRole.MEMBER);
+        members.setRole(group, caller.id(), GroupRole.MEMBER);
         return completed();
     }
 
     private boolean isLastAdministrator(LockedGroup group, GroupMember member) {
-        return member.role().isAdministrator() && groups.countMembers(group, Optional.of(GroupRole.ADMIN)) <= 1;
+        return member.role().isAdministrator() && members.countMembers(group, Optional.of(GroupRole.ADMIN)) <= 1;
     }
 
     private static Result<MembershipChangeStatus, GroupFailure> completed() {

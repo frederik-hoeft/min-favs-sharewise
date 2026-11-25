@@ -18,7 +18,7 @@ import java.util.UUID;
  * It records port calls so tests can verify the order of the group mutation protocol.
  * Database semantics (atomicity, locking, constraints) are verified against PostgreSQL instead.
  */
-final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, GroupReadPort, GroupMutationPort {
+final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, GroupReadPort, GroupMutationPort, GroupMembershipPort {
 
     private static final Instant CREATED_AT = Instant.parse("2026-11-21T12:00:00Z");
 
