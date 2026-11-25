@@ -250,6 +250,16 @@ class GroupPersistenceIT extends IntegrationTestBase {
     @CsvSource(delimiter = ';', quoteCharacter = '"', value = {
         "empty name;            INSERT INTO groups.groups (name) VALUES ('');                                    23514",
         "blank name;            INSERT INTO groups.groups (name) VALUES ('   ');                                 23514",
+        "tab-only name;         INSERT INTO groups.groups (name) VALUES (chr(9));                               23514",
+        "padded name;           INSERT INTO groups.groups (name) VALUES (' padded ');                          23514",
+        "embedded name tab;     INSERT INTO groups.groups (name) VALUES ('a' || chr(9) || 'b');                  23514",
+        "empty description;     INSERT INTO groups.groups (name, description) VALUES ('x', '');                 23514",
+        "blank description;     INSERT INTO groups.groups (name, description) VALUES ('x', '   ');              23514",
+        "padded description;    INSERT INTO groups.groups (name, description) VALUES ('x', ' padded ');         23514",
+        "description tab;       INSERT INTO groups.groups (name, description) VALUES ('x', 'a' || chr(9) || 'b'); 23514",
+        "lone CR description;   INSERT INTO groups.groups (name, description) VALUES ('x', 'a' || chr(13) || 'b'); 23514",
+        "padded name update;    UPDATE groups.groups SET name = ' padded ' WHERE id = '{group}';                 23514",
+        "empty text update;     UPDATE groups.groups SET description = '' WHERE id = '{group}';                23514",
         "missing name;          INSERT INTO groups.groups (name) VALUES (NULL);                                  23502",
         "65-character name;     INSERT INTO groups.groups (name) VALUES (repeat('x', 65));                       22001",
         "513-character text;    INSERT INTO groups.groups (name, description) VALUES ('x', repeat('d', 513));    22001",
@@ -279,6 +289,23 @@ class GroupPersistenceIT extends IntegrationTestBase {
     }
 
     @Test
+    void databaseAcceptsNormalizedMultilineAndUnicodeMetadata() {
+        runTransactionTest((transactions, scope) -> {
+            JooqAccess jooq = scope.resolve(JooqAccess.class);
+            transactions.execute(() -> {
+                DSLContext db = jooq.dsl();
+                String name = "🚀".repeat(64);
+                for (String description : List.of("a\nb", "a\r\nb", "é".repeat(512))) {
+                    assertEquals(1, db.execute("INSERT INTO groups.groups (name, description) VALUES (?, ?)",
+                        name, description));
+                }
+                assertEquals(1, db.execute("INSERT INTO groups.groups (name, description) VALUES (?, NULL)", name));
+                return TransactionOutcome.abstain(true);
+            });
+        });
+    }
+
+    @Test
     void migrationRoleOwnsTheTablesAndTheApplicationRoleMayOnlyUseThem() {
         runTransactionTest((transactions, scope) -> {
             JooqAccess jooq = scope.resolve(JooqAccess.class);
@@ -287,11 +314,16 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 DSLContext db = jooq.dsl();
                 assertEquals(List.of("group_members|sharewise_migrator", "groups|sharewise_migrator",
                         "users|sharewise_migrator"),
-                    db.fetch("SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'groups' ORDER BY 1")
+                    db.fetch("""
+                        SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'groups'
+                        AND tablename IN ('users', 'groups', 'group_members') ORDER BY 1
+                        """)
                         .map(row -> row.get(0) + "|" + row.get(1)));
                 for (String table : List.of("groups.users", "groups.groups", "groups.group_members")) {
-                    assertEquals(Boolean.TRUE, db.fetchValue(
-                        "SELECT has_table_privilege('sharewise_app', ?, 'SELECT, INSERT, UPDATE, DELETE')", table), table);
+                    for (String privilege : List.of("SELECT", "INSERT", "UPDATE", "DELETE")) {
+                        assertEquals(Boolean.TRUE, db.fetchValue(
+                            "SELECT has_table_privilege('sharewise_app', ?, ?)", table, privilege), table + ": " + privilege);
+                    }
                     assertEquals(Boolean.FALSE, db.fetchValue(
                         "SELECT has_table_privilege('sharewise_app', ?, 'TRUNCATE, REFERENCES, TRIGGER')", table), table);
                 }

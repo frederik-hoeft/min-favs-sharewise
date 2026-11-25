@@ -127,7 +127,7 @@ Checks run in this order, and the first failing check determines the response:
 - **Description:** optional; trimmed; an empty result becomes absent; at most 512 code points; line breaks (`\n`, `\r\n`) are allowed, other control characters are rejected.
 - Names are not unique.
 
-The database `CHECK` and column lengths are backstops, not the primary validation.
+Database constraints enforce structural integrity and inexpensive storage sanity checks: length limits, required names, nonempty ordinary-space-trimmed names, nullable or nonempty descriptions trimmed of ordinary spaces and line breaks, and rejection of ASCII controls other than LF/CRLF within descriptions. They deliberately do not reproduce Java’s full Unicode whitespace and control-character validation. Only validated domain values may be persisted through application adapters.
 
 ### Frontend
 
@@ -175,7 +175,7 @@ Deliberately **not** prepared, because their contracts do not exist yet: a publi
 | **GM-06** | A non-member cannot learn whether a group exists: missing and non-member groups produce identical `404` responses for every operation. |
 | **GM-07** | Only a current `admin` member can replace metadata. The membership check happens after the group row lock in the same segment (group mutation protocol). |
 | **GM-08** | Metadata replacement succeeds only if `expectedVersion` equals the current version; it then increments the version by exactly one. Concurrent replacements with the same expected version produce exactly one success. |
-| **GM-09** | Names and descriptions follow the validation rules above. Invalid input produces `400` with field errors and no writes; database constraints reject invalid values even if application validation is bypassed. |
+| **GM-09** | Names and descriptions follow the validation rules above. Invalid input produces `400` with field errors and no writes. Database constraints enforce structural integrity and the basic storage sanity checks above, not the complete domain validation rules. |
 | **GM-10** | The list contains exactly the groups in which the caller is a member, with the caller's role and the member count, ordered by case-insensitive name and then ID. |
 | **GM-11** | The `groups` module uses only its declared dependencies; it accesses no IAM internals or `identity` tables, and other modules cannot access its internals. |
 | **GM-12** | Generated jOOQ types match the Flyway-migrated schema; adapters use no hand-written table/field definitions. |
@@ -198,7 +198,7 @@ Test kinds follow the [backend test architecture](../../../architecture/tests.md
 | **GM-T03** | Caller with a valid token but no `groups.users` row calls each of the four endpoints. | `403 group_user_unknown`; no rows written. | E2E + HTTP |
 | **GM-T04** | Call each endpoint without a token and with an invalid token. | `401`; an invalid token never becomes anonymous access; no rows written. | HTTP |
 | **GM-T05** | Create with a blank name, a whitespace-only name, 65 code points, 64 multi-code-unit characters (e.g. emoji), a control character, a 513-code-point description, and a description that is only whitespace. | Invalid cases get `400 validation_failed` with field errors and no writes; the 64-character name succeeds; the whitespace-only description is stored as absent. | Unit + HTTP |
-| **GM-T06** | Insert a row with a blank name or negative version directly via SQL. | Rejected by the database constraints. | IT |
+| **GM-T06** | Bypass application validation with invalid structural values or basic metadata sanity violations, including blank/padded names, disallowed ASCII controls, blank/padded descriptions and negative versions; exercise valid multiline and Unicode metadata. | Violations are rejected by the database; valid values remain storable. | IT |
 | **GM-T07** | Users A and B have different groups, A is `member` in one of B's groups (fixture row); A lists groups. Also list for a known user without groups. | A sees exactly their groups with correct roles, member counts and ordering; the user without groups gets an empty list. | IT + HTTP |
 | **GM-T08** | Member reads a group; a non-member reads it; anyone reads a random ID. | Member gets `200`; the two other cases get byte-identical `404 group_not_found` bodies. | HTTP |
 | **GM-T09** | Administrator replaces metadata with the correct version, including clearing the description. | `200`; values updated, `version` incremented by one; reading returns the new state. | E2E + HTTP |
@@ -207,7 +207,7 @@ Test kinds follow the [backend test architecture](../../../architecture/tests.md
 | **GM-T12** | Two threads replace metadata of the same group with the same expected version, committing for real. | Exactly one `200` and one `409`; final version incremented once. | E2E |
 | **GM-T13** | Hold the group row lock from a separate connection, demote the administrator's fixture membership and commit, then release; meanwhile the administrator's replacement waits. | The waiting replacement observes the demotion and returns `403`; no change. | E2E |
 | **GM-T14** | Send creation and replacement bodies that include `userId`, `role` or `memberCount` fields. | `400 malformed_request` without writes, because API request bodies reject unknown fields; the creator is always the authenticated caller with role `admin`. | HTTP |
-| **GM-T15** | Run the module verification and the generated-schema check. | `groups` declares exactly its dependencies, violations are rejected; committed jOOQ types match the migrated schema. | Unit + IT |
+| **GM-T15** | Run the module verification and the generated-schema check. | `groups` declares exactly its dependencies, violations are rejected; committed jOOQ types match the migrated schema using the actual Maven profile. | Unit + CI |
 | **GM-T16** | Provision the same user ID twice through the registry port. | One row; no error. | IT |
 | **GM-FT01** | Render the signed-in list page with groups, without groups, after the sign-in expires, and with `403 group_user_unknown` and network errors from a scripted transport. | Correct items and role badges, empty state, redirect to login without group data, account-not-available and retryable error states. | Frontend |
 | **GM-FT02** | Submit the create form with invalid values, with server `fieldErrors`, and successfully. | Client validation mirrors server limits; server errors appear on their fields; success navigates to the detail page. | Frontend |

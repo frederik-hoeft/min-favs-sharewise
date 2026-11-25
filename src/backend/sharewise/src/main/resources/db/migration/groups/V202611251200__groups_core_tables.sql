@@ -18,7 +18,13 @@ CREATE TABLE groups.groups (
     created_at timestamptz NOT NULL DEFAULT now(),
     -- Optimistic concurrency for metadata replacement (P2.2a extension to the ER).
     version bigint NOT NULL DEFAULT 0,
-    CONSTRAINT groups_groups_name_not_blank CHECK (length(btrim(name)) > 0),
+    -- Basic storage sanity only; GroupName/GroupDescription own Unicode validation.
+    CONSTRAINT groups_groups_name_normalized CHECK (name <> '' AND name = btrim(name)),
+    CONSTRAINT groups_groups_name_no_controls CHECK (name COLLATE "C" !~ '[[:cntrl:]]'),
+    CONSTRAINT groups_groups_description_sane CHECK (description IS NULL OR (
+        description <> '' AND description = btrim(description, E' \r\n')
+        AND replace(replace(description, E'\r\n', E'\n'), E'\n', '') COLLATE "C" !~ '[[:cntrl:]]'
+    )),
     CONSTRAINT groups_groups_version_nonnegative CHECK (version >= 0)
 );
 

@@ -32,8 +32,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -47,6 +47,8 @@ import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.PropertySource;
 
 /**
  * Group operations with real commits on a disposable database: durable creation and
@@ -115,13 +117,13 @@ class GroupOperationsE2E extends E2ETestBase {
             GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
 
             List<Result<GroupDetails, GroupFailure>> results = new ArrayList<>();
-            try (Connection holder = lockGroup(fixture, group);
-                 ExecutorService callers = Executors.newFixedThreadPool(2)) {
+            try (ExecutorService callers = Executors.newFixedThreadPool(2);
+                 Connection holder = lockGroup(fixture, group)) {
                 Future<Result<GroupDetails, GroupFailure>> alice =
                     callers.submit(() -> replace(fixture, ALICE, group, "Alice's trip", 0));
                 Future<Result<GroupDetails, GroupFailure>> bob =
                     callers.submit(() -> replace(fixture, BOB, group, "Bob's trip", 0));
-                awaitLockWaiters(fixture, 2);
+                awaitLockWaiters(fixture, holder, 2, LOCK_WAIT_TIMEOUT);
                 holder.commit();
                 results.add(alice.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
                 results.add(bob.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
@@ -131,7 +133,7 @@ class GroupOperationsE2E extends E2ETestBase {
             assertEquals(1, results.stream().filter(new Result.Err<GroupDetails, GroupFailure>(
                 new GroupFailure.VersionConflict())::equals).count(), results::toString);
             assertEquals(List.of(1L), query(fixture, "SELECT version FROM groups.groups", row -> row.getLong(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
     }
 
     @Test
@@ -142,11 +144,11 @@ class GroupOperationsE2E extends E2ETestBase {
             GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
 
             Result<GroupDetails, GroupFailure> result;
-            try (Connection holder = lockGroup(fixture, group);
-                 ExecutorService callers = Executors.newSingleThreadExecutor()) {
+            try (ExecutorService callers = Executors.newSingleThreadExecutor();
+                 Connection holder = lockGroup(fixture, group)) {
                 Future<Result<GroupDetails, GroupFailure>> replacement =
                     callers.submit(() -> replace(fixture, ALICE, group, "Renamed", 0));
-                awaitLockWaiters(fixture, 1);
+                awaitLockWaiters(fixture, holder, 1, LOCK_WAIT_TIMEOUT);
                 GroupTestFixture.changeRole(DSL.using(holder, SQLDialect.POSTGRES), group, ALICE, GroupRole.MEMBER);
                 holder.commit();
                 result = replacement.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
@@ -155,8 +157,41 @@ class GroupOperationsE2E extends E2ETestBase {
             assertEquals(Result.err(new GroupFailure.AdministratorRequired()), result);
             assertEquals(List.of("Trip|0"), query(fixture,
                 "SELECT name, version FROM groups.groups", row -> row.getString(1) + "|" + row.getLong(2)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
     }
+
+    @Test
+    void failedSynchronizationReleasesHolderBeforeJoiningWorkers() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            try (Connection pooled = fixture.dataSource().getConnection();
+                 Statement statement = pooled.createStatement();
+                 ResultSet setting = statement.executeQuery("SHOW statement_timeout")) {
+                assertTrue(setting.next());
+                assertEquals("30s", setting.getString(1));
+            }
+            AssertionError failure = assertThrows(AssertionError.class, () -> {
+                try (ExecutorService callers = Executors.newSingleThreadExecutor();
+                     Connection holder = lockGroup(fixture, group)) {
+                    callers.submit(() -> replace(fixture, ALICE, group, "Renamed", 0));
+                    awaitLockWaiters(fixture, holder, 1, LOCK_WAIT_TIMEOUT);
+                    // Deliberately fail while the worker is waiting on the holder.
+                    awaitLockWaiters(fixture, holder, 2, Duration.ofMillis(100));
+                }
+            });
+            assertTrue(failure.getMessage().startsWith("Expected 2 sessions blocked"), failure::toString);
+            // The worker must commit after holder cleanup, not time out waiting for the lock.
+            assertEquals(List.of("Renamed|1"), query(fixture,
+                "SELECT name, version FROM groups.groups WHERE id = '" + group + "'",
+                row -> row.getString(1) + "|" + row.getLong(2)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+    }
+
+    /** Applies a session timeout to real service-owned transactions without wrapping them. */
+    @TestConfiguration(proxyBeanMethods = false)
+    @PropertySource("classpath:group-concurrency-test.properties")
+    static class BoundedStatements { }
 
     private static Result<GroupDetails, GroupFailure> create(IntegrationTestContext fixture, UUID caller, String name) {
         return withUser(caller, () -> dispatcher(fixture).dispatch(GroupCreationService.class,
@@ -177,34 +212,57 @@ class GroupOperationsE2E extends E2ETestBase {
             holder.setAutoCommit(false);
             try (PreparedStatement lock = holder.prepareStatement(
                     "SELECT id FROM groups.groups WHERE id = ? FOR UPDATE")) {
+                lock.setQueryTimeout(15);
                 lock.setObject(1, group);
                 try (ResultSet locked = lock.executeQuery()) {
                     assertTrue(locked.next(), "group to lock must exist");
                 }
             }
             return holder;
-        } catch (SQLException | RuntimeException failure) {
-            holder.close();
+        } catch (SQLException | RuntimeException | Error failure) {
+            try {
+                holder.close();
+            } catch (SQLException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
             throw failure;
         }
     }
 
-    /** Waits until the expected number of other sessions are blocked on a lock in this database. */
-    private static void awaitLockWaiters(IntegrationTestContext fixture, int expected) throws Exception {
-        Instant deadline = Instant.now().plus(LOCK_WAIT_TIMEOUT);
+    /** Counts only sessions blocked directly or transitively by this specific root-lock holder. */
+    private static void awaitLockWaiters(IntegrationTestContext fixture, Connection holder,
+            int expected, Duration timeout) throws Exception {
+        int holderPid;
+        try (Statement statement = holder.createStatement()) {
+            statement.setQueryTimeout(5);
+            try (ResultSet row = statement.executeQuery("SELECT pg_backend_pid()")) {
+                assertTrue(row.next());
+                holderPid = row.getInt(1);
+            }
+        }
+        long start = System.nanoTime();
         try (Connection observer = fixture.connectAsApplication();
              PreparedStatement waiters = observer.prepareStatement("""
-                 SELECT count(*) FROM pg_stat_activity
-                 WHERE datname = current_database() AND wait_event_type = 'Lock'""")) {
+                 WITH RECURSIVE blocked(pid) AS (
+                     SELECT ?::integer
+                     UNION
+                     SELECT activity.pid FROM pg_stat_activity activity
+                     JOIN blocked ON blocked.pid = ANY(pg_blocking_pids(activity.pid))
+                     WHERE activity.datname = current_database()
+                 )
+                 SELECT count(*) - 1 FROM blocked
+                 """)) {
+            waiters.setQueryTimeout(5);
+            waiters.setInt(1, holderPid);
             while (true) {
                 try (ResultSet count = waiters.executeQuery()) {
-                    count.next();
+                    assertTrue(count.next());
                     if (count.getInt(1) == expected) {
                         return;
                     }
                 }
-                if (Instant.now().isAfter(deadline)) {
-                    throw new AssertionError("Expected " + expected + " sessions waiting for the group lock");
+                if (System.nanoTime() - start >= timeout.toNanos()) {
+                    throw new AssertionError("Expected " + expected + " sessions blocked by backend " + holderPid);
                 }
                 Thread.sleep(20);
             }

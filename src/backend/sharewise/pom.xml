@@ -115,13 +115,6 @@
             <artifactId>spring-modulith-core</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Regenerates jOOQ sources against the migrated test database to verify that the
-             committed generated types are current. -->
-        <dependency>
-            <groupId>org.jooq</groupId>
-            <artifactId>jooq-codegen</artifactId>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
     <build>
@@ -225,6 +218,36 @@
             <id>jooq-codegen</id>
             <build>
                 <plugins>
+                    <!-- Explicit migration goal for disposable generation databases; never bound
+                         to a lifecycle phase or resolved by ordinary builds. -->
+                    <plugin>
+                        <groupId>org.flywaydb</groupId>
+                        <artifactId>flyway-maven-plugin</artifactId>
+                        <version>${flyway.version}</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.flywaydb</groupId>
+                                <artifactId>flyway-database-postgresql</artifactId>
+                                <version>${flyway.version}</version>
+                            </dependency>
+                            <dependency>
+                                <groupId>org.postgresql</groupId>
+                                <artifactId>postgresql</artifactId>
+                                <version>${postgresql.version}</version>
+                            </dependency>
+                        </dependencies>
+                        <configuration>
+                            <url>${jooq.codegen.jdbc.url}</url>
+                            <user>${jooq.codegen.jdbc.user}</user>
+                            <password>${env.JOOQ_CODEGEN_PASSWORD}</password>
+                            <locations>
+                                <location>filesystem:${project.basedir}/src/main/resources/db/migration</location>
+                            </locations>
+                            <defaultSchema>flyway</defaultSchema>
+                            <schemas><schema>flyway</schema></schemas>
+                            <outOfOrder>false</outOfOrder>
+                        </configuration>
+                    </plugin>
                     <plugin>
                         <groupId>org.jooq</groupId>
                         <artifactId>jooq-codegen-maven</artifactId>
