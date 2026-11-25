@@ -15,6 +15,8 @@ export type GroupProblem =
     | { readonly kind: 'last_member' }
     | { readonly kind: 'last_administrator' }
     | { readonly kind: 'invalid_transfer' }
+    | { readonly kind: 'invitation_unavailable' }
+    | { readonly kind: 'invitation_not_found' }
     | { readonly kind: 'invalid'; readonly error: ApiError }
     | { readonly kind: 'unavailable' };
 
@@ -33,6 +35,12 @@ export function classifyGroupProblem(error: unknown): GroupProblem {
     }
     if (error.status === 404 && error.code === GROUP_PROBLEM_CODES.memberNotFound) {
         return { kind: 'member_not_found' };
+    }
+    if (error.status === 404 && error.code === GROUP_PROBLEM_CODES.invitationUnavailable) {
+        return { kind: 'invitation_unavailable' };
+    }
+    if (error.status === 404 && error.code === GROUP_PROBLEM_CODES.invitationNotFound) {
+        return { kind: 'invitation_not_found' };
     }
     if (error.status === 404) {
         return { kind: 'not_found' };
@@ -54,11 +62,4 @@ export function classifyGroupProblem(error: unknown): GroupProblem {
     }
     // Network failures, unreadable responses and server errors may succeed when retried.
     return { kind: 'unavailable' };
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Group IDs are UUIDs; anything else cannot name a group and is treated as not found. */
-export function isGroupId(value: string | null | undefined): value is string {
-    return typeof value === 'string' && UUID.test(value);
 }

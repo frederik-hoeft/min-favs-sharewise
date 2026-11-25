@@ -1,3 +1,6 @@
+import { groupRoutes } from "@/lib/navigation/group-routes";
+export { groupRoutes, groupViewHref } from "@/lib/navigation/group-routes";
+
 /** Navigation labels are also used for breadcrumb titles. Routes remain independent of UI icons. */
 export const appNavigationRoutes = [
   { href: "/app/groups", label: "Groups" },
@@ -19,17 +22,6 @@ export const breadcrumbDemoRoutes = {
   history: "/app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history",
   overview: "/app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview",
 } as const;
-
-/** Group routes, including detail pages addressed by query parameter for the static export. */
-export const groupRoutes = {
-  list: "/app/groups",
-  create: "/app/groups/new",
-  view: "/app/groups/view",
-} as const;
-
-export function groupViewHref(groupId: string): string {
-  return `${groupRoutes.view}?id=${encodeURIComponent(groupId)}`;
-}
 
 /** Labels for nested routes that have no navigation entry of their own. */
 const nestedRouteLabels: ReadonlyArray<{ href: string; label: string }> = [

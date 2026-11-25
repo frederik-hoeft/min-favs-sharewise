@@ -128,10 +128,24 @@ Suggested commits: `P2.2c-F0: Integrate generated Group schema` (human-supplied 
 
 Suggested commit: `P2.2c-G: Integrate invitation creation and acceptance workflows`.
 
-- [ ] Admin list/create/revoke UI and copy-only-on-creation behavior. Typed GroupsApi additions, error and uncertain mutation reconciliation.
-- [ ] Static `/invite` route and fragment capture; explicit user confirmation with authenticated transport. Add narrow safe navigation/auth continuation preserving login/register switch and no secret in return URLs or persistent storage. Preserve existing auth flows and session lifetime semantics.
-- [ ] Cover T16–T18 and relevant auth regression cases. Render actual application with mocked REST for invitation and group flows at representative widths; inspect screenshot and accessibility behavior.
-- [ ] Gate: frontend checks including static export, review security and state lifetimes, patch.
+- [x] Admin list/create/revoke UI and copy-only-on-creation behavior. Typed GroupsApi additions, error and uncertain mutation reconciliation.
+- [x] Static `/invite` route and fragment capture; explicit user confirmation with authenticated transport. Add narrow safe navigation/auth continuation preserving login/register switch and no secret in return URLs or persistent storage. Preserve existing auth flows and session lifetime semantics.
+- [x] Cover T16–T18 and relevant auth regression cases. Render actual application with mocked REST for invitation and group flows at representative widths; inspect screenshot and accessibility behavior (structural accessibility passed; browser environment blocks navigation).
+- [x] Gate: frontend checks including static export, review security and state lifetimes, patch.
+
+**Checkpoint evidence:** Added admin invitation management in the existing workspace central view, one-time copyable link, usage/expiry presets and custom limits, revoke confirmation, uncertain-outcome reload and authority-loss reconciliation. Static `/invite` uses fragment capture, explicit authenticated POST, root-owned ephemeral continuation through login/register, and safe exact return path; no bearer in query, persistent storage or history state. Session-lifetime invalidation and abandoned operation handling preserve IAM semantics. Shared route and asynchronous operation helpers extracted rather than duplicated. All 335 frontend tests passed, including 17 new cases; after final native-history/identifier cleanup, 27 targeted tests, lint, test typecheck and static build passed. Application typecheck, normal build and static HTTP verification passed in the preceding cycle. Structural axe coverage passed for the new admin UI. Browser inspection remains blocked by managed Chromium URL policy; maintainer must perform the new invitation flow's responsive/theme acceptance. No dependency changes.
+
+**Self-review record:**
+
+- P2 - Continuation bearer was a TypeScript-private enumerable property: use ECMAScript private state, publish only revision, and verify serialization cannot disclose it.
+- P2 - Late authentication response could navigate an abandoned form: reuse the lifetime-scoped exclusive-operation hook and preserve the captured return destination only for the initiating page.
+- P2 - Pending continuation could survive a same-path query change or a cross-tab context change: observe the exact detour through a Suspense-isolated router observer and synchronously invalidate on session changes.
+- P2 - Malformed success DTOs could display unusable links or navigate incorrectly: require token shape and valid redemption outcome/ID before acknowledging; reconcile uncertain results.
+- P2 - Next internal history state bypassed native history synchronization: use the documented external-history API after router effect initialization.
+- P3 - Revoke confirmation focus could be restored repeatedly: consume the focus-restoration flag once.
+- P3 - Provider assumed a Next routing context even in standalone rendering: tolerate missing search params, retaining fail-closed navigation cleanup.
+
+**Implementation decision:** Use native Mantine selects for short invitation preset lists; avoid a custom dropdown dependency on browser geometry and use platform pickers on mobile. Existing group IDs remain URL query parameters; invitations are managed in the replaceable center view rather than a nested mobile modal.
 
 ## Phase H - Aggregate review and acceptance readiness
 

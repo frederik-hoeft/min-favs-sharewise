@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionIcon, Avatar, Button, Divider, Group, Menu, Stack, Text, Title } from "@mantine/core";
-import { DotsThreeIcon, PencilSimpleIcon, SignOutIcon, UserIcon } from "@phosphor-icons/react";
+import { DotsThreeIcon, LinkSimpleIcon, PencilSimpleIcon, SignOutIcon, UserIcon } from "@phosphor-icons/react";
 import { useRef } from "react";
 import type { GroupMember, GroupWorkspace } from "@/core/groups";
 import { GroupAvatar } from "./GroupAvatar";
@@ -12,12 +12,13 @@ import styles from "./GroupInformationPanel.module.scss";
 interface GroupInformationPanelProps {
   workspace: GroupWorkspace;
   onEdit: () => void;
+  onInvitations: () => void;
   onMemberAction: (action: MembershipAction, origin: HTMLElement | null) => void;
   editing: boolean;
   busy: boolean;
 }
 
-export function GroupInformationPanel({ workspace, onEdit, onMemberAction, editing, busy }: GroupInformationPanelProps) {
+export function GroupInformationPanel({ workspace, onEdit, onInvitations, onMemberAction, editing, busy }: GroupInformationPanelProps) {
   const { group, members, callerMembershipId } = workspace;
   const administratorCount = members.filter(member => member.role === "admin").length;
   const caller = members.find(member => member.id === callerMembershipId);
@@ -50,6 +51,7 @@ export function GroupInformationPanel({ workspace, onEdit, onMemberAction, editi
         })}
       </ul>
       <Divider />
+      {group.callerRole === "admin" ? <Button variant="light" fullWidth disabled={controlsDisabled} leftSection={<LinkSimpleIcon aria-hidden="true" />} onClick={onInvitations}>Manage invitation links</Button> : null}
       {leaveBlocked ? <Text size="xs" c="dimmed">{members.length <= 1 ? "You cannot leave as the only member. Invite another member first." : "You cannot leave as the only administrator. Promote another member or transfer administration first."}</Text> : null}
       <Button variant="subtle" color="red" fullWidth disabled={controlsDisabled || leaveBlocked || !caller} leftSection={<SignOutIcon aria-hidden="true" />} onClick={event => { if (caller) onMemberAction({ kind: "leave", member: caller }, event.currentTarget); }}>Leave group</Button>
     </Stack>

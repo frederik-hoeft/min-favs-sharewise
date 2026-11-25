@@ -15,6 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const excluded = new Set(["node_modules", ".next", ".next-export", "out", "coverage", ".git"]);
 const routes = [
   { path: "/", text: "Keep the plans." },
+  { path: "/invite", text: "<title>Join a group | ShareWise</title>" },
   { path: "/auth/login", text: "Welcome back." },
   { path: "/auth/register", text: "Start sharing clearly." },
   { path: "/app", text: "Your workspace." },

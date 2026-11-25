@@ -806,3 +806,87 @@ describe("GM-FT04 accessibility and keyboard operation", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+const INVITATIONS = `${GROUP}/invitations`;
+const INVITATION_ID = "0193a5c4-7e1f-7c2a-9b3d-000000000111";
+const INVITATION_TOKEN = `${INVITATION_ID}.${"A".repeat(43)}`;
+const invitation = { id: INVITATION_ID, createdAt: "2026-11-25T12:00:00Z", expiresAt: null, maxUses: 1, useCount: 0 };
+
+async function openInvitations() {
+  search = `?id=${GROUP_ID}`;
+  fake.respond("GET", WORKSPACE, json(200, workspace()));
+  const user = userEvent.setup();
+  renderPage(<GroupViewPage />);
+  await user.click(await screen.findByRole("button", { name: "Manage invitation links" }));
+  return user;
+}
+
+describe("GI-FT16 invitation management", () => {
+  it("discloses a link only on creation, supports manual copy, and revokes with confirmation", async () => {
+    fake.respond("GET", INVITATIONS, json(200, { items: [] }), json(200, { items: [invitation] }), json(200, { items: [] }));
+    fake.respond("POST", INVITATIONS, json(201, { invitation, token: INVITATION_TOKEN }));
+    fake.respond("DELETE", `${INVITATIONS}/${INVITATION_ID}`, new Response(null, { status: 204 }));
+    const user = await openInvitations();
+    await screen.findByText("No invitation links yet.");
+    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create link" }));
+    expect(await screen.findByLabelText("Invitation link")).toHaveValue(`${window.location.origin}/invite#${INVITATION_TOKEN}`);
+    expect(fake.requests.find(r => r.method === "POST")?.body).toMatchObject({ maxUses: 1, expiresAt: expect.any(String) });
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("not permitted"));
+    await user.click(screen.getByRole("button", { name: "Copy link" }));
+    expect(await screen.findByText(/select and copy the link manually/i)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Close link" }));
+    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Revoke link" }));
+    const dialog = screen.getByRole("dialog", { name: "Revoke invitation?" });
+    expect(fake.requests.filter(r => r.method === "DELETE")).toHaveLength(0);
+    await user.click(within(dialog).getByRole("button", { name: "Revoke link" }));
+    expect(await screen.findByText("No invitation links yet.")).toBeVisible();
+    expect(fake.requests.filter(r => r.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("reconciles uncertain creation without replaying and does not reveal a lost secret", async () => {
+    fake.respond("GET", INVITATIONS, json(200, { items: [] }), json(200, { items: [invitation] }));
+    fake.respond("POST", INVITATIONS, new Error("connection lost"));
+    const user = await openInvitations();
+    await screen.findByText("No invitation links yet.");
+    await user.click(screen.getByRole("button", { name: "Create link" }));
+    expect(await screen.findByText(/invitation change could not be confirmed/i)).toBeVisible();
+    expect(await screen.findByText(INVITATION_ID)).toBeVisible();
+    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+    expect(fake.requests.filter(r => r.method === "POST")).toHaveLength(1);
+  });
+
+  it("returns to a reconciled workspace when administration is lost", async () => {
+    fake.respond("GET", INVITATIONS, problem(403, "group_admin_required"));
+    fake.respond("GET", WORKSPACE, json(200, workspace()), json(200, workspace({ callerRole: "member" })));
+    search = `?id=${GROUP_ID}`;
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await user.click(await screen.findByRole("button", { name: "Manage invitation links" }));
+    expect(await screen.findByText("You are no longer an administrator of this group.")).toBeVisible();
+    await screen.findByText("Your group workspace");
+    expect(screen.queryByRole("button", { name: "Manage invitation links" })).not.toBeInTheDocument();
+  });
+
+  it("shows expired and exhausted links, supports custom constraints, and is structurally accessible", async () => {
+    const expired = { ...invitation, expiresAt: "2000-01-01T00:00:00Z" };
+    const exhausted = { ...invitation, id: `${INVITATION_ID.slice(0, -1)}2`, useCount: 1 };
+    fake.respond("GET", INVITATIONS, json(200, { items: [expired, exhausted] }), json(200, { items: [expired, exhausted, invitation] }));
+    fake.respond("POST", INVITATIONS, json(201, { invitation, token: INVITATION_TOKEN }));
+    const user = await openInvitations();
+    expect(await screen.findByText("Expired")).toBeVisible();
+    expect(screen.getByText("Exhausted")).toBeVisible();
+    await user.selectOptions(screen.getByLabelText("Expiration"), "never");
+    await user.selectOptions(screen.getByLabelText("Maximum uses"), "finite");
+    const limit = screen.getByLabelText("Usage limit");
+    await user.clear(limit);
+    await user.type(limit, "5");
+    await expectNoAxeViolations(document.body);
+    await user.click(screen.getByRole("button", { name: "Create link" }));
+    expect(await screen.findByLabelText("Invitation link")).toBeVisible();
+    expect(fake.requests.find(request => request.method === "POST")?.body).toEqual({ maxUses: 5, expiresAt: null });
+    await expectNoAxeViolations(document.body);
+  });
+
+});

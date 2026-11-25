@@ -143,3 +143,29 @@ describe("group metadata validation", () => {
     expect(isGroupId(null)).toBe(false);
   });
 });
+
+describe("Invitation API contracts", () => {
+  it("uses a body-only redemption token and exact mutation acknowledgment statuses", async () => {
+    const fake = scriptedClient();
+    const path = `/api/groups/v1/groups/${GROUP_ID}/invitations`;
+    const id = "0193a5c4-7e1f-7c2a-9b3d-000000000111";
+    const token = `${id}.${"A".repeat(43)}`;
+    const invitation = { id, createdAt: "2026-11-25T12:00:00Z", expiresAt: null, maxUses: 2, useCount: 0 };
+    fake.respond("GET", path, json(200, { items: [invitation] }));
+    fake.respond("POST", path, json(201, { invitation, token }), json(200, { invitation, token }));
+    fake.respond("DELETE", `${path}/${id}`, new Response(null, { status: 204 }));
+    fake.respond("POST", "/api/groups/v1/invitations/redeem", json(200, { groupId: GROUP_ID, outcome: "already_member" }));
+    const api = new GroupsApi(fake.client);
+    expect(await api.listInvitations(GROUP_ID)).toEqual({ items: [invitation] });
+    expect(await api.createInvitation(GROUP_ID, { expiresAt: null, maxUses: 2 })).toEqual({ invitation, token });
+    await expect(api.createInvitation(GROUP_ID, { expiresAt: null, maxUses: 2 })).rejects.toMatchObject({ code: "unexpected_response" });
+    await api.revokeInvitation(GROUP_ID, id);
+    expect(await api.redeemInvitation(token)).toEqual({ groupId: GROUP_ID, outcome: "already_member" });
+    expect(fake.requests.at(-1)).toEqual({ method: "POST", path: "/api/groups/v1/invitations/redeem", body: { token } });
+    expect(fake.requests.every(request => !request.path.includes(token))).toBe(true);
+  });
+
+  it.each([["group_invitation_unavailable", "invitation_unavailable"], ["group_invitation_not_found", "invitation_not_found"]])("classifies %s separately from missing groups", (code, kind) => {
+    expect(classifyGroupProblem(new ApiError({ status: 404, code, title: "", detail: "" })).kind).toBe(kind);
+  });
+});

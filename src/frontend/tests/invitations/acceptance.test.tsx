@@ -1,0 +1,185 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { InvitationAcceptance } from "@/app/(auth)/invite/InvitationAcceptance";
+import { AuthenticationForm } from "@/app/(auth)/_components/AuthenticationForm";
+import { IdentityProvider } from "@/app/identity-provider";
+import { InvitationContinuationProvider, useInvitationContinuation } from "@/app/invitation-continuation";
+import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
+import { TestProviders } from "../support/TestProviders";
+import { authenticationResponse, ControlledLocks, SESSION_TWO } from "../identity/support";
+import { deferred, GROUP_ID, json, problem, scriptedClient } from "../groups/support";
+import type { ReactNode } from "react";
+
+const TOKEN = `${GROUP_ID}.${"A".repeat(43)}`;
+const REDEEM = "/api/groups/v1/invitations/redeem";
+const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
+  usePathname: () => window.location.pathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
+
+let fake = scriptedClient();
+let runtime: IdentityRuntime;
+beforeEach(() => {
+  fake = scriptedClient();
+  runtime = createIdentityRuntime({ fetchImpl: fake.fetchImpl, locks: () => new ControlledLocks().manager });
+  window.history.replaceState({}, "", `/invite#${TOKEN}`);
+  replace.mockReset();
+});
+afterEach(() => { runtime.dispose(); window.history.replaceState({}, "", "/"); });
+
+function Root({ children }: { children: ReactNode }) {
+  return <TestProviders><IdentityProvider runtime={runtime}><InvitationContinuationProvider>{children}</InvitationContinuationProvider></IdentityProvider></TestProviders>;
+}
+function renderInvite(signedIn = true) {
+  if (signedIn) runtime.session.accept(authenticationResponse());
+  else runtime.session.invalidate("expired");
+  return render(<Root><InvitationAcceptance /></Root>);
+}
+
+describe("GI-FT17 invitation continuation", () => {
+  it("removes the fragment and explicitly redeems with the current session", async () => {
+    fake.respond("POST", REDEEM, json(200, { groupId: GROUP_ID, outcome: "joined" }));
+    renderInvite();
+    const button = await screen.findByRole("button", { name: "Join group" });
+    expect(window.location.hash).toBe("");
+    expect(JSON.stringify(window.history.state)).not.toContain(TOKEN);
+    expect(fake.requests).toHaveLength(0);
+    await userEvent.setup().click(button);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(`/app/groups/view?id=${GROUP_ID}`));
+    expect(fake.requests).toEqual([{ method: "POST", path: REDEEM, body: { token: TOKEN } }]);
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+  });
+
+  it("discards a capability when the session changes while redemption is pending", async () => {
+    const response = deferred<Response>();
+    fake.respond("POST", REDEEM, response.promise);
+    renderInvite();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Join group" }));
+    await waitFor(() => expect(fake.requests).toHaveLength(1));
+    act(() => runtime.session.accept(authenticationResponse("new-token", undefined, SESSION_TWO)));
+    await act(async () => { response.resolve(json(200, { groupId: GROUP_ID, outcome: "joined" })); });
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByText(/invitation is unavailable/i)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+  });
+
+  it("clears uniformly rejected capabilities and allows explicit recovery after uncertain writes", async () => {
+    fake.respond("POST", REDEEM, new Error("connection lost"), problem(404, "group_invitation_unavailable"));
+    renderInvite();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Join group" }));
+    expect(await screen.findByText(/join could not be confirmed/i)).toBeVisible();
+    expect(fake.requests).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Join group" }));
+    expect(await screen.findByText(/invitation is unavailable/i)).toBeVisible();
+    expect(fake.requests).toHaveLength(2);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("preserves the exact nonsecret continuation when switching login and registration", async () => {
+    const view = renderInvite(false);
+    const login = await screen.findByRole("link", { name: "Sign in" });
+    expect(login).toHaveAttribute("href", "/auth/login?next=%2Finvite");
+    expect(screen.getByRole("link", { name: "Create account" })).toHaveAttribute("href", "/auth/register?next=%2Finvite");
+    expect(fake.requests).toHaveLength(0);
+    window.history.replaceState({}, "", "/auth/login?next=%2Finvite");
+    view.rerender(<Root><AuthenticationForm mode="login" /></Root>);
+    expect(screen.getByRole("link", { name: "Create an account" })).toHaveAttribute("href", "/auth/register?next=%2Finvite");
+    window.history.replaceState({}, "", "/auth/register?next=%2Finvite");
+    view.rerender(<Root><AuthenticationForm mode="register" /></Root>);
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login?next=%2Finvite");
+    expect(window.location.href).not.toContain(TOKEN);
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it.each(["login", "register"] as const)("returns from successful %s without automatically redeeming", async mode => {
+    const view = renderInvite(false);
+    await screen.findByRole("link", { name: "Sign in" });
+    window.history.replaceState({}, "", `/auth/${mode}?next=%2Finvite`);
+    view.rerender(<Root><AuthenticationForm mode={mode} /></Root>);
+    fake.respond("GET", "/api/iam/v1/auth/csrf", json(200, { token: "csrf" }));
+    fake.respond("POST", `/api/iam/v1/auth/${mode}`, json(mode === "register" ? 201 : 200, authenticationResponse()));
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "person@example.com");
+    await user.type(screen.getByLabelText(/^Password/), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: mode === "register" ? "Create account" : "Sign in" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/invite"));
+    window.history.replaceState({}, "", "/invite");
+    view.rerender(<Root><InvitationAcceptance /></Root>);
+    await screen.findByRole("button", { name: "Join group" });
+    expect(fake.requests.filter(request => request.path === REDEEM)).toHaveLength(0);
+    expect(window.location.href).not.toContain(TOKEN);
+  });
+
+  it("does not accept malformed fragments or a fabricated continuation return path", async () => {
+    window.history.replaceState({}, "", "/invite#bad-token");
+    const view = renderInvite(false);
+    expect(await screen.findByText(/invitation is unavailable/i)).toBeVisible();
+    expect(window.location.hash).toBe("");
+    window.history.replaceState({}, "", "/auth/login?next=%2Finvite");
+    view.rerender(<Root><AuthenticationForm mode="login" /></Root>);
+    expect(screen.getByRole("link", { name: "Create an account" })).toHaveAttribute("href", "/auth/register");
+    fake.respond("GET", "/api/iam/v1/auth/csrf", json(200, { token: "csrf" }));
+    fake.respond("POST", "/api/iam/v1/auth/login", json(200, authenticationResponse()));
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "person@example.com");
+    await user.type(screen.getByLabelText(/^Password/), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/app"));
+  });
+
+  it("discards the continuation on cancellation and on unrelated navigation", async () => {
+    const view = renderInvite(false);
+    const cancel = await screen.findByRole("link", { name: "Cancel" });
+    // jsdom cannot navigate documents; observe the explicit cancellation without leaving the test document.
+    cancel.addEventListener("click", event => event.preventDefault());
+    fireEvent.click(cancel);
+    expect(screen.getByText(/invitation is unavailable/i)).toBeVisible();
+    expect(fake.requests).toHaveLength(0);
+    // A new link can be opened, but not retained through unrelated navigation.
+    window.history.replaceState({}, "", `/invite#${TOKEN}`);
+    act(() => window.dispatchEvent(new HashChangeEvent("hashchange")));
+    await screen.findByRole("link", { name: "Sign in" });
+    function PendingIndicator() { return <span>{useInvitationContinuation().pending ? "pending" : "empty"}</span>; }
+    window.history.replaceState({}, "", "/auth/login?next=/app");
+    view.rerender(<Root><PendingIndicator /></Root>);
+    expect(await screen.findByText("empty")).toBeVisible();
+  });
+});
+
+describe("Invitation continuation secret hygiene", () => {
+  it("does not serialize a captured secret, even accidentally", async () => {
+    const { InvitationContinuation } = await import("@/app/invitation-continuation");
+    const continuation = new InvitationContinuation();
+    continuation.capture(TOKEN);
+    continuation.bind(1);
+    expect(continuation.forSession(1)).toBe(TOKEN);
+    expect(JSON.stringify(continuation)).not.toContain(TOKEN);
+    continuation.invalidateIfChanged(2);
+    expect(continuation.pending).toBe(false);
+    expect(continuation.forSession(1)).toBeNull();
+  });
+
+  it("does not navigate when an abandoned authentication form completes", async () => {
+    const view = renderInvite(false);
+    await screen.findByRole("link", { name: "Sign in" });
+    window.history.replaceState({}, "", "/auth/login?next=%2Finvite");
+    view.rerender(<Root><AuthenticationForm mode="login" /></Root>);
+    const pending = deferred<Response>();
+    fake.respond("GET", "/api/iam/v1/auth/csrf", json(200, { token: "csrf" }));
+    fake.respond("POST", "/api/iam/v1/auth/login", pending.promise);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "person@example.com");
+    await user.type(screen.getByLabelText(/^Password/), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(fake.requests.some(request => request.method === "POST")).toBe(true));
+    window.history.replaceState({}, "", "/");
+    view.rerender(<Root><span>Home</span></Root>);
+    await act(async () => { pending.resolve(json(200, authenticationResponse())); });
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByText("Home")).toBeVisible();
+  });
+});

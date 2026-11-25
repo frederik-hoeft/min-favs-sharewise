@@ -8,13 +8,14 @@ import { ApplicationShell } from "../../_components/ApplicationShell";
 import { useShellAsideControls } from "../../_components/shell-aside-context";
 import { appBreadcrumbs, groupRoutes, groupViewHref } from "../../_components/app-routes";
 import { GroupWorkspaceContext } from "./group-workspace-context";
+import { InvitationManagement } from "./InvitationManagement";
 import { GroupEditor } from "./GroupEditor";
 import { GroupInformationPanel } from "./GroupInformationPanel";
 import { GroupLoadingState, GroupProblemState } from "./GroupProblemState";
 import { MemberActionConfirmation } from "./MemberActionConfirmation";
 import { executeMembershipAction, type MembershipAction } from "./membership-actions";
-import { useExclusiveOperation } from "./use-exclusive-operation";
-import { useGroupsApi } from "./use-groups-api";
+import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
+import { useGroupsApi } from "@/app/use-groups-api";
 import { useGroupResource } from "./use-group-resource";
 import styles from "./GroupInformationPanel.module.scss";
 
@@ -44,7 +45,8 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
   const load = useCallback(() => api.getWorkspace(groupId), [api, groupId]);
   const { state, reload, replace } = useGroupResource(load);
   const operation = useExclusiveOperation<"membership">();
-  const [editing, setEditing] = useState(false);
+  const [view, setView] = useState<"overview" | "edit" | "invitations">("overview");
+  const editing = view === "edit";
   const [confirmation, setConfirmation] = useState<{ action: MembershipAction; restoreFocus: () => void } | null>(null);
   const canceledFocus = useRef<(() => void) | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -66,7 +68,7 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
   const breadcrumbs = appBreadcrumbs(path).map(crumb => crumb.href === groupRoutes.view ? { label: group.name, href: groupViewHref(groupId) } : crumb);
 
   function handleMetadataProblem(problem: GroupProblem) {
-    setEditing(false);
+    setView("overview");
     if (problem.kind === "admin_required") {
       setNotice("You are no longer an administrator of this group, so your changes were not saved.");
       void reload();
@@ -74,7 +76,7 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
   }
 
   function confirmMembershipAction() {
-    if (!confirmation || editing) return;
+    if (!confirmation || view !== "overview") return;
     const { action } = confirmation;
     operation.start("membership", () => executeMembershipAction(api, groupId, action), outcome => {
       setConfirmation(null);
@@ -106,15 +108,20 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
         label: "Group information",
         content: <GroupWorkspaceAside
           workspace={workspace}
-          editing={editing}
+          editing={view !== "overview"}
           busy={confirmation !== null || operation.pending !== null}
           onEdit={() => {
-            if (confirmation || operation.isRunning()) return;
+            if (view !== "overview" || confirmation || operation.isRunning()) return;
             setNotice(null);
-            setEditing(true);
+            setView("edit");
+          }}
+          onInvitations={() => {
+            if (view !== "overview" || confirmation || operation.isRunning()) return;
+            setNotice(null);
+            setView("invitations");
           }}
           onMemberAction={(action, restoreFocus) => {
-            if (editing || confirmation || operation.isRunning()) return;
+            if (view !== "overview" || confirmation || operation.isRunning()) return;
             setNotice(null);
             setConfirmation({ action, restoreFocus });
           }}
@@ -125,10 +132,20 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
           {status}
           {editing && group.callerRole === "admin" ? <GroupEditor
             group={group}
-            onCancel={() => setEditing(false)}
-            onSaved={() => { setEditing(false); setNotice("Changes saved."); void reload(); }}
-            onRefreshed={current => { replace(current); if (current.group.callerRole !== "admin") setEditing(false); }}
+            onCancel={() => setView("overview")}
+            onSaved={() => { setView("overview"); setNotice("Changes saved."); void reload(); }}
+            onRefreshed={current => { replace(current); if (current.group.callerRole !== "admin") setView("overview"); }}
             onProblem={handleMetadataProblem}
+          /> : view === "invitations" && group.callerRole === "admin" ? <InvitationManagement
+            groupId={groupId}
+            onClose={() => { setView("overview"); void reload(); }}
+            onProblem={problem => {
+              setView("overview");
+              if (problem.kind === "admin_required") {
+                setNotice("You are no longer an administrator of this group.");
+                void reload();
+              } else setPageProblem(problem);
+            }}
           /> : children}
         </Stack>
         {confirmation ? <MemberActionConfirmation
@@ -148,16 +165,18 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
 }
 
 /** Integrates a shell-independent information panel with the shell's responsive disclosure. */
-function GroupWorkspaceAside({ workspace, editing, busy, onEdit, onMemberAction }: {
+function GroupWorkspaceAside({ workspace, editing, busy, onEdit, onInvitations, onMemberAction }: {
   workspace: GroupWorkspace;
   editing: boolean;
   busy: boolean;
   onEdit: () => void;
+  onInvitations: () => void;
   onMemberAction: (action: MembershipAction, restoreFocus: () => void) => void;
 }) {
   const { dismiss, restoreFocus } = useShellAsideControls();
   return <GroupInformationPanel workspace={workspace} editing={editing} busy={busy}
     onEdit={() => { dismiss(); onEdit(); }}
+    onInvitations={() => { dismiss(); onInvitations(); }}
     onMemberAction={(action, origin) => { dismiss(); onMemberAction(action, () => restoreFocus(origin)); }}
   />;
 }

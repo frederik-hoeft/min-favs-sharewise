@@ -1,6 +1,10 @@
 import type { ApiClient } from '@/lib/api';
 import type {
     CreateGroupRequest,
+    CreateInvitationRequest,
+    CreatedInvitation,
+    InvitationList,
+    InvitationRedemption,
     GroupDetails,
     GroupList,
     GroupRole,
@@ -43,6 +47,22 @@ export class GroupsApi {
 
     transferAdministration(groupId: string, membershipId: string): Promise<void> {
         return this.client.post<void>(`${memberPath(groupId, membershipId)}/transfer-administration`, undefined, { expectedStatus: 204 });
+    }
+
+    listInvitations(groupId: string): Promise<InvitationList> {
+        return this.client.get<InvitationList>(`${groupPath(groupId)}/invitations`);
+    }
+
+    createInvitation(groupId: string, request: CreateInvitationRequest): Promise<CreatedInvitation> {
+        return this.client.post<CreatedInvitation>(`${groupPath(groupId)}/invitations`, request, { expectedStatus: 201 });
+    }
+
+    revokeInvitation(groupId: string, invitationId: string): Promise<void> {
+        return this.client.delete<void>(`${groupPath(groupId)}/invitations/${encodeURIComponent(invitationId)}`, { expectedStatus: 204 });
+    }
+
+    redeemInvitation(token: string): Promise<InvitationRedemption> {
+        return this.client.post<InvitationRedemption>('/groups/v1/invitations/redeem', { token }, { expectedStatus: 200 });
     }
 
     create(request: CreateGroupRequest): Promise<GroupDetails> {

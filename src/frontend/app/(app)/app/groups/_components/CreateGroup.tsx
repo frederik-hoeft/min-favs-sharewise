@@ -9,8 +9,8 @@ import {
   normalizedDescription,
   type MetadataInput,
 } from "@/core/groups";
-import { useExclusiveOperation } from "./use-exclusive-operation";
-import { useGroupsApi } from "./use-groups-api";
+import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
+import { useGroupsApi } from "@/app/use-groups-api";
 import { groupRoutes, groupViewHref } from "../../_components/app-routes";
 import {
   clientFieldMessages,

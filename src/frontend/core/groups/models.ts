@@ -48,6 +48,34 @@ export interface ReplaceGroupMetadataRequest {
     readonly expectedVersion: number;
 }
 
+/** Nonsecret invitation metadata; the bearer is available only in the creation response. */
+export interface InvitationSummary {
+    readonly id: string;
+    readonly createdAt: string;
+    readonly expiresAt: string | null;
+    readonly maxUses: number | null;
+    readonly useCount: number;
+}
+
+export interface InvitationList {
+    readonly items: ReadonlyArray<InvitationSummary>;
+}
+
+export interface CreateInvitationRequest {
+    readonly expiresAt: string | null;
+    readonly maxUses: number | null;
+}
+
+export interface CreatedInvitation {
+    readonly invitation: InvitationSummary;
+    readonly token: string;
+}
+
+export interface InvitationRedemption {
+    readonly groupId: string;
+    readonly outcome: 'joined' | 'already_member';
+}
+
 /** Machine-readable Group Management problem codes. */
 export const GROUP_PROBLEM_CODES = {
     userUnknown: 'group_user_unknown',
@@ -58,5 +86,7 @@ export const GROUP_PROBLEM_CODES = {
     lastMember: 'group_last_member',
     lastAdministrator: 'group_last_administrator',
     invalidTransfer: 'group_invalid_transfer',
+    invitationUnavailable: 'group_invitation_unavailable',
+    invitationNotFound: 'group_invitation_not_found',
     validationFailed: 'validation_failed',
 } as const;

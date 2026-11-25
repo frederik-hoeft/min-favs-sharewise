@@ -1,5 +1,6 @@
 export { GroupsApi } from './groups-api.ts';
-export { classifyGroupProblem, isGroupId, type GroupProblem } from './group-problems.ts';
+export { classifyGroupProblem, type GroupProblem } from './group-problems.ts';
+export { isGroupId, isInvitationToken } from './identifiers.ts';
 export {
     GROUP_DESCRIPTION_MAX_CODE_POINTS,
     GROUP_NAME_MAX_CODE_POINTS,
@@ -14,6 +15,11 @@ export {
 export {
     GROUP_PROBLEM_CODES,
     type CreateGroupRequest,
+    type CreateInvitationRequest,
+    type CreatedInvitation,
+    type InvitationList,
+    type InvitationSummary,
+    type InvitationRedemption,
     type GroupDetails,
     type GroupList,
     type GroupRole,

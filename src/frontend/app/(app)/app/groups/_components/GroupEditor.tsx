@@ -4,8 +4,8 @@ import { Alert, Button, Card, Stack, Text, Title } from "@mantine/core";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { classifyGroupProblem, normalizedDescription, type GroupDetails, type GroupProblem, type GroupWorkspace, type MetadataInput } from "@/core/groups";
-import { useExclusiveOperation } from "./use-exclusive-operation";
-import { useGroupsApi } from "./use-groups-api";
+import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
+import { useGroupsApi } from "@/app/use-groups-api";
 import { clientFieldMessages, GroupMetadataForm, hasMessages, serverFieldMessages, type MetadataFieldMessages } from "./GroupMetadataForm";
 
 interface GroupEditorProps {

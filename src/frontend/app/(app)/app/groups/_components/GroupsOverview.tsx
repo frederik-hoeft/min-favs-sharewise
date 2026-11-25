@@ -5,7 +5,7 @@ import { CaretRightIcon, MagnifyingGlassIcon, PlusIcon, UsersThreeIcon } from "@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import type { GroupSummary } from "@/core/groups";
-import { useGroupsApi } from "./use-groups-api";
+import { useGroupsApi } from "@/app/use-groups-api";
 import { groupRoutes, groupViewHref } from "../../_components/app-routes";
 import { memberCountLabel } from "./group-format";
 import { GroupLoadingState, GroupProblemState } from "./GroupProblemState";
