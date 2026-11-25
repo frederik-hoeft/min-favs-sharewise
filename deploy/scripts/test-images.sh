@@ -118,7 +118,7 @@ check_https_route() {
         return 1
     fi
 }
-for path in / /app /app/dummy1 /app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview; do
+for path in / /app /app/groups /app/groups/view /invite /app/dummy1 /app/dummy3/international-collaboration-project/shared-expenses-and-settlement-revision-history/overview; do
     check_https_route "$path"
 done
 # BusyBox wget returns nonzero for 404. Check the response status as well,

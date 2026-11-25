@@ -227,3 +227,20 @@ Suggested commit: `P2.2bc-I: Reconcile group management documentation`.
 - P3 - Frontend route tree and provisioning guide no longer matched the workspace or invitation flow: document declarative shell composition, authenticated name preview, in-memory continuation and a real two-account invitation procedure.
 
 **Checkpoint evidence:** Documentation skill and engineering-quality skill explicitly reread, including documentation writing examples. Reconciled authoritative docs with the actual H.2 application contracts and retained the previous review and test history. All relative Markdown links and anchors in changed documents resolved; tracked-source encoding check, its eight regression tests and Git whitespace check passed. No production or test code changes in this phase; the H.2 build/test evidence remains applicable. Maintainer authorized documentation after acceptance feedback. Exact post-H.2 PostgreSQL CI, Compose and browser recheck evidence and independent PR review remain outstanding. P2.2a/b/c backlog completion and baseline merge require final maintainer approval.
+
+
+## Phase I.1 - Production Group smoke coverage
+
+Suggested commit: `P2.2bc-I.1: Exercise Group Management in production Compose smoke`.
+
+- [x] Record the maintainer's passing production Compose smoke on the pre-I.1 implementation.
+- [x] Extend the disposable HTTPS smoke with two real IAM accounts, temporary local Group user provisioning, group creation/listing, anonymous and outsider denial, invitation preview/redemption/consumption, live role promotion, revocation and departure. Check static group and invitation routes in both production smoke scripts.
+- [x] Retain the existing IAM and stack lifecycle checks; keep new credentials out of process arguments and diagnostics. Verify the smoke orchestration and failure/cleanup paths without Docker.
+- [ ] Maintainer reruns the extended smoke against the actual disposable production stack.
+
+**Self-review record:**
+
+- P2 - Direct fixture provisioning requires explicit deployment scope: refuse API smoke invocation without the reserved disposable project and base Compose file; test that the guard prevents container commands.
+- P2 - Response parsing could expose unexpected status text in an exception: validate the status framing and report a fixed diagnostic; verify bearer and invitation data travel via stdin and malformed responses do not disclose secrets.
+
+**Checkpoint evidence:** The existing production Compose smoke passed according to the maintainer. The extended smoke is a deployment-only change and does not modify product code or schemas. All 70 deployment tests passed (`python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v`), including 14 HTTP orchestration tests; Bash syntax, source encoding and Git whitespace checks passed. A real local curl request verified the stdin configuration and JSON encoding without a Compose stack. Real Docker/PostgreSQL execution remains a human gate.
