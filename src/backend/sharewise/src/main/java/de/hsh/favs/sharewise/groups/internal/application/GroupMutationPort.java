@@ -10,8 +10,8 @@ import java.util.UUID;
  */
 public interface GroupMutationPort {
 
-    /** Locks the group row for update; empty if the group does not exist. */
-    Optional<LockedGroup> lockGroup(UUID groupId);
+    /** Locks the group row for update for a known local user; empty if either does not exist. */
+    Optional<LockedGroup> lockGroup(UUID groupId, UUID userId);
 
     /** Replaces the metadata, increments the version and returns the group as seen by the caller. */
     GroupDetails replaceMetadata(LockedGroup group, UUID callerId, GroupMetadata metadata);

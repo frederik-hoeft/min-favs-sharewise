@@ -2,6 +2,7 @@ package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.USERS;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMember;
@@ -16,6 +17,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.jooq.Field;
+import org.jooq.Record5;
+import org.jooq.Result;
 import org.jooq.impl.DSL;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Repository;
@@ -38,15 +41,21 @@ class JooqGroupReads implements GroupReadPort {
     }
 
     @Override
-    public List<GroupSummary> listForMember(UUID userId) {
+    public Optional<List<GroupSummary>> listForMember(UUID userId) {
         Objects.requireNonNull(userId, "userId");
-        return database.dsl()
-                .select(GROUPS_.ID, GROUPS_.NAME, GROUPS_.DESCRIPTION, GroupProjections.MEMBER_COUNT, MEMBERSHIP_ROLE)
-                .from(MEMBERSHIP)
-                .join(GROUPS_).on(GROUPS_.ID.eq(MEMBERSHIP.GROUP_ID))
-                .where(MEMBERSHIP.USER_ID.eq(userId))
-                .orderBy(DSL.lower(GROUPS_.NAME), GROUPS_.ID)
-                .fetch(row -> GroupProjections.summary(row, MEMBERSHIP_ROLE));
+        Result<Record5<UUID, String, String, Integer, GroupRole>> rows = database.dsl()
+            .select(GROUPS_.ID, GROUPS_.NAME, GROUPS_.DESCRIPTION, GroupProjections.MEMBER_COUNT, MEMBERSHIP_ROLE)
+            .from(USERS).leftJoin(MEMBERSHIP).on(MEMBERSHIP.USER_ID.eq(USERS.ID))
+            .leftJoin(GROUPS_).on(GROUPS_.ID.eq(MEMBERSHIP.GROUP_ID))
+            .where(USERS.ID.eq(userId)).orderBy(DSL.lower(GROUPS_.NAME), GROUPS_.ID).fetch();
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+        // A known user with no memberships contributes exactly one null group row.
+        if (rows.getFirst().get(GROUPS_.ID) == null) {
+            return Optional.of(List.of());
+        }
+        return Optional.of(rows.map(row -> GroupProjections.summary(row, MEMBERSHIP_ROLE)));
     }
 
     @Override

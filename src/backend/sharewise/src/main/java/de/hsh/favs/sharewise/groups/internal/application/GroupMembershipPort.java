@@ -10,10 +10,9 @@ public interface GroupMembershipPort {
     /** The user's current membership in the locked group; empty if the user is not a member. */
     Optional<GroupMember> memberForUser(LockedGroup group, UUID userId);
 
-    Optional<GroupMember> memberById(LockedGroup group, UUID membershipId);
-
-    /** Number of current memberships matching the role, or all roles if empty. */
-    int countMembers(LockedGroup group, Optional<GroupRole> role);
+    /** Caller and target facts from the same post-lock snapshot; empty for a non-member caller.
+     * Non-administrators receive only their own target facts. */
+    Optional<MembershipChangeContext> changeContext(LockedGroup group, UUID userId, UUID membershipId);
 
     /** Changes exactly one current membership under the root lock. */
     void setRole(LockedGroup group, UUID membershipId, GroupRole role);

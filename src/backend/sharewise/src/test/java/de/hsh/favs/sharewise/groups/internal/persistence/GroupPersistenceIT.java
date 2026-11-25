@@ -1,10 +1,15 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupCreationPort;
+import de.hsh.favs.sharewise.groups.internal.application.InvitationIssuanceMaterial;
+import de.hsh.favs.sharewise.groups.internal.application.InvitationListing;
+import de.hsh.favs.sharewise.groups.internal.application.InvitationRedemptionContext;
+import de.hsh.favs.sharewise.groups.internal.application.InvitationSummary;
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMutationPort;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMembershipPort;
@@ -14,6 +19,7 @@ import de.hsh.favs.sharewise.groups.internal.application.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.application.GroupWorkspace;
 import de.hsh.favs.sharewise.groups.internal.application.GroupUserRegistry;
 import de.hsh.favs.sharewise.groups.internal.application.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeContext;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
@@ -26,6 +32,10 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.jooq.ExecuteContext;
+import org.jooq.ExecuteListener;
+import org.jooq.impl.DefaultExecuteListenerProvider;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -121,9 +131,10 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 UUID gamma = creation.createWithAdministrator(bob, metadata("Gamma", null)).id();
                 creation.createWithAdministrator(bob, metadata("Bob only", null));
                 GroupTestFixture.addMember(jooq.dsl(), gamma, alice, GroupRole.MEMBER);
-                List<GroupSummary> aliceGroups = reads.listForMember(alice);
+                assertEquals(Optional.empty(), reads.listForMember(UUID.randomUUID()));
+                List<GroupSummary> aliceGroups = reads.listForMember(alice).orElseThrow();
                 assertEquals(List.of(alpha, beta, gamma), aliceGroups.stream().map(GroupSummary::id).toList());
-                return TransactionOutcome.commit(List.of(aliceGroups, reads.listForMember(loner)));
+                return TransactionOutcome.commit(List.of(aliceGroups, reads.listForMember(loner).orElseThrow()));
             });
 
             List<GroupSummary> aliceGroups = lists.get(0);
@@ -148,7 +159,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 for (String name : List.of("same", "Same", "SAME")) {
                     creation.createWithAdministrator(user, metadata(name, null));
                 }
-                return TransactionOutcome.commit(reads.listForMember(user).stream().map(GroupSummary::id).toList());
+                return TransactionOutcome.commit(reads.listForMember(user).orElseThrow().stream().map(GroupSummary::id).toList());
             });
 
             assertEquals(ordered.stream().sorted().toList(), ordered);
@@ -180,20 +191,109 @@ class GroupPersistenceIT extends IntegrationTestBase {
                     .thenComparing(member -> member.id().toString())).toList(), snapshot.members());
                 assertEquals(Optional.empty(), reads.findWorkspace(foreign, alice));
                 assertEquals(Optional.empty(), reads.findWorkspace(UUID.randomUUID(), alice));
-                LockedGroup locked = mutations.lockGroup(group).orElseThrow();
+                LockedGroup locked = mutations.lockGroup(group, alice).orElseThrow();
                 UUID target = snapshot.callerMembershipId();
-                assertEquals(Optional.empty(), memberships.memberById(locked,
-                    reads.findWorkspace(foreign, bob).orElseThrow().callerMembershipId()));
-                assertEquals(1, memberships.countMembers(locked, Optional.of(GroupRole.ADMIN)));
+                assertEquals(Optional.empty(), memberships.changeContext(locked, alice,
+                    reads.findWorkspace(foreign, bob).orElseThrow().callerMembershipId()).orElseThrow().target());
+                MembershipChangeContext before = memberships.changeContext(locked, alice, target).orElseThrow();
+                assertEquals(GroupRole.ADMIN, before.caller().role());
+                assertEquals(GroupRole.MEMBER, before.target().orElseThrow().role());
+                assertTrue(before.hasOtherMembers());
+                assertTrue(before.hasOtherAdministrators());
+                assertFalse(memberships.changeContext(locked, alice,
+                    before.caller().id()).orElseThrow().hasOtherAdministrators());
                 memberships.setRole(locked, target, GroupRole.ADMIN);
                 GroupWorkspace promoted = reads.findWorkspace(group, bob).orElseThrow();
                 assertEquals(GroupRole.ADMIN, promoted.group().callerRole());
                 assertEquals(target, promoted.callerMembershipId());
                 assertEquals(0, promoted.group().version());
-                assertEquals(2, memberships.countMembers(locked, Optional.of(GroupRole.ADMIN)));
+                assertTrue(memberships.changeContext(locked, alice, before.caller().id()).orElseThrow().hasOtherAdministrators());
                 memberships.removeMember(locked, target);
                 assertEquals(Optional.empty(), reads.findWorkspace(group, bob));
                 assertEquals(1, reads.findWorkspace(group, alice).orElseThrow().group().memberCount());
+                return TransactionOutcome.abstain(true);
+            });
+        });
+    }
+
+    @Test
+    void consolidatedProjectionsEachExecuteOneStatementAndScopeTheirData() {
+        runTransactionTest((transactions, scope) -> {
+            GroupUserRegistry users = scope.resolve(GroupUserRegistry.class);
+            GroupCreationPort creation = scope.resolve(GroupCreationPort.class);
+            JooqAccess actual = scope.resolve(JooqAccess.class);
+            AtomicInteger statements = new AtomicInteger();
+            // Append to the real segment-bound configuration, preserving its lifetime guards.
+            JooqAccess counted = () -> actual.dsl().configuration().deriveAppending(
+                new DefaultExecuteListenerProvider(new ExecuteListener() {
+                    @Override public void executeStart(ExecuteContext context) {
+                        statements.incrementAndGet();
+                    }
+                })).dsl();
+            JooqGroupReads reads = new JooqGroupReads(counted);
+            JooqGroupMutations mutations = new JooqGroupMutations(counted);
+            JooqGroupMemberships members = new JooqGroupMemberships(counted);
+            JooqGroupInvitations invitations = new JooqGroupInvitations(counted);
+            UUID admin = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            UUID outsider = UUID.randomUUID();
+            UUID unknown = UUID.randomUUID();
+            transactions.execute(() -> {
+                users.provision(admin);
+                users.provision(member);
+                users.provision(outsider);
+                UUID group = creation.createWithAdministrator(admin, TRIP).id();
+                GroupTestFixture.addMember(actual.dsl(), group, member, GroupRole.MEMBER);
+                assertEquals(1, reads.listForMember(admin).orElseThrow().size());
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(List.of(), reads.listForMember(outsider).orElseThrow());
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(Optional.empty(), reads.listForMember(unknown));
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(group, reads.findForMember(group, member).orElseThrow().id());
+                assertEquals(1, statements.getAndSet(0));
+                GroupWorkspace workspace = reads.findWorkspace(group, member).orElseThrow();
+                assertEquals(1, statements.getAndSet(0));
+                LockedGroup locked = mutations.lockGroup(group, admin).orElseThrow();
+                assertEquals(1, statements.getAndSet(0));
+                MembershipChangeContext context = members.changeContext(locked, admin, workspace.callerMembershipId()).orElseThrow();
+                assertEquals(GroupRole.MEMBER, context.target().orElseThrow().role());
+                assertTrue(context.hasOtherMembers());
+                assertTrue(context.hasOtherAdministrators());
+                assertEquals(1, statements.getAndSet(0));
+                MembershipChangeContext denied = members.changeContext(locked, member, context.caller().id()).orElseThrow();
+                assertEquals(GroupRole.MEMBER, denied.caller().role());
+                assertEquals(Optional.empty(), denied.target());
+                assertFalse(denied.hasOtherMembers());
+                assertFalse(denied.hasOtherAdministrators());
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(List.of(), invitations.listForMember(group, admin).orElseThrow().invitations());
+                assertEquals(1, statements.getAndSet(0));
+                InvitationIssuanceMaterial material = invitations.issuanceMaterial(locked);
+                assertEquals(1, statements.getAndSet(0));
+                InvitationSummary invitation = invitations.insert(locked, material.selector(), new byte[32],
+                    material.createdAt(), null, 2);
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(List.of(invitation), invitations.listForMember(group, admin).orElseThrow().invitations());
+                assertEquals(1, statements.getAndSet(0));
+                InvitationListing ordinary = invitations.listForMember(group, member).orElseThrow();
+                assertEquals(GroupRole.MEMBER, ordinary.callerRole());
+                assertEquals(List.of(), ordinary.invitations());
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(Optional.empty(), invitations.listForMember(group, outsider));
+                assertEquals(1, statements.getAndSet(0));
+                assertEquals(Optional.empty(), invitations.lockGroupForRedemption(material.selector(), unknown));
+                assertEquals(1, statements.getAndSet(0));
+                LockedGroup redemptionLock = invitations.lockGroupForRedemption(material.selector(), outsider).orElseThrow();
+                assertEquals(locked, redemptionLock);
+                assertEquals(1, statements.getAndSet(0));
+                InvitationRedemptionContext redemption = invitations.redemptionContext(redemptionLock, material.selector(), outsider).orElseThrow();
+                assertEquals(invitation, redemption.invitation().summary());
+                assertFalse(redemption.alreadyMember());
+                assertFalse(redemption.evaluatedAt().isBefore(material.createdAt()));
+                assertEquals(1, statements.getAndSet(0));
+                assertTrue(invitations.redemptionContext(redemptionLock, material.selector(), member).orElseThrow().alreadyMember());
+                assertEquals(1, statements.getAndSet(0));
                 return TransactionOutcome.abstain(true);
             });
         });
@@ -250,8 +350,9 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 UUID group = creation.createWithAdministrator(admin, metadata("Trip", "Old")).id();
                 GroupTestFixture.addMember(jooq.dsl(), group, member, GroupRole.MEMBER);
 
-                assertEquals(Optional.empty(), mutations.lockGroup(UUID.randomUUID()));
-                LockedGroup locked = mutations.lockGroup(group).orElseThrow();
+                assertEquals(Optional.empty(), mutations.lockGroup(UUID.randomUUID(), admin));
+                assertEquals(Optional.empty(), mutations.lockGroup(group, UUID.randomUUID()));
+                LockedGroup locked = mutations.lockGroup(group, admin).orElseThrow();
                 assertEquals(new LockedGroup(group, 0), locked);
                 assertEquals(Optional.of(GroupRole.ADMIN), memberships.memberForUser(locked, admin).map(GroupMember::role));
                 assertEquals(Optional.of(GroupRole.MEMBER), memberships.memberForUser(locked, member).map(GroupMember::role));

@@ -174,6 +174,26 @@ Suggested commit: `P2.2bc-H: Harden and validate group workflows`.
 5. Verify single-use exhaustion, valid already-member redemption without count/role changes, forged/expired/revoked rejection, rejoin, and role protection following administrator removal/demotion. Confirm metadata version remains independent of membership and invitations.
 6. Inspect invitation creation, copy/revoke and acceptance on desktop, tablet and mobile in both themes; check long identifiers, overflow, keyboard focus, Drawer navigation and the existing workspace. Return screenshots or findings and record revision/CI/smoke evidence before Phase I.
 
+## Phase H.1 - Group persistence projection consolidation and CI regression correction
+
+Suggested commit: `P2.2bc-H.1: Consolidate Group persistence projections and caller admission`.
+
+- [x] Consolidate locally established relational facts and retain typed failure semantics, existing schema/API, and the separate post-lock snapshot. Use caller admission on creation or ambiguous projection misses; leave IAM integration to P2.2d/e.
+- [x] Diagnose and correct parallel component-test failures without weakening the closed-world user policy. Add application-path and actual SQL statement-count regression coverage (T19).
+- [x] Update the engineering-quality skill and review checklist with operation-oriented database projections and fixture-lifetime guidance. Maintain authoritative documentation gate.
+- [x] Review, compile, validate and publish an incremental patch against the Phase H tree.
+
+**Review record:**
+
+- P2 - Redundant admission and table-oriented query orchestration: use local-existence-aware root selection, member-scoped read projections, joined membership context with `EXISTS` predicates, and cohesive invitation issuance/redemption projections. Listing invitations no longer acquires a mutation lock; caller role and visible metadata share a read snapshot. Policy and secret verification remain in the application.
+- P1 - Parallel component suites reset shared Spring singleton fixtures: reproduced six failures on the unmodified Phase H tree at four workers. Both suites now declare the same JUnit resource lock covering their fixture lifecycle, including the transaction log. The rest of the suite retains parallel execution; seeded memberships require known users.
+- P2 - Consolidation risked stale authorization during root-lock waits: retain the separate fresh post-lock statement for membership changes and redemption; scope the redemption root lock to the group table. Existing real-transaction contention cases remain in the gate.
+- P2 - Ordinary-member mutation projection could materialize other target facts before policy denial: restrict the target join to administrator or self and test the absent target and false invariant flags.
+- P3 - A revised list projection could expose mutable list results: preserve the service's immutable list contract.
+- P3 - Projection-count regression risk: assert the application port sequence and add a PostgreSQL Integration test counting actual jOOQ executions through a locally derived, segment-guarded configuration.
+
+**Checkpoint evidence:** Original Phase H tree `e24b466987a3147c9aa27e70a4070efc600c9286` reproduced the reported class of parallel failures (19 tests, six failures). Corrected targeted component suites passed with four workers before new tests were added. Full offline `mvn -B -ntp -o -Dmaven.repo.local=<isolated-cache> -Punit-tests -DtestParallelism=4 clean verify` passed 406 tests; final `-DtestParallelism=16 clean verify` (matching GitLab CI) passed 406 tests, zero failures/errors/skips, including Modulith verification and compilation of Integration/E2E tests. The new SQL-count Integration test and existing real PostgreSQL concurrency/rollback tests are not executed in the offline environment. No frontend, dependency, migration or generated-schema change. Human gate 2 remains open.
+
 ## Phase I - Documentation reconciliation
 
 Suggested commit: `P2.2bc-I: Reconcile group management documentation`.

@@ -6,6 +6,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
@@ -33,27 +34,26 @@ public class GroupMetadataService {
 
     public Result<GroupDetails, GroupFailure> replace(ReplaceGroupMetadataCommand command) {
         Objects.requireNonNull(command, "command");
-        admission.requireAuthenticated();
+        UUID userId = admission.requireAuthenticated();
         Result<GroupMetadata, List<MetadataViolation>> metadata = GroupMetadata.parse(command.name(), command.description());
         return switch (metadata) {
             case Result.Err<GroupMetadata, List<MetadataViolation>>(List<MetadataViolation> violations) ->
                 Result.err(new GroupFailure.InvalidMetadata(violations));
             case Result.Ok<GroupMetadata, List<MetadataViolation>>(GroupMetadata valid) -> transactions.execute(() ->
-                GroupOutcomes.mutation(admission.admit()
-                    .flatMap(caller -> replaceLocked(command, valid, caller))));
+                GroupOutcomes.mutation(replaceLocked(command, valid, userId)));
         };
     }
 
     private Result<GroupDetails, GroupFailure> replaceLocked(
-            ReplaceGroupMetadataCommand command, GroupMetadata metadata, CallerAdmission.AdmittedCaller caller) {
-        return access.lockForMember(command.groupId(), caller.userId())
+            ReplaceGroupMetadataCommand command, GroupMetadata metadata, UUID userId) {
+        return access.lockForMember(command.groupId(), userId)
             .flatMap(GroupAccess.Access::requireAdministrator)
             .flatMap(authorized -> {
                 LockedGroup group = authorized.group();
                 if (group.version() != command.expectedVersion()) {
                     return Result.err(new GroupFailure.VersionConflict());
                 }
-                return Result.ok(groups.replaceMetadata(group, caller.userId(), metadata));
+                return Result.ok(groups.replaceMetadata(group, userId, metadata));
             });
     }
 }

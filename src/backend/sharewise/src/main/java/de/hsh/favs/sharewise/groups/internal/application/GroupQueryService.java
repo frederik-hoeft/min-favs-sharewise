@@ -4,7 +4,6 @@ import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
@@ -26,28 +25,24 @@ public class GroupQueryService {
 
     /** The groups in which the caller is a member. */
     public Result<List<GroupSummary>, GroupFailure> listMine() {
-        admission.requireAuthenticated();
-        return transactions.execute(() ->
-            GroupOutcomes.read(admission.admit().map(caller -> List.copyOf(groups.listForMember(caller.userId())))));
+        UUID userId = admission.requireAuthenticated();
+        return transactions.execute(() -> GroupOutcomes.read(
+            admission.resolveProjection(groups.listForMember(userId), new GroupFailure.UnknownUser())
+                .map(List::copyOf)));
     }
 
     /** The group if the caller is a member; a missing group and a non-member are indistinguishable. */
     public Result<GroupDetails, GroupFailure> get(UUID groupId) {
         Objects.requireNonNull(groupId, "groupId");
-        admission.requireAuthenticated();
-        return transactions.execute(() ->
-            GroupOutcomes.read(admission.admit().flatMap(caller -> found(groups.findForMember(groupId, caller.userId())))));
+        UUID userId = admission.requireAuthenticated();
+        return transactions.execute(() -> GroupOutcomes.read(
+            admission.resolveProjection(groups.findForMember(groupId, userId), new GroupFailure.GroupNotFound())));
     }
 
     public Result<GroupWorkspace, GroupFailure> workspace(UUID groupId) {
         Objects.requireNonNull(groupId, "groupId");
-        admission.requireAuthenticated();
-        return transactions.execute(() -> GroupOutcomes.read(admission.admit()
-            .flatMap(caller -> found(groups.findWorkspace(groupId, caller.userId())))));
-    }
-
-    private static <T> Result<T, GroupFailure> found(Optional<T> group) {
-        return group.<Result<T, GroupFailure>>map(Result::ok)
-            .orElseGet(() -> Result.err(new GroupFailure.GroupNotFound()));
+        UUID userId = admission.requireAuthenticated();
+        return transactions.execute(() -> GroupOutcomes.read(
+            admission.resolveProjection(groups.findWorkspace(groupId, userId), new GroupFailure.GroupNotFound())));
     }
 }

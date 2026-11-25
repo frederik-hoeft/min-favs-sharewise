@@ -23,10 +23,12 @@ import java.util.UUID;
 import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 @ComponentTest
+@ResourceLock(GroupApplicationTestConfiguration.FIXTURE_LOCK)
 @SpringJUnitConfig({OperationScopeTestComponents.class, IdentityTestConfiguration.class,
     GroupApplicationTestConfiguration.class})
 class GroupInvitationServiceTests {
@@ -65,6 +67,24 @@ class GroupInvitationServiceTests {
         assertFalse(link.toString().contains(link.token().value()));
     }
 
+    @Test void successfulOperationsUseCohesiveProjectionsWithoutSeparateAdmission() {
+        groups.clearCalls();
+        CreatedInvitation link = create(null, 2);
+        assertEquals(List.of("lock", "role", "issuanceMaterial", "insertInvitation"), groups.calls());
+        groups.clearCalls();
+        assertEquals(List.of(link.invitation()), ok(call(ADMIN, service -> service.list(group))));
+        assertEquals(List.of("invitationList"), groups.calls());
+        groups.clearCalls();
+        assertEquals(InvitationRedemption.Outcome.JOINED, redeem(OUTSIDER, link).outcome());
+        assertEquals(List.of("lock", "redemptionContext", "addMember", "consumeInvitation"), groups.calls());
+        groups.clearCalls();
+        assertEquals(InvitationRedemption.Outcome.ALREADY_MEMBER, redeem(OUTSIDER, link).outcome());
+        assertEquals(List.of("lock", "redemptionContext"), groups.calls());
+        groups.clearCalls();
+        assertEquals(InvitationRevocationStatus.REVOKED, ok(call(ADMIN, service -> service.revoke(group, link.invitation().id()))));
+        assertEquals(List.of("lock", "role", "revokeInvitation"), groups.calls());
+    }
+
     @Test void invalidConstraintsFailWithoutIssuingAnInvitation() {
         Result<CreatedInvitation, GroupFailure> result = call(ADMIN, service ->
             service.create(new CreateInvitationCommand(group, invitations.now, 0)));
@@ -93,6 +113,7 @@ class GroupInvitationServiceTests {
         assertEquals(unavailable, call(OUTSIDER, service -> service.redeem("broken")));
         assertEquals(unavailable, call(OUTSIDER, service -> service.redeem(generator.generate(link.invitation().id()).value())));
         assertEquals(Result.err(new GroupFailure.UnknownUser()), call(UNKNOWN, service -> service.redeem(link.token().value())));
+        assertEquals(Result.err(new GroupFailure.UnknownUser()), call(UNKNOWN, service -> service.redeem("broken")));
         invitations.now = link.invitation().expiresAt();
         assertEquals(unavailable, call(OUTSIDER, service -> service.redeem(link.token().value())));
         assertEquals(0, ok(call(ADMIN, service -> service.list(group))).getFirst().useCount());

@@ -5,16 +5,18 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables
 import de.hsh.favs.sharewise.groups.internal.application.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMembershipPort;
 import de.hsh.favs.sharewise.groups.internal.application.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.MembershipChangeContext;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.jooq.Condition;
+import org.jooq.Field;
 import org.jooq.impl.DSL;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Repository;
-
 
 /** Membership persistence under the group-root mutation protocol. */
 @Repository
@@ -28,26 +30,29 @@ class JooqGroupMemberships implements GroupMembershipPort {
 
     @Override
     public Optional<GroupMember> memberForUser(LockedGroup group, UUID userId) {
-        return findMember(group, GROUP_MEMBERS.USER_ID.eq(userId));
-    }
-
-    @Override
-    public Optional<GroupMember> memberById(LockedGroup group, UUID membershipId) {
-        return findMember(group, GROUP_MEMBERS.ID.eq(membershipId));
-    }
-
-    private Optional<GroupMember> findMember(LockedGroup group, Condition predicate) {
         return database.dsl().select(GROUP_MEMBERS.ID, GROUP_MEMBERS.USER_ID, GROUP_MEMBERS.ROLE,
                 GROUP_MEMBERS.JOINED_AT).from(GROUP_MEMBERS)
-            .where(GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(predicate))
+            .where(GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(GROUP_MEMBERS.USER_ID.eq(userId)))
             .fetchOptional(row -> GroupProjections.member(row, GROUP_MEMBERS));
     }
 
     @Override
-    public int countMembers(LockedGroup group, Optional<GroupRole> role) {
-        Condition predicate = GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(role
-            .map(value -> GROUP_MEMBERS.ROLE.eq(GroupProjections.toDatabase(value))).orElseGet(DSL::noCondition));
-        return database.dsl().fetchCount(GROUP_MEMBERS, predicate);
+    public Optional<MembershipChangeContext> changeContext(LockedGroup group, UUID userId, UUID membershipId) {
+        GroupMembers caller = GROUP_MEMBERS.as("caller");
+        GroupMembers target = GROUP_MEMBERS.as("target");
+        GroupMembers other = GROUP_MEMBERS.as("other_member");
+        Condition otherInGroup = other.GROUP_ID.eq(group.id()).and(other.ID.ne(target.ID));
+        Field<Boolean> otherMembers = DSL.field(DSL.exists(DSL.selectOne().from(other).where(otherInGroup)));
+        Field<Boolean> otherAdmins = DSL.field(DSL.exists(DSL.selectOne().from(other)
+            .where(otherInGroup.and(other.ROLE.eq(GroupProjections.toDatabase(GroupRole.ADMIN))))));
+        return database.dsl().select(caller.ID, caller.USER_ID, caller.ROLE, caller.JOINED_AT,
+                target.ID, target.USER_ID, target.ROLE, target.JOINED_AT, otherMembers, otherAdmins)
+            .from(caller).leftJoin(target).on(target.GROUP_ID.eq(group.id()).and(target.ID.eq(membershipId))
+                .and(caller.ROLE.eq(GroupProjections.toDatabase(GroupRole.ADMIN)).or(target.ID.eq(caller.ID))))
+            .where(caller.GROUP_ID.eq(group.id()).and(caller.USER_ID.eq(userId)))
+            .fetchOptional(row -> new MembershipChangeContext(GroupProjections.member(row, caller),
+                Optional.ofNullable(row.get(target.ID)).map(id -> GroupProjections.member(row, target)),
+                row.get(otherMembers), row.get(otherAdmins)));
     }
 
     @Override

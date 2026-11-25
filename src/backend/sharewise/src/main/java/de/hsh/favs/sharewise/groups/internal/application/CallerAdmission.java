@@ -3,6 +3,7 @@ package de.hsh.favs.sharewise.groups.internal.application;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
@@ -10,9 +11,9 @@ import org.springframework.stereotype.Component;
 /**
  * Admits the verified IAM caller to Group operations when Group Management knows them locally.
  *
- * <p>Every Group operation passes through this service, which is therefore the single place
- * where later tasks extend local-user resolution (for example an authoritative IAM lookup on a
- * local miss). Admission establishes local existence only, never authorization for a group.
+ * <p>Successful member-scoped projections already establish local existence through foreign keys.
+ * Resolve separately only for creation or a projection miss. Later authoritative IAM resolution
+ * belongs here; a resolved miss must retry the relevant projection, not bypass authorization.
  */
 @Component
 @Scope("operation")
@@ -27,8 +28,8 @@ class CallerAdmission {
     }
 
     /** Fails with {@code UnauthenticatedCallerException} before any input validation or database work. */
-    void requireAuthenticated() {
-        identity.requireUserId();
+    UUID requireAuthenticated() {
+        return identity.requireUserId();
     }
 
     /** Resolves the caller against the local registry; must run inside the operation's segment. */
@@ -38,6 +39,12 @@ class CallerAdmission {
             return Result.err(new GroupFailure.UnknownUser());
         }
         return Result.ok(new AdmittedCaller(userId));
+    }
+
+    /** Distinguishes a local identity miss from a known caller without the requested resource. */
+    <T> Result<T, GroupFailure> resolveProjection(Optional<T> projection, GroupFailure missing) {
+        return projection.<Result<T, GroupFailure>>map(Result::ok)
+            .orElseGet(() -> admit().flatMap(caller -> Result.err(missing)));
     }
 
     /** An authenticated caller registered in {@code groups.users}. */

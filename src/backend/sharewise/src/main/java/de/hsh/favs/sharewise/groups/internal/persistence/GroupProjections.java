@@ -1,9 +1,10 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.USERS;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.admin;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole.member;
-import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.GroupMember;
@@ -15,6 +16,7 @@ import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import java.util.Optional;
 import java.util.UUID;
+import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
@@ -33,6 +35,11 @@ final class GroupProjections {
             DSL.selectCount().from(COUNTED).where(COUNTED.GROUP_ID.eq(GROUPS_.ID))).as("member_count");
 
     private GroupProjections() {
+    }
+
+    /** Local existence predicate for aggregate root selection, not group authorization. */
+    static Condition knownUser(UUID userId) {
+        return DSL.exists(DSL.selectOne().from(USERS).where(USERS.ID.eq(userId)));
     }
 
     /** A membership role column, read as the domain role. */

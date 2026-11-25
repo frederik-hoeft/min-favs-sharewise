@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
@@ -33,6 +34,7 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
  * test-only caller identity and in-memory ports (GM-02, GM-03, GM-05 to GM-08).
  */
 @ComponentTest
+@ResourceLock(GroupApplicationTestConfiguration.FIXTURE_LOCK)
 @SpringJUnitConfig({OperationScopeTestComponents.class, IdentityTestConfiguration.class,
     GroupApplicationTestConfiguration.class})
 class GroupApplicationServiceTests {
@@ -127,6 +129,19 @@ class GroupApplicationServiceTests {
     }
 
     @Test
+    void successfulProjectionsAndMembershipChangeDoNotQueryAdmissionSeparately() {
+        UUID group = store.seedGroup(TRIP, 0, Map.of(ALICE, GroupRole.ADMIN, BOB, GroupRole.MEMBER));
+        assertOk(list(ALICE));
+        assertOk(list(STRANGER));
+        assertOk(get(ALICE, group));
+        GroupWorkspace snapshot = assertOk(workspace(ALICE, group));
+        assertEquals(List.of("list", "list", "find", "workspace"), store.calls());
+        store.clearCalls();
+        assertTrue(change(ALICE, group, memberId(snapshot, BOB), new MembershipChange.Remove()).isSuccess());
+        assertEquals(List.of("lock", "changeContext", "remove"), store.calls());
+    }
+
+    @Test
     void missingGroupsAndNonMembersAreIndistinguishable() {
         UUID group = store.seedGroup(TRIP, 0, Map.of(ALICE, GroupRole.ADMIN, BOB, GroupRole.MEMBER));
 
@@ -148,7 +163,7 @@ class GroupApplicationServiceTests {
         assertEquals(new GroupMetadata(new GroupName("Summer trip"), Optional.empty()), updated.metadata());
         assertEquals(4, updated.version());
         assertEquals(4, store.stored(group).orElseThrow().version());
-        assertEquals(List.of("isKnown", "lock", "role", "replace"), store.calls());
+        assertEquals(List.of("lock", "role", "replace"), store.calls());
         assertEquals(List.of(TransactionDecision.COMMIT), transactions.decisions());
     }
 
@@ -213,7 +228,7 @@ class GroupApplicationServiceTests {
         store.clearCalls();
         assertEquals(Result.err(new GroupFailure.AdministratorRequired()), change(BOB, group, foreign,
             new MembershipChange.Remove()));
-        assertEquals(List.of("isKnown", "lock", "role"), store.calls());
+        assertEquals(List.of("lock", "changeContext"), store.calls());
         assertEquals(Result.err(new GroupFailure.GroupNotFound()), change(STRANGER, group, bob,
             new MembershipChange.Remove()));
         assertEquals(Result.err(new GroupFailure.UnknownUser()), change(UNKNOWN, group, bob,

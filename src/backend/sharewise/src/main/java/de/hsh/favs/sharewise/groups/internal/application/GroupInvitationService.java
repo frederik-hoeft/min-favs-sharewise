@@ -28,19 +28,17 @@ public class GroupInvitationService {
 
     private final CallerAdmission admission;
     private final GroupAccess access;
-    private final GroupMutationPort groups;
     private final GroupMembershipPort members;
     private final GroupInvitationPort invitations;
     private final ApplicationTokenGenerator generator;
     private final ApplicationTokenParser parser;
     private final Transactions transactions;
 
-    GroupInvitationService(CallerAdmission admission, GroupAccess access, GroupMutationPort groups,
+    GroupInvitationService(CallerAdmission admission, GroupAccess access,
             GroupMembershipPort members, GroupInvitationPort invitations, ApplicationTokenGenerator generator,
             ApplicationTokenParser parser, Transactions transactions) {
         this.admission = Objects.requireNonNull(admission);
         this.access = Objects.requireNonNull(access);
-        this.groups = Objects.requireNonNull(groups);
         this.members = Objects.requireNonNull(members);
         this.invitations = Objects.requireNonNull(invitations);
         this.generator = Objects.requireNonNull(generator);
@@ -49,43 +47,47 @@ public class GroupInvitationService {
     }
 
     public Result<List<InvitationSummary>, GroupFailure> list(UUID groupId) {
-        admission.requireAuthenticated();
-        return transactions.execute(() -> GroupOutcomes.read(asAdministrator(groupId,
-            group -> Result.ok(List.copyOf(invitations.list(group))))));
+        UUID userId = admission.requireAuthenticated();
+        Objects.requireNonNull(groupId);
+        return transactions.execute(() -> GroupOutcomes.read(admission.resolveProjection(
+            invitations.listForMember(groupId, userId), new GroupFailure.GroupNotFound())
+            .flatMap(listing -> listing.callerRole().isAdministrator() ? Result.ok(listing.invitations())
+                : Result.err(new GroupFailure.AdministratorRequired()))));
     }
 
     public Result<CreatedInvitation, GroupFailure> create(CreateInvitationCommand command) {
         Objects.requireNonNull(command);
-        admission.requireAuthenticated();
-        return transactions.execute(() -> GroupOutcomes.mutation(asAdministrator(command.groupId(),
+        UUID userId = admission.requireAuthenticated();
+        return transactions.execute(() -> GroupOutcomes.mutation(asAdministrator(command.groupId(), userId,
             group -> createLocked(group, command))));
     }
 
     public Result<InvitationRevocationStatus, GroupFailure> revoke(UUID groupId, UUID selector) {
         Objects.requireNonNull(selector);
-        admission.requireAuthenticated();
-        return transactions.execute(() -> GroupOutcomes.mutation(asAdministrator(groupId, group ->
+        UUID userId = admission.requireAuthenticated();
+        return transactions.execute(() -> GroupOutcomes.mutation(asAdministrator(groupId, userId, group ->
             invitations.revoke(group, selector) ? Result.ok(InvitationRevocationStatus.REVOKED)
                 : Result.err(new GroupFailure.InvitationNotFound()))));
     }
 
     public Result<InvitationRedemption, GroupFailure> redeem(String bearer) {
-        admission.requireAuthenticated();
+        UUID userId = admission.requireAuthenticated();
         Optional<ApplicationToken> presented = parser.parse(bearer);
-        return transactions.execute(() -> GroupOutcomes.mutation(admission.admit().flatMap(caller ->
-            presented.<Result<InvitationRedemption, GroupFailure>>map(token -> redeem(caller.userId(), token))
-                .orElseGet(GroupInvitationService::unavailable))));
+        return transactions.execute(() -> GroupOutcomes.mutation(presented
+            .map(token -> redeem(userId, token))
+            .orElseGet(() -> admission.admit().flatMap(caller -> unavailable()))));
     }
 
-    private <T> Result<T, GroupFailure> asAdministrator(UUID groupId,
+    private <T> Result<T, GroupFailure> asAdministrator(UUID groupId, UUID userId,
             Function<LockedGroup, Result<T, GroupFailure>> action) {
         Objects.requireNonNull(groupId);
-        return admission.admit().flatMap(caller -> access.lockForMember(groupId, caller.userId()))
+        return access.lockForMember(groupId, userId)
             .flatMap(GroupAccess.Access::requireAdministrator).flatMap(locked -> action.apply(locked.group()));
     }
 
     private Result<CreatedInvitation, GroupFailure> createLocked(LockedGroup group, CreateInvitationCommand command) {
-        Instant now = invitations.currentTime();
+        InvitationIssuanceMaterial material = invitations.issuanceMaterial(group);
+        Instant now = material.createdAt();
         // PostgreSQL timestamptz has microsecond precision. Validate the exact persisted value.
         Instant expiry = command.expiresAt() == null ? null : command.expiresAt().truncatedTo(ChronoUnit.MICROS);
         Integer limit = command.maxUses();
@@ -99,24 +101,27 @@ public class GroupInvitationService {
         if (!errors.isEmpty()) {
             return Result.err(new GroupFailure.InvalidInvitation(new ValidationErrors(errors)));
         }
-        GeneratedToken token = generator.generate(invitations.newInvitationId());
+        GeneratedToken token = generator.generate(material.selector());
         InvitationSummary created = invitations.insert(group, token.selector(), token.verifierHash(), now, expiry, limit);
         return Result.ok(new CreatedInvitation(created, token));
     }
 
     private Result<InvitationRedemption, GroupFailure> redeem(UUID userId, ApplicationToken token) {
-        // Do not trust the preliminary lookup: revocation may have committed while we waited.
-        Optional<LockedGroup> locked = invitations.groupIdForSelector(token.selector()).flatMap(groups::lockGroup);
-        if (locked.isEmpty()) {
+        // The selector locates the root, never authorizes redemption. Re-read after the lock wait.
+        return admission.resolveProjection(invitations.lockGroupForRedemption(token.selector(), userId),
+            new GroupFailure.InvitationUnavailable()).flatMap(group -> redeemLocked(group, userId, token));
+    }
+
+    private Result<InvitationRedemption, GroupFailure> redeemLocked(LockedGroup group, UUID userId, ApplicationToken token) {
+        Optional<InvitationRedemptionContext> current = invitations.redemptionContext(group, token.selector(), userId);
+        if (current.isEmpty()) {
             return unavailable();
         }
-        LockedGroup group = locked.get();
-        Optional<StoredInvitation> stored = invitations.find(group, token.selector());
-        if (stored.isEmpty() || !stored.get().matches(token)
-                || !stored.get().summary().availableAt(invitations.currentTime())) {
+        InvitationRedemptionContext context = current.get();
+        if (!context.invitation().matches(token) || !context.invitation().summary().availableAt(context.evaluatedAt())) {
             return unavailable();
         }
-        if (members.memberForUser(group, userId).isPresent()) {
+        if (context.alreadyMember()) {
             return Result.ok(new InvitationRedemption(group.id(), InvitationRedemption.Outcome.ALREADY_MEMBER));
         }
         members.addMember(group, userId);

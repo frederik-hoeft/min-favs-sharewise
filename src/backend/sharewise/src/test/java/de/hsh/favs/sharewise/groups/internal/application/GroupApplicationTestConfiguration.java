@@ -17,14 +17,17 @@ import org.springframework.context.annotation.Scope;
     GroupAccess.class, GroupMembershipService.class, GroupInvitationService.class})
 class GroupApplicationTestConfiguration {
 
+    // Spring caches this context; both component suites reset the same singleton fixtures.
+    static final String FIXTURE_LOCK = "group-application-fixtures";
+
     @Bean
     InMemoryGroups inMemoryGroups() {
         return new InMemoryGroups();
     }
 
     @Bean
-    InMemoryInvitations inMemoryInvitations() {
-        return new InMemoryInvitations();
+    InMemoryInvitations inMemoryInvitations(InMemoryGroups groups) {
+        return new InMemoryInvitations(groups);
     }
 
     @Bean

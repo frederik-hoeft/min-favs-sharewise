@@ -38,6 +38,9 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
 
     /** Seeds a group with explicit memberships, bypassing the services. */
     synchronized UUID seedGroup(GroupMetadata metadata, long version, Map<UUID, GroupRole> members) {
+        if (!users.containsAll(members.keySet())) {
+            throw new IllegalStateException("Unknown seeded member");
+        }
         UUID id = UUID.randomUUID();
         groups.put(id, new StoredGroup(id, metadata, version, new LinkedHashMap<>(members)));
         Map<UUID, UUID> ids = new LinkedHashMap<>();
@@ -52,6 +55,10 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
 
     synchronized void clearCalls() {
         calls.clear();
+    }
+
+    synchronized void recordCall(String call) {
+        calls.add(call);
     }
 
     synchronized int writes() {
@@ -86,15 +93,18 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized List<GroupSummary> listForMember(UUID userId) {
+    public synchronized Optional<List<GroupSummary>> listForMember(UUID userId) {
         calls.add("list");
-        return groups.values().stream()
+        if (!users.contains(userId)) {
+            return Optional.empty();
+        }
+        return Optional.of(groups.values().stream()
             .filter(group -> group.members().containsKey(userId))
             .sorted(Comparator.comparing((StoredGroup group) -> group.metadata().name().value().toLowerCase())
                 .thenComparing(StoredGroup::id))
             .map(group -> new GroupSummary(group.id(), group.metadata(), group.members().size(),
                 group.members().get(userId)))
-            .toList();
+            .toList());
     }
 
     @Override
@@ -106,8 +116,11 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized Optional<LockedGroup> lockGroup(UUID groupId) {
+    public synchronized Optional<LockedGroup> lockGroup(UUID groupId, UUID userId) {
         calls.add("lock");
+        if (!users.contains(userId)) {
+            return Optional.empty();
+        }
         return Optional.ofNullable(groups.get(groupId)).map(group -> new LockedGroup(group.id(), group.version()));
     }
 
@@ -130,19 +143,26 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
         return current.members().containsKey(userId) ? Optional.of(member(current, userId)) : Optional.empty();
     }
 
-    @Override
-    public synchronized Optional<GroupMember> memberById(LockedGroup group, UUID membershipId) {
-        calls.add("target");
+    private synchronized Optional<GroupMember> memberById(LockedGroup group, UUID membershipId) {
         StoredGroup current = groups.get(group.id());
         return current.members().keySet().stream().map(user -> member(current, user))
             .filter(member -> member.id().equals(membershipId)).findFirst();
     }
 
     @Override
-    public synchronized int countMembers(LockedGroup group, Optional<GroupRole> role) {
-        calls.add("count");
-        return (int) groups.get(group.id()).members().values().stream()
-            .filter(value -> role.isEmpty() || role.get() == value).count();
+    public synchronized Optional<MembershipChangeContext> changeContext(LockedGroup group, UUID userId, UUID membershipId) {
+        calls.add("changeContext");
+        StoredGroup current = groups.get(group.id());
+        if (!current.members().containsKey(userId)) {
+            return Optional.empty();
+        }
+        GroupMember caller = member(current, userId);
+        Optional<GroupMember> target = caller.role().isAdministrator() || caller.id().equals(membershipId)
+            ? memberById(group, membershipId) : Optional.empty();
+        return Optional.of(new MembershipChangeContext(caller, target,
+            target.isPresent() && current.members().size() > 1,
+            target.isPresent() && current.members().entrySet().stream().anyMatch(entry ->
+                !entry.getKey().equals(target.get().userId()) && entry.getValue().isAdministrator())));
     }
 
     @Override
@@ -168,10 +188,14 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
             throw new IllegalStateException("Membership already exists");
         }
         addMembership(group.id(), userId, GroupRole.MEMBER);
+        calls.add("addMember");
         writes++;
     }
 
     synchronized void addMembership(UUID groupId, UUID userId, GroupRole role) {
+        if (!users.contains(userId)) {
+            throw new IllegalStateException("Unknown member");
+        }
         groups.get(groupId).members().put(userId, role);
         membershipIds.get(groupId).put(userId, UUID.randomUUID());
     }

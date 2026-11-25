@@ -5,6 +5,7 @@ import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
@@ -27,48 +28,47 @@ public class GroupMembershipService {
 
     public Result<MembershipChangeStatus, GroupFailure> change(MembershipChangeCommand command) {
         Objects.requireNonNull(command, "command");
-        admission.requireAuthenticated();
-        return transactions.execute(() -> GroupOutcomes.mutation(admission.admit()
-            .flatMap(caller -> access.lockForMember(command.groupId(), caller.userId()))
-            .flatMap(locked -> changeLocked(locked, command))));
+        UUID userId = admission.requireAuthenticated();
+        return transactions.execute(() -> GroupOutcomes.mutation(access.lockForChange(
+            command.groupId(), userId, command.membershipId())
+            .flatMap(locked -> changeLocked(locked.group(), locked.context(), command))));
     }
 
-    private Result<MembershipChangeStatus, GroupFailure> changeLocked(GroupAccess.Access locked,
+    private Result<MembershipChangeStatus, GroupFailure> changeLocked(LockedGroup group, MembershipChangeContext context,
             MembershipChangeCommand command) {
-        GroupMember caller = locked.caller();
+        GroupMember caller = context.caller();
         boolean self = caller.id().equals(command.membershipId());
         if (!caller.role().isAdministrator() && !(self && command.change() instanceof MembershipChange.Remove)) {
             return Result.err(new GroupFailure.AdministratorRequired());
         }
-        Optional<GroupMember> target = self ? Optional.of(caller)
-            : members.memberById(locked.group(), command.membershipId());
+        Optional<GroupMember> target = context.target();
         if (target.isEmpty()) {
             return Result.err(new GroupFailure.MemberNotFound());
         }
         GroupMember member = target.get();
         return switch (command.change()) {
-            case MembershipChange.SetRole(GroupRole role) -> setRole(locked.group(), member, role);
-            case MembershipChange.Remove() -> remove(locked.group(), member);
-            case MembershipChange.TransferAdministration() -> transfer(locked.group(), caller, member);
+            case MembershipChange.SetRole(GroupRole role) -> setRole(group, member, role, context.hasOtherAdministrators());
+            case MembershipChange.Remove() -> remove(group, member, context);
+            case MembershipChange.TransferAdministration() -> transfer(group, caller, member);
         };
     }
 
-    private Result<MembershipChangeStatus, GroupFailure> setRole(LockedGroup group, GroupMember member, GroupRole role) {
+    private Result<MembershipChangeStatus, GroupFailure> setRole(LockedGroup group, GroupMember member, GroupRole role, boolean hasOtherAdministrators) {
         if (member.role() == role) {
             return completed();
         }
-        if (isLastAdministrator(group, member)) {
+        if (member.role().isAdministrator() && !hasOtherAdministrators) {
             return Result.err(new GroupFailure.LastAdministrator());
         }
         members.setRole(group, member.id(), role);
         return completed();
     }
 
-    private Result<MembershipChangeStatus, GroupFailure> remove(LockedGroup group, GroupMember member) {
-        if (members.countMembers(group, Optional.empty()) <= 1) {
+    private Result<MembershipChangeStatus, GroupFailure> remove(LockedGroup group, GroupMember member, MembershipChangeContext context) {
+        if (!context.hasOtherMembers()) {
             return Result.err(new GroupFailure.LastMember());
         }
-        if (isLastAdministrator(group, member)) {
+        if (member.role().isAdministrator() && !context.hasOtherAdministrators()) {
             return Result.err(new GroupFailure.LastAdministrator());
         }
         members.removeMember(group, member.id());
@@ -85,10 +85,6 @@ public class GroupMembershipService {
         }
         members.setRole(group, caller.id(), GroupRole.MEMBER);
         return completed();
-    }
-
-    private boolean isLastAdministrator(LockedGroup group, GroupMember member) {
-        return member.role().isAdministrator() && members.countMembers(group, Optional.of(GroupRole.ADMIN)) <= 1;
     }
 
     private static Result<MembershipChangeStatus, GroupFailure> completed() {
