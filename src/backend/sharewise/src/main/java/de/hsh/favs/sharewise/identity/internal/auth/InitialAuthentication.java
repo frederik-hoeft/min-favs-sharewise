@@ -1,13 +1,13 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
 import de.hsh.favs.sharewise.identity.internal.auth.session.LoginSession;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenRecord;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -17,12 +17,12 @@ public final class InitialAuthentication {
 
     private final SessionStore sessions;
     private final RefreshTokenStore refreshTokens;
-    private final RefreshCredentialGenerator secrets;
+    private final ApplicationTokenGenerator secrets;
     private final SessionPolicy policy;
     private final AccessTokenIssuer accessTokens;
 
     public InitialAuthentication(SessionStore sessions, RefreshTokenStore refreshTokens,
-            RefreshCredentialGenerator secrets, SessionPolicy policy, AccessTokenIssuer accessTokens) {
+            ApplicationTokenGenerator secrets, SessionPolicy policy, AccessTokenIssuer accessTokens) {
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.refreshTokens = Objects.requireNonNull(refreshTokens, "refreshTokens");
         this.secrets = Objects.requireNonNull(secrets, "secrets");
@@ -39,7 +39,7 @@ public final class InitialAuthentication {
             throw new IllegalStateException("New IAM session has inconsistent state");
         }
         UUID tokenId = refreshTokens.newTokenId();
-        RefreshCredentialGenerator.GeneratedCredential credential = secrets.generate(tokenId);
+        ApplicationTokenGenerator.GeneratedToken credential = secrets.generate(tokenId);
         refreshTokens.insert(new RefreshTokenRecord(tokenId, session.id(), credential.verifierHash(),
                 now, null));
         Instant expiry = policy.accessExpiresAt(now, session.deadlines());

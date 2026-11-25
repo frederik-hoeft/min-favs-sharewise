@@ -70,9 +70,19 @@ Suggested commit: `P2.2b-C: Integrate member administration`.
 
 Suggested commit: `P2.2c-D: Extract reusable opaque application token primitives`.
 
-- [ ] Extract technical generation, canonical parsing and verifier comparison from IAM into `shared::security`; use `ApplicationToken`, `ApplicationTokenGenerator` and DI-managed `ApplicationTokenParser`, redaction and defensive copies. Keep IAM session/cookie/storage policies and behavior intact. Register DI capabilities and declare Group module dependency when used; no cross-module internal imports.
-- [ ] Cover T07 and run full backend Unit/module checks including IAM; compile affected IAM Integration/E2E and review actual call paths for format, replay and logging regressions.
-- [ ] Gate: self-review security-sensitive compatibility; patch. No invitation schema dependency yet.
+- [x] Extract technical generation, canonical parsing and verifier comparison from IAM into `shared::security`; use `ApplicationToken`, `ApplicationTokenGenerator` and DI-managed `ApplicationTokenParser`, redaction and defensive copies. Keep IAM session/cookie/storage policies and behavior intact. Register DI capabilities and declare Group module dependency when used; no cross-module internal imports.
+- [x] Cover T07 and run full backend Unit/module checks including IAM; compile affected IAM Integration/E2E and review actual call paths for format, replay and logging regressions.
+- [x] Gate: self-review security-sensitive compatibility; patch. No invitation schema dependency yet.
+
+**Checkpoint evidence:** 400 backend Unit/component tests passed, including Modulith module structure/verification and IAM regression suites; Integration/E2E sources compiled. Shared token parser and generator are DI-managed singleton capabilities; parsed `ApplicationToken` retains only selector and verifier, and `GeneratedToken` holds the one-time bearer. IAM storage, cookie format and lifecycle remain unchanged. Group dependency declaration awaits Phase F, the first Group consumer. Real PostgreSQL IAM tests remain outstanding.
+
+**Self-review record:**
+
+- P2 - Duplicate generator beans in full-application E2E fixtures: removed the fixture bean and direct internal configuration import so the real shared configuration is discovered through normal application scanning.
+- P2 - Insufficient independent wire compatibility coverage: added a fixed canonical bearer and SHA-256 vector independent of generation.
+- P2 - Conflated wrong-selector and wrong-secret tests: independently vary the selector with a matching verifier, and reject null/incorrect-length stored verifiers.
+- P2 - Missing noncanonical Base64URL alias coverage: verify rejection of nonzero trailing unused bits and null input, retaining the original bounded canonical parser behavior.
+- P3 - Missing generated verifier copy assertion: added a regression test for modification of the returned byte array and redaction.
 
 ## Phase E - Invitation migration and jOOQ handoff
 

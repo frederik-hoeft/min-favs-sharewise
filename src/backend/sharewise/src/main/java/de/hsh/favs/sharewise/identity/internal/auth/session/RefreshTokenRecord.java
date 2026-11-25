@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.auth.session;
 
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationToken;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -18,7 +19,7 @@ public final class RefreshTokenRecord {
         this.id = Objects.requireNonNull(id, "id");
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         Objects.requireNonNull(verifierHash, "verifierHash");
-        if (verifierHash.length != RefreshCredentialGenerator.VERIFIER_BYTES) {
+        if (verifierHash.length != ApplicationToken.VERIFIER_BYTES) {
             throw new IllegalArgumentException("Invalid refresh verifier length");
         }
         this.verifierHash = verifierHash.clone();
