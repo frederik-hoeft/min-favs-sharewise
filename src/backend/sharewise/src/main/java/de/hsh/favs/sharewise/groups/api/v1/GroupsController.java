@@ -36,10 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @ApiAccess
-@RequestMapping(GroupsController.GROUPS_PATH)
+@RequestMapping(GroupApiPaths.GROUPS)
 final class GroupsController {
-
-    static final String GROUPS_PATH = "/api/groups/v1/groups";
 
     private final OperationIngressDispatcher ingress;
 
@@ -53,7 +51,7 @@ final class GroupsController {
         Result<GroupDetails, GroupFailure> result =
             ingress.dispatch(GroupCreationService.class, service -> service.create(command));
         return result.fold(
-            group -> ResponseEntity.created(URI.create(GROUPS_PATH + "/" + group.id()))
+            group -> ResponseEntity.created(URI.create(GroupApiPaths.GROUPS + "/" + group.id()))
                 .body(GroupDetailsResponse.of(group)),
             GroupProblems::response);
     }

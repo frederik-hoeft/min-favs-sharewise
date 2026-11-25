@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 /** HTTP adapter for membership administration. */
 @RestController
 @ApiAccess
-@RequestMapping(GroupsController.GROUPS_PATH)
+@RequestMapping(GroupApiPaths.GROUPS)
 final class GroupMembershipController {
     private final OperationIngressDispatcher ingress;
 

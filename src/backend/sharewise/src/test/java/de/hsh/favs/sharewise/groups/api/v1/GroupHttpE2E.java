@@ -43,7 +43,7 @@ import org.springframework.boot.web.server.servlet.context.ServletWebServerAppli
 @Tag("e2e")
 class GroupHttpE2E {
 
-    private static final String GROUPS = GroupsController.GROUPS_PATH;
+    private static final String GROUPS = GroupApiPaths.GROUPS;
     private static final UUID ALICE = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be401");
     private static final UUID BOB = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be402");
     private static final UUID CAROL = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be403");
@@ -114,6 +114,14 @@ class GroupHttpE2E {
             assertFalse(listed.body().contains("verifier"));
             assertEquals(List.of(32), server.rows("SELECT octet_length(verifier_hash) FROM groups.invitations", row -> row.getInt(1)));
             assertEquals(401, server.send("POST", redeem, Optional.empty(), body).statusCode());
+            for (String invalid : List.of("{\"token\":17}", "{\"token\":[]}", "{\"token\":{}}",
+                    "{\"token\":\"" + token + "\",\"unexpected\":true}")) {
+                HttpResponse<String> malformed = server.send("POST", redeem, BOB, invalid);
+                assertEquals(400, malformed.statusCode());
+                assertEquals("malformed_request", JsonPath.read(malformed.body(), "$.code"));
+                assertFalse(malformed.body().contains(token));
+            }
+            assertEquals(List.of(0), server.rows("SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
             HttpResponse<String> joined = server.send("POST", redeem, BOB, body);
             assertEquals(200, joined.statusCode(), joined.body());
             assertEquals(group, JsonPath.read(joined.body(), "$.groupId"));

@@ -837,12 +837,46 @@ describe("GI-FT16 invitation management", () => {
     expect(await screen.findByText(/select and copy the link manually/i)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Close link" }));
     expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "Revoke link" }));
+    const revokeButton = await screen.findByRole("button", { name: "Revoke link" });
+    expect(revokeButton).toHaveAccessibleDescription(INVITATION_ID);
+    await user.click(revokeButton);
     const dialog = screen.getByRole("dialog", { name: "Revoke invitation?" });
+    expect(within(dialog).getByText(`Invitation ${INVITATION_ID}`)).toBeVisible();
     expect(fake.requests.filter(r => r.method === "DELETE")).toHaveLength(0);
     await user.click(within(dialog).getByRole("button", { name: "Revoke link" }));
     expect(await screen.findByText("No invitation links yet.")).toBeVisible();
     expect(fake.requests.filter(r => r.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("rejects an invalid custom limit instead of silently clamping it to one use", async () => {
+    fake.respond("GET", INVITATIONS, json(200, { items: [] }));
+    const user = await openInvitations();
+    await screen.findByText("No invitation links yet.");
+    await user.selectOptions(screen.getByLabelText("Maximum uses"), "finite");
+    const limit = screen.getByLabelText("Usage limit");
+    await user.clear(limit);
+    await user.type(limit, "0");
+    await user.click(screen.getByRole("button", { name: "Create link" }));
+    expect(await screen.findByText(/enter a whole number of uses/i)).toBeVisible();
+    expect(fake.requests.filter(request => request.method === "POST")).toHaveLength(0);
+  });
+
+  it("does not deliver a delayed invitation secret to a replacement session", async () => {
+    const pending = deferred<Response>();
+    fake.respond("GET", INVITATIONS, json(200, { items: [] }));
+    fake.respond("POST", INVITATIONS, pending.promise);
+    const user = await openInvitations();
+    await screen.findByText("No invitation links yet.");
+    await user.click(screen.getByRole("button", { name: "Create link" }));
+    await waitFor(() => expect(fake.requests.filter(request => request.method === "POST")).toHaveLength(1));
+    fake.respond("GET", WORKSPACE, json(200, workspace({ callerRole: "member" })));
+    await act(async () => runtime.session.accept(authenticationResponse("replacement", undefined, SESSION_TWO)));
+    await screen.findByLabelText("Your role: Member");
+    await act(async () => pending.resolve(json(201, { invitation, token: INVITATION_TOKEN })));
+    await settlePendingWork();
+    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Manage invitation links" })).not.toBeInTheDocument();
+    expect(fake.requests.filter(request => request.path === INVITATIONS && request.method === "GET")).toHaveLength(1);
   });
 
   it("reconciles uncertain creation without replaying and does not reveal a lost secret", async () => {

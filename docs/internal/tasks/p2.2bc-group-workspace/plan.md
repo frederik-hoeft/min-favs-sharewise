@@ -151,9 +151,28 @@ Suggested commit: `P2.2c-G: Integrate invitation creation and acceptance workflo
 
 Suggested commit: `P2.2bc-H: Harden and validate group workflows`.
 
-- [ ] Review complete feature branch against specification, shared code reuse, transaction/authorization paths, concurrency and data ownership, async resource/route lifetimes, secrets, static deployment and test quality. Iterate fixes with tests; inspect complete UI at desktop/mobile/intermediate widths and long content. Run all available checks and report remaining database/Compose gates.
-- [ ] Publish final implementation checkpoint, aggregate summary (including any deviations), ordered replay manifest, screenshot evidence and manual acceptance scenarios. Do not claim database or human acceptance before evidence.
+- [x] Review complete feature branch against specification, shared code reuse, transaction/authorization paths, concurrency and data ownership, async resource/route lifetimes, secrets, static deployment and test quality. Iterate fixes with tests and run available checks. Browser inspection of the invitation UI remains a human acceptance item (managed Chromium navigation policy).
+- [x] Prepare final implementation checkpoint, aggregate summary, ordered replay manifest and manual acceptance scenarios. Earlier group screenshots were accepted at gate 1; no new invitation screenshots are claimed.
 - [ ] **STOP 2 (human):** Maintainer applies remaining patches, runs all real PostgreSQL suites/schema freshness and CI, production Compose smoke plus representative workflows, manual acceptance and aggregate review. Resolve findings with incremental follow-ups before documentation. Record tested revision and feedback.
+
+**Self-review record:**
+
+- P2 - Custom invitation usage input silently clamped invalid values on blur: disabled clamping and verified that zero produces no POST.
+- P2 - Missing delayed issuance/session-replacement regression: verified that the abandoned administrator response cannot disclose its bearer or reload invitations under the replacement session.
+- P2 - Missing malformed redemption HTTP boundary coverage: added non-string and unknown-field inputs, verified the intended uniform malformed-request code, non-disclosure and unchanged usage; execution awaits PostgreSQL CI.
+- P3 - Revoke confirmation lacked target identification: show the selected nonsecret invitation ID and associate row actions with that ID for assistive technology.
+- P3 - Membership controller depended on another controller's route constant: extracted package-local HTTP path vocabulary without changing endpoint paths.
+
+**Checkpoint evidence:** Offline backend clean verify (404 Unit/component tests and module verification), database test compilation, frontend 337 tests, lint, both TypeScript checks, standalone and static builds passed. Full feature-branch diff reviewed, including group-root lock ordering, authorization, membership invariants, shared token compatibility, secret disposal, uncertain writes, and static navigation. No manual modifications to generated schema, no dependency changes, no authoritative documentation changes. Full database-backed tests and real Compose smoke remain unexecuted locally. Static HTTP route/asset checks (including `/invite`) and all 59 source-level deployment-contract tests passed; these do not substitute for real Compose acceptance.
+
+**Human gate 2 acceptance checklist:**
+
+1. Apply the post-codegen patches in order; verify CI on the resulting revision. Run the Integration and E2E profiles against PostgreSQL 18, including schema freshness and the new concurrency/rollback cases. Run the production Compose acceptance stack.
+2. Provision at least three test accounts through the existing Group admission procedure (P2.2d/e remain deferred). Confirm old IAM login/refresh/password-change behavior, including concurrent renewal.
+3. As administrator, create single-use, finite multi-use and unlimited invitations with and without expiry. Confirm list metadata contains no token or verifier; copy, close and confirm the secret cannot be retrieved. Try invalid usage limits and revoke the intended link, including expired and exhausted links.
+4. Open a fragment link in another tab/browser, both already signed in and signed out. Exercise login and registration detours, explicit confirmation, cancellation, reload recovery, and account replacement. Verify that the token does not enter the return query, storage, HTTP request URL or ordinary logs. No join occurs until explicit POST.
+5. Verify single-use exhaustion, valid already-member redemption without count/role changes, forged/expired/revoked rejection, rejoin, and role protection following administrator removal/demotion. Confirm metadata version remains independent of membership and invitations.
+6. Inspect invitation creation, copy/revoke and acceptance on desktop, tablet and mobile in both themes; check long identifiers, overflow, keyboard focus, Drawer navigation and the existing workspace. Return screenshots or findings and record revision/CI/smoke evidence before Phase I.
 
 ## Phase I - Documentation reconciliation
 

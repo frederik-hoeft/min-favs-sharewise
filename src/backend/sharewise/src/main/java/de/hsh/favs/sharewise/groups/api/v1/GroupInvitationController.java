@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 /** Invitation administration and explicit bearer redemption. */
 @RestController
 @ApiAccess
-@RequestMapping("/api/groups/v1")
+@RequestMapping(GroupApiPaths.BASE)
 final class GroupInvitationController {
     private static final String INVITATIONS = "/groups/{groupId}/invitations";
     private final OperationIngressDispatcher ingress;

@@ -134,7 +134,7 @@ export function InvitationManagement({ groupId, onClose, onProblem }: { groupId:
             data={[{ value: "1", label: "1 day" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "never", label: "Never" }]} />
           <NativeSelect label="Maximum uses" value={limitKind} onChange={event => setLimitKind(event.currentTarget.value)} disabled={blocked || secret !== null}
             data={[{ value: "single", label: "Single use" }, { value: "finite", label: "Custom limit" }, { value: "unlimited", label: "Unlimited" }]} />
-          {limitKind === "finite" ? <NumberInput label="Usage limit" min={1} max={MAX_USES} allowDecimal={false} value={limit} onChange={setLimit} disabled={blocked || secret !== null} /> : null}
+          {limitKind === "finite" ? <NumberInput label="Usage limit" min={1} max={MAX_USES} clampBehavior="none" allowDecimal={false} value={limit} onChange={setLimit} disabled={blocked || secret !== null} /> : null}
           <Button type="submit" leftSection={<LinkSimpleIcon aria-hidden="true" />} loading={operation.pending === "create"} disabled={blocked || secret !== null || state.status !== "ready"}>Create link</Button>
         </Stack>
       </form>
@@ -154,10 +154,10 @@ export function InvitationManagement({ groupId, onClose, onProblem }: { groupId:
                   <Badge variant="light">{invitationStatus(invitation)}</Badge>
                   <Text size="sm" c="dimmed">{invitation.useCount} / {invitation.maxUses ?? "unlimited"} uses</Text>
                 </Group>
-                <Text size="sm" className={styles.wrap}>{invitation.id}</Text>
+                <Text id={`invitation-id-${invitation.id}`} size="sm" className={styles.wrap}>{invitation.id}</Text>
                 <Text size="xs" c="dimmed">Created {formatInstant(invitation.createdAt)}</Text>
                 <Text size="xs" c="dimmed">{invitation.expiresAt ? `Expires ${formatInstant(invitation.expiresAt)}` : "No expiration"}</Text>
-                <Button color="red" variant="subtle" disabled={blocked || secret !== null} onClick={event => {
+                <Button color="red" variant="subtle" aria-describedby={`invitation-id-${invitation.id}`} disabled={blocked || secret !== null} onClick={event => {
                   if (operation.isRunning()) return;
                   restoreFocus.current = event.currentTarget;
                   restorePending.current = false;
@@ -170,6 +170,7 @@ export function InvitationManagement({ groupId, onClose, onProblem }: { groupId:
     </Card>
     {confirmation ? <ConfirmationDialog title="Revoke invitation?" confirmLabel="Revoke link" danger pending={operation.pending === "revoke"}
       onConfirm={revoke} onCancel={() => { if (!operation.isRunning()) { setConfirmation(null); restorePending.current = true; } }}>
+      <Text size="sm" className={styles.wrap}>Invitation {confirmation.id}</Text>
       <Text size="sm">This link will stop working immediately. Existing group memberships will not be affected.</Text>
     </ConfirmationDialog> : null}
   </Stack>;
