@@ -2,6 +2,7 @@ package de.hsh.favs.sharewise.groups.internal.application;
 
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
 import java.util.List;
+import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
 
 /** Expected, typed outcomes that end a Group operation without changing persistent state. */
 public sealed interface GroupFailure {
@@ -32,4 +33,7 @@ public sealed interface GroupFailure {
     record LastMember() implements GroupFailure { }
     record LastAdministrator() implements GroupFailure { }
     record InvalidTransfer() implements GroupFailure { }
+    record InvalidInvitation(ValidationErrors errors) implements GroupFailure { }
+    record InvitationNotFound() implements GroupFailure { }
+    record InvitationUnavailable() implements GroupFailure { }
 }

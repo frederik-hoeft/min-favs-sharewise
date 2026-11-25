@@ -18,6 +18,9 @@ public interface GroupMembershipPort {
     /** Changes exactly one current membership under the root lock. */
     void setRole(LockedGroup group, UUID membershipId, GroupRole role);
 
+    /** Inserts a new ordinary member under the root lock. */
+    void addMember(LockedGroup group, UUID userId);
+
     /** Deletes exactly one current membership under the root lock. */
     void removeMember(LockedGroup group, UUID membershipId);
 

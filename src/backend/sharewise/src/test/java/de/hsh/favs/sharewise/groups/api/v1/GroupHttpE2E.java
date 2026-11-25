@@ -89,6 +89,48 @@ class GroupHttpE2E {
     }
 
     @Test
+    void invitationHttpLifecycleKeepsSecretsOneTimeAndChecksLiveAuthorization() throws Exception {
+        withServer(server -> {
+            GroupTestFixture.provision(server.fixture(), ALICE, BOB, CAROL);
+            String group = server.create(ALICE, "Trip");
+            String invitations = GROUPS + "/" + group + "/invitations";
+            String redeem = "/api/groups/v1/invitations/redeem";
+            assertEquals(404, server.send("GET", invitations, BOB, null).statusCode());
+            assertEquals(400, server.send("POST", invitations, ALICE, "{\"maxUses\":0}").statusCode());
+            for (String invalid : List.of("{\"maxUses\":1.5}", "{\"maxUses\":\"2\"}", "{\"expiresAt\":1234567890}")) {
+                assertEquals(400, server.send("POST", invitations, ALICE, invalid).statusCode());
+            }
+            HttpResponse<String> created = server.send("POST", invitations, ALICE, "{\"maxUses\":2}");
+            assertEquals(201, created.statusCode(), created.body());
+            assertTrue(created.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+            String token = JsonPath.read(created.body(), "$.token");
+            String id = JsonPath.read(created.body(), "$.invitation.id");
+            assertTrue(token.startsWith(id + "."));
+            String body = "{\"token\":\"" + token + "\"}";
+            HttpResponse<String> listed = server.send("GET", invitations, ALICE, null);
+            assertEquals(200, listed.statusCode());
+            assertEquals(id, JsonPath.read(listed.body(), "$.items[0].id"));
+            assertFalse(listed.body().contains(token));
+            assertFalse(listed.body().contains("verifier"));
+            assertEquals(List.of(32), server.rows("SELECT octet_length(verifier_hash) FROM groups.invitations", row -> row.getInt(1)));
+            assertEquals(401, server.send("POST", redeem, Optional.empty(), body).statusCode());
+            HttpResponse<String> joined = server.send("POST", redeem, BOB, body);
+            assertEquals(200, joined.statusCode(), joined.body());
+            assertEquals(group, JsonPath.read(joined.body(), "$.groupId"));
+            assertEquals("joined", JsonPath.read(joined.body(), "$.outcome"));
+            assertEquals("already_member", JsonPath.read(server.send("POST", redeem, BOB, body).body(), "$.outcome"));
+            assertEquals(403, server.send("GET", invitations, BOB, null).statusCode());
+            assertEquals(403, server.send("DELETE", invitations + "/" + id, BOB, null).statusCode());
+            assertEquals(List.of(1), server.rows("SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
+            assertEquals(204, server.send("DELETE", invitations + "/" + id, ALICE, null).statusCode());
+            HttpResponse<String> rejected = server.send("POST", redeem, CAROL, body);
+            assertEquals(404, rejected.statusCode());
+            assertEquals("group_invitation_unavailable", JsonPath.read(rejected.body(), "$.code"));
+            assertFalse(rejected.body().contains(token));
+        });
+    }
+
+    @Test
     void callersUnknownToGroupManagementAreRejectedOnEveryEndpointWithoutWrites() throws Exception {
         withServer(server -> {
             GroupTestFixture.provision(server.fixture(), ALICE);

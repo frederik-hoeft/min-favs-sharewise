@@ -6,6 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.groups.internal.application.CreateGroupCommand;
+import de.hsh.favs.sharewise.groups.internal.application.CreateInvitationCommand;
+import de.hsh.favs.sharewise.groups.internal.application.CreatedInvitation;
+import de.hsh.favs.sharewise.groups.internal.application.GroupInvitationService;
+import de.hsh.favs.sharewise.groups.internal.application.InvitationRedemption;
 import de.hsh.favs.sharewise.groups.internal.application.GroupCreationPort;
 import de.hsh.favs.sharewise.groups.internal.application.GroupCreationService;
 import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
@@ -40,6 +44,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -286,6 +292,132 @@ class GroupOperationsE2E extends E2ETestBase {
             }
             assertEquals(List.of("admin"), query(fixture, "SELECT role FROM groups.group_members", row -> row.getString(1)));
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void unlimitedInvitationAllowsRejoiningWithoutResettingUsageOrMembershipIdentity() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            CreatedInvitation link = invitation(fixture, group, null, null);
+            assertEquals(InvitationRedemption.Outcome.ALREADY_MEMBER, ok(redeem(fixture, ALICE, link)).outcome());
+            assertEquals(InvitationRedemption.Outcome.JOINED, ok(redeem(fixture, BOB, link)).outcome());
+            UUID first = workspace(fixture, BOB, group).callerMembershipId();
+            assertEquals(InvitationRedemption.Outcome.ALREADY_MEMBER, ok(redeem(fixture, BOB, link)).outcome());
+            ok(change(fixture, BOB, group, first, new MembershipChange.Remove()));
+            assertEquals(InvitationRedemption.Outcome.JOINED, ok(redeem(fixture, BOB, link)).outcome());
+            GroupWorkspace current = workspace(fixture, BOB, group);
+            assertTrue(!first.equals(current.callerMembershipId()));
+            assertEquals(GroupRole.MEMBER, current.group().callerRole());
+            assertEquals(GroupRole.ADMIN, workspace(fixture, ALICE, group).group().callerRole());
+            assertEquals(List.of(2), query(fixture, "SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void singleUseInvitationSerializesCompetingRedemptions() {
+        runTest(fixture -> {
+            UUID carol = UUID.randomUUID();
+            GroupTestFixture.provision(fixture, ALICE, BOB, carol);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            CreatedInvitation link = invitation(fixture, group, null, 1);
+            try (Connection holder = lockGroup(fixture, group);
+                 ExecutorService callers = Executors.newFixedThreadPool(2)) {
+                Future<Result<InvitationRedemption, GroupFailure>> bob = callers.submit(() -> redeem(fixture, BOB, link));
+                Future<Result<InvitationRedemption, GroupFailure>> other = callers.submit(() -> redeem(fixture, carol, link));
+                awaitLockWaiters(fixture, 2);
+                holder.commit();
+                List<Result<InvitationRedemption, GroupFailure>> results = List.of(
+                    bob.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS), other.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+                assertEquals(1, results.stream().filter(Result::isSuccess).count());
+                assertTrue(results.contains(Result.err(new GroupFailure.InvitationUnavailable())));
+            }
+            assertEquals(List.of(1), query(fixture, "SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
+            assertEquals(List.of(2L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
+            assertEquals(List.of(0L), query(fixture, "SELECT version FROM groups.groups", row -> row.getLong(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void redemptionRereadsInvitationAfterRevocationCommits() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            CreatedInvitation link = invitation(fixture, group, null, null);
+            try (Connection holder = lockGroup(fixture, group);
+                 ExecutorService callers = Executors.newSingleThreadExecutor()) {
+                Future<Result<InvitationRedemption, GroupFailure>> redemption = callers.submit(() -> redeem(fixture, BOB, link));
+                awaitLockWaiters(fixture, 1);
+                try (PreparedStatement revoke = holder.prepareStatement("DELETE FROM groups.invitations WHERE id = ?")) {
+                    revoke.setObject(1, link.invitation().id());
+                    assertEquals(1, revoke.executeUpdate());
+                }
+                holder.commit();
+                assertEquals(Result.err(new GroupFailure.InvitationUnavailable()), redemption.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+            }
+            assertEquals(List.of(1L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void invitationExpiresWhileRedemptionWaitsForGroupLock() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            // Obtain a deadline using the database clock, not the test JVM clock.
+            Instant deadline = query(fixture, "SELECT clock_timestamp() + interval '5 seconds'",
+                row -> row.getObject(1, OffsetDateTime.class).toInstant()).getFirst();
+            CreatedInvitation link = invitation(fixture, group, deadline, null);
+            try (Connection holder = lockGroup(fixture, group);
+                 ExecutorService callers = Executors.newSingleThreadExecutor()) {
+                Future<Result<InvitationRedemption, GroupFailure>> redemption = callers.submit(() -> redeem(fixture, BOB, link));
+                awaitLockWaiters(fixture, 1);
+                // Ensure this actually exercises a request whose transaction began before expiry.
+                try (PreparedStatement started = holder.prepareStatement("""
+                        SELECT xact_start < ? FROM pg_stat_activity
+                        WHERE datname = current_database() AND wait_event_type = 'Lock'""")) {
+                    started.setObject(1, deadline.atOffset(ZoneOffset.UTC));
+                    try (ResultSet rows = started.executeQuery()) {
+                        assertTrue(rows.next() && rows.getBoolean(1), "redemption must begin before expiry");
+                    }
+                }
+                // Wait until the authoritative database clock passes the stored deadline.
+                try (PreparedStatement wait = holder.prepareStatement("SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM (?::timestamptz - clock_timestamp()))))")) {
+                    wait.setObject(1, deadline.atOffset(ZoneOffset.UTC));
+                    wait.execute();
+                }
+                holder.commit();
+                assertEquals(Result.err(new GroupFailure.InvitationUnavailable()), redemption.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+            }
+            assertEquals(List.of(0), query(fixture, "SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
+            assertEquals(List.of(1L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    @Test
+    void invitationCountFailureRollsBackMembershipInsert() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            CreatedInvitation link = invitation(fixture, group, null, null);
+            // Add a real database constraint in the disposable schema to force the second write to fail.
+            try (Connection connection = fixture.database().connectAsMigrator(); Statement ddl = connection.createStatement()) {
+                ddl.execute("ALTER TABLE groups.invitations ADD CONSTRAINT test_no_consumption CHECK (use_count = 0)");
+            }
+            assertThrows(RuntimeException.class, () -> redeem(fixture, BOB, link));
+            assertEquals(List.of(1L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
+            assertEquals(List.of(0), query(fixture, "SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    private static CreatedInvitation invitation(IntegrationTestContext fixture, UUID group, Instant expires, Integer limit) {
+        return ok(withUser(ALICE, () -> dispatcher(fixture).dispatch(GroupInvitationService.class,
+            service -> service.create(new CreateInvitationCommand(group, expires, limit)))));
+    }
+
+    private static Result<InvitationRedemption, GroupFailure> redeem(IntegrationTestContext fixture, UUID user, CreatedInvitation link) {
+        return withUser(user, () -> dispatcher(fixture).dispatch(GroupInvitationService.class,
+            service -> service.redeem(link.token().value())));
     }
 
     private static GroupWorkspace workspace(IntegrationTestContext fixture, UUID caller, UUID group) {

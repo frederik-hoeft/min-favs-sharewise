@@ -162,6 +162,15 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
         writes++;
     }
 
+    @Override
+    public synchronized void addMember(LockedGroup group, UUID userId) {
+        if (groups.get(group.id()).members().containsKey(userId)) {
+            throw new IllegalStateException("Membership already exists");
+        }
+        addMembership(group.id(), userId, GroupRole.MEMBER);
+        writes++;
+    }
+
     synchronized void addMembership(UUID groupId, UUID userId, GroupRole role) {
         groups.get(groupId).members().put(userId, role);
         membershipIds.get(groupId).put(userId, UUID.randomUUID());

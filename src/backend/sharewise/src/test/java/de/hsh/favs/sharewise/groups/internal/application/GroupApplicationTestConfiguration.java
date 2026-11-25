@@ -1,5 +1,7 @@
 package de.hsh.favs.sharewise.groups.internal.application;
 
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenParser;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -12,12 +14,27 @@ import org.springframework.context.annotation.Scope;
  */
 @TestConfiguration(proxyBeanMethods = false)
 @Import({CallerAdmission.class, GroupCreationService.class, GroupQueryService.class, GroupMetadataService.class,
-    GroupAccess.class, GroupMembershipService.class})
+    GroupAccess.class, GroupMembershipService.class, GroupInvitationService.class})
 class GroupApplicationTestConfiguration {
 
     @Bean
     InMemoryGroups inMemoryGroups() {
         return new InMemoryGroups();
+    }
+
+    @Bean
+    InMemoryInvitations inMemoryInvitations() {
+        return new InMemoryInvitations();
+    }
+
+    @Bean
+    ApplicationTokenGenerator tokenGenerator() {
+        return new ApplicationTokenGenerator();
+    }
+
+    @Bean
+    ApplicationTokenParser tokenParser() {
+        return new ApplicationTokenParser();
     }
 
     @Bean

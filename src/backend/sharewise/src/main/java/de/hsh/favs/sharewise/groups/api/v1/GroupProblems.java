@@ -48,6 +48,11 @@ final class GroupProblems {
                 "Last Group Administrator", "A group must retain at least one administrator.");
             case GroupFailure.InvalidTransfer() -> ApiProblems.response(HttpStatus.CONFLICT, "group_invalid_transfer",
                 "Invalid Administration Transfer", "Select another member to transfer administration.");
+            case GroupFailure.InvalidInvitation invalid -> throw RequestValidationException.from(invalid.errors());
+            case GroupFailure.InvitationNotFound() -> ApiProblems.response(HttpStatus.NOT_FOUND, "group_invitation_not_found",
+                "Invitation Not Found", "This invitation is no longer available in the group.");
+            case GroupFailure.InvitationUnavailable() -> ApiProblems.response(HttpStatus.NOT_FOUND, "group_invitation_unavailable",
+                "Invitation Unavailable", "This invitation is invalid or no longer available.");
             case GroupFailure.VersionConflict() -> ApiProblems.response(HttpStatus.CONFLICT, VERSION_CONFLICT,
                 "Group Version Conflict", "The group has changed since you last read it.");
         };

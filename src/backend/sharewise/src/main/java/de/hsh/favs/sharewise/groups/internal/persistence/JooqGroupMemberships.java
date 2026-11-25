@@ -57,6 +57,14 @@ class JooqGroupMemberships implements GroupMembershipPort {
     }
 
     @Override
+    public void addMember(LockedGroup group, UUID userId) {
+        requireChanged(database.dsl().insertInto(GROUP_MEMBERS)
+            .set(GROUP_MEMBERS.GROUP_ID, group.id())
+            .set(GROUP_MEMBERS.USER_ID, userId)
+            .set(GROUP_MEMBERS.ROLE, GroupProjections.toDatabase(GroupRole.MEMBER)).execute());
+    }
+
+    @Override
     public void removeMember(LockedGroup group, UUID membershipId) {
         requireChanged(database.dsl().deleteFrom(GROUP_MEMBERS)
             .where(GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(GROUP_MEMBERS.ID.eq(membershipId))).execute());

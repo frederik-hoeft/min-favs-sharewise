@@ -111,9 +111,18 @@ Suggested commit: `P2.2c-E: Define invitation persistence schema`.
 Suggested commits: `P2.2c-F0: Integrate generated Group schema` (human-supplied diff checkpoint), `P2.2c-F: Implement secure shareable invitations`.
 
 - [x] Verify and apply maintainer-supplied generated patch against exact migration state, record hash/tree, run offline compile/Unit; publish integration checkpoint before dependent changes. Do not modify generated code manually.
-- [ ] Implement invitation ports, adapters and operation-scoped services using Group root lock and shared opaque primitives; create/list/revoke/redeem HTTP contracts with uniform unavailable failures, bounded inputs, current expiry and atomic membership/count updates. Ensure no secret in diagnostics or noncreation projections.
-- [ ] Cover T08–T12 including real commits, races and rollback. Audit all paths against current Group role/admission and existing IAM behavior. No new profile lookup, events or deletion path.
-- [ ] Gate: backend Unit/module checks and compiled DB tests; self-review and patch.
+- [x] Implement invitation ports, adapters and operation-scoped services using Group root lock and shared opaque primitives; create/list/revoke/redeem HTTP contracts with uniform unavailable failures, bounded inputs, current expiry and atomic membership/count updates. Ensure no secret in diagnostics or noncreation projections.
+- [x] Cover T08–T12 including real commits, races and rollback. Audit all paths against current Group role/admission and existing IAM behavior. No new profile lookup, events or deletion path.
+- [x] Gate: backend Unit/module checks and compiled DB tests; self-review and patch.
+
+**Checkpoint evidence:** Offline clean verify passed with 404 Unit/component tests and module verification; all Integration/E2E sources compiled. Dedicated invitation controller, application service and persistence port/adapter; root-lock re-read, database wall-clock expiry, uniform unavailable responses, one-time bearer disclosure and atomic member/count mutations. Added real PostgreSQL competing redemption, revocation and expiry during lock wait, rollback, rejoin and HTTP lifecycle cases; execution awaits maintainer CI. The shared application-token mechanism is reused unchanged. HTTP expiry is an ISO instant bounded to year 9999, persisted at microsecond precision; maximum uses is an integer, and Jackson rejects fractional integer coercion globally.
+
+**Self-review record:**
+
+- P2 - Application summary leaked into HTTP serialization contract: introduced dedicated nonsecret HTTP response projection.
+- P3 - Invitation revocation reused membership outcome type: introduced invitation-specific status.
+- P2 - Ambiguous timestamp and fractional usage inputs: parse an ISO instant explicitly, reject float-to-integer coercion and add HTTP rejection cases.
+- P2 - Expiry race coverage: exercise database wall-clock expiry after waiting on the aggregate lock; database execution outstanding.
 
 ## Phase G - Invitation frontend and continuation
 
