@@ -64,9 +64,17 @@ The [local-development skill](https://github.com/frederik-hoeft/custom-skills/bl
 
 The [general development workflow](ai-development-workflow.md) governs task discussion, `specification.md`, `plan.md`, implementation and acceptance. ChatGPT conversations are the discussion and delivery medium; the Git branch and approved documentation remain the durable task record.
 
+For a substantial task with an approved specification and plan, the maintainer can explicitly select the [autonomous implementation extension](ai-development-workflow.md#autonomous-implementation-extension). Agree on the stop points and any exception permitting local execution before upstream patch application. For example, after approving both task artifacts:
+
+```text
+Use the autonomous implementation extension for this approved plan. Publish a reviewed, verified incremental patch and phase report before continuing to the next phase. Stop at the human gates recorded in the plan, including any external code-generation handoff and aggregate implementation acceptance before documentation. Ask for approval before material changes to the agreed scope or architecture. Do not merge or mark the backlog complete without final authorization.
+```
+
+Without explicit authorization, use the default gated workflow.
+
 ## 5. Apply and review ChatGPT patches
 
-The task agent exports a downloadable `.patch` file against the agreed baseline or the last accepted state. Download the patch and review its contents while staging the changes, before committing. [Fork](https://git-fork.com/) supports **Repository → Apply Patch…**, diff review and selective staging.
+The task agent exports a downloadable `.patch` file against the agreed baseline or the last accepted state (the preceding published checkpoint during authorized autonomous execution). Download the patch and review its contents while staging the changes, before committing. [Fork](https://git-fork.com/) supports **Repository → Apply Patch…**, diff review and selective staging.
 
 ![Fork's Repository menu contains Apply Patch.](assets/fork-apply-patch.png)
 
@@ -89,6 +97,18 @@ git diff --cached
 New files require explicit staging. If a patch fails to apply cleanly, verify the baseline and request a corrected patch; do not force incompatible hunks. Tell the task agent about locally adjusted or rejected changes so subsequent patches match the actual accepted state.
 
 If ChatGPT's container resets, reconstruct it from the saved source ZIP and accepted patches, or provide a new archive of the current branch. Downloadable artifacts and committed Git changes are the durable handoff.
+
+### Autonomous patch exchange and recovery
+
+The agent publishes each reviewed phase as a separately downloadable incremental patch, together with its self-review record and validation report. Maintain an ordered manifest containing the patch filename, intended commit message, SHA-256 digest, predecessor tree and resulting tree. Local commit IDs may differ from those on GitLab because the archive contains no Git history; matching Git tree IDs establish that the tracked source contents match. Record the upstream baseline commit separately when known.
+
+The agent verifies each patch against its predecessor using a disposable Git index or checkout. Start from the recorded predecessor tree. For a binary Git diff, verify the digest with `sha256sum`, check with `git apply --check`, apply and stage the full patch (for example, with `git apply --index`), then compare `git write-tree` to the expected resulting tree. For a format-patch with commit metadata, verify the digest, use `git am` in a disposable checkout, and compare `git rev-parse HEAD^{tree}`. Verification occurs before publication, not only when the maintainer later integrates the changes. A handoff archive may bundle the exact ordered patches and manifest, but does not replace incremental review.
+
+Download the artifacts and retain the original source ZIP. At each agreed human gate, apply the patches in order on the authoritative task branch, review and commit each increment, then run the required checks on that integrated revision. Send any locally modified patch, generated diff or fresh source archive back to the agent. Do not stack further patches on a different source tree merely because their hunks appear to apply.
+
+After a container reset, reconstruct the exact supplied archive, verify the patch digests and replay the published checkpoints in order, checking their resulting trees. Resume only from the last verified checkpoint. If artifacts are missing or the maintainer rebased the branch, obtain an exact replacement baseline and reconcile the pending changes. Do not reconstruct lost implementation from summaries. Keep the original local baseline unchanged and distinguish local self-reviewed commits from upstream commits, human acceptance and merge authorization.
+
+If execution stops before the next human gate, the agent reports the last published checkpoint, the remaining work and any blocker. It does not claim uncompleted work will continue outside the active turn.
 
 ## 6. Review through the GitHub connector
 
