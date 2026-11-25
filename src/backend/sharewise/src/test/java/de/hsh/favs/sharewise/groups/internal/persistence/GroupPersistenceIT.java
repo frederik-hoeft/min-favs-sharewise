@@ -192,7 +192,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                     .thenComparing(member -> member.id().toString())).toList(), snapshot.members());
                 assertEquals(Optional.empty(), reads.findWorkspace(foreign, alice));
                 assertEquals(Optional.empty(), reads.findWorkspace(UUID.randomUUID(), alice));
-                LockedGroup locked = locks.lockGroup(group, alice).orElseThrow();
+                LockedGroup locked = locks.lockGroupForMember(group, alice).orElseThrow();
                 UUID target = snapshot.callerMembershipId();
                 assertEquals(Optional.empty(), memberships.changeContext(locked, alice,
                     reads.findWorkspace(foreign, bob).orElseThrow().callerMembershipId()).orElseThrow().target());
@@ -255,7 +255,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 assertEquals(1, statements.getAndSet(0));
                 GroupWorkspace workspace = reads.findWorkspace(group, member).orElseThrow();
                 assertEquals(1, statements.getAndSet(0));
-                LockedGroup locked = mutations.lockGroup(group, admin).orElseThrow();
+                LockedGroup locked = mutations.lockGroupForMember(group, admin).orElseThrow();
                 assertEquals(1, statements.getAndSet(0));
                 MembershipChangeContext context = members.changeContext(locked, admin, workspace.callerMembershipId()).orElseThrow();
                 assertEquals(GroupRole.MEMBER, context.target().orElseThrow().role());
@@ -356,9 +356,10 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 UUID group = creation.createWithAdministrator(admin, metadata("Trip", "Old")).id();
                 GroupTestFixture.addMember(jooq.dsl(), group, member, GroupRole.MEMBER);
 
-                assertEquals(Optional.empty(), locks.lockGroup(UUID.randomUUID(), admin));
-                assertEquals(Optional.empty(), locks.lockGroup(group, UUID.randomUUID()));
-                LockedGroup locked = locks.lockGroup(group, admin).orElseThrow();
+                assertEquals(Optional.empty(), locks.lockGroupForMember(UUID.randomUUID(), admin));
+                assertEquals(Optional.empty(), locks.lockGroupForMember(group, UUID.randomUUID()));
+                assertEquals(Optional.empty(), locks.lockGroupForMember(group, stranger));
+                LockedGroup locked = locks.lockGroupForMember(group, admin).orElseThrow();
                 assertEquals(new LockedGroup(group, 0), locked);
                 assertEquals(Optional.of(GroupRole.ADMIN), memberships.memberForUser(locked, admin).map(GroupMember::role));
                 assertEquals(Optional.of(GroupRole.MEMBER), memberships.memberForUser(locked, member).map(GroupMember::role));

@@ -82,10 +82,10 @@ class GroupInvitationServiceTests {
         assertEquals(List.of("invitationList"), groups.calls());
         groups.clearCalls();
         assertEquals(InvitationRedemption.Outcome.JOINED, redeem(OUTSIDER, link).outcome());
-        assertEquals(List.of("lock", "redemptionContext", "addMember", "consumeInvitation"), groups.calls());
+        assertEquals(List.of("redemptionLock", "redemptionContext", "addMember", "consumeInvitation"), groups.calls());
         groups.clearCalls();
         assertEquals(InvitationRedemption.Outcome.ALREADY_MEMBER, redeem(OUTSIDER, link).outcome());
-        assertEquals(List.of("lock", "redemptionContext"), groups.calls());
+        assertEquals(List.of("redemptionLock", "redemptionContext"), groups.calls());
         groups.clearCalls();
         assertEquals(InvitationRevocationStatus.REVOKED, ok(call(ADMIN, service -> service.revoke(group, link.invitation().id()))));
         assertEquals(List.of("lock", "role", "revokeInvitation"), groups.calls());

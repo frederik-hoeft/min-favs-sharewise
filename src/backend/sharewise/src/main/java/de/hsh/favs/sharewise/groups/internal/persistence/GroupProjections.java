@@ -42,6 +42,12 @@ final class GroupProjections {
         return DSL.exists(DSL.selectOne().from(USERS).where(USERS.ID.eq(userId)));
     }
 
+    /** Membership predicate for the enclosing group row, evaluated before lock acquisition. */
+    static Condition isMember(UUID userId) {
+        return DSL.exists(DSL.selectOne().from(CALLER)
+            .where(CALLER.GROUP_ID.eq(GROUPS_.ID).and(CALLER.USER_ID.eq(userId))));
+    }
+
     /** A membership role column, read as the domain role. */
     static Field<GroupRole> role(GroupMembers members) {
         return members.ROLE.convertFrom(GroupProjections::toDomain);

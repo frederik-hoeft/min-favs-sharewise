@@ -128,8 +128,15 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized Optional<LockedGroup> lockGroup(UUID groupId, UUID userId) {
+    public synchronized Optional<LockedGroup> lockGroupForMember(UUID groupId, UUID userId) {
         calls.add("lock");
+        return Optional.ofNullable(groups.get(groupId))
+            .filter(group -> group.members().containsKey(userId))
+            .map(group -> new LockedGroup(group.id(), group.version()));
+    }
+
+    synchronized Optional<LockedGroup> lockGroupForRedemption(UUID groupId, UUID userId) {
+        calls.add("redemptionLock");
         if (!users.contains(userId)) {
             return Optional.empty();
         }

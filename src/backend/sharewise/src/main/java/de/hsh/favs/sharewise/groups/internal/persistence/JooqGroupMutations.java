@@ -33,13 +33,13 @@ class JooqGroupMutations implements GroupLockPort, GroupMutationPort {
     }
 
     @Override
-    public Optional<LockedGroup> lockGroup(UUID groupId, UUID userId) {
+    public Optional<LockedGroup> lockGroupForMember(UUID groupId, UUID userId) {
         Objects.requireNonNull(groupId, "groupId");
         Objects.requireNonNull(userId, "userId");
         return database.dsl()
                 .select(GROUPS_.ID, GROUPS_.VERSION)
                 .from(GROUPS_)
-                .where(GROUPS_.ID.eq(groupId).and(GroupProjections.knownUser(userId)))
+                .where(GROUPS_.ID.eq(groupId).and(GroupProjections.isMember(userId)))
                 .forUpdate()
                 .fetchOptional(row -> new LockedGroup(row.get(GROUPS_.ID), row.get(GROUPS_.VERSION)));
     }

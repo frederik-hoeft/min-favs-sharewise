@@ -103,6 +103,31 @@ class GroupOperationsE2E extends E2ETestBase {
     }
 
     @Test
+    void outsiderReplacementDoesNotWaitForAnExistingGroupLock() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            ok(create(fixture, BOB, "Other trip"));
+            UUID missing = UUID.randomUUID();
+            Result<GroupDetails, GroupFailure> denied = Result.err(new GroupFailure.GroupNotFound());
+            try (ExecutorService callers = Executors.newSingleThreadExecutor();
+                 Connection holder = lockGroup(fixture, group)) {
+                Future<Result<GroupDetails, GroupFailure>> nonexistent =
+                    callers.submit(() -> replace(fixture, BOB, missing, "Renamed", 0));
+                assertEquals(denied, nonexistent.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+                Future<Result<GroupDetails, GroupFailure>> existing =
+                    callers.submit(() -> replace(fixture, BOB, group, "Renamed", 0));
+                // Must complete while the holder still owns the root lock. The old predicate
+                // would block here; the bounded get fails before releasing the holder.
+                assertEquals(denied, existing.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
+                holder.commit();
+            }
+            assertEquals(List.of("Other trip|0", "Trip|0"), query(fixture,
+                "SELECT name, version FROM groups.groups ORDER BY name", row -> row.getString(1) + "|" + row.getLong(2)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+    }
+
+    @Test
     void concurrentReplacementsWithTheSameVersionSerializeOnTheGroupLock() {
         runTest(fixture -> {
             GroupTestFixture.provision(fixture, ALICE, BOB);

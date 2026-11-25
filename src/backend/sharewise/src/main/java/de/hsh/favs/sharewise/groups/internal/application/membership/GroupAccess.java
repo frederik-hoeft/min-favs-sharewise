@@ -38,8 +38,8 @@ public class GroupAccess {
 
     private <T> Result<LockedContext<T>, GroupFailure> lockAndRead(UUID groupId, UUID userId,
             Function<LockedGroup, Optional<T>> read) {
-        // The root selection establishes local existence; the separate read has a fresh snapshot.
-        return admission.resolveProjection(groups.lockGroup(groupId, userId), new GroupFailure.GroupNotFound())
+        // Membership filters lock admission; only the separate read establishes live authorization.
+        return admission.resolveProjection(groups.lockGroupForMember(groupId, userId), new GroupFailure.GroupNotFound())
             .flatMap(group -> read.apply(group)
                 .<Result<LockedContext<T>, GroupFailure>>map(context -> Result.ok(new LockedContext<>(group, context)))
                 .orElseGet(() -> Result.err(new GroupFailure.GroupNotFound())));

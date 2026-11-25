@@ -172,16 +172,25 @@ class GroupInvitationSchemaE2E {
             FluentConfiguration configuration = Flyway.configure()
                 .dataSource(database.jdbcUrl(), PostgresTestDatabase.MIGRATOR_USER,
                     database.connectionSettings().migratorPassword())
-                .locations("classpath:db/migration").defaultSchema("flyway").schemas("flyway");
-            configuration.target("202611241838").load().migrate();
+                .locations("classpath:db/migration").defaultSchema("flyway").schemas("flyway")
+                .outOfOrder(false);
+            // Historical P2.2a schema, before invitations. Finance's 202611241838 precedes Group creation.
+            Flyway baseline = configuration.target("202611251200").load();
+            baseline.migrate();
+            assertEquals(MigrationVersion.fromVersion("202611251200"), baseline.info().current().getVersion());
             try (Connection app = database.connectAsApplication()) {
+                assertEquals("true", scalar(app, "SELECT (to_regclass('groups.groups') IS NOT NULL)::text"),
+                    "The historical baseline must contain the Group root table");
+                assertEquals("true", scalar(app, "SELECT (to_regclass('groups.invitations') IS NULL)::text"),
+                    "The historical baseline must precede the invitation migration");
                 createGroup(app);
                 execute(app, "UPDATE groups.groups SET version = 4 WHERE id = " + GROUP);
                 execute(app, "INSERT INTO groups.users (id) VALUES (" + USER + ")");
                 String member = scalar(app, "INSERT INTO groups.group_members (group_id, user_id, role) VALUES ("
                     + GROUP + ", " + USER + ", 'admin') RETURNING id::text");
-                assertEquals("true", scalar(app, "SELECT (to_regclass('groups.invitations') IS NULL)::text"));
-                configuration.target(MigrationVersion.LATEST).load().migrate();
+                Flyway upgraded = configuration.target(MigrationVersion.LATEST).load();
+                upgraded.migrate();
+                upgraded.validate();
                 assertEquals("4", scalar(app, "SELECT version::text FROM groups.groups WHERE id = " + GROUP));
                 assertEquals("Existing", scalar(app, "SELECT name FROM groups.groups WHERE id = " + GROUP));
                 assertEquals("admin", scalar(app, "SELECT role::text FROM groups.group_members WHERE id = '" + member + "'"));

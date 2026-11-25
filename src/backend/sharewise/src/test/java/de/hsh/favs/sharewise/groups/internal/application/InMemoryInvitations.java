@@ -45,7 +45,7 @@ final class InMemoryInvitations implements GroupInvitationPort {
     }
 
     @Override public Optional<LockedGroup> lockGroupForRedemption(UUID selector, UUID userId) {
-        return Optional.ofNullable(entries.get(selector)).flatMap(entry -> groups.lockGroup(entry.groupId(), userId));
+        return Optional.ofNullable(entries.get(selector)).flatMap(entry -> groups.lockGroupForRedemption(entry.groupId(), userId));
     }
 
     @Override public Optional<InvitationListing> listForMember(UUID groupId, UUID userId) {

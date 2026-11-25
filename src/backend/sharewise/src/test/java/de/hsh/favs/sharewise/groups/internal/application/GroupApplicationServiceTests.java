@@ -160,8 +160,12 @@ class GroupApplicationServiceTests {
         assertEquals(GroupRole.MEMBER, assertOk(get(BOB, group)).callerRole());
         assertEquals(Result.err(new GroupFailure.GroupNotFound()), get(STRANGER, group));
         assertEquals(Result.err(new GroupFailure.GroupNotFound()), get(ALICE, UUID.randomUUID()));
+        store.clearCalls();
         assertEquals(Result.err(new GroupFailure.GroupNotFound()), replace(STRANGER, group, "Renamed", 0));
+        assertEquals(List.of("lock", "isKnown"), store.calls());
+        store.clearCalls();
         assertEquals(Result.err(new GroupFailure.GroupNotFound()), replace(ALICE, UUID.randomUUID(), "Renamed", 0));
+        assertEquals(List.of("lock", "isKnown"), store.calls());
         assertEquals(0, store.writes());
     }
 
