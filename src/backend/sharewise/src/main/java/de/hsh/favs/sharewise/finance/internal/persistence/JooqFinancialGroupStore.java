@@ -43,6 +43,21 @@ class JooqFinancialGroupStore implements FinancialGroupStore {
         return new FinancialGroupLookup(lock(database.dsl(), groupId));
     }
 
+    @Override
+    public FinancialGroup activate(FinancialGroup locked) {
+        Objects.requireNonNull(locked, "locked");
+        if (locked.state() != FinancialGroupState.PROVISIONING) {
+            throw new IllegalArgumentException("Only a provisioning Finance group can be activated: " + locked.id());
+        }
+        // The state guard makes a stale snapshot fail instead of reopening a closed or archived root.
+        return database.dsl().update(GROUPS).set(GROUPS.STATE, GroupState.open)
+                .where(GROUPS.ID.eq(locked.id()).and(GROUPS.STATE.eq(GroupState.provisioning)))
+                .returningResult(GROUPS.ID, GROUPS.STATE, GROUPS.CURRENT_REVISION)
+                .fetchOptional(row -> new FinancialGroup(row.value1(), state(row.value2()), row.value3()))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Finance group is missing or no longer provisioning: " + locked.id()));
+    }
+
     private static Optional<FinancialGroup> lock(DSLContext db, UUID groupId) {
         return db.select(GROUPS.ID, GROUPS.STATE, GROUPS.CURRENT_REVISION)
                 .from(GROUPS).where(GROUPS.ID.eq(groupId)).forUpdate()

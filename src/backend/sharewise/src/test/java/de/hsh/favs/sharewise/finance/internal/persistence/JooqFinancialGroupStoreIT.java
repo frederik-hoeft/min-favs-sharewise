@@ -109,6 +109,73 @@ class JooqFinancialGroupStoreIT extends IntegrationTestBase {
         });
     }
 
+    @Test
+    void activationOpensAProvisioningRootWithoutChangingRevisionCreationOrActors() {
+        runServiceTest(FinancialGroupStore.class, (store, scope) -> {
+            scope.resolve(Transactions.class).execute(() -> {
+                DSLContext db = scope.resolve(JooqAccess.class).dsl();
+                UUID id = UUID.randomUUID();
+                OffsetDateTime created = OffsetDateTime.parse("2026-01-01T12:00:00Z");
+                db.insertInto(GROUPS).columns(GROUPS.ID, GROUPS.CURRENT_REVISION, GROUPS.CREATED_AT)
+                        .values(id, 5L, created).execute();
+                FinancialGroup locked = store.ensureAndLock(id);
+                FinancialGroup opened = new FinancialGroup(id, FinancialGroupState.OPEN, 5);
+                assertEquals(opened, store.activate(locked));
+                assertEquals(opened, store.lockExisting(id).group().orElseThrow());
+                GroupsRecord row = db.selectFrom(GROUPS).where(GROUPS.ID.eq(id)).fetchSingle();
+                assertEquals(GroupState.open, row.getState());
+                assertEquals(created.toInstant(), row.getCreatedAt().toInstant());
+                assertEquals(0, db.fetchCount(ACTORS, ACTORS.GROUP_ID.eq(id)));
+                return TransactionOutcome.abstain(null);
+            });
+        });
+    }
+
+    @Test
+    void activationRejectsNonProvisioningSnapshotsAndStaleSnapshotsWithoutWriting() {
+        runServiceTest(FinancialGroupStore.class, (store, scope) -> {
+            scope.resolve(Transactions.class).execute(() -> {
+                DSLContext db = scope.resolve(JooqAccess.class).dsl();
+                for (FinancialGroupState state : FinancialGroupState.values()) {
+                    if (state == FinancialGroupState.PROVISIONING) {
+                        continue;
+                    }
+                    UUID id = UUID.randomUUID();
+                    db.insertInto(GROUPS).columns(GROUPS.ID, GROUPS.STATE).values(id, persisted(state)).execute();
+                    FinancialGroup locked = store.ensureAndLock(id);
+                    String tuple = tupleId(db, id);
+                    assertTranslated(IllegalArgumentException.class, () -> store.activate(locked));
+                    // A snapshot claiming provisioning must not reopen a stored root in another state.
+                    assertTranslated(IllegalStateException.class,
+                            () -> store.activate(new FinancialGroup(id, FinancialGroupState.PROVISIONING, 0)));
+                    assertEquals(locked, store.lockExisting(id).group().orElseThrow());
+                    assertEquals(tuple, tupleId(db, id), "Rejected activation must not update the root");
+                }
+                UUID missing = UUID.randomUUID();
+                assertTranslated(IllegalStateException.class,
+                        () -> store.activate(new FinancialGroup(missing, FinancialGroupState.PROVISIONING, 0)));
+                assertTrue(store.lockExisting(missing).group().isEmpty());
+                assertThrows(NullPointerException.class, () -> store.activate(null));
+                return TransactionOutcome.abstain(null);
+            });
+        });
+    }
+
+    private static GroupState persisted(FinancialGroupState state) {
+        return switch (state) {
+            case PROVISIONING -> GroupState.provisioning;
+            case OPEN -> GroupState.open;
+            case CLOSED -> GroupState.closed;
+            case ARCHIVED -> GroupState.archived;
+        };
+    }
+
+    /** The real {@code @Repository} proxy translates argument and state exceptions, keeping the original cause. */
+    private static void assertTranslated(Class<? extends RuntimeException> expected, Executable operation) {
+        InvalidDataAccessApiUsageException failure = assertThrows(InvalidDataAccessApiUsageException.class, operation);
+        assertInstanceOf(expected, failure.getCause());
+    }
+
     private static void assertNoActiveSegment(Executable operation) {
         // The real @Repository proxy translates the transaction guard exception.
         InvalidDataAccessApiUsageException failure = assertThrows(InvalidDataAccessApiUsageException.class, operation);
