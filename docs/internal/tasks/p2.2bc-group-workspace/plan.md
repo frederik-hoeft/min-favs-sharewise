@@ -217,8 +217,8 @@ Suggested commit: `P2.2bc-I: Reconcile group management documentation`.
 
 - [x] After human acceptance of implementation behavior, update authoritative architecture, persistence, Phase 2 handoff, security, frontend and development/testing guides as appropriate; preserve Phase 3 membership revision semantics. Record human validation results, limitations and any approved deviations in task artifacts.
 - [x] Check links/anchors, consistency and diff, rerun relevant checks and publish final docs patch.
-- [ ] Independent reviewers review integrated revision; fix any accepted findings and reconcile docs again if behavior changes.
-- [ ] Final maintainer merge authorization and backlog completion after all required reviews, acceptance and smoke evidence (or explicit documented exceptions). Keep `main` unchanged until approval.
+- [x] Independent reviewers review integrated revision; fix any accepted findings and reconcile docs again if behavior changes.
+- [x] Final maintainer merge authorization and backlog completion after all required reviews, acceptance and smoke evidence (or explicit documented exceptions). Keep `main` unchanged until approval.
 
 **Documentation review record:**
 
@@ -236,7 +236,7 @@ Suggested commit: `P2.2bc-I.1: Exercise Group Management in production Compose s
 - [x] Record the maintainer's passing production Compose smoke on the pre-I.1 implementation.
 - [x] Extend the disposable HTTPS smoke with two real IAM accounts, temporary local Group user provisioning, group creation/listing, anonymous and outsider denial, invitation preview/redemption/consumption, live role promotion, revocation and departure. Check static group and invitation routes in both production smoke scripts.
 - [x] Retain the existing IAM and stack lifecycle checks; keep new credentials out of process arguments and diagnostics. Verify the smoke orchestration and failure/cleanup paths without Docker.
-- [ ] Maintainer reruns the extended smoke against the actual disposable production stack.
+- [x] Maintainer reruns the extended smoke against the actual disposable production stack.
 
 **Self-review record:**
 
