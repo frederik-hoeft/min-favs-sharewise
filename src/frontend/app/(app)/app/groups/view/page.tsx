@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
-import { GroupDetailsView } from "../_components/GroupDetailsView";
-import { GroupLoadingState } from "../_components/GroupProblemState";
+import { Card, Stack, Text, Title } from "@mantine/core";
 
 export const metadata: Metadata = { title: "Group" };
 
-/** The query parameter is read in the browser; the static shell shows the loading state. */
 export default function GroupViewPage() {
-  return (
-    <Suspense fallback={<GroupLoadingState label="Loading group…" />}>
-      <GroupDetailsView />
-    </Suspense>
-  );
+  return <Stack gap="md"><Title order={2} size="h3">Overview</Title><Card padding="xl"><Stack gap="xs"><Title order={3} size="h4">Your group workspace</Title><Text c="dimmed">Expenses, balances and history will appear here.</Text></Stack></Card></Stack>;
 }

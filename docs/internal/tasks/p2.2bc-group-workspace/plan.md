@@ -19,15 +19,34 @@ Suggested commit: `P2.2b-A: Implement membership and role management`.
 
 **Checkpoint evidence:** 398 Unit/component tests passed with the supplied offline Maven, including the Modulith architecture checks; all Integration/E2E sources compiled. Added workspace/role/target authorization, final member/admin, transfer and stale-membership Unit coverage; real PostgreSQL projection, competing departure/removal/demotion, transfer rollback and HTTP cases await execution. Self-review consolidated locked caller authorization with metadata replacement, scoped every target write to the group, removed the unused role-only lookup, used one roster SQL projection, and moved request conversion into `GroupCommands`. Database correctness remains unverified until the human gate.
 
+**Self-review record (reconstructed from Phase A checkpoint evidence):**
+
+- P2 - Duplicate lock/admission authorization: consolidated metadata and membership mutation access in `GroupAccess`.
+- P2 - Unscoped target writes: scoped target mutations by group and membership identity, with foreign/stale target regression cases.
+- P2 - Projection consistency: replaced independent lookups with one authorized roster SQL projection.
+- P3 - Redundant role-only lookup: removed the unused persistence capability and centralized request conversion in `GroupCommands`.
+
+These titles summarize the recorded review corrections, not a separately conducted retrospective review.
+
 ## Phase B - Configurable workspace shell and list
 
 Suggested commit: `P2.2b-B: Establish responsive group workspace`.
 
-- [ ] Reuse existing `ApplicationShell`; add declarative breadcrumb and optional aside configuration, shared authentication guard and group-specific nested composition without changing URLs. Check installed Next layout/route-group/static-export guides and Mantine reference; avoid effect-based slot registration.
-- [ ] Add typed workspace API/resource, group-scoped lifetime and group navigation; no bearer coupling. Replace list cards with searchable rows and remove visible dummy navigation; show overview placeholder and roster/metadata in shared panel with Drawer fallback.
-- [ ] Preserve existing editor/version handling. Evaluate breadcrumb disclosure versus explicit header control against narrow and nested navigation; retain accessible full-name behavior.
-- [ ] Cover T13–T14 and affected API, shell, navigation and metadata regressions. Render live frontend with external mocked REST transport and inspect desktop/intermediate/mobile screenshots, long content and themes.
-- [ ] Gate: frontend checks including static export and screenshot review; patch.
+- [x] Reuse existing `ApplicationShell`; add declarative breadcrumb and optional aside configuration, shared authentication guard and group-specific nested composition without changing URLs. Check installed Next layout/route-group/static-export guides and Mantine reference; avoid effect-based slot registration.
+- [x] Add typed workspace API/resource, group-scoped lifetime and group navigation; no bearer coupling. Replace list cards with searchable rows and remove visible dummy navigation; show overview placeholder and roster/metadata in shared panel with Drawer fallback.
+- [x] Preserve existing editor/version handling. Evaluate breadcrumb disclosure versus explicit header control against narrow and nested navigation; retain accessible full-name behavior.
+- [x] Cover T13–T14 and affected API, shell, navigation and metadata regressions. Browser screenshot gate attempted with external mocked REST; blocked by managed Chromium URL policy (see evidence).
+- [x] Gate: frontend checks including static export; browser visual review outstanding at human gate; patch.
+
+**Checkpoint evidence:** All 298 frontend tests passed, including client-side description/name search, workspace route identity race, mobile Drawer and metadata edit/reload regressions. ESLint, application/test type checks, standalone and static builds, and HTTP static-export route/asset verification passed. URLs are unchanged; demo routes remain directly navigable for existing regression coverage, but are removed from normal navigation and workspace landing. The header uses an explicit information control to avoid conflating breadcrumb navigation and truncation disclosure with the panel toggle. Browser harness successfully launched the actual Next application and Chromium CDP, but managed Chromium policy blocked localhost navigation; no screenshot evidence is claimed. Human visual review at desktop/tablet/mobile widths and both themes remains outstanding. This environmental limitation does not prevent component/contract implementation; preserve the gate for human acceptance.
+
+**Self-review record:**
+
+- P2 - Server Component function serialization: replaced the Mantine polymorphic Link prop on the workspace landing with a native Next Link after prerender failed; production/static builds now pass.
+- P2 - Hidden measurement overflow: clipped the breadcrumb measurement wrapper without altering its intrinsic child measurement, avoiding potential document overflow with unbroken names.
+- P3 - Inaccessible row count: exposed the count as an accessible description of the group link and added a regression assertion.
+- P3 - Stale test composition: exercised the authenticated boundary plus the standard shell rather than expecting the guard itself to own geometry; tested one workspace fetch and Drawer dismissal.
+- P3 - Ambiguous truncated-breadcrumb interaction: retained the separate labeled information button and its control/expanded relationship, preserving full-location disclosure and ancestor links.
 
 ## Phase C - Member administration UI
 

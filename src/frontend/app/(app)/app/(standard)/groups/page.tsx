@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { GroupsOverview } from "./_components/GroupsOverview";
+import { GroupsOverview } from "@/app/(app)/app/groups/_components/GroupsOverview";
 
 export const metadata: Metadata = { title: "Groups" };
 

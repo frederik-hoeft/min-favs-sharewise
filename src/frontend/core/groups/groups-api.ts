@@ -3,6 +3,7 @@ import type {
     CreateGroupRequest,
     GroupDetails,
     GroupList,
+    GroupWorkspace,
     ReplaceGroupMetadataRequest,
 } from './models.ts';
 
@@ -25,6 +26,10 @@ export class GroupsApi {
 
     get(groupId: string): Promise<GroupDetails> {
         return this.client.get<GroupDetails>(groupPath(groupId));
+    }
+
+    getWorkspace(groupId: string): Promise<GroupWorkspace> {
+        return this.client.get<GroupWorkspace>(`${groupPath(groupId)}/workspace`);
     }
 
     create(request: CreateGroupRequest): Promise<GroupDetails> {

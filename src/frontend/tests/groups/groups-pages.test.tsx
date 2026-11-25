@@ -6,15 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider } from "@/app/identity-provider";
 import { RequireAuthentication } from "@/components/auth/RequireAuthentication";
 import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
-import GroupsPage from "@/app/(app)/app/groups/page";
-import NewGroupPage from "@/app/(app)/app/groups/new/page";
-import GroupViewPage from "@/app/(app)/app/groups/view/page";
+import GroupsPage from "@/app/(app)/app/(standard)/groups/page";
+import NewGroupPage from "@/app/(app)/app/(standard)/groups/new/page";
+import OverviewPage from "@/app/(app)/app/groups/view/page";
+import GroupViewLayout from "@/app/(app)/app/groups/view/layout";
+function GroupViewPage() { return <GroupViewLayout><OverviewPage /></GroupViewLayout>; }
 import { authenticationResponse } from "../identity/support";
 import { TestProviders } from "../support/TestProviders";
-import { GROUP_ID, deferred, details, json, problem, scriptedClient, summary } from "./support";
+import { GROUP_ID, deferred, details, json, problem, scriptedClient, summary, workspace } from "./support";
 
 const LIST = "/api/groups/v1/groups";
 const GROUP = `${LIST}/${GROUP_ID}`;
+const WORKSPACE = `${GROUP}/workspace`;
 
 let fake = scriptedClient();
 // Pages obtain their client from the workspace guard's session facade, as in production; its transport is scripted.
@@ -25,7 +28,7 @@ const replace = vi.fn();
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
-  usePathname: () => "/app/groups",
+  usePathname: () => search ? "/app/groups/view" : "/app/groups",
   useRouter: () => ({ push, replace, back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
   useSearchParams: () => new URLSearchParams(search),
 }));
@@ -36,10 +39,11 @@ beforeEach(() => {
   runtime.session.accept(authenticationResponse("group-access-token"));
   search = "";
   push.mockReset();
+  vi.spyOn(window, "matchMedia").mockImplementation(query => ({ matches: query.includes("min-width"), media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }));
   replace.mockReset();
 });
 
-afterEach(() => runtime.dispose());
+afterEach(() => { runtime.dispose(); vi.restoreAllMocks(); });
 
 function renderPage(page: ReactElement) {
   return render(
@@ -87,7 +91,7 @@ async function expectNoAxeViolations(container: HTMLElement) {
 }
 
 describe("GM-FT01 group list", () => {
-  it("lists groups with links, member counts and role badges", async () => {
+  it("lists groups with links and member counts and searches descriptions", async () => {
     fake.respond("GET", LIST, json(200, { items: [
       summary(),
       summary({ id: "0193a5c4-7e1f-7c2a-9b3d-000000000002", name: "Ski trip", description: null, memberCount: 1, callerRole: "member" }),
@@ -98,12 +102,20 @@ describe("GM-FT01 group list", () => {
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(2);
     expect(within(items[0]).getByRole("link", { name: "Flat share" })).toHaveAttribute("href", `/app/groups/view?id=${GROUP_ID}`);
-    expect(within(items[0]).getByText("Rent and groceries")).toBeInTheDocument();
     expect(within(items[0]).getByText("3 members")).toBeInTheDocument();
-    expect(within(items[0]).getByLabelText("Your role: Administrator")).toBeInTheDocument();
+    expect(within(items[0]).getByRole("link", { name: "Flat share" })).toHaveAccessibleDescription("3 members");
     expect(within(items[1]).getByText("1 member")).toBeInTheDocument();
-    expect(within(items[1]).getByLabelText("Your role: Member")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Create group" })).toHaveAttribute("href", "/app/groups/new");
+    const user = userEvent.setup();
+    const searchField = screen.getByRole("textbox", { name: "Search groups" });
+    await user.type(searchField, "GROCERIES");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    await user.clear(searchField);
+    await user.type(searchField, "ski");
+    expect(screen.getByRole("link", { name: "Ski trip" })).toBeInTheDocument();
+    await user.type(searchField, " nonexistent");
+    expect(screen.getByText("No groups match your search.")).toBeInTheDocument();
+    expect(fake.requests).toHaveLength(1);
   });
 
   it("shows an empty state that still offers creation", async () => {
@@ -284,16 +296,49 @@ describe("GM-FT02 group creation", () => {
 });
 
 describe("GM-FT03 group details", () => {
+  it("loads the roster once, names the breadcrumb and opens an accessible mobile drawer", async () => {
+    search = `id=${GROUP_ID}`;
+    vi.mocked(window.matchMedia).mockImplementation(query => ({ matches: false, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }));
+    fake.respond("GET", WORKSPACE, json(200, workspace()));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    const toggle = await screen.findByRole("button", { name: "Group information" });
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" }).querySelector("[aria-current=page]")).toHaveTextContent("Flat share");
+    expect(screen.queryByRole("list", { name: "Group members" })).not.toBeInTheDocument();
+    await user.click(toggle);
+    const drawer = await screen.findByRole("dialog", { name: "Group information" });
+    expect(within(drawer).getByRole("list", { name: "Group members" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Group information" })).not.toBeInTheDocument());
+    expect(fake.requests).toHaveLength(1);
+  });
+
+  it("ignores an older group response after switching the query parameter", async () => {
+    search = `id=${GROUP_ID}`;
+    const stale = deferred<Response>();
+    fake.respond("GET", WORKSPACE, stale.promise);
+    const secondId = "0193a5c4-7e1f-7c2a-9b3d-000000000002";
+    fake.respond("GET", `${LIST}/${secondId}/workspace`, json(200, workspace({ id: secondId, name: "Ski trip" })));
+    const tree = () => <TestProviders><IdentityProvider runtime={runtime}><RequireAuthentication><GroupViewPage /></RequireAuthentication></IdentityProvider></TestProviders>;
+    const view = render(tree());
+    await waitFor(() => expect(fake.requests).toHaveLength(1));
+    search = `id=${secondId}`;
+    view.rerender(tree());
+    await screen.findByRole("heading", { name: "Ski trip", level: 1 });
+    await act(async () => stale.resolve(json(200, workspace())));
+    expect(screen.queryByRole("heading", { name: "Flat share", level: 1 })).not.toBeInTheDocument();
+  });
+
   it("offers editing only to administrators", async () => {
     search = `id=${GROUP_ID}`;
-    fake.respond("GET", GROUP, json(200, details({ callerRole: "member" })));
+    fake.respond("GET", WORKSPACE, json(200, workspace({ callerRole: "member" })));
     const first = renderPage(<GroupViewPage />);
     expect(await screen.findByRole("heading", { name: "Flat share", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText("3 members")).toBeInTheDocument();
+    expect(screen.getByRole("heading", {name: "Members (3)"})).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
     first.unmount();
 
-    fake.respond("GET", GROUP, json(200, details()));
+    fake.respond("GET", WORKSPACE, json(200, workspace()));
     renderPage(<GroupViewPage />);
     expect(await screen.findByRole("button", { name: "Edit details" })).toBeInTheDocument();
   });
@@ -301,9 +346,10 @@ describe("GM-FT03 group details", () => {
   it("keeps input on a 409 until the user loads the current metadata, then saves against it", async () => {
     const user = userEvent.setup();
     search = `id=${GROUP_ID}`;
-    fake.respond("GET", GROUP,
-      json(200, details()),
-      json(200, details({ name: "Shared flat", description: null, version: 1 })));
+    fake.respond("GET", WORKSPACE,
+      json(200, workspace()),
+      json(200, workspace({ name: "Shared flat", description: null, version: 1 })),
+      json(200, workspace({ name: "Shared flat 2026", description: null, version: 2 })));
     fake.respond("PUT", GROUP,
       problem(409, "group_version_conflict"),
       json(200, details({ name: "Shared flat 2026", description: null, version: 2 })));
@@ -330,7 +376,7 @@ describe("GM-FT03 group details", () => {
     await user.type(screen.getByRole("textbox", { name: /Name/ }), "Shared flat 2026");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByRole("heading", { name: "Shared flat 2026", level: 1 })).toBeInTheDocument();
-    expect(fake.requests.at(-1)?.body).toEqual({ name: "Shared flat 2026", description: null, expectedVersion: 1 });
+    expect(fake.requests.filter(request => request.method === "PUT").at(-1)?.body).toEqual({ name: "Shared flat 2026", description: null, expectedVersion: 1 });
     expect(screen.getByText("Changes saved.")).toBeInTheDocument();
   });
 
@@ -338,7 +384,7 @@ describe("GM-FT03 group details", () => {
     const user = userEvent.setup();
     search = `id=${GROUP_ID}`;
     const current = deferred<Response>();
-    fake.respond("GET", GROUP, json(200, details()), current.promise);
+    fake.respond("GET", WORKSPACE, json(200, workspace()), current.promise);
     fake.respond("PUT", GROUP, problem(409, "group_version_conflict"), problem(409, "group_version_conflict"));
     renderPage(<GroupViewPage />);
 
@@ -359,7 +405,7 @@ describe("GM-FT03 group details", () => {
     expect(screen.getByRole("textbox", { name: /Name/ })).toHaveValue("Flat share");
 
     // Another administrator's version 1 arrives for the editor that no longer exists.
-    await act(async () => current.resolve(json(200, details({ name: "Shared flat", description: null, version: 1 }))));
+    await act(async () => current.resolve(json(200, workspace({ name: "Shared flat", description: null, version: 1 }))));
     await settlePendingWork();
     expect(screen.getByRole("heading", { name: "Flat share", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /Name/ })).toHaveValue("Flat share");
@@ -379,7 +425,7 @@ describe("GM-FT03 group details", () => {
     const user = userEvent.setup();
     search = `id=${GROUP_ID}`;
     const saved = deferred<Response>();
-    fake.respond("GET", GROUP, json(200, details()));
+    fake.respond("GET", WORKSPACE, json(200, workspace()), json(200, workspace({ name: "Shared flat", version: 1 })));
     fake.respond("PUT", GROUP, saved.promise);
     renderPage(<GroupViewPage />);
 
@@ -409,7 +455,7 @@ describe("GM-FT03 group details", () => {
   it("keeps the draft and its version editable after a failed save", async () => {
     const user = userEvent.setup();
     search = `id=${GROUP_ID}`;
-    fake.respond("GET", GROUP, json(200, details()));
+    fake.respond("GET", WORKSPACE, json(200, workspace()), json(200, workspace({ name: "Shared flat", version: 1 })));
     fake.respond("PUT", GROUP, new TypeError("offline"), json(200, details({ name: "Shared flat", version: 1 })));
     renderPage(<GroupViewPage />);
 
@@ -434,7 +480,7 @@ describe("GM-FT03 group details", () => {
   it("shows the group as it is after a concurrent demotion", async () => {
     const user = userEvent.setup();
     search = `id=${GROUP_ID}`;
-    fake.respond("GET", GROUP, json(200, details()), json(200, details({ callerRole: "member" })));
+    fake.respond("GET", WORKSPACE, json(200, workspace()), json(200, workspace({ callerRole: "member" })));
     fake.respond("PUT", GROUP, problem(403, "group_admin_required"));
     renderPage(<GroupViewPage />);
 
@@ -457,7 +503,7 @@ describe("GM-FT03 group details", () => {
     expect(fake.requests).toEqual([]);
 
     search = `id=${GROUP_ID}`;
-    fake.respond("GET", GROUP, problem(404, "group_not_found"));
+    fake.respond("GET", WORKSPACE, problem(404, "group_not_found"));
     renderPage(<GroupViewPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Group not found");
     expect(screen.getByRole("link", { name: "Back to groups" })).toHaveAttribute("href", "/app/groups");
@@ -493,7 +539,7 @@ describe("GM-FT04 accessibility and keyboard operation", () => {
   it("has no structural axe violations on the detail page while editing and in conflict", async () => {
     const user = userEvent.setup();
     search = `id=${GROUP_ID}`;
-    fake.respond("GET", GROUP, json(200, details()));
+    fake.respond("GET", WORKSPACE, json(200, workspace()));
     fake.respond("PUT", GROUP, problem(409, "group_version_conflict"));
     const { container } = renderPage(<GroupViewPage />);
 

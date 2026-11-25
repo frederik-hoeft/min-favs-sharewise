@@ -10,21 +10,23 @@ import {
   validateGroupMetadata,
 } from "@/core/groups";
 import { ApiError } from "@/lib/api";
-import { GROUP_ID, details, json, problem, scriptedClient, summary } from "./support";
+import { GROUP_ID, details, json, problem, scriptedClient, summary, workspace } from "./support";
 
 describe("GroupsApi", () => {
-  it("maps the four operations to the Group Management endpoints", async () => {
+  it("maps group read and metadata operations to the Group Management endpoints", async () => {
     const fake = scriptedClient();
     const path = `/api/groups/v1/groups/${GROUP_ID}`;
     fake.respond("GET", "/api/groups/v1/groups", json(200, { items: [summary()] }));
     fake.respond("POST", "/api/groups/v1/groups", json(201, details()));
     fake.respond("GET", path, json(200, details()));
+    fake.respond("GET", `${path}/workspace`, json(200, workspace()));
     fake.respond("PUT", path, json(200, details({ version: 1 })));
     const api = new GroupsApi(fake.client);
 
     await expect(api.list()).resolves.toEqual({ items: [summary()] });
     await expect(api.create({ name: "Flat share", description: null })).resolves.toEqual(details());
     await expect(api.get(GROUP_ID)).resolves.toEqual(details());
+    await expect(api.getWorkspace(GROUP_ID)).resolves.toEqual(workspace());
     await expect(api.replaceMetadata(GROUP_ID, { name: "Flat", description: null, expectedVersion: 0 }))
       .resolves.toMatchObject({ version: 1 });
 
@@ -32,6 +34,7 @@ describe("GroupsApi", () => {
       { method: "GET", path: "/api/groups/v1/groups", body: undefined },
       { method: "POST", path: "/api/groups/v1/groups", body: { name: "Flat share", description: null } },
       { method: "GET", path, body: undefined },
+      { method: "GET", path: `${path}/workspace`, body: undefined },
       { method: "PUT", path, body: { name: "Flat", description: null, expectedVersion: 0 } },
     ]);
   });

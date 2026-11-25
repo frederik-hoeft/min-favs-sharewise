@@ -1,10 +1,15 @@
 /** Navigation labels are also used for breadcrumb titles. Routes remain independent of UI icons. */
-export const appRoutes = [
+export const appNavigationRoutes = [
   { href: "/app/groups", label: "Groups" },
+] as const;
+
+const appRoutes = [
+  ...appNavigationRoutes,
   { href: "/app/dummy1", label: "Dummy 1" },
   { href: "/app/dummy2", label: "Dummy 2" },
   { href: "/app/dummy3", label: "Dummy 3" },
 ] as const;
+
 
 export const accountRoute = { href: "/app/account", label: "Account" } as const;
 

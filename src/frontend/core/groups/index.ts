@@ -17,6 +17,8 @@ export {
     type GroupDetails,
     type GroupList,
     type GroupRole,
+    type GroupMember,
+    type GroupWorkspace,
     type GroupSummary,
     type ReplaceGroupMetadataRequest,
 } from './models.ts';

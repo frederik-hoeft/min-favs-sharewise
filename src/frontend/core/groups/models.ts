@@ -18,6 +18,19 @@ export interface GroupDetails extends GroupSummary {
     readonly version: number;
 }
 
+export interface GroupMember {
+    readonly id: string;
+    readonly userId: string;
+    readonly role: GroupRole;
+    readonly joinedAt: string;
+}
+
+export interface GroupWorkspace {
+    readonly group: GroupDetails;
+    readonly callerMembershipId: string;
+    readonly members: ReadonlyArray<GroupMember>;
+}
+
 /** Wrapped so that pagination metadata can be added without breaking clients. */
 export interface GroupList {
     readonly items: ReadonlyArray<GroupSummary>;

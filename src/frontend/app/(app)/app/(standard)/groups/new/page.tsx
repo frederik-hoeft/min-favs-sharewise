@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CreateGroup } from "../_components/CreateGroup";
+import { CreateGroup } from "@/app/(app)/app/groups/_components/CreateGroup";
 
 export const metadata: Metadata = { title: "Create a group" };
 

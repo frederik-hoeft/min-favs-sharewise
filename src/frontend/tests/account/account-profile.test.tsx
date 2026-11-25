@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityProvider } from "@/app/identity-provider";
-import AccountPage from "@/app/(app)/app/account/page";
+import AccountPage from "@/app/(app)/app/(standard)/account/page";
 import { RequireAuthentication } from "@/components/auth/RequireAuthentication";
 import { createIdentityRuntime } from "@/core/identity";
 import type { AccountProfile } from "@/core/identity";
