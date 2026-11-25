@@ -257,3 +257,16 @@ Suggested commit: `P2.2bc-I.2: Organize Group application capabilities by respon
 **Self-review record:** The package dependency review identified a cycle if membership authorization continued to depend on the group metadata port; extract `GroupLockPort` while retaining one adapter. The initial compilation caught missing static test imports during relocation; restore those imports. No unresolved review findings.
 
 **Checkpoint evidence:** Offline `mvn -B -ntp -o -Dmaven.repo.local=<isolated-cache> -Punit-tests -DtestParallelism=16 clean verify` passed 408 tests with zero failures, errors or skips, including Modulith and application package-cycle verification. Integration/E2E sources compile; PostgreSQL execution remains unavailable locally. No HTTP, SQL, migration, frontend or dependency changes. The I.1 real Compose smoke and final independent review remain maintainer gates.
+
+
+## Phase I.3 - Post-merge Group E2E repair and organization
+
+Suggested commit: `P2.2bc-I.3: Repair and organize Group E2E scenarios`.
+
+- [x] Adopt the supplied post-P2.2a merge snapshot as the baseline; reproduce the eight test compilation errors.
+- [x] Split application-service E2Es by group, membership and invitation responsibilities while retaining all 16 test methods. Extract shared stateless scenario operations and the holder-specific concurrency fixture.
+- [x] Apply the merged lock-wait signature, holder-first resource cleanup and bounded SQL configuration consistently to every contention scenario.
+
+**Self-review record:** P2 - Six membership and invitation concurrency tests declared the executor after the lock holder, risking worker shutdown waiting on a lock still held by the failing test; reverse the declarations and explicitly enable bounded statements for those scenarios. P3 - The invitation expiry test identified blocked sessions only by database and wait-event type; restrict the assertion to the one redemption blocked by the specific holder. Preserve the existing failed-synchronization regression and all scenario assertions.
+
+**Checkpoint evidence:** The supplied post-merge POM differs from the offline handoff manifest (jOOQ codegen test dependency removed and opt-in Flyway migration plugin added); ordinary offline build dependencies still resolve without changing the POM. Offline `mvn -B -ntp -o -Dmaven.repo.local=<isolated-cache> -Punit-tests -DtestParallelism=16 clean verify` passes 405 tests with zero failures, errors or skips and compiles all Integration/E2E sources. All 16 original application E2E test methods remain discoverable by the `*E2E` naming convention. PostgreSQL execution remains a maintainer gate. Production behavior, persistence and HTTP contracts are unchanged.

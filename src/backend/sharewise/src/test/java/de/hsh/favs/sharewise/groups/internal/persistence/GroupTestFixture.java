@@ -18,12 +18,12 @@ import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 
 /**
- * Test-only Group state that P2.2a offers no operation for.
+ * Test-only setup of local Group users and membership state.
  *
  * <p>Local users are provisioned through the production {@link GroupUserRegistry} port, the
- * write path that event projection and IAM lookup will use. Additional memberships and role
- * changes use direct SQL because member management arrives with P2.2b. The {@link DSLContext}
- * variants run inside an application segment ({@code JooqAccess.dsl()}) for Integration tests or
+ * write path available to future event projection and IAM lookup. Direct SQL establishes
+ * membership and role preconditions independently of the application operation under test.
+ * The {@link DSLContext} variants run inside an application segment ({@code JooqAccess.dsl()}) for Integration tests or
  * on an independently committed connection ({@code DSL.using(connection, SQLDialect.POSTGRES)});
  * the {@link IntegrationTestContext} variants commit on their own for E2E tests.
  */
