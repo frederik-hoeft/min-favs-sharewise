@@ -195,7 +195,9 @@ public class Groups extends TableImpl<GroupsRecord> {
     @Override
     public List<Check<GroupsRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("groups_groups_name_not_blank"), "((length(btrim((name)::text)) > 0))", true),
+            Internal.createCheck(this, DSL.name("groups_groups_description_sane"), "(((description IS NULL) OR (((description)::text <> ''::text) AND ((description)::text = btrim((description)::text, ' \r\n'::text)) AND ((replace(replace((description)::text, '\r\n'::text, '\n'::text), '\n'::text, ''::text) COLLATE \"C\") !~ '[[:cntrl:]]'::text))))", true),
+            Internal.createCheck(this, DSL.name("groups_groups_name_no_controls"), "((((name)::text COLLATE \"C\") !~ '[[:cntrl:]]'::text))", true),
+            Internal.createCheck(this, DSL.name("groups_groups_name_normalized"), "((((name)::text <> ''::text) AND ((name)::text = btrim((name)::text))))", true),
             Internal.createCheck(this, DSL.name("groups_groups_version_nonnegative"), "((version >= 0))", true)
         );
     }
