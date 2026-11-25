@@ -28,9 +28,19 @@ describe("useGroupResource", () => {
     act(() => result.current.replace("saved"));
     await act(async () => {
       loads.pending[1].resolve("stale");
-      await reloaded;
+      expect(await reloaded).toBeNull();
     });
     expect(result.current.state).toEqual({ status: "ready", data: "saved" });
+  });
+
+  it("does not deliver a disposed resource response to an awaiting consumer", async () => {
+    const loads = scriptedLoads();
+    const { result, unmount } = renderHook(() => useGroupResource(loads.load));
+    let reloaded: Promise<string | null> = Promise.resolve(null);
+    act(() => { reloaded = result.current.reload(); });
+    unmount();
+    loads.pending[1].resolve("abandoned");
+    expect(await reloaded).toBeNull();
   });
 
   it("applies only the latest of overlapping loads", async () => {

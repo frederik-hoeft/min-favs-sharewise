@@ -75,7 +75,7 @@ export function GroupEditor({ group, onCancel, onSaved, onRefreshed, onProblem }
         setFormError(server.formError);
       } else if (problem.kind === "unavailable") {
         // Safe to retry: a replacement that did commit makes the same version conflict.
-        setFormError("Your changes could not be saved. Check your connection and try again.");
+        setFormError("The save outcome could not be confirmed. Check your connection and try again; an already committed change will be detected as a version conflict.");
       } else {
         onProblem(problem);
       }

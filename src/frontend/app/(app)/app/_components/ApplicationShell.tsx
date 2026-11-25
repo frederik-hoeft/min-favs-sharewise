@@ -4,18 +4,19 @@ import { ActionIcon, AppShell, AppShellAside, AppShellHeader, AppShellMain, AppS
 import { InfoIcon } from "@phosphor-icons/react";
 import type { AppBreadcrumb } from "./app-routes";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Brand } from "@/components/brand/Brand";
 import { SkipLink } from "@/components/navigation/SkipLink";
 import { ApplicationHeader } from "./ApplicationHeader";
 import { AppNavigation } from "./AppNavigation";
+import { ShellAsideControlsContext, type ShellAsideControls } from "./shell-aside-context";
 import styles from "./ApplicationShell.module.scss";
 
 export interface ShellAsideConfiguration {
   readonly label: string;
-  readonly content: (dismiss: () => void) => ReactNode;
+  readonly content: ReactNode;
   readonly width?: string | number;
 }
 
@@ -31,6 +32,8 @@ export function ApplicationShell({ children, breadcrumbs, aside }: ApplicationSh
   const [asideOpened, { open: openAside, close: closeAside }] = useDisclosure(false);
   const [expandedForPath, setExpandedForPath] = useState<string | null>(null);
   const [suppressRailHover, setSuppressRailHover] = useState(false);
+  const asideToggle = useRef<HTMLButtonElement>(null);
+  const main = useRef<HTMLElement>(null);
   const pathname = usePathname();
   const railExpanded = expandedForPath === pathname;
   const { breakpoints } = useMantineTheme();
@@ -48,6 +51,12 @@ export function ApplicationShell({ children, breadcrumbs, aside }: ApplicationSh
   useEffect(() => {
     if (desktop) close();
   }, [desktop, close]);
+
+  const restoreAsideFocus = useCallback((origin: HTMLElement | null) => {
+    const destination = origin?.isConnected && !origin.hasAttribute("disabled") ? origin : asideToggle.current ?? main.current;
+    destination?.focus({ preventScroll: true });
+  }, []);
+  const asideControls: ShellAsideControls = { dismiss: closeAside, restoreFocus: restoreAsideFocus };
 
   function dismissRail() {
     setExpandedForPath(null);
@@ -69,7 +78,7 @@ export function ApplicationShell({ children, breadcrumbs, aside }: ApplicationSh
       >
         <AppShellHeader className={styles.header} withBorder={false}>
           <ApplicationHeader opened={mobileOpened} breadcrumbs={breadcrumbs} toggleNavigation={() => { closeAside(); toggle(); }}
-            asideControl={aside && !wide ? <ActionIcon variant="subtle" size="lg" aria-label={aside.label} title={aside.label} aria-expanded={asideOpened} aria-controls="mobile-app-aside" onClick={() => { close(); openAside(); }}><InfoIcon size="1.25rem" aria-hidden="true" /></ActionIcon> : undefined} />
+            asideControl={aside && !wide ? <ActionIcon ref={asideToggle} variant="subtle" size="lg" aria-label={aside.label} title={aside.label} aria-expanded={asideOpened} aria-controls="mobile-app-aside" onClick={() => { close(); openAside(); }}><InfoIcon size="1.25rem" aria-hidden="true" /></ActionIcon> : undefined} />
         </AppShellHeader>
         <AppShellNavbar className={styles.navbar} withBorder={false} aria-label="Workspace navigation">
           <Paper
@@ -104,15 +113,15 @@ export function ApplicationShell({ children, breadcrumbs, aside }: ApplicationSh
             </div>
           </Paper>
         </AppShellNavbar>
-        <AppShellMain id="app-main" tabIndex={-1}>
+        <AppShellMain ref={main} id="app-main" tabIndex={-1}>
           <Container size="content" className={styles.mainContent}>
             {children}
           </Container>
         </AppShellMain>
-        {aside && wide ? <AppShellAside className={styles.aside} aria-label={aside.label}>{aside.content(closeAside)}</AppShellAside> : null}
+        {aside && wide ? <AppShellAside className={styles.aside} aria-label={aside.label}><ShellAsideControlsContext.Provider value={asideControls}>{aside.content}</ShellAsideControlsContext.Provider></AppShellAside> : null}
       </AppShell>
       {aside && !wide ? <Drawer id="mobile-app-aside" opened={asideOpened} onClose={closeAside} position="right" size="min(23rem, 100vw)" title={aside.label} closeButtonProps={{ "aria-label": `Close ${aside.label.toLowerCase()}` }} overlayProps={{ backgroundOpacity: 0.55, blur: 2 }} classNames={{ content: styles.mobileDrawerContent, header: styles.mobileDrawerHeader }}>
-        {aside.content(closeAside)}
+        <ShellAsideControlsContext.Provider value={asideControls}>{aside.content}</ShellAsideControlsContext.Provider>
       </Drawer> : null}
       <Drawer
         opened={mobileOpened}

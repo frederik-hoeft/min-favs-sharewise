@@ -11,6 +11,10 @@ export type GroupProblem =
     | { readonly kind: 'not_found' }
     | { readonly kind: 'admin_required' }
     | { readonly kind: 'version_conflict' }
+    | { readonly kind: 'member_not_found' }
+    | { readonly kind: 'last_member' }
+    | { readonly kind: 'last_administrator' }
+    | { readonly kind: 'invalid_transfer' }
     | { readonly kind: 'invalid'; readonly error: ApiError }
     | { readonly kind: 'unavailable' };
 
@@ -27,11 +31,23 @@ export function classifyGroupProblem(error: unknown): GroupProblem {
     if (error.status === 403 && error.code === GROUP_PROBLEM_CODES.adminRequired) {
         return { kind: 'admin_required' };
     }
+    if (error.status === 404 && error.code === GROUP_PROBLEM_CODES.memberNotFound) {
+        return { kind: 'member_not_found' };
+    }
     if (error.status === 404) {
         return { kind: 'not_found' };
     }
     if (error.status === 409 && error.code === GROUP_PROBLEM_CODES.versionConflict) {
         return { kind: 'version_conflict' };
+    }
+    if (error.status === 409 && error.code === GROUP_PROBLEM_CODES.lastMember) {
+        return { kind: 'last_member' };
+    }
+    if (error.status === 409 && error.code === GROUP_PROBLEM_CODES.lastAdministrator) {
+        return { kind: 'last_administrator' };
+    }
+    if (error.status === 409 && error.code === GROUP_PROBLEM_CODES.invalidTransfer) {
+        return { kind: 'invalid_transfer' };
     }
     if (error.status === 400) {
         return { kind: 'invalid', error };

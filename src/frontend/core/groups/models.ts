@@ -54,5 +54,9 @@ export const GROUP_PROBLEM_CODES = {
     notFound: 'group_not_found',
     adminRequired: 'group_admin_required',
     versionConflict: 'group_version_conflict',
+    memberNotFound: 'group_member_not_found',
+    lastMember: 'group_last_member',
+    lastAdministrator: 'group_last_administrator',
+    invalidTransfer: 'group_invalid_transfer',
     validationFailed: 'validation_failed',
 } as const;

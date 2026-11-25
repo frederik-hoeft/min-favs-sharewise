@@ -8,7 +8,7 @@ export type GroupResourceState<T> =
 
 export interface GroupResource<T> {
   state: GroupResourceState<T>;
-  /** Loads again, showing the loading state; resolves with the loaded data, or null on failure. */
+  /** Loads again, showing the loading state; resolves with the current loaded data, or null on failure, supersession or disposal. */
   reload: () => Promise<T | null>;
   /** Replaces loaded data with a fresher server response, such as a successful update; supersedes pending loads. */
   replace: (data: T) => void;
@@ -29,7 +29,8 @@ export function useGroupResource<T>(load: () => Promise<T>): GroupResource<T> {
     const own = ++generation.current;
     return loading.then(
       (data) => {
-        if (generation.current === own) setState({ status: "ready", data });
+        if (generation.current !== own) return null;
+        setState({ status: "ready", data });
         return data;
       },
       (error: unknown) => {

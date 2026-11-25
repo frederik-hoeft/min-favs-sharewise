@@ -52,9 +52,19 @@ Suggested commit: `P2.2b-B: Establish responsive group workspace`.
 
 Suggested commit: `P2.2b-C: Integrate member administration`.
 
-- [ ] Integrate role change, transfer, remove and leave controls with clear confirmation, self marker, pending guards, stale target/permission and uncertain outcome reconciliation. Keep current group projection and breadcrumb coherent; preserve metadata draft behavior and session transparency.
-- [ ] Cover T15, permission failures, simultaneous UI events, delayed results on route/session changes and keyboard/accessibility. Browser screenshot review for menus, dialogs and Drawer at relevant widths.
-- [ ] Gate: frontend checks, focused review against GM/GW requirements, patch.
+- [x] Integrate role change, transfer, remove and leave controls with clear confirmation, self marker, pending guards, stale target/permission and uncertain outcome reconciliation. Keep current group projection and breadcrumb coherent; preserve metadata draft behavior and session transparency.
+- [x] Cover T15, permission failures, simultaneous UI events, delayed results on route/session changes and keyboard/accessibility. Browser screenshot review remains blocked by managed Chromium policy; human visual review outstanding.
+- [x] Gate: frontend checks, focused review against GM/GW requirements, patch.
+
+**Checkpoint evidence:** 318 frontend tests passed; ESLint, application/test TypeScript checks, standalone/static builds and HTTP static-export verification passed. Group-scoped confirmation and exclusive mutation ownership survive Drawer closure; authoritative reconciliation, stale/uncertain outcomes, final-admin/member controls, leave navigation and route/session disposal are covered. Browser visual evidence remains unavailable as in Phase B.
+
+**Self-review record:**
+
+- P2 - Superseded reload result: resource reload now returns null for disposed or superseded requests; regression coverage checks both rendering and returned results.
+- P2 - Ambiguous metadata save outcome: explicitly report uncertain writes and preserve safe optimistic-concurrency retry behavior.
+- P2 - Missing center-view snapshot contract: added a narrow read-only workspace context and one-fetch regression test.
+- P3 - Focus lost on confirmation removal: shell-owned focus restoration returns to the original desktop trigger or mobile information control, with tests; keep the aside declarative through a narrow shell context rather than callback content.
+- P3 - Invalid ordinary-member test fixture: assigned another member the administrator role to exercise the intended valid group state.
 
 ## Phase D - Shared opaque application token primitives
 

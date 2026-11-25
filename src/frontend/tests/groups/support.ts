@@ -87,7 +87,7 @@ export function workspace(overrides: Partial<GroupDetails> = {}): GroupWorkspace
   const members = Array.from({ length: group.memberCount }, (_, index) => ({
     id: `0193a5c4-7e1f-7c2a-9b3d-${String(index + 10).padStart(12, "0")}`,
     userId: `0193a5c4-7e1f-7c2a-9b3d-${String(index + 20).padStart(12, "0")}`,
-    role: index === 0 ? group.callerRole : "member" as const,
+    role: index === 0 ? group.callerRole : index === 1 && group.callerRole === "member" ? "admin" as const : "member" as const,
     joinedAt: group.createdAt,
   }));
   return { group, members, callerMembershipId: members[0].id };

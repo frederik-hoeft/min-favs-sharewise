@@ -3,6 +3,7 @@ import type {
     CreateGroupRequest,
     GroupDetails,
     GroupList,
+    GroupRole,
     GroupWorkspace,
     ReplaceGroupMetadataRequest,
 } from './models.ts';
@@ -32,6 +33,18 @@ export class GroupsApi {
         return this.client.get<GroupWorkspace>(`${groupPath(groupId)}/workspace`);
     }
 
+    setMemberRole(groupId: string, membershipId: string, role: GroupRole): Promise<void> {
+        return this.client.put<void>(`${memberPath(groupId, membershipId)}/role`, { role }, { expectedStatus: 204 });
+    }
+
+    removeMember(groupId: string, membershipId: string): Promise<void> {
+        return this.client.delete<void>(memberPath(groupId, membershipId), { expectedStatus: 204 });
+    }
+
+    transferAdministration(groupId: string, membershipId: string): Promise<void> {
+        return this.client.post<void>(`${memberPath(groupId, membershipId)}/transfer-administration`, undefined, { expectedStatus: 204 });
+    }
+
     create(request: CreateGroupRequest): Promise<GroupDetails> {
         return this.client.post<GroupDetails>(GROUPS_PATH, request);
     }
@@ -43,4 +56,8 @@ export class GroupsApi {
 
 function groupPath(groupId: string): string {
     return `${GROUPS_PATH}/${encodeURIComponent(groupId)}`;
+}
+
+function memberPath(groupId: string, membershipId: string): string {
+    return `${groupPath(groupId)}/members/${encodeURIComponent(membershipId)}`;
 }

@@ -10,8 +10,9 @@ import GroupsPage from "@/app/(app)/app/(standard)/groups/page";
 import NewGroupPage from "@/app/(app)/app/(standard)/groups/new/page";
 import OverviewPage from "@/app/(app)/app/groups/view/page";
 import GroupViewLayout from "@/app/(app)/app/groups/view/layout";
+import { useGroupWorkspace } from "@/app/(app)/app/groups/_components/group-workspace-context";
 function GroupViewPage() { return <GroupViewLayout><OverviewPage /></GroupViewLayout>; }
-import { authenticationResponse } from "../identity/support";
+import { authenticationResponse, SESSION_TWO } from "../identity/support";
 import { TestProviders } from "../support/TestProviders";
 import { GROUP_ID, deferred, details, json, problem, scriptedClient, summary, workspace } from "./support";
 
@@ -313,6 +314,18 @@ describe("GM-FT03 group details", () => {
     expect(fake.requests).toHaveLength(1);
   });
 
+  it("provides the same workspace snapshot to a replaceable center view without an additional request", async () => {
+    search = `id=${GROUP_ID}`;
+    fake.respond("GET", WORKSPACE, json(200, workspace()));
+    function CenterView() {
+      const { group, members } = useGroupWorkspace();
+      return <p>{group.name}: {members.length} loaded memberships</p>;
+    }
+    renderPage(<GroupViewLayout><CenterView /></GroupViewLayout>);
+    expect(await screen.findByText("Flat share: 3 loaded memberships")).toBeInTheDocument();
+    expect(fake.requests).toHaveLength(1);
+  });
+
   it("ignores an older group response after switching the query parameter", async () => {
     search = `id=${GROUP_ID}`;
     const stale = deferred<Response>();
@@ -464,7 +477,7 @@ describe("GM-FT03 group details", () => {
     await user.clear(name);
     await user.type(name, "Shared");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Your changes could not be saved");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The save outcome could not be confirmed");
 
     expect(name).not.toHaveAttribute("readonly");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
@@ -507,6 +520,249 @@ describe("GM-FT03 group details", () => {
     renderPage(<GroupViewPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Group not found");
     expect(screen.getByRole("link", { name: "Back to groups" })).toHaveAttribute("href", "/app/groups");
+  });
+});
+
+describe("GM-FT05 membership administration", () => {
+  const initial = workspace();
+  const caller = initial.members[0];
+  const target = initial.members[1];
+  const targetPath = `${GROUP}/members/${target.id}`;
+  const callerPath = `${GROUP}/members/${caller.id}`;
+  const noContent = () => new Response(null, { status: 204 });
+  const openMenu = async (user: ReturnType<typeof userEvent.setup>, member = target) => {
+    await user.click(await screen.findByRole("button", { name: member.id === caller.id ? "Manage your membership" : `Manage member ${member.userId}` }));
+  };
+  const memberRow = (userId: string) => within(screen.getByRole("list", { name: "Group members" })).getAllByRole("listitem").find(row => row.textContent?.includes(userId))!;
+
+  it("promotes by membership identity and reloads the roster instead of inferring a new role", async () => {
+    search = `id=${GROUP_ID}`;
+    const promoted = { ...initial, members: initial.members.map(member => member.id === target.id ? { ...member, role: "admin" as const } : member) };
+    fake.respond("GET", WORKSPACE, json(200, initial), json(200, promoted));
+    fake.respond("PUT", `${targetPath}/role`, noContent());
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Make administrator" }));
+    const dialog = screen.getByRole("dialog", { name: "Make administrator?" });
+    expect(within(dialog).getByText(target.userId)).toBeInTheDocument();
+    expect(fake.requests).toHaveLength(1);
+    await user.click(within(dialog).getByRole("button", { name: "Make administrator" }));
+    await screen.findByText("Membership updated.");
+    expect(memberRow(target.userId)).toHaveTextContent("Administrator");
+    expect(fake.requests).toEqual([
+      { method: "GET", path: WORKSPACE, body: undefined },
+      { method: "PUT", path: `${targetPath}/role`, body: { role: "admin" } },
+      { method: "GET", path: WORKSPACE, body: undefined },
+    ]);
+  });
+
+  it("transfers administration atomically, then removes administrative affordances", async () => {
+    search = `id=${GROUP_ID}`;
+    const transferred = { ...initial, group: { ...initial.group, callerRole: "member" as const }, members: initial.members.map(member => ({ ...member, role: member.id === target.id ? "admin" as const : "member" as const })) };
+    fake.respond("GET", WORKSPACE, json(200, initial), json(200, transferred));
+    fake.respond("POST", `${targetPath}/transfer-administration`, noContent());
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Transfer administration" }));
+    const dialog = screen.getByRole("dialog", { name: "Transfer administration?" });
+    expect(dialog).toHaveTextContent("you become a regular member in the same operation");
+    await user.click(within(dialog).getByRole("button", { name: "Transfer administration" }));
+    await screen.findByLabelText("Your role: Member");
+    expect(screen.queryByRole("button", { name: /^Manage member/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
+    expect(memberRow(target.userId)).toHaveTextContent("Administrator");
+  });
+
+  it("blocks leaving or self-demotion as the final administrator, while permitting transfer", async () => {
+    search = `id=${GROUP_ID}`;
+    fake.respond("GET", WORKSPACE, json(200, initial));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    expect(await screen.findByRole("button", { name: "Leave group" })).toBeDisabled();
+    await openMenu(user, caller);
+    expect(screen.getByRole("menuitem", { name: "Make member" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    await openMenu(user);
+    expect(screen.getByRole("menuitem", { name: "Transfer administration" })).toBeEnabled();
+  });
+
+  it("requires confirmation of self-demotion and handles a concurrent final-admin conflict", async () => {
+    search = `id=${GROUP_ID}`;
+    const twoAdmins = { ...initial, members: initial.members.map(member => member.id === target.id ? { ...member, role: "admin" as const } : member) };
+    fake.respond("GET", WORKSPACE, json(200, twoAdmins), json(200, initial));
+    fake.respond("PUT", `${callerPath}/role`, problem(409, "group_last_administrator"));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user, caller);
+    await user.click(screen.getByRole("menuitem", { name: "Make member" }));
+    const dialog = screen.getByRole("dialog", { name: "Give up administration?" });
+    await user.click(within(dialog).getByRole("button", { name: "Make member" }));
+    expect(await screen.findByText("A group must retain at least one administrator.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Leave group" })).toBeDisabled();
+  });
+
+  it("reconciles a stale removal target without treating the whole group as missing", async () => {
+    search = `id=${GROUP_ID}`;
+    const updated = { ...initial, group: { ...initial.group, memberCount: 2 }, members: initial.members.filter(member => member.id !== target.id) };
+    fake.respond("GET", WORKSPACE, json(200, initial), json(200, updated));
+    fake.respond("DELETE", targetPath, problem(404, "group_member_not_found"));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove member" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Remove member?" })).getByRole("button", { name: "Remove member" }));
+    expect(await screen.findByText(/That membership is no longer available/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Members (2)" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `Manage member ${target.userId}` })).not.toBeInTheDocument();
+  });
+
+  it("reconciles concurrent demotion instead of keeping stale administrator controls", async () => {
+    search = `id=${GROUP_ID}`;
+    fake.respond("GET", WORKSPACE, json(200, initial), json(200, workspace({ callerRole: "member" })));
+    fake.respond("PUT", `${targetPath}/role`, problem(403, "group_admin_required"));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Make administrator" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Make administrator?" })).getByRole("button", { name: "Make administrator" }));
+    await screen.findByLabelText("Your role: Member");
+    expect(screen.queryByRole("button", { name: /^Manage member/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
+  });
+
+  it("does not resubmit an uncertain removal and keeps the confirmation locked until it settles", async () => {
+    search = `id=${GROUP_ID}`;
+    const response = deferred<Response | Error>();
+    const updated = { ...initial, group: { ...initial.group, memberCount: 2 }, members: initial.members.filter(member => member.id !== target.id) };
+    fake.respond("GET", WORKSPACE, json(200, initial), json(200, updated));
+    fake.respond("DELETE", targetPath, response.promise);
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove member" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove member?" });
+    const submit = within(dialog).getByRole("button", { name: "Remove member" });
+    act(() => { submit.click(); submit.click(); });
+    await waitFor(() => expect(fake.requests.filter(request => request.method === "DELETE")).toHaveLength(1));
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(dialog).toBeInTheDocument();
+    await act(async () => response.resolve(new TypeError("connection lost")));
+    expect(await screen.findByText(/outcome of the membership change could not be confirmed/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Members (2)" })).toBeInTheDocument();
+    expect(fake.requests.filter(request => request.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("lets ordinary members cancel and confirm leaving, clearing private data before navigation", async () => {
+    search = `id=${GROUP_ID}`;
+    fake.respond("GET", WORKSPACE, json(200, workspace({ callerRole: "member" })));
+    fake.respond("DELETE", callerPath, noContent());
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    const leave = await screen.findByRole("button", { name: "Leave group" });
+    expect(screen.queryByRole("button", { name: /^Manage member/ })).not.toBeInTheDocument();
+    await user.click(leave);
+    const dialog = screen.getByRole("dialog", { name: "Leave group?" });
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(leave).toHaveFocus();
+    expect(fake.requests).toHaveLength(1);
+    await user.click(leave);
+    await user.click(within(screen.getByRole("dialog", { name: "Leave group?" })).getByRole("button", { name: "Leave group" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/app/groups"));
+    expect(screen.queryByRole("list", { name: "Group members" })).not.toBeInTheDocument();
+    expect(fake.requests).toHaveLength(2);
+  });
+
+  it("ignores a delayed leave acknowledgment belonging to an abandoned group", async () => {
+    search = `id=${GROUP_ID}`;
+    const response = deferred<Response>();
+    fake.respond("GET", WORKSPACE, json(200, workspace({ callerRole: "member" })));
+    fake.respond("DELETE", callerPath, response.promise);
+    const nextId = "0193a5c4-7e1f-7c2a-9b3d-000000000002";
+    fake.respond("GET", `${LIST}/${nextId}/workspace`, json(200, workspace({ id: nextId, name: "Another group" })));
+    const tree = () => <TestProviders><IdentityProvider runtime={runtime}><RequireAuthentication><GroupViewPage /></RequireAuthentication></IdentityProvider></TestProviders>;
+    const view = render(tree());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Leave group" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Leave group?" })).getByRole("button", { name: "Leave group" }));
+    await waitFor(() => expect(fake.requests.filter(request => request.method === "DELETE")).toHaveLength(1));
+    search = `id=${nextId}`;
+    view.rerender(tree());
+    await screen.findByRole("heading", { name: "Another group", level: 1 });
+    await act(async () => response.resolve(noContent()));
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Another group", level: 1 })).toBeInTheDocument();
+  });
+
+  it("does not reconcile an old session's submitted mutation into a replacement session", async () => {
+    search = `id=${GROUP_ID}`;
+    const response = deferred<Response>();
+    fake.respond("GET", WORKSPACE, json(200, initial), json(200, workspace({ callerRole: "member" })));
+    fake.respond("DELETE", targetPath, response.promise);
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove member" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Remove member?" })).getByRole("button", { name: "Remove member" }));
+    await waitFor(() => expect(fake.requests.filter(request => request.method === "DELETE")).toHaveLength(1));
+    await act(async () => runtime.session.accept(authenticationResponse("replacement", undefined, SESSION_TWO)));
+    await screen.findByLabelText("Your role: Member");
+    await act(async () => response.resolve(noContent()));
+    await settlePendingWork();
+    expect(screen.queryByText("Membership updated.")).not.toBeInTheDocument();
+    expect(fake.requests.filter(request => request.method === "GET")).toHaveLength(2);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("prevents membership actions while an independently versioned metadata draft is open", async () => {
+    search = `id=${GROUP_ID}`;
+    fake.respond("GET", WORKSPACE, json(200, initial));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await user.click(await screen.findByRole("button", { name: "Edit details" }));
+    expect(screen.getByRole("button", { name: `Manage member ${target.userId}` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Leave group" })).toBeDisabled();
+    const draft = screen.getByRole("textbox", { name: /Name/ });
+    await user.type(draft, " draft");
+    await act(async () => runtime.session.accept(authenticationResponse("renewed")));
+    expect(draft).toHaveValue("Flat share draft");
+    expect(fake.requests).toHaveLength(1);
+  });
+
+  it("preserves an open confirmation during bearer renewal but disposes it on session replacement", async () => {
+    search = `id=${GROUP_ID}`;
+    fake.respond("GET", WORKSPACE, json(200, initial), json(200, workspace({ callerRole: "member" })));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove member" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove member?" });
+    await act(async () => runtime.session.accept(authenticationResponse("renewed")));
+    expect(screen.getByRole("dialog", { name: "Remove member?" })).toBe(dialog);
+    expect(fake.requests).toHaveLength(1);
+    await act(async () => runtime.session.accept(authenticationResponse("replacement", undefined, SESSION_TWO)));
+    await screen.findByLabelText("Your role: Member");
+    expect(dialog).not.toBeInTheDocument();
+    expect(fake.requests.every(request => request.method === "GET")).toBe(true);
+  });
+
+  it("closes the mobile Drawer before confirmation and has accessible controls", async () => {
+    search = `id=${GROUP_ID}`;
+    vi.mocked(window.matchMedia).mockImplementation(query => ({ matches: false, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }));
+    fake.respond("GET", WORKSPACE, json(200, initial));
+    const user = userEvent.setup();
+    renderPage(<GroupViewPage />);
+    await user.click(await screen.findByRole("button", { name: "Group information" }));
+    await openMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove member" }));
+    expect(screen.queryByRole("dialog", { name: "Group information" })).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Remove member?" });
+    await expectNoAxeViolations(dialog);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Group information" })).toHaveFocus();
+    expect(fake.requests).toHaveLength(1);
   });
 });
 
