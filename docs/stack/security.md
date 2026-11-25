@@ -1,6 +1,6 @@
 # Identity and authorization design
 
-**Status:** JWT/JOSE verification, operation-scoped identity, IAM registration/login, account profiles, password changes, durable sessions, transactional refresh rotation and logout are implemented. Authoritative live account/session eligibility for other contexts and domain attestation issuance/authorization remain proposed; their sections describe target contracts rather than deployed behavior. The [implemented identity architecture](../architecture/authorization.md), [application architecture](../architecture.md), [domain model](../data-model-design.md) and [persistence architecture](../architecture/persistence.md) own their respective contracts. See [security alternatives](security-alternatives.md) for the selection rationale.
+**Status:** JWT/JOSE verification, operation-scoped identity, IAM registration/login, account profiles, password changes, durable sessions, transactional refresh rotation and logout are implemented. Authoritative live account/session eligibility, Group membership administration and bearer invitations are implemented. IAM-to-Group local-miss integration and domain attestation issuance/authorization remain proposed. The [implemented identity architecture](../architecture/authorization.md), [application architecture](../architecture.md), [domain model](../data-model-design.md) and [persistence architecture](../architecture/persistence.md) own their respective contracts. See [security alternatives](security-alternatives.md) for the selection rationale.
 
 **Contents:**
 
@@ -10,6 +10,7 @@
 
 - [Trust and responsibility boundaries](#trust-and-responsibility-boundaries)
 - [Credentials, sessions and refresh](#credentials-sessions-and-refresh)
+- [Group invitations](#group-invitations)
 - [Issuing and using domain attestations](#issuing-and-using-domain-attestations)
 - [Request routing and framework integration](#request-routing-and-framework-integration)
     - [API boundaries and client behavior](#api-boundaries-and-client-behavior)
@@ -49,6 +50,12 @@ Each new login has a stable, unique **session-binding identifier** (`sid`) carri
 The browser serializes **registration, login, refresh and logout** through an exclusive same-origin Web Lock, acquiring a fresh CSRF token only after obtaining the lock. If Web Locks are unavailable, it fails closed instead of sending an uncoordinated credential mutation. In-tab single-flight bounds simultaneous renewal; an uncertain refresh outcome requires reauthentication instead of a second mutation attempt. Browser coordination does not substitute for the server's transactional replay protection.
 
 **Cookie-backed registration, login, refresh and logout enforce CSRF and exact same-origin `Origin` checks.** `GET /api/iam/v1/auth/csrf` returns a non-cacheable masked token paired with a host-only `__Host-sharewise-csrf` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`, path `/`). Spring Security validates the token/header pair and rejects invalid proof before dispatch. Successful authentication clears the CSRF cookie; bearer-only API calls cannot authenticate using the refresh cookie. Authentication denials avoid account-existence disclosures, and secrets are excluded from logging. Successful refresh returns a replacement cookie and clears the CSRF cookie; successful logout revokes the verified session and clears both cookies. The bearer-only password command is exempt from those cookie-mutation checks for its exact HTTP method and path, but still requires a valid primary IAM bearer; it returns no credential or cookie. Rate limiting beyond account lockout remains a deployment/public-exposure requirement, not an implemented guarantee.
+
+## Group invitations
+
+Group Management issues shareable bearer capabilities to current administrators. The link secret is disclosed only on creation; listing exposes nonsecret metadata, and revocation deletes the record. The [opaque application token mechanism](../architecture/authorization.md#opaque-application-tokens) protects the stored verifier independently of IAM refresh credentials. A link carries no authenticated identity, membership role or downstream authorization grant.
+
+Both preview and redemption require a verified IAM bearer and a locally known caller. The invitation token travels in a JSON request body, not a path or query parameter. Preview verifies the token and availability and returns only the group name, without changing membership or consuming a use. Redemption independently repeats validation under the group-root lock and creates only regular membership. An existing member keeps their role and does not consume a use on a valid repeat redemption. Invalid, revoked, expired or exhausted tokens have the same unavailable outcome. Group administrators authorize management operations from current membership rather than issued attestations. The [frontend architecture](../architecture/frontend.md#invitation-acceptance) explains how the browser keeps the invitation out of HTTP request URLs and authentication return paths.
 
 ## Issuing and using domain attestations
 
@@ -106,7 +113,7 @@ The implemented shared JWT/JOSE and evidence primitives provide trusted token pr
 
 ### API boundaries and client behavior
 
-The IAM authentication and account routes below are implemented; the domain-facing examples remain proposed capabilities:
+The IAM authentication/account and Group routes below are implemented; attestation and Finance examples remain proposed capabilities:
 
 | Capability | API path | Authentication |
 | --- | --- | --- |
@@ -116,6 +123,8 @@ The IAM authentication and account routes below are implemented; the domain-faci
 | Logout | `POST /api/iam/v1/auth/logout` | CSRF/Origin-protected cookie authentication; optional expected session binding; revokes the verified session and clears refresh/CSRF cookies; idempotent without a usable cookie; `409 session_context_changed` preserves the other session's cookie |
 | Account profile | `GET` and `PATCH /api/iam/v1/account` | Verified IAM bearer; reads email, user ID and nullable display name; `PATCH` sets or clears only the display name using required `displayName` and `clear` fields; returns an uncached account projection |
 | Password change | `POST /api/iam/v1/auth/password` | Verified IAM bearer with a live owned session, not refresh-cookie authentication; JSON current/new passwords; `204` without replacement tokens or cookies; exact-route CSRF/Origin exception and non-cacheable responses |
+| Group workspace and administration | `/api/groups/v1/groups` and its group-scoped resources | Verified IAM bearer, local admission and current Group membership/role as required by the operation |
+| Invitation preview and redemption | `POST /api/groups/v1/invitations/{preview,redeem}` | Verified IAM bearer, local admission and valid invitation token in JSON; preview returns the group name, redemption requires explicit submission |
 | Domain attestation issuance *(planned P2.5)* | `POST /api/groups/v1/attestations` (illustrative) | Valid primary IAM JWT; authority checks current group state |
 | Authorized domain operation *(planned)* | For example `POST /api/finance/v1/groups/{groupId}/close` | Primary JWT + matching group attestation, plus Finance rules |
 

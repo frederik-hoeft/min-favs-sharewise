@@ -96,7 +96,7 @@ Then insert the ID as the **application role** `sharewise_app`, which holds the 
 INSERT INTO groups.users (id) VALUES ('<user-id>') ON CONFLICT DO NOTHING;
 ```
 
-The statement is idempotent, matching the provisioning operation that P2.2d will call. Provision each test account separately: every registration creates a new user ID, and resetting the database volume removes all provisioned rows. Member management arrives with P2.2b; to test another account as a plain member, add a membership row the same way, for example `INSERT INTO groups.group_members (group_id, user_id, role) VALUES ('<group-id>', '<user-id>', 'member');` for an already provisioned user.
+The statement is idempotent, matching the provisioning operation that P2.2d will call. Provision each test account separately: every registration creates a new user ID, and resetting the database volume removes all provisioned rows. To exercise membership administration and invitation acceptance, create a group as one provisioned account, issue an invitation from its group information panel, and open the link as a different provisioned account (for example in a separate browser profile). Confirm the displayed group name and explicitly join, then use the administrator’s member controls to promote, demote or remove that membership. This exercises the application policies rather than bypassing them with direct membership inserts.
 
 ## Build, test and run
 

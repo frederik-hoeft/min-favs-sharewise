@@ -58,6 +58,8 @@ The database abstraction exposes the operations application-facing tests need; P
 
 ## Isolation, concurrency and external effects
 
+Component tests that share a cached Spring context also share its mutable singleton fixtures. Such fixtures require independent state or a common JUnit resource lock covering setup, test execution and cleanup; locking individual fixture methods cannot protect a whole scenario. Group component suites use a fixture-lifecycle lock while unrelated tests remain parallel.
+
 The shared Integration fixture is safe for parallel execution **under explicit constraints**, not simply because its transactions roll back. Tests own independent transaction bindings, operation scopes and connections; the suite's committed seed is immutable after initialization. Concurrent tests use disjoint write keys and avoid conflicting row locks, global schema or role mutations, and assumptions that PostgreSQL sequences roll back. The shared context may still contain singletons, so tests cannot mutate shared singleton state without independent synchronization or isolation.
 
 An Integration test cannot allow unrelated asynchronous consumers, external API calls or side effects to escape its rollback-owned operation. Those effects cannot be undone by the database rollback and may be triggered on another thread or after a physical commit that never occurs here. A test needing real event publication, cross-transaction visibility or external effects belongs in E2E or, when multiple deployed contexts are involved, in the deferred smoke suite.

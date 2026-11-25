@@ -19,7 +19,7 @@ An authenticated, locally known user can create a group, becomes its first membe
 
 ### Excluded
 
-- Member listing, role changes, leaving, removal and administrator transfer (**P2.2b**). P2.2a only creates the creator's `admin` membership; additional memberships exist only as test fixtures.
+- Member listing, role changes, leaving and removal (**P2.2b**; see [follow-up specification](../p2.2bc-group-workspace/specification.md)). P2.2a only creates the creator's `admin` membership; additional memberships exist only as test fixtures.
 - Invitation links and joining (**P2.2c**); the `groups.invitations` table is created by P2.2c.
 - Filling `groups.users` from IAM events (**P2.2d/P2.4a**) or by authoritative IAM lookup (**P2.1d/P2.2e**).
 - Group deletion and archival, which remain an [open domain decision](../../../data-model-design.md#open-decisions).
@@ -232,7 +232,7 @@ Manual browser acceptance requires P2.1a's registration and login (S3, S5). Befo
 | **D1** | Follow the handoff ER for names, types and limits (name 64, description 512, `group_members`, `group_role` = `member`/`admin`). | The ER is the reviewed cross-team reference; P2.2b/c build on the same tables. |
 | **D2** | Non-members receive `404`, identical to missing groups. | Group IDs must not reveal existence or membership to outsiders. |
 | **D3** | Unknown local users receive `403 group_user_unknown` for every operation, including reads. | Matches the interim behavior that the backlog defines for P2.2d and keeps one admission point for P2.2e. |
-| **D4** | **Extension to the ER:** `groups.groups.version bigint`, incremented by metadata replacement. | Optimistic concurrency for edits, agreed in discussion. P2.2b decides whether membership changes also increment it. |
+| **D4** | **Extension to the ER:** `groups.groups.version bigint`, incremented by metadata replacement. | Optimistic concurrency for edits, agreed in discussion. The subsequent [P2.2b/c specification](../p2.2bc-group-workspace/specification.md) resolves this as metadata-only. |
 | **D5** | `PUT` with full metadata replacement instead of `PATCH`. | The edit form always sends all metadata; `PUT` avoids ambiguity between absent and `null` fields. |
 | **D6** | jOOQ with generated types, using P2.1a's mechanism. | The persistence plan selects jOOQ and database-first generation; one generation mechanism for all contexts. |
 | **D7** | The list is unpaginated but wrapped in `{ "items": [...] }`. | Users belong to few groups initially; the wrapper keeps pagination a compatible addition. |

@@ -215,6 +215,15 @@ Suggested commit: `P2.2bc-H.2: Preview invited group and simplify administration
 
 Suggested commit: `P2.2bc-I: Reconcile group management documentation`.
 
-- [ ] After human acceptance of implementation behavior, update authoritative architecture, persistence, Phase 2 handoff, security, frontend and development/testing guides as appropriate; preserve Phase 3 membership revision semantics. Record human validation results, limitations and any approved deviations in task artifacts.
-- [ ] Check links/anchors, consistency and diff, rerun relevant checks and publish final docs patch. Independent reviewers review integrated revision; fix any accepted findings and reconcile docs again if behavior changes.
+- [x] After human acceptance of implementation behavior, update authoritative architecture, persistence, Phase 2 handoff, security, frontend and development/testing guides as appropriate; preserve Phase 3 membership revision semantics. Record human validation results, limitations and any approved deviations in task artifacts.
+- [x] Check links/anchors, consistency and diff, rerun relevant checks and publish final docs patch.
+- [ ] Independent reviewers review integrated revision; fix any accepted findings and reconcile docs again if behavior changes.
 - [ ] Final maintainer merge authorization and backlog completion after all required reviews, acceptance and smoke evidence (or explicit documented exceptions). Keep `main` unchanged until approval.
+
+**Documentation review record:**
+
+- P2 - Phase 2 handoff still described invitations and membership changes as future work, and security status described live IAM eligibility as proposed: reconcile current contracts, keeping event delivery, local-miss provisioning and attestations deferred.
+- P2 - Stale transfer and metadata-version decisions appeared in the domain model, backlog and predecessor task documents: align the current model and point predecessor artifacts to the follow-up specification. Preserve the separate future membership replication revision.
+- P3 - Frontend route tree and provisioning guide no longer matched the workspace or invitation flow: document declarative shell composition, authenticated name preview, in-memory continuation and a real two-account invitation procedure.
+
+**Checkpoint evidence:** Documentation skill and engineering-quality skill explicitly reread, including documentation writing examples. Reconciled authoritative docs with the actual H.2 application contracts and retained the previous review and test history. All relative Markdown links and anchors in changed documents resolved; tracked-source encoding check, its eight regression tests and Git whitespace check passed. No production or test code changes in this phase; the H.2 build/test evidence remains applicable. Maintainer authorized documentation after acceptance feedback. Exact post-H.2 PostgreSQL CI, Compose and browser recheck evidence and independent PR review remain outstanding. P2.2a/b/c backlog completion and baseline merge require final maintainer approval.

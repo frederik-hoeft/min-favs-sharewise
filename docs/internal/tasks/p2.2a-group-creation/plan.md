@@ -96,6 +96,6 @@ This phase depends only on the HTTP contract from the specification. If useful, 
 
 ## Out of scope
 
-- Member management and administrator transfer (**P2.2b**), invitations (**P2.2c**).
+- Member management (**P2.2b**) and invitations (**P2.2c**); see the [follow-up specification](../p2.2bc-group-workspace/specification.md).
 - Event-driven and lookup-based `groups.users` provisioning (**P2.2d/P2.4a**, **P2.2e/P2.1d**).
 - Group deletion, Group events, attestations and a published Group Java API.
