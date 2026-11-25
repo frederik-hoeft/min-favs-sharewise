@@ -1,10 +1,10 @@
 # Task-local workflow pilot
 
-**Status:** Proposed task-local instructions for maintainer approval. Applies only to P2.2b/c. The [AI development workflow](../../../development/ai-development-workflow.md), [ChatGPT development guide](../../../development/chatgpt-development-workflow.md), root `AGENTS.md` and repository skills remain authoritative except for the explicitly approved intermediate-gate substitution below.
+**Status:** Approved task-local instructions (November 25, 2026). Applies only to P2.2b/c. The [AI development workflow](../../../development/ai-development-workflow.md), [ChatGPT development guide](../../../development/chatgpt-development-workflow.md), root `AGENTS.md` and repository skills remain authoritative except for the explicitly approved intermediate-gate substitution below.
 
 ## Approval and phase discipline
 
-The maintainer approves the [specification](specification.md) and then the single [plan](plan.md) before dependent implementation. Commit and provide the approved task documents for application/push to the authoritative task branch before proceeding; a local CaaS commit is not an upstream push. Preserve the supplied P2.2a baseline on `main` and use a dedicated feature branch. Do not merge into the approved baseline without final authorization.
+The maintainer approves the [specification](specification.md) and then the single [plan](plan.md) before dependent implementation. Commit and provide the approved task documents for application/push to the authoritative task branch before proceeding. For this pilot, the maintainer explicitly authorizes local implementation immediately after publishing the approval patch, without waiting for upstream application; a local CaaS commit is not an upstream push. Preserve the supplied P2.2a baseline on `main` and use a dedicated feature branch. Do not merge into the approved baseline without final authorization.
 
 The pilot delegates routine intermediate implementation review to the implementation agent, not the final acceptance decision. Work phase-by-phase in the same implementation turn where execution permits; do not stop for routine intermediate approval. The mandatory exceptions are the jOOQ handoff, pre-documentation human feedback, and material architecture/scope revisions or a blocker that prevents safe progress. Do not proceed past a known correctness defect or fabricate unavailable validation. Human acceptance, independent PR review and final merge authorization remain unchanged.
 

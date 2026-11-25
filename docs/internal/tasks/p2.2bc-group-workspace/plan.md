@@ -1,6 +1,6 @@
 # P2.2b/c - Implementation plan
 
-**Status:** Draft for approval following the [specification](specification.md) gate. The [task-local workflow pilot](workflow.md) defines self-review, patch checkpoints and mandatory human stops. All boxes are initially unchecked; completion records distinguish agent-reviewed, human-accepted and infrastructure-unverified work.
+**Status:** Approved by the maintainer on November 25, 2026 following the [specification](specification.md) gate. The [task-local workflow pilot](workflow.md) defines self-review, patch checkpoints and mandatory human stops. All boxes are initially unchecked; completion records distinguish agent-reviewed, human-accepted and infrastructure-unverified work.
 
 ## Baseline and common gates
 
@@ -35,11 +35,11 @@ Suggested commit: `P2.2b-C: Integrate member administration`.
 - [ ] Cover T15, permission failures, simultaneous UI events, delayed results on route/session changes and keyboard/accessibility. Browser screenshot review for menus, dialogs and Drawer at relevant widths.
 - [ ] Gate: frontend checks, focused review against GM/GW requirements, patch.
 
-## Phase D - Shared opaque credential primitives
+## Phase D - Shared opaque application token primitives
 
-Suggested commit: `P2.2c-D: Extract reusable opaque credential primitives`.
+Suggested commit: `P2.2c-D: Extract reusable opaque application token primitives`.
 
-- [ ] Extract technical generation, canonical parsing and verifier comparison from IAM into `shared::security`; use narrow domain-agnostic types, redaction and defensive copies. Keep IAM session/cookie/storage policies and behavior intact. Register DI capabilities and declare Group module dependency when used; no cross-module internal imports.
+- [ ] Extract technical generation, canonical parsing and verifier comparison from IAM into `shared::security`; use `ApplicationToken`, `ApplicationTokenGenerator` and DI-managed `ApplicationTokenParser`, redaction and defensive copies. Keep IAM session/cookie/storage policies and behavior intact. Register DI capabilities and declare Group module dependency when used; no cross-module internal imports.
 - [ ] Cover T07 and run full backend Unit/module checks including IAM; compile affected IAM Integration/E2E and review actual call paths for format, replay and logging regressions.
 - [ ] Gate: self-review security-sensitive compatibility; patch. No invitation schema dependency yet.
 

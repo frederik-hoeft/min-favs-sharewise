@@ -1,6 +1,6 @@
 # P2.2b/c - Group membership, invitations and workspace
 
-**Status:** Draft for maintainer approval (November 25, 2026). Scope agreed in task discussion; metadata-version decision D2 awaits confirmation. Endpoint shapes and detailed acceptance criteria below are proposed for the specification gate. The [implementation plan](plan.md) and [task-local workflow](workflow.md) are review artifacts, not steady-state architecture. **Backlog:** [P2.2b and P2.2c](../backlog.md).
+**Status:** Approved by the maintainer (November 25, 2026). The [implementation plan](plan.md) and [task-local workflow](workflow.md) are review artifacts, not steady-state architecture. **Backlog:** [P2.2b and P2.2c](../backlog.md).
 
 ## Scope and starting point
 
@@ -15,7 +15,7 @@ Group Management owns authorization from live Group membership state, not IAM pr
 | ID | Decision | Rationale |
 | --- | --- | --- |
 | D1 | Multiple administrators; role changes and atomic transfer | Existing two-role domain model, no separate owner. |
-| D2 | Retain `groups.groups.version` as metadata-only optimistic concurrency (pending confirmation) | Membership changes do not invalidate metadata drafts; future `membership_revision` has a separate replication contract. |
+| D2 | Retain `groups.groups.version` as metadata-only optimistic concurrency | Membership changes do not invalidate metadata drafts; future `membership_revision` has a separate replication contract. |
 | D3 | Roster returns raw user UUIDs; no profile enrichment | Future frontend IAM lookup and bulk mapping can enrich IDs independently. |
 | D4 | Address mutations by membership ID | Avoid applying stale administrative commands to a new membership after rejoining. |
 | D5 | Positive maximum uses or unlimited; optional expiry | Existing ER supports arbitrary finite limits. |
@@ -24,7 +24,7 @@ Group Management owns authorization from live Group membership state, not IAM pr
 | D8 | Keep query-parameter group routes and static export | No Next.js server required in production. |
 | D9 | Configurable existing shell with responsive aside/Drawer | Declarative composition; no imperative slot registration or domain coupling in shell. |
 | D10 | Remove dummy entries from visible navigation | Establish real workspace; retain unrelated demo routes unless removal is necessary. |
-| D11 | Share opaque credential mechanics via `shared::security` | Two actual consumers of identical security-sensitive behavior; keep domain policies separate. |
+| D11 | Share opaque application token mechanics via `shared::security` | Two actual consumers of identical security-sensitive behavior; keep domain policies separate. |
 | D12 | No deletion or membership publication in this slice | Preserve future lifecycle and replication decisions. |
 
 ```mermaid
@@ -35,7 +35,7 @@ flowchart LR
     S --> A[Caller admission / IdentityContext]
     S --> P[Group ports]
     P --> DB[(groups schema)]
-    S --> C[Shared opaque credential primitives]
+    S --> C[Shared opaque application token primitives]
     IAM[IAM refresh lifecycle] --> C
 ```
 
@@ -63,7 +63,7 @@ Use `403 group_admin_required` for administrative denial; `404 group_member_not_
 ## Invitations (GI)
 
 - **GI-01:** Current administrators create, list and revoke invitations for their group. Listing returns nonsecret metadata only: ID, creation/expiry, max uses and use count; include expired/exhausted links until explicitly revoked. Create returns a new bearer only after commit; revocation hard-deletes a scoped record. Never store/log or return a secret or verifier from list/error responses. No retrieval of an existing secret. Authorize before checking arbitrary target records.
-- **GI-02:** Use canonical `UUID.base64url(secret)` with 32 CSPRNG bytes, unpadded canonical encoding and a 32-byte SHA-256 verifier of the decoded secret. Extract/reuse the existing IAM generation, parsing, constant-time fixed-length comparison, redaction and defensive-copy semantics through `shared::security`. IAM refresh cookie and storage formats, rotation/replay detection, session binding and failure semantics remain unchanged. Shared types have no knowledge of IAM or Group records, persistence, policies or cookies. Each module resolves selectors only in its own credential store; no cross-use authorization.
+- **GI-02:** Use canonical `UUID.base64url(secret)` with 32 CSPRNG bytes, unpadded canonical encoding and a 32-byte SHA-256 verifier of the decoded secret. Extract/reuse the existing IAM generation, parsing, constant-time fixed-length comparison, redaction and defensive-copy semantics through `shared::security`. IAM refresh cookie and storage formats, rotation/replay detection, session binding and failure semantics remain unchanged. Use `ApplicationToken`, `ApplicationTokenGenerator` and `ApplicationTokenParser` (a DI-managed parser, not a static factory); generated-token material may have a distinct type. Shared types have no knowledge of IAM or Group records, persistence, policies or cookies. Each module resolves selectors only in its own credential store; no cross-use authorization.
 - **GI-03:** Persist `groups.invitations` per the Phase 2 ER: UUIDv7 selector, group FK and index, verifier `bytea`, creation timestamp, nullable expiration, positive nullable integer max uses, nonnegative integer use count default 0. Enforce hash length, positive/nonnegative counts, count ≤ limit and expiry strictly after creation with database constraints and Group-owned domains as appropriate. Use the established group FK `NO ACTION` pending lifecycle decisions; no orphan invitation or surviving redeemable link after group deletion. A future deletion operation must remove dependent invitations atomically. Do not add deletion endpoints. Generate committed jOOQ sources from the migrated PostgreSQL schema, not by hand.
 - **GI-04:** Redeem only through authenticated explicit POST using the admitted caller ID. A preliminary selector lookup may identify the group, but is not authorization. Acquire the group-root lock, re-read the scoped invitation, verify the secret, evaluate expiry using current time after the lock, check use limit and existing membership. For valid new membership, insert role `member` and increment use count in the same segment, including unlimited invitations. Fail closed on count overflow; never wrap. A valid invitation presented by an existing member succeeds without inserting, changing role, or consuming a use. Invalid/expired/revoked/exhausted invitations share one public failure, including for existing members. Creation, revocation and redemption serialize with membership and metadata changes. Rollback of either write leaves neither effect.
 - **GI-05:** Expiry is optional and exclusive (invalid at the deadline). Creation validates expiry against the creation instant and max uses against the supported positive integer range. Use a consistent authoritative time source for creation and expiry checks; no client-supplied creation time. Do not evaluate expiry from a transaction-start timestamp after a potentially long lock wait.
@@ -101,7 +101,7 @@ These test scenarios define the required behavior, not exhaustive low-level cove
 | T04 | Foreign/stale membership ID, leave/rejoin | No unintended target mutation (E2E + HTTP) |
 | T05 | Competing final-admin departures/removals/demotions and metadata versus role change | Real independent connections, current authorization after lock, surviving invariants (E2E) |
 | T06 | Metadata concurrent edits before/after membership mutation | Existing conflict handling; membership changes do not increment version (E2E) |
-| T07 | Opaque credential round-trip and malformed/noncanonical values, wrong secret/selector | Strict format, redaction, defensive copies, no secret persistence; full IAM regression (Unit + existing IAM IT/E2E) |
+| T07 | Opaque application token round-trip and malformed/noncanonical values, wrong secret/selector | Strict format, redaction, defensive copies, no secret persistence; full IAM regression (Unit + existing IAM IT/E2E) |
 | T08 | Invitation create/list/revoke, unauthorized, foreign ID, invalid constraints | Verifier only, one-time response, scoped permissions, real constraints (Unit + IT + HTTP) |
 | T09 | Valid join, repeat join as member/admin, leave then rejoin, unlimited/finite counts | Exactly one new membership per successful join, never promote/demote, counts correct (E2E) |
 | T10 | Forged, malformed, revoked, expired, exhausted and unknown invite | Uniform failure, no writes, deadline equality rejected (Unit + IT/E2E + HTTP) |
