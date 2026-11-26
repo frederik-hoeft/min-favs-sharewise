@@ -89,6 +89,27 @@ Both resolutions change only documentation and comments; no production behavior,
 
 **Resolution evidence.** Because no executable code changed, the Unit, Integration and E2E results recorded for `5c0d6cb` remain the behavioral evidence; the suites were not rerun. `./mvnw -B -ntp -o -q compile` succeeded (the build runs no Javadoc or doclint step), and `git diff --check` is clean.
 
+### Third independent review
+
+A third independent review of `ef53e80` confirmed the previous five resolutions. It found no production correctness, authorization, concurrency, architectural or failure-handling defect, and reported one test-double defect and one optional coverage gap.
+
+| Finding | Severity | Validation | Resolution |
+| --- | --- | --- | --- |
+| T1 - Rollback-only commit in the recording fake | Test defect | Confirmed. `SpringTransactions.executeSegment` throws `IllegalStateException("Cannot commit a rollback-only transaction segment")` when a callback marked the segment rollback-only and requests `COMMIT`; Spring then rolls the segment back. `RecordingFinanceStores` instead downgraded the decision to `ROLLBACK` and returned the result. `FinanceProjectionService` never marks a segment rollback-only, so no production path was affected. | The fake throws the production exception from inside the segment, so its existing failure path records `failed` and restores the start state. `RecordingFinanceStoresTests` covers this, and it fails against the previous fake. The production transaction implementation is unchanged. |
+| T2 - Concurrent same-revision facts untested | Optional coverage | Confirmed. PRJ-T12 queues facts with different revisions only; duplicate and contradictory facts are covered sequentially by PRJ-T06 and PRJ-T07. | Added PRJ-T20 to `FinanceProjectionConcurrencyE2E`, reusing PRJ-T12's root-lock queue, which now takes explicit states and joins both facts within the shared bound. The test checks that a waiting fact reads the winner's committed actor and that a contradiction raised after the lock wait leaves the winner's row and insert timestamps unchanged. |
+
+Both resolutions change only test code and the specification's test catalog. No production behavior, schema, module dependency or published interface changed.
+
+**Resolution evidence.** Agent-run in the devcontainer against its PostgreSQL 18 service, on the working tree based on `ef53e80`, from `src/backend/sharewise`, without `clean`:
+
+| Command | Result |
+| --- | --- |
+| `./mvnw -B -ntp -o -Punit-tests -Dtest='RecordingFinanceStoresTests,FinanceProjectionServiceTests' test` | 10 tests passed. With the previous `RecordingFinanceStores` restored temporarily, `RecordingFinanceStoresTests` failed as expected. |
+| `./mvnw -B -ntp -o -Pe2e-tests -Dit.test='FinanceProjectionConcurrencyE2E' verify` | 5 tests passed, including PRJ-T20 and PRJ-T12 through the changed queue helper. |
+| `git diff --check` | Clean. |
+
+The full suites were not rerun, because no production or shared test-support code changed. The results recorded for `5c0d6cb` remain the evidence for everything outside the two changed test classes.
+
 ## Verification commands and final acceptance
 
 From `src/backend/sharewise` in the devcontainer:

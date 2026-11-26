@@ -7,6 +7,8 @@ import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.await
 import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.awaitLockWaiters;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.finance.internal.actor.FinancialActor;
@@ -32,6 +34,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -48,7 +51,7 @@ import org.springframework.context.annotation.Scope;
 
 /**
  * Concurrent projection operations serialize on their group's root lock only, and the source
- * revision rather than {@code updated_at} orders them (PRJ-T11 to PRJ-T13, PRJ-T19).
+ * revision rather than {@code updated_at} orders them (PRJ-T11 to PRJ-T13, PRJ-T19, PRJ-T20).
  * Operations run as independent production dispatches with their own connections; a fixture
  * transaction on a further connection holds the contended lock, and the tests advance only after
  * PostgreSQL reports the expected lock waits. Holders are declared after their executors, so
@@ -95,15 +98,49 @@ class FinanceProjectionConcurrencyE2E extends E2ETestBase {
     void sameActorFactsQueuedOnTheRootLockApplyInQueueOrderAndConvergeOnTheHighestRevision() {
         runConcurrencyTest(fixture -> {
             UUID ascending = UUID.randomUUID();
-            assertEquals(List.of(MembershipOutcome.INSERTED, MembershipOutcome.SUPERSEDED),
-                    queueOnLockedRoot(fixture, ascending, 1, 2));
+            assertEquals(List.of(MembershipOutcome.INSERTED, MembershipOutcome.SUPERSEDED), outcomes(
+                    queueOnLockedRoot(fixture, ascending, 1, MembershipState.ACTIVE, 2, MembershipState.REMOVED)));
             UUID descending = UUID.randomUUID();
-            assertEquals(List.of(MembershipOutcome.INSERTED, MembershipOutcome.STALE),
-                    queueOnLockedRoot(fixture, descending, 2, 1));
+            assertEquals(List.of(MembershipOutcome.INSERTED, MembershipOutcome.STALE), outcomes(
+                    queueOnLockedRoot(fixture, descending, 2, MembershipState.REMOVED, 1, MembershipState.ACTIVE)));
 
             for (UUID group : List.of(ascending, descending)) {
                 assertEquals(List.of(new FinancialActor(group, FIRST, MembershipState.REMOVED, 2)),
                         FinanceTestFixture.actors(fixture, group));
+            }
+        });
+    }
+
+    /**
+     * Two facts with the same actor and revision queued on the root lock (PRJ-T20): the waiter
+     * reads the winner's committed actor, so an identical fact is a duplicate and an opposing one
+     * fails as a contradiction. Neither writes, so the winner's row keeps its insert timestamps.
+     */
+    @Test
+    void sameRevisionFactsQueuedOnTheRootLockLeaveTheFirstCommittedFactAuthoritative() {
+        runConcurrencyTest(fixture -> {
+            UUID identical = UUID.randomUUID();
+            assertEquals(List.of(MembershipOutcome.INSERTED, MembershipOutcome.DUPLICATE), outcomes(
+                    queueOnLockedRoot(fixture, identical, 3, MembershipState.ACTIVE, 3, MembershipState.ACTIVE)));
+
+            UUID contradictory = UUID.randomUUID();
+            List<Future<MembershipOutcome>> results =
+                    queueOnLockedRoot(fixture, contradictory, 3, MembershipState.ACTIVE, 3, MembershipState.REMOVED);
+            assertEquals(MembershipOutcome.INSERTED, await(results.get(0)));
+            ExecutionException failure = assertThrows(ExecutionException.class, results.get(1)::get);
+            ConflictingMembershipFactException conflict =
+                    assertInstanceOf(ConflictingMembershipFactException.class, failure.getCause());
+            assertEquals(MembershipState.ACTIVE, conflict.storedState());
+            assertEquals(MembershipState.REMOVED, conflict.receivedState());
+
+            for (UUID group : List.of(identical, contradictory)) {
+                assertEquals(List.of(new FinancialActor(group, FIRST, MembershipState.ACTIVE, 3)),
+                        FinanceTestFixture.actors(fixture, group));
+                // The waiter's transaction started after the winner's, so any write would have moved updated_at.
+                ActorsRecord winner = FinanceTestFixture.actorRow(fixture, group, FIRST);
+                assertTrue(winner.getCreatedAt().isEqual(winner.getUpdatedAt()), winner::toString);
+                assertEquals(Optional.of(new FinancialGroup(group, FinancialGroupState.PROVISIONING, 0)),
+                        FinanceTestFixture.root(fixture, group));
             }
         });
     }
@@ -183,27 +220,32 @@ class FinanceProjectionConcurrencyE2E extends E2ETestBase {
 
     /**
      * Queues two facts for one actor of a seeded root behind a held root lock, in the given
-     * order, and returns their outcomes in that order. PostgreSQL grants a contended row lock to
-     * its waiters in queue order, so the first fact submitted is applied first.
+     * order, and returns their completed results in that order. PostgreSQL grants a contended row
+     * lock to its waiters in queue order, so the first fact submitted is applied first.
      */
-    private static List<MembershipOutcome> queueOnLockedRoot(IntegrationTestContext fixture, UUID group,
-            long firstRevision, long secondRevision) throws Exception {
+    private static List<Future<MembershipOutcome>> queueOnLockedRoot(IntegrationTestContext fixture, UUID group,
+            long firstRevision, MembershipState firstState, long secondRevision, MembershipState secondState)
+            throws Exception {
         FinanceTestFixture.seedRoot(fixture, group, FinancialGroupState.PROVISIONING, 0);
         try (ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
              Connection holder = FinanceTestFixture.lockRoot(fixture, group)) {
             Future<MembershipOutcome> first = workers.submit(() ->
-                    apply(fixture, group, FIRST, firstRevision, stateOf(firstRevision)));
+                    apply(fixture, group, FIRST, firstRevision, firstState));
             awaitLockWaiters(fixture, holder, 1, WAIT);
             Future<MembershipOutcome> second = workers.submit(() ->
-                    apply(fixture, group, FIRST, secondRevision, stateOf(secondRevision)));
+                    apply(fixture, group, FIRST, secondRevision, secondState));
             awaitLockWaiters(fixture, holder, 2, WAIT);
             holder.commit();
-            return List.of(await(first), await(second));
+            // Bounded join of both facts, whether they succeed or fail; callers inspect each result.
+            workers.shutdown();
+            assertTrue(workers.awaitTermination(WAIT.toMillis(), TimeUnit.MILLISECONDS),
+                    "Queued facts did not complete");
+            return List.of(first, second);
         }
     }
 
-    private static MembershipState stateOf(long revision) {
-        return revision == 1 ? MembershipState.ACTIVE : MembershipState.REMOVED;
+    private static List<MembershipOutcome> outcomes(List<Future<MembershipOutcome>> results) {
+        return results.stream().map(PostgresLockWaits::await).toList();
     }
 
     private static FinancialActor toActor(ActorsRecord row) {

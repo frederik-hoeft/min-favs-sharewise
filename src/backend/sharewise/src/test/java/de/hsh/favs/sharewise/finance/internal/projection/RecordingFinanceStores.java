@@ -23,7 +23,9 @@ import java.util.function.Supplier;
 /**
  * Test-only in-memory Finance stores and segment owner sharing one call journal. A segment keeps
  * its changes only if it commits; any other disposition or a callback failure restores the state
- * at segment start, like a physical rollback. The stores enforce the root-lock protocol: they
+ * at segment start, like a physical rollback. As in {@code SpringTransactions}, requesting a
+ * commit of a segment marked rollback-only fails with {@link IllegalStateException} and rolls
+ * the segment back. The stores enforce the root-lock protocol: they
  * require an active segment, and actor access requires the group's root lock from the same
  * segment. PostgreSQL locking and constraint semantics are covered by the E2E and Integration
  * suites.
@@ -54,10 +56,12 @@ final class RecordingFinanceStores {
             boolean committed = false;
             try {
                 TransactionOutcome<T> outcome = Objects.requireNonNull(operation.get(), "outcome");
-                TransactionDecision decision = rollbackOnly && outcome.decision() == TransactionDecision.COMMIT
-                        ? TransactionDecision.ROLLBACK : outcome.decision();
-                journal.add(decision.name());
-                committed = decision == TransactionDecision.COMMIT;
+                if (rollbackOnly && outcome.decision() == TransactionDecision.COMMIT) {
+                    // Mirrors SpringTransactions: the segment fails and rolls back instead of downgrading.
+                    throw new IllegalStateException("Cannot commit a rollback-only transaction segment");
+                }
+                journal.add(outcome.decision().name());
+                committed = outcome.decision() == TransactionDecision.COMMIT;
                 return outcome.result();
             } catch (RuntimeException | Error callbackFailure) {
                 journal.add("failed");

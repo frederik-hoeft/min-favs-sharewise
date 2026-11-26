@@ -166,6 +166,7 @@ Tests follow the [test architecture](../../../architecture/tests.md) and [test g
 | PRJ-T17 | R13 | Existing Modulith verification. | Finance remains closed; only the declared dependencies are used; ports expose no generated types. | Unit |
 | PRJ-T18 | R03, R04, R08 | Seed a root in each lifecycle state at a nonzero revision; apply an unknown actor, a newer fact, a duplicate and a stale fact. | `INSERTED`, `SUPERSEDED`, `DUPLICATE`, `STALE` in every state; actor reflects the highest revision; the complete root row is unchanged throughout. | E2E |
 | PRJ-T19 | R04, R12 | Start the higher revision's transaction for a seeded actor, then let a later transaction apply and commit a lower revision before the first acquires the root lock and applies its fact. | The higher revision ends authoritative with `updated_at` equal to its earlier transaction start and before the lower revision's committed `updated_at`; `created_at` and the root row are unchanged. | E2E |
+| PRJ-T20 | R05, R06, R12 | Same-revision race: as PRJ-T12, queue two facts for one actor with the same revision on a held root lock, first with identical states, then with opposing states. | Identical: `INSERTED` then `DUPLICATE`. Opposing: `INSERTED`, then `ConflictingMembershipFactException`. In both, one actor row holds the first fact with `created_at` equal to `updated_at`, and the root is unchanged. | E2E |
 
 The implementation adds further Unit and Integration tests for adapter mapping, null handling and other technical detail as needed. Tests do not add production entry points.
 
