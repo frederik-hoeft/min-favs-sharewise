@@ -5,6 +5,7 @@ export {
     createApiClient,
     scopeApiClient,
     type ApiClient,
-    type ApiClientHooks,
     type ApiRequestOptions,
 } from './client.ts';
+
+export type { ApiRequestContext, ApiRequestHandler, RequestHandler, SentRequest, RecoveryAction, RecoveryProgress } from './handlers.ts';

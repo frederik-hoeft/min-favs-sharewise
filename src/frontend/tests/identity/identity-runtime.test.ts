@@ -52,11 +52,41 @@ describe("Identity runtime with mock HTTP", () => {
 
   it("keeps anonymous endpoints on the plain API client without requiring cookie restoration", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ status: 'UP' }));
-    const publicApi = createApiClient({}, fetchImpl as typeof fetch);
+    const publicApi = createApiClient([], fetchImpl as typeof fetch);
     const identity = createRuntime(fetchImpl as typeof fetch, () => undefined);
     await expect(publicApi.get('/system/v1/health')).resolves.toEqual({ status: 'UP' });
     await expect(identity.api.get('/system/v1/health')).rejects.toMatchObject({ code: 'auth_lock_unavailable' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not deliver an in-flight response to a replacement lifetime with the same session ID", async () => {
+    const response = deferred<Response>();
+    const fetchImpl = vi.fn<typeof fetch>(async () => response.promise);
+    const runtime = createRuntime(fetchImpl, () => undefined);
+    runtime.session.accept(authenticationResponse("old"));
+    const pending = runtime.api.get('/groups/v1/groups');
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    runtime.session.invalidate('unauthorized');
+    runtime.session.accept(authenticationResponse("new-lifetime"));
+    response.resolve(jsonResponse({ ok: true }));
+    await expect(pending).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(runtime.session.getAccessToken()).toBe('new-lifetime');
+  });
+
+  it("does not publish an old refresh after the same session ID is accepted in a new lifetime", async () => {
+    const refresh = deferred<Response>();
+    const fetchImpl = vi.fn<typeof fetch>(async input => String(input).endsWith('/csrf')
+      ? jsonResponse({ token: 'csrf' }) : String(input).endsWith('/refresh')
+        ? refresh.promise : problemResponse(401, 'invalid_credential'));
+    const runtime = createRuntime(fetchImpl, () => new ControlledLocks().manager);
+    runtime.session.accept(authenticationResponse('old'));
+    const pending = runtime.api.get('/groups/v1/groups');
+    await vi.waitFor(() => expect(fetchImpl.mock.calls.some(call => String(call[0]).endsWith('/refresh'))).toBe(true));
+    runtime.session.invalidate('unauthorized');
+    runtime.session.accept(authenticationResponse('new-lifetime'));
+    refresh.resolve(jsonResponse(authenticationResponse('stale-refresh')));
+    await expect(pending).rejects.toMatchObject({ code: 'session_context_changed' });
+    expect(runtime.session.getAccessToken()).toBe('new-lifetime');
   });
 
   it("attaches the current bearer to subsequent domain requests, not anonymous auth requests", async () => {

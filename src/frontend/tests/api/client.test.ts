@@ -1,11 +1,14 @@
 // @vitest-environment node
 
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, createApiClient } from "@/lib/api";
+import { ApiError, createApiClient, type ApiRequestHandler, type RequestHandler } from "@/lib/api";
+
+const primary = (state: RequestHandler): ApiRequestHandler => ({ kind: 'primary', begin: () => state });
+const retry = (run: () => Promise<void>) => ({ key: 'primary', run });
 
 describe("createApiClient", () => {
   it("resolves typed JSON data on 200 OK", async () => {
-    const client = createApiClient({}, async (input, init) => {
+    const client = createApiClient([], async (input, init) => {
       expect(input).toBe("/api/system/v1/health");
       expect(init?.credentials).toBe("same-origin");
       return new Response(JSON.stringify({ status: "UP" }), {
@@ -20,17 +23,17 @@ describe("createApiClient", () => {
   it.each(["groups/v1/groups", "/groups/v1/groups", "api/groups/v1/groups", "/api/groups/v1/groups"])(
     "classifies %s by pathname and preserves the query across replay", async (path) => {
       const query = "?search=a%2Fb%23c&flag=&search=x";
-      const captureSessionId = vi.fn(() => undefined);
-      const onRequest = vi.fn();
-      const onUnauthorized = vi.fn(async () => true);
-      const onReplayUnauthorized = vi.fn();
+      const prepare = vi.fn();
+      const recovery = vi.fn(async () => {});
+      const terminal = vi.fn();
+      const begin = vi.fn(() => ({ prepare, recover: () => retry(recovery), onTerminalFailure: terminal }));
       const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 401 }));
-      const client = createApiClient({ captureSessionId, onRequest, onUnauthorized, onReplayUnauthorized }, fetchImpl);
+      const client = createApiClient([{ kind: 'primary', begin }], fetchImpl);
       await expect(client.get(path + query)).rejects.toMatchObject({ status: 401 });
-      for (const hook of [captureSessionId, onRequest, onUnauthorized, onReplayUnauthorized]) {
-        expect(hook).toHaveBeenCalled();
-        expect(hook.mock.calls.every(call => call[0] === "/api/groups/v1/groups")).toBe(true);
-      }
+      expect(begin).toHaveBeenCalledWith(expect.objectContaining({ pathname: '/api/groups/v1/groups', target: '/api/groups/v1/groups' + query }));
+      expect(prepare).toHaveBeenCalledTimes(2);
+      expect(recovery).toHaveBeenCalledTimes(1);
+      expect(terminal).toHaveBeenCalledTimes(1);
       expect(fetchImpl.mock.calls.map(call => call[0])).toEqual([
         "/api/groups/v1/groups" + query, "/api/groups/v1/groups" + query,
       ]);
@@ -45,24 +48,22 @@ describe("createApiClient", () => {
     "/api/iam/v1/auth/logout#fragment", "/api/iam/v1/auth/logout?x=#fragment",
     "/api/iam/v1/auth/\\logout", "/api/iam/v1/auth/log\tout", "",
   ])("rejects noncanonical API path %j before auth or dispatch", async (path) => {
-    const captureSessionId = vi.fn();
-    const onRequest = vi.fn();
+    const begin = vi.fn();
     const fetchImpl = vi.fn<typeof fetch>();
-    const client = createApiClient({ captureSessionId, onRequest }, fetchImpl);
+    const client = createApiClient([{ kind: 'primary', begin }], fetchImpl);
     await expect(client.get(path)).rejects.toMatchObject({ code: "invalid_api_path" });
-    expect(captureSessionId).not.toHaveBeenCalled();
-    expect(onRequest).not.toHaveBeenCalled();
+    expect(begin).not.toHaveBeenCalled();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("resolves undefined on 204 No Content", async () => {
-    const client = createApiClient({}, async () => new Response(null, { status: 204 }));
+    const client = createApiClient([], async () => new Response(null, { status: 204 }));
 
     await expect(client.delete<void>("/api/items/1")).resolves.toBeUndefined();
   });
 
   it("parses 400 ProblemDetail with fieldErrors into ApiError", async () => {
-    const client = createApiClient({}, async () => new Response(
+    const client = createApiClient([], async () => new Response(
       JSON.stringify({
         type: "about:blank",
         title: "Validation Failed",
@@ -88,7 +89,7 @@ describe("createApiClient", () => {
   });
 
   it("uses the HTTP status when ProblemDetail status differs", async () => {
-    const client = createApiClient({}, async () => new Response(
+    const client = createApiClient([], async () => new Response(
       JSON.stringify({
         type: "about:blank",
         title: "Forbidden",
@@ -109,7 +110,7 @@ describe("createApiClient", () => {
   });
 
   it("maps network failures to a typed ApiError", async () => {
-    const client = createApiClient({}, async () => {
+    const client = createApiClient([], async () => {
       throw new TypeError("Failed to fetch");
     });
 
@@ -129,14 +130,14 @@ describe("createApiClient", () => {
       start(controller) { controller.error(new DOMException("stream interrupted", "AbortError")); },
     }), { status: 201, headers: { "content-type": "application/json" } })],
   ])("maps a successful HTTP response with %s to an uncertain transport outcome", async (_case, response) => {
-    const client = createApiClient({}, async () => response());
+    const client = createApiClient([], async () => response());
     await expect(client.post("/iam/v1/auth/register", { email: "example@example.com" })).rejects.toMatchObject({
       name: "ApiError", status: 0, code: "invalid_response",
     } satisfies Partial<ApiError>);
   });
 
   it("does not classify failed HTTP responses as uncertain transport outcomes", async () => {
-    const client = createApiClient({}, async () => new Response("{invalid json", {
+    const client = createApiClient([], async () => new Response("{invalid json", {
       status: 400, headers: { "content-type": "application/problem+json" },
     }));
     await expect(client.post("/iam/v1/auth/register", {})).rejects.toMatchObject({
@@ -146,10 +147,10 @@ describe("createApiClient", () => {
 
   it("honors the bounded 401 retry hook without retrying indefinitely", async () => {
     const onRequest = vi.fn();
-    const onUnauthorized = vi.fn(async () => true);
+    const onUnauthorized = vi.fn(async () => {});
     const onReplayUnauthorized = vi.fn();
     const fetchImpl = vi.fn(async () => new Response(null, { status: 401 }));
-    const client = createApiClient({ onRequest, onUnauthorized, onReplayUnauthorized }, fetchImpl);
+    const client = createApiClient([primary({ prepare: onRequest, recover: () => retry(onUnauthorized), onTerminalFailure: onReplayUnauthorized })], fetchImpl);
 
     await expect(client.get("/api/groups")).rejects.toBeInstanceOf(ApiError);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -163,7 +164,7 @@ describe("createApiClient", () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
     const controller = new AbortController();
     controller.abort();
-    const client = createApiClient({ onRequest }, fetchImpl);
+    const client = createApiClient([primary({ prepare: onRequest })], fetchImpl);
 
     await expect(client.get("/groups", { signal: controller.signal })).rejects.toMatchObject({ code: 'request_aborted' });
     expect(onRequest).not.toHaveBeenCalled();
@@ -175,7 +176,7 @@ describe("createApiClient", () => {
     const preparation = new Promise<void>((resolve) => { release = resolve; });
     const onRequest = vi.fn(async () => { await preparation; });
     const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
-    const client = createApiClient({ onRequest }, fetchImpl);
+    const client = createApiClient([primary({ prepare: onRequest })], fetchImpl);
     const controller = new AbortController();
 
     const pending = client.get("/groups", { signal: controller.signal });
@@ -198,9 +199,8 @@ describe("createApiClient", () => {
       });
       const onUnauthorized = vi.fn(async () => {
         await new Promise<void>((resolve) => setTimeout(resolve, 200));
-        return true;
       });
-      const client = createApiClient({ onUnauthorized }, fetchImpl);
+      const client = createApiClient([primary({ recover: () => retry(onUnauthorized) })], fetchImpl);
       const pending = client.get<{ ok: boolean }>("/groups", { timeoutMs: 50 });
       await vi.advanceTimersByTimeAsync(210);
       await expect(pending).resolves.toEqual({ ok: true });
@@ -216,14 +216,14 @@ describe("createApiClient", () => {
     const response = new Promise<Response>((resolve) => { release = resolve; });
     let currentSession = 'session-one';
     const fetchImpl = vi.fn(async () => response);
-    const client = createApiClient({
-      onRequest: () => currentSession,
-      assertSessionContext: (context) => {
-        if (context.sessionId !== currentSession) {
+    const client = createApiClient([{ kind: 'primary', begin: () => {
+      const bound = currentSession;
+      return { assertCurrent: () => {
+        if (bound !== currentSession) {
           throw new ApiError({ status: 0, code: 'session_context_changed', title: 'Sign-in Changed', detail: 'Session changed.' });
         }
-      },
-    }, fetchImpl);
+      } };
+    } }], fetchImpl);
     const pending = client.get('/groups');
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
     currentSession = 'session-two';
@@ -233,8 +233,8 @@ describe("createApiClient", () => {
   });
 
   it("replays immutable URLSearchParams with their form content type", async () => {
-    let finishRenewal!: (value: boolean) => void;
-    const renewal = new Promise<boolean>((resolve) => { finishRenewal = resolve; });
+    let finishRenewal!: () => void;
+    const renewal = new Promise<void>((resolve) => { finishRenewal = resolve; });
     const sent: Array<{ body: string; contentType: string | null }> = [];
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       sent.push({ body: String(init?.body), contentType: (init?.headers as Headers).get('Content-Type') });
@@ -242,11 +242,11 @@ describe("createApiClient", () => {
     });
     const onUnauthorized = vi.fn(async () => renewal);
     const params = new URLSearchParams('amount=10');
-    const client = createApiClient({ onUnauthorized }, fetchImpl);
+    const client = createApiClient([primary({ recover: () => retry(onUnauthorized) })], fetchImpl);
     const pending = client.post('/groups', params);
     await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
     params.set('amount', '100');
-    finishRenewal(true);
+    finishRenewal();
     await expect(pending).resolves.toBeUndefined();
     expect(sent).toEqual([
       { body: 'amount=10', contentType: 'application/x-www-form-urlencoded;charset=UTF-8' },

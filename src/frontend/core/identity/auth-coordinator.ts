@@ -8,6 +8,8 @@ import type { AuthenticationResponse, IdentityCredentials, SessionContextEvent }
 type AuthOperation = 'register' | 'login';
 
 interface RenewalFlight {
+    readonly sessionId: string | undefined;
+    readonly lifetime: number | undefined;
     readonly controller: AbortController;
     action: Promise<void>;
     waiters: number;
@@ -71,8 +73,8 @@ export class AuthCoordinator {
         if (this.session.getSnapshot().status === 'context-changed') throw contextChanged();
         if (this.session.getAccessToken()) return;
         if (signal?.aborted) throw requestCanceled();
-        if (this.renewal) return this.singleFlightRenewal(undefined, undefined, signal);
         const state = this.session.getSnapshot();
+        if (state.status === 'restoring') return this.singleFlightRenewal(undefined, undefined, signal);
         if (state.status !== 'reauthentication-required' ||
             (state.reason !== 'initial' && state.reason !== 'retryable')) {
             throw reauthenticationRequired();
@@ -90,9 +92,10 @@ export class AuthCoordinator {
             throw reauthenticationRequired();
         }
         if (this.session.getAccessToken() && !this.session.matchesAccessToken(rejectedToken)) return;
+        const lifetime = this.session.getAuthenticatedLifetime();
         await this.singleFlightRenewal(expectedSessionId, rejectedToken, signal);
         if (signal?.aborted) throw requestCanceled();
-        this.assertContext(expectedSessionId);
+        this.assertRenewalContext(expectedSessionId, lifetime);
         if (!this.session.getAccessToken()) throw reauthenticationRequired();
     }
 
@@ -155,13 +158,20 @@ export class AuthCoordinator {
     private async singleFlightRenewal(expectedSessionId: string | undefined, rejectedToken?: string,
         signal?: AbortSignal): Promise<void> {
         if (signal?.aborted) throw requestCanceled();
+        const lifetime = this.session.getAuthenticatedLifetime();
         const previous = this.renewal;
+        if (previous && (previous.sessionId !== expectedSessionId || previous.lifetime !== lifetime)) {
+            // A replacement lifetime cannot join an old cookie mutation, even when its ID was reused.
+            await this.awaitAbandonedRenewal(previous, signal);
+            this.assertRenewalContext(expectedSessionId, lifetime);
+            return this.singleFlightRenewal(expectedSessionId, rejectedToken, signal);
+        }
         if (previous?.controller.signal.aborted && !previous.submitted) {
             // No new caller may join a canceled flight. Its in-flight CSRF request
             // must settle and release the Web Lock before we start a replacement.
             await this.awaitAbandonedRenewal(previous, signal);
             if (expectedSessionId === undefined) return this.ensureAuthenticated(signal);
-            this.assertContext(expectedSessionId);
+            this.assertRenewalContext(expectedSessionId, lifetime);
             const state = this.session.getSnapshot();
             if (state.status === 'reauthentication-required' && state.reason !== 'initial') {
                 throw reauthenticationRequired();
@@ -172,6 +182,7 @@ export class AuthCoordinator {
         }
         if (!this.renewal) {
             const flight: RenewalFlight = {
+                sessionId: expectedSessionId, lifetime,
                 controller: new AbortController(), action: Promise.resolve(), waiters: 0, submitted: false,
             };
             this.renewal = flight;
@@ -234,17 +245,17 @@ export class AuthCoordinator {
             await this.cookieLock.runExclusive(async () => {
                 assertInterested(flight);
                 // Another request may have renewed while we waited for the lock.
-                this.assertRenewalContext(expectedSessionId);
+                this.assertRenewalContext(expectedSessionId, flight.lifetime);
                 if (this.session.getAccessToken() &&
                     (rejectedToken === undefined || !this.session.matchesAccessToken(rejectedToken))) return;
                 const csrf = await this.api.getCsrfToken(flight.controller.signal);
                 assertInterested(flight);
-                this.assertRenewalContext(expectedSessionId);
+                this.assertRenewalContext(expectedSessionId, flight.lifetime);
                 try {
                     flight.submitted = true;
                     const response = await this.api.refresh(expectedSessionId, csrf);
                     // Never publish or interpret an old flight under a replacement login.
-                    this.assertRenewalContext(expectedSessionId);
+                    this.assertRenewalContext(expectedSessionId, flight.lifetime);
                     // Validate the response BEFORE comparing its session to the bound request.
                     AuthSession.validateResponse(response);
                     if (expectedSessionId && response.sessionId !== expectedSessionId) {
@@ -254,7 +265,7 @@ export class AuthCoordinator {
                     this.session.accept(response);
                 } catch (error) {
                     if (error instanceof ApiError && error.status === 409 && error.code === 'session_context_changed') {
-                        this.assertRenewalContext(expectedSessionId);
+                        this.assertRenewalContext(expectedSessionId, flight.lifetime);
                         this.session.markContextChanged();
                         throw contextChanged();
                     }
@@ -263,7 +274,7 @@ export class AuthCoordinator {
             }, flight.controller.signal);
         } catch (error) {
             if (error instanceof ApiError && error.code === 'session_context_changed') throw error;
-            this.assertRenewalContext(expectedSessionId);
+            this.assertRenewalContext(expectedSessionId, flight.lifetime);
             if (!flight.submitted) {
                 // No refresh generation was consumed. Retain the established bearer or allow restoration later.
                 this.session.markRestorationRetryable();
@@ -278,10 +289,10 @@ export class AuthCoordinator {
     }
 
     /** A renewal flight may finish under its original context only, not revive an invalidated login. */
-    private assertRenewalContext(expected: string | undefined): void {
+    private assertRenewalContext(expected: string | undefined, lifetime: number | undefined): void {
         const state = this.session.getSnapshot();
         if (expected === undefined ? state.status !== 'restoring' :
-            state.status !== 'authenticated' || state.sessionId !== expected) {
+            state.status !== 'authenticated' || state.sessionId !== expected || this.session.getAuthenticatedLifetime() !== lifetime) {
             throw contextChanged();
         }
     }

@@ -28,7 +28,7 @@ export function scriptedClient() {
     if (outcome instanceof Error) throw outcome;
     return outcome;
   });
-  const client: ApiClient = createApiClient({}, fetchImpl);
+  const client: ApiClient = createApiClient([], fetchImpl);
   return {
     client,
     fetchImpl: fetchImpl as unknown as typeof fetch,
