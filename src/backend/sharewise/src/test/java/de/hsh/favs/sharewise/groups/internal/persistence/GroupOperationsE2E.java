@@ -1,7 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.LOCK_WAIT_TIMEOUT;
-import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.awaitLockWaiters;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.lockGroup;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.ALICE;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.BOB;
@@ -11,6 +10,7 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.query;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.replace;
 import static de.hsh.favs.sharewise.testsupport.identity.IdentityTestFixture.withUser;
+import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.awaitLockWaiters;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -23,7 +23,6 @@ import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
-import de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.BoundedStatements;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -33,6 +32,7 @@ import de.hsh.favs.sharewise.testsupport.identity.IdentityTestConfiguration;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestScope;
+import de.hsh.favs.sharewise.testsupport.postgres.BoundedStatementsConfiguration;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -124,7 +124,7 @@ class GroupOperationsE2E extends E2ETestBase {
             }
             assertEquals(List.of("Other trip|0", "Trip|0"), query(fixture,
                 "SELECT name, version FROM groups.groups ORDER BY name", row -> row.getString(1) + "|" + row.getLong(2)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -151,7 +151,7 @@ class GroupOperationsE2E extends E2ETestBase {
             assertEquals(1, results.stream().filter(new Result.Err<GroupDetails, GroupFailure>(
                 new GroupFailure.VersionConflict())::equals).count(), results::toString);
             assertEquals(List.of(1L), query(fixture, "SELECT version FROM groups.groups", row -> row.getLong(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -175,7 +175,7 @@ class GroupOperationsE2E extends E2ETestBase {
             assertEquals(Result.err(new GroupFailure.AdministratorRequired()), result);
             assertEquals(List.of("Trip|0"), query(fixture,
                 "SELECT name, version FROM groups.groups", row -> row.getString(1) + "|" + row.getLong(2)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -203,7 +203,7 @@ class GroupOperationsE2E extends E2ETestBase {
             assertEquals(List.of("Renamed|1"), query(fixture,
                 "SELECT name, version FROM groups.groups WHERE id = '" + group + "'",
                 row -> row.getString(1) + "|" + row.getLong(2)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     private static <T> T inOperation(IntegrationTestContext fixture,

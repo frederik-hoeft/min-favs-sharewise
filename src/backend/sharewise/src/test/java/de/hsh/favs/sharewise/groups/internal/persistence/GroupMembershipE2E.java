@@ -1,7 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.LOCK_WAIT_TIMEOUT;
-import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.awaitLockWaiters;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.lockGroup;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.ALICE;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.BOB;
@@ -11,6 +10,7 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.query;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.replace;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.workspace;
+import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.awaitLockWaiters;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,10 +20,10 @@ import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeStatus;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
-import de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.BoundedStatements;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.identity.IdentityTestConfiguration;
+import de.hsh.favs.sharewise.testsupport.postgres.BoundedStatementsConfiguration;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.Connection;
 import java.sql.Statement;
@@ -64,7 +64,7 @@ class GroupMembershipE2E extends E2ETestBase {
             }
             assertEquals(List.of("admin"), query(fixture, "SELECT role FROM groups.group_members", row -> row.getString(1)));
             assertEquals(List.of(0L), query(fixture, "SELECT version FROM groups.groups", row -> row.getLong(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -91,7 +91,7 @@ class GroupMembershipE2E extends E2ETestBase {
             }
             assertEquals(List.of("admin", "member"), query(fixture,
                 "SELECT role::text FROM groups.group_members ORDER BY role::text", row -> row.getString(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -161,6 +161,6 @@ class GroupMembershipE2E extends E2ETestBase {
                 assertTrue(results.contains(Result.err(new GroupFailure.GroupNotFound())), results::toString);
             }
             assertEquals(List.of("admin"), query(fixture, "SELECT role FROM groups.group_members", row -> row.getString(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 }

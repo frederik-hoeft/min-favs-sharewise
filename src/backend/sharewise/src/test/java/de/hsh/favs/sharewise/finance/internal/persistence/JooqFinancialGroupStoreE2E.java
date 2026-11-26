@@ -1,8 +1,10 @@
 package de.hsh.favs.sharewise.finance.internal.persistence;
 
 import static de.hsh.favs.sharewise.finance.internal.persistence.generated.tables.Groups.GROUPS;
+import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.await;
+import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.awaitBlockedBy;
+import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.backendPid;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -20,16 +22,12 @@ import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.operation.OperationTestHarness;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.SQLException;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiFunction;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Tag;
@@ -38,8 +36,6 @@ import org.junit.jupiter.api.Test;
 /** Real physical transaction and PostgreSQL row-lock behavior of the Finance root port. */
 @Tag("e2e")
 class JooqFinancialGroupStoreE2E extends E2ETestBase {
-
-    private static final Duration WAIT = Duration.ofSeconds(10);
 
     @Test
     void concurrentFirstProvisioningWaitsForTheCommittedWinner() {
@@ -223,42 +219,5 @@ class JooqFinancialGroupStoreE2E extends E2ETestBase {
                     db.execute("set local statement_timeout = '15s'");
                     return callback.apply(scope.resolve(FinancialGroupStore.class), db);
                 }));
-    }
-
-    private static int backendPid(DSLContext db) {
-        return db.fetchSingle("select pg_backend_pid()").get(0, Integer.class);
-    }
-
-    private static void awaitBlockedBy(DSLContext ownerDb, Future<Integer> contenderPid, Future<?> contender) {
-        int owner = backendPid(ownerDb);
-        int waiting = await(contenderPid);
-        assertNotEquals(owner, waiting, "Operations must use independent connections");
-        long deadline = System.nanoTime() + WAIT.toNanos();
-        while (System.nanoTime() < deadline) {
-            assertFalse(contender.isDone(), "Contender completed while the owner still held the root lock");
-            // pg_blocking_pids reads live lock-manager state rather than a cached statistics snapshot.
-            if (Boolean.TRUE.equals(ownerDb.fetchSingle("select ? = any(pg_blocking_pids(?))", owner, waiting)
-                    .get(0, Boolean.class))) {
-                return;
-            }
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException failure) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("Interrupted while observing PostgreSQL lock wait", failure);
-            }
-        }
-        throw new AssertionError("PostgreSQL did not report the expected blocking relationship");
-    }
-
-    private static <T> T await(Future<T> result) {
-        try {
-            return result.get(WAIT.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("Interrupted while waiting for Finance transaction", failure);
-        } catch (ExecutionException | TimeoutException failure) {
-            throw new AssertionError("Finance transaction did not complete successfully", failure);
-        }
     }
 }
