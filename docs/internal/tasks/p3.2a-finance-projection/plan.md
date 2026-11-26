@@ -43,13 +43,13 @@ Adds the application operations on top of Phase A and the specified acceptance t
 
 ## Phase C - Steady-state documentation
 
-- [ ] Update the Finance sections of [persistence architecture](../../../architecture/persistence.md#finance-persistence): the projection operations, activation, root-before-actor lock ordering, the compare-and-set guard, no-change outcomes and contradiction failure. Extend the root-lock sequence diagram only if the existing one no longer reflects the callers. Update the verification-boundary paragraph with the new test coverage.
-- [ ] Update the Finance module summary in [architecture overview](../../../architecture.md) and the status line of the [domain model](../../../data-model-design.md). Check [messaging](../../../stack/messaging.md) and the [Phase 3 foundation](../../integration/phase-3-foundation.md) for statements the implementation contradicts, especially the single-upsert sketch; the foundation remains authoritative for the shared contract and changes only if a shared contract changed.
-- [ ] Search the documentation for stale wording about Finance having no application service or operations. Verify relative links and `git diff --check`; stage for review.
+- [x] Update the Finance sections of [persistence architecture](../../../architecture/persistence.md#finance-persistence): the projection operations, activation, root-before-actor lock ordering, the compare-and-set guard, no-change outcomes and contradiction failure. Extend the root-lock sequence diagram only if the existing one no longer reflects the callers. Update the verification-boundary paragraph with the new test coverage.
+- [x] Update the Finance module summary in [architecture overview](../../../architecture.md) and the status line of the [domain model](../../../data-model-design.md). Check [messaging](../../../stack/messaging.md) and the [Phase 3 foundation](../../integration/phase-3-foundation.md) for statements the implementation contradicts, especially the single-upsert sketch; the foundation remains authoritative for the shared contract and changes only if a shared contract changed.
+- [x] Search the documentation for stale wording about Finance having no application service or operations. Verify relative links and `git diff --check`; stage for review.
 
 **Suggested commit:** `P3.2a: Document Finance projection operations`
 
-**Gate C:** Human approves the documentation change.
+**Gate C:** Human approves the documentation change. Approved by the maintainer. The [test guide](../../../development/tests.md) additionally documents the shared PostgreSQL lock-wait helpers; the Phase 3 foundation and messaging design required no change.
 
 ## Verification commands and final acceptance
 
