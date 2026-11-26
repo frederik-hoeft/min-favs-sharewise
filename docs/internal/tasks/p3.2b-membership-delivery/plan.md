@@ -29,13 +29,13 @@ flowchart LR
 
 Adds the source revision and its single write path, without events. Covers DLV-R01–R03.
 
-- [ ] Add a Group migration `groups/V<timestamp>__groups_membership_revision.sql`: create the domain `groups.bignatural1` (`bigint`, `CHECK (VALUE > 0)`) with the same `REVOKE`/`GRANT USAGE` pattern as `groups.natural1`, and add `groups.groups.membership_revision groups.bignatural1 NOT NULL DEFAULT 1`. Existing rows receive 1.
-- [ ] Regenerate the Group jOOQ metadata with `generate@groups` against the migrated devcontainer database, following the [development guide](../../../development.md#database). Commit only the generated diff for `groups`; never edit generated sources by hand.
-- [ ] Change `GroupMembershipPort.addMember` and `removeMember` to advance the revision and return the new value: after the existing row-count-checked insert or delete, `UPDATE groups.groups SET membership_revision = membership_revision + 1 WHERE id = :group RETURNING membership_revision`, requiring exactly one row. Document on the port that the revision is advanced only here and that the caller holds the group row lock.
-- [ ] Return the creation revision from `GroupCreationPort.createWithAdministrator` via `RETURNING membership_revision` (not a hard-coded 1), carried in an internal creation result so services can publish it in Phase B. `GroupDetails` and HTTP responses stay unchanged.
-- [ ] Integration tests in `GroupPersistenceIT` (or a focused new IT): creation returns 1; add and remove each return the previous value plus one; set role leaves it unchanged; the domain rejects 0.
-- [ ] E2E DLV-T05 in `GroupMembershipE2E`: the committed sequence create → join → leave → set role → `ALREADY_MEMBER` → rejected removal yields 1, 2, 3, 3, 3, 3. Add a concurrent-join case to the existing Group concurrency fixtures: two redemptions for one group commit distinct revisions 2 and 3.
-- [ ] Run the Unit, Integration and E2E suites and `git diff --check`; stage for review.
+- [x] Add a Group migration `groups/V<timestamp>__groups_membership_revision.sql`: create the domain `groups.bignatural1` (`bigint`, `CHECK (VALUE > 0)`) with the same `REVOKE`/`GRANT USAGE` pattern as `groups.natural1`, and add `groups.groups.membership_revision groups.bignatural1 NOT NULL DEFAULT 1`. Existing rows receive 1.
+- [x] Regenerate the Group jOOQ metadata with `generate@groups` against the migrated devcontainer database, following the [development guide](../../../development.md#database). Commit only the generated diff for `groups`; never edit generated sources by hand.
+- [x] Change `GroupMembershipPort.addMember` and `removeMember` to advance the revision and return the new value: after the existing row-count-checked insert or delete, `UPDATE groups.groups SET membership_revision = membership_revision + 1 WHERE id = :group RETURNING membership_revision`, requiring exactly one row. Document on the port that the revision is advanced only here and that the caller holds the group row lock.
+- [x] Return the creation revision from `GroupCreationPort.createWithAdministrator` via `RETURNING membership_revision` (not a hard-coded 1), carried in an internal creation result so services can publish it in Phase B. `GroupDetails` and HTTP responses stay unchanged.
+- [x] Integration tests in `GroupPersistenceIT` (or a focused new IT): creation returns 1; add and remove each return the previous value plus one; set role leaves it unchanged; the domain rejects 0.
+- [x] E2E DLV-T05 in `GroupMembershipE2E`: the committed sequence create → join → leave → set role → `ALREADY_MEMBER` → rejected removal yields 1, 2, 3, 3, 3, 3. Add a concurrent-join case to the existing Group concurrency fixtures: two redemptions for one group commit distinct revisions 2 and 3. The implemented sequence promotes before leaving and yields 1, 2, 2, 3, 3, 3 (see findings).
+- [ ] Run the Unit, Integration and E2E suites and `git diff --check`; stage for review. Focused runs passed and `git diff --check` is clean; the full suites are outstanding.
 
 **Suggested commit:** `P3.2b-A: Advance a Group membership source revision with each membership change`
 
@@ -45,11 +45,11 @@ Adds the source revision and its single write path, without events. Covers DLV-R
 
 Publishes the facts inside the Group segments. With no listener registered yet, publication creates no registry rows; the state is buildable and inert. Covers DLV-R04–R07 at Unit level.
 
-- [ ] Create package `de.hsh.favs.sharewise.groups.events` with `@NamedInterface("events")` and the records `GroupCreatedV1`, `GroupMemberAddedV1` and `GroupMemberRemovedV1` as specified: compact constructors reject nulls and nonpositive revisions; Javadoc states that class names are persisted in the registry and that the type is the resulting state.
-- [ ] Add a Group-internal port `GroupEventPublisher` (`groupCreated(groupId)`, `memberAdded(groupId, userId, revision)`, `memberRemoved(groupId, userId, revision)`) and its adapter `SpringGroupEventPublisher` in `groups.internal.events` over `ApplicationEventPublisher`. The adapter generates `eventId` once per fact and sets `occurredAt` from the application clock.
-- [ ] Publish from the services, inside their existing segment and after the last write of the successful path: `GroupCreationService` publishes the created fact and the creator's added fact with the returned revision; `GroupInvitationService.redeemLocked` publishes an added fact only for `JOINED`, after consuming the invitation; `GroupMembershipService.remove` publishes a removed fact with `member.userId()` and the returned revision. `setRole` and every failure path publish nothing.
-- [ ] Unit tests DLV-T01 (record validation) and DLV-T02 (services with fake ports and a recording publisher: exactly the facts of the specification's operation table, none on other paths). Update existing service unit tests and test wiring for the new constructor dependency.
-- [ ] Run the Unit and Integration suites and the Group E2E tests and `git diff --check`; stage for review.
+- [x] Create package `de.hsh.favs.sharewise.groups.events` with `@NamedInterface("events")` and the records `GroupCreatedV1`, `GroupMemberAddedV1` and `GroupMemberRemovedV1` as specified: compact constructors reject nulls and nonpositive revisions; Javadoc states that class names are persisted in the registry and that the type is the resulting state.
+- [x] Add a Group-internal port `GroupEventPublisher` (`groupCreated(groupId)`, `memberAdded(groupId, userId, revision)`, `memberRemoved(groupId, userId, revision)`) and its adapter `SpringGroupEventPublisher` in `groups.internal.events` over `ApplicationEventPublisher`. The adapter generates `eventId` once per fact and sets `occurredAt` from the application clock.
+- [x] Publish from the services, inside their existing segment and after the last write of the successful path: `GroupCreationService` publishes the created fact and the creator's added fact with the returned revision; `GroupInvitationService.redeemLocked` publishes an added fact only for `JOINED`, after consuming the invitation; `GroupMembershipService.remove` publishes a removed fact with `member.userId()` and the returned revision. `setRole` and every failure path publish nothing.
+- [x] Unit tests DLV-T01 (record validation) and DLV-T02 (services with fake ports and a recording publisher: exactly the facts of the specification's operation table, none on other paths). Update existing service unit tests and test wiring for the new constructor dependency.
+- [ ] Run the Unit and Integration suites and the Group E2E tests and `git diff --check`; stage for review. Focused Unit tests and the Group service E2Es passed and `git diff --check` is clean; the full Unit and Integration suites are outstanding.
 
 **Suggested commit:** `P3.2b-B: Publish Group creation and membership facts`
 
@@ -59,15 +59,15 @@ Publishes the facts inside the Group segments. With no listener registered yet, 
 
 Registers the real consumer and proves the main producer-to-consumer paths. Covers DLV-R08–R10, R13, R14, R16.
 
-- [ ] Add `groups::events` and `shared::di` to Finance's `allowedDependencies`.
-- [ ] Add `finance.internal.events.GroupEventListener` with three `@Async @TransactionalEventListener` handlers and the listener IDs `finance.group-activation.v1`, `finance.membership-added.v1` and `finance.membership-removed.v1`, each dispatching one `FinanceProjectionService` operation through an event-side `ContributingOperationDispatcher` without contributors, exactly as P2.4a's Group listener does. Map each event to its command, log the outcome at debug level with event ID, type and group ID, and let exceptions propagate. Javadoc records the persisted listener IDs and the drain-before-rename rule.
-- [ ] Unit tests DLV-T03 (mapping, single dispatch, outcome and exception propagation with a recording dispatcher) and DLV-T04 (existing Modulith verification passes with the new named interface and dependencies; add a fixture assertion if the existing structure tests do not already cover the new edge).
-- [ ] Add shared Finance delivery E2E support: bounded polling for Finance rows and for the publication count per listener ID, and inspection of stored listener IDs and serialized payloads. Extend existing Finance or messaging test support rather than copying P2.4a's private helpers.
-- [ ] E2E DLV-T09 and DLV-T10 in a new `GroupFinanceDeliveryE2E`: create, join, leave and rejoin through the Group services; assert Finance state and completed publications.
-- [ ] E2E DLV-T06 and DLV-T08: hold delivery by revoking the Finance privileges needed by the listener in the test's database, so committed publications remain observable as `FAILED` rows; assert the two creation publications, their listener IDs and payload fields. For the rollback half, inject a failure after publication and before the physical commit, reusing the technique of P2.4a's `UserRegisteredPublicationE2E`; assert no group, owner or publication.
-- [ ] E2E DLV-T07: extend the Phase A concurrent-join case to wait for delivery and assert both joiners' actors at the revisions committed with their membership rows.
-- [ ] Make existing E2E tests robust to asynchronous Finance writes. Every committed group creation or membership change now triggers listeners after the test's transaction. Run the full E2E suite, including at the CI worker count, and fix any cleanup or assertion race in shared test support, not with sleeps or by disabling listeners.
-- [ ] Run the Unit, Integration and E2E suites, the E2E suite with `-DtestParallelism=16` and `git diff --check`; stage for review.
+- [x] Add `groups::events` and `shared::di` to Finance's `allowedDependencies`.
+- [x] Add `finance.internal.events.GroupEventListener` with three `@Async @TransactionalEventListener` handlers and the listener IDs `finance.group-activation.v1`, `finance.membership-added.v1` and `finance.membership-removed.v1`, each dispatching one `FinanceProjectionService` operation through an event-side `ContributingOperationDispatcher` without contributors, exactly as P2.4a's Group listener does. Map each event to its command, log the outcome at debug level with event ID, type and group ID, and let exceptions propagate. Javadoc records the persisted listener IDs and the drain-before-rename rule.
+- [x] Unit tests DLV-T03 (mapping, single dispatch, outcome and exception propagation with a recording dispatcher) and DLV-T04 (existing Modulith verification passes with the new named interface and dependencies; add a fixture assertion if the existing structure tests do not already cover the new edge).
+- [x] Add shared Finance delivery E2E support: bounded polling for Finance rows and for the publication count per listener ID, and inspection of stored listener IDs and serialized payloads. Extend existing Finance or messaging test support rather than copying P2.4a's private helpers.
+- [x] E2E DLV-T09 and DLV-T10 in a new `GroupFinanceDeliveryE2E`: create, join, leave and rejoin through the Group services; assert Finance state and completed publications.
+- [x] E2E DLV-T06 and DLV-T08: hold delivery by revoking the Finance privileges needed by the listener in the test's database, so committed publications remain observable as `FAILED` rows; assert the two creation publications, their listener IDs and payload fields. For the rollback half, inject a failure after publication and before the physical commit, reusing the technique of P2.4a's `UserRegisteredPublicationE2E`; assert no group, owner or publication.
+- [x] E2E DLV-T07: extend the Phase A concurrent-join case to wait for delivery and assert both joiners' actors at the revisions committed with their membership rows.
+- [ ] Make existing E2E tests robust to asynchronous Finance writes. Every committed group creation or membership change now triggers listeners after the test's transaction. Run the full E2E suite, including at the CI worker count, and fix any cleanup or assertion race in shared test support, not with sleeps or by disabling listeners. Every Group-mutating E2E and all Finance E2Es pass at 16 workers without changes; the shutdown race found there is follow-up P2.4d. The full-suite run is outstanding.
+- [ ] Run the Unit, Integration and E2E suites, the E2E suite with `-DtestParallelism=16` and `git diff --check`; stage for review. Focused runs passed and `git diff --check` is clean; the full suites are outstanding.
 
 **Suggested commit:** `P3.2b-C: Deliver Group membership facts to the Finance projection`
 
@@ -167,10 +167,10 @@ The human runs the deployment smoke from the repository root with `cd deploy && 
 | Specification approval | Approved by maintainer (2026-11-26) |
 | Plan approval | Approved by maintainer (2026-11-26) |
 | Baseline suites | Pending |
-| Unit suite (including Modulith verification) | Pending |
-| PostgreSQL Integration suite | Pending |
-| PostgreSQL E2E suite, including at 16 workers | Pending |
-| jOOQ freshness (CI `verify-backend-jooq-codegen`) | Pending |
+| Unit suite (including Modulith verification) | Focused runs green through Phase C, including Modulith verification and module-structure tests; full suite pending |
+| PostgreSQL Integration suite | `GroupPersistenceIT` green (Phase A); full suite pending |
+| PostgreSQL E2E suite, including at 16 workers | Group-mutating, Finance, messaging and IAM delivery E2Es green; Group and Finance classes also at 16 workers (Phase C, 64 tests); full suite pending |
+| jOOQ freshness (CI `verify-backend-jooq-codegen`) | Regenerated against a fresh and a recreated dev database with identical output (Phase A); CI pending |
 | Disposable deployment smoke | Pending |
 | Manual acceptance DLV-T18 | Pending |
 | Independent MR review and resolutions | Pending |
