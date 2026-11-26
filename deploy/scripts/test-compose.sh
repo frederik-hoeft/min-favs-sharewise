@@ -47,6 +47,10 @@ export COMPOSE_PROJECT_NAME="$project"
 # The disposable stack has a different HTTPS port from the normal local stack.
 # Align its token issuer with the browser-visible origin used for this test.
 export SHAREWISE_IAM_ISSUER="https://$(sed -n 's/^SHAREWISE_PUBLIC_HOST=//p' "$deploy_dir/.env" | tail -n 1):$SHAREWISE_HTTPS_PORT"
+export SHAREWISE_GROUPS_ISSUER="$SHAREWISE_IAM_ISSUER/api/groups/v1/domain-principal"
+# Explicitly authorized generation only in this fresh disposable project.
+export SHAREWISE_IAM_KEY_MODE=generate-if-absent
+export SHAREWISE_GROUPS_KEY_MODE=generate-if-absent
 
 cleanup_started=false
 report_failure() {

@@ -30,10 +30,10 @@ class JooqGroupMemberships implements GroupMembershipPort {
 
     @Override
     public Optional<GroupMember> memberForUser(LockedGroup group, UUID userId) {
-        return database.dsl().select(GROUP_MEMBERS.ID, GROUP_MEMBERS.USER_ID, GROUP_MEMBERS.ROLE,
+        return GroupMembershipRead.execute(() -> database.dsl().select(GROUP_MEMBERS.ID, GROUP_MEMBERS.USER_ID, GROUP_MEMBERS.ROLE,
                 GROUP_MEMBERS.JOINED_AT).from(GROUP_MEMBERS)
             .where(GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(GROUP_MEMBERS.USER_ID.eq(userId)))
-            .fetchOptional(row -> GroupProjections.member(row, GROUP_MEMBERS));
+            .fetchOptional(row -> GroupProjections.member(row, GROUP_MEMBERS)));
     }
 
     @Override

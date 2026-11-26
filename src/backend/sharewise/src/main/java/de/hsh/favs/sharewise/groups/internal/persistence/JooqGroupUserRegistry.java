@@ -23,7 +23,7 @@ class JooqGroupUserRegistry implements GroupUserRegistry {
     @Override
     public boolean isKnown(UUID userId) {
         Objects.requireNonNull(userId, "userId");
-        return database.dsl().fetchExists(USERS, USERS.ID.eq(userId));
+        return GroupMembershipRead.execute(() -> database.dsl().fetchExists(USERS, USERS.ID.eq(userId)));
     }
 
     @Override

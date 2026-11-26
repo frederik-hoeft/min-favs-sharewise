@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /** Single Group-owned source of the membership profile and logical acquisition descriptor. */
-record GroupMembershipTrust(JwtCredentialCodec codec) {
+record GroupMembershipTrust(JwtCredentialCodec codec, boolean signingEnabled) {
     static final String AUTHORITY = "groups";
     static final String KIND = "membership";
     static final String PROFILE = "groups-membership";

@@ -41,7 +41,7 @@ class GroupAttestationConfigurationTests {
 
     @Test
     void disabledConfigurationDoesNotEstablishGroupTrustAndEnabledWithoutKeysFailsClosed() {
-        new ApplicationContextRunner().withUserConfiguration(GroupAttestationConfiguration.class).run(context -> {
+        new ApplicationContextRunner().withUserConfiguration(GroupAttestationConfiguration.class, GroupAuthorizationClockConfiguration.class).run(context -> {
             assertNull(context.getStartupFailure());
             assertFalse(context.containsBean("groupMembershipVerifier"));
             assertFalse(context.containsBean("groupCredentialValidator"));
@@ -99,8 +99,38 @@ class GroupAttestationConfigurationTests {
             });
     }
 
+    @Test
+    void activeSignerUsesOnlyNewPrivateKeyWithOldVerificationOverlap() throws Exception {
+        KeyPair oldPair = keyPair();
+        KeyPair newPair = keyPair();
+        Path oldPublic = writePublic("old.pem", oldPair);
+        Path newPublic = writePublic("new.pem", newPair);
+        Path newPrivate = Files.writeString(directory.resolve("new-private.pem"), "-----BEGIN PRIVATE KEY-----\n"
+            + Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(newPair.getPrivate().getEncoded())
+            + "\n-----END PRIVATE KEY-----\n");
+        JwtCredentialProfile profile = GroupMembershipTrust.profile(GROUP_ISSUER, "sw-api-v1", PRIMARY_ISSUER, Duration.ofSeconds(15));
+        JwtIssueRequest request = request();
+        String oldToken = signer(profile, "old", oldPair).sign(request);
+        configured().withPropertyValues(PREFIX + "active-key-id=new", PREFIX + "keys[0].id=old",
+            PREFIX + "keys[0].public-key-file=" + oldPublic, PREFIX + "keys[1].id=new",
+            PREFIX + "keys[1].public-key-file=" + newPublic, PREFIX + "keys[1].private-key-file=" + newPrivate)
+            .run(context -> {
+                assertNull(context.getStartupFailure());
+                GroupMembershipTrust trust = context.getBean(GroupMembershipTrust.class);
+                assertTrue(trust.signingEnabled());
+                String issued = trust.codec().sign(request);
+                assertEquals(request.subject(), signer(profile, "new", newPair).verify(issued).userId());
+                assertEquals(request.subject(), trust.codec().verify(oldToken).userId());
+                assertThrows(JwtCredentialException.class, () -> signer(profile, "old", oldPair).verify(issued));
+            });
+        configured().withPropertyValues(PREFIX + "active-key-id=missing", PREFIX + "keys[0].id=new",
+            PREFIX + "keys[0].public-key-file=" + newPublic).run(context -> assertNotNull(context.getStartupFailure()));
+        configured().withPropertyValues(PREFIX + "keys[0].id=new", PREFIX + "keys[0].public-key-file=" + newPublic,
+            PREFIX + "keys[0].private-key-file=" + newPrivate).run(context -> assertNotNull(context.getStartupFailure()));
+    }
+
     private static ApplicationContextRunner configured() {
-        return new ApplicationContextRunner().withUserConfiguration(GroupAttestationConfiguration.class)
+        return new ApplicationContextRunner().withUserConfiguration(GroupAttestationConfiguration.class, GroupAuthorizationClockConfiguration.class)
             .withPropertyValues(PREFIX + "enabled=true", PREFIX + "issuer=" + GROUP_ISSUER,
                 PREFIX + "trusted-primary-issuer=" + PRIMARY_ISSUER);
     }

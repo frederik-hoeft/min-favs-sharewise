@@ -51,11 +51,11 @@ public final class EcPemKeyLoader {
 
     private static byte[] pem(String source, String kind) throws IOException {
         if (source == null || source.isBlank()) {
-            throw new IllegalArgumentException("IAM key file is missing");
+            throw new IllegalArgumentException("JWT key file is missing");
         }
         Path file = Path.of(source);
         if (Files.size(file) > 16_384L) {
-            throw new IllegalArgumentException("IAM key file exceeds size limit");
+            throw new IllegalArgumentException("JWT key file exceeds size limit");
         }
         String content = Files.readString(file, StandardCharsets.US_ASCII).trim();
         String begin = "-----BEGIN " + kind + "-----";

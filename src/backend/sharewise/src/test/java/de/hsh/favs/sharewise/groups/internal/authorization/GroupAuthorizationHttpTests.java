@@ -13,6 +13,14 @@ import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.groups.GroupAuthorizationContext;
 import de.hsh.favs.sharewise.groups.GroupAuthorizationFailure;
 import de.hsh.favs.sharewise.groups.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupAuthorizationPort;
+import de.hsh.favs.sharewise.groups.GroupAuthorizationVerificationFailure;
+import de.hsh.favs.sharewise.groups.VerifiedGroupMembership;
+import de.hsh.favs.sharewise.identity.IdentityContext;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import com.jayway.jsonpath.JsonPath;
+import org.springframework.test.web.servlet.MvcResult;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
@@ -71,7 +79,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Full production ingress/correlation and semantic Group facade, with independent test keys and a test-only consumer. */
 @ComponentTest
-@SpringBootTest(classes = {ShareWiseApplication.class, GroupAuthorizationHttpTests.Fixture.class}, properties = {
+@SpringBootTest(classes = {ShareWiseApplication.class, GroupAuthorizationHttpTests.Fixture.class, GroupAuthorizationHttpTests.MembershipFixture.class}, properties = {
     "spring.autoconfigure.exclude="
         + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
         + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
@@ -92,7 +100,8 @@ class GroupAuthorizationHttpTests {
     private static final String HEADER = AttestationTransport.HEADER;
     private static final KeyPair GROUP_KEY = newKey();
     private static final String KEY_ID = "groups-test";
-    private static final Path GROUP_PUBLIC = publicPem(GROUP_KEY);
+    private static final Path GROUP_PUBLIC = pem(GROUP_KEY, false);
+    private static final Path GROUP_PRIVATE = pem(GROUP_KEY, true);
     private static final JwtCredentialProfile PROFILE = GroupMembershipTrust.profile(
             ISSUER, AUDIENCE, TestAccessTokens.PROFILE.issuer(), Duration.ofSeconds(15));
     private static final JwtCredentialCodec SIGNER = signer(PROFILE, GROUP_KEY);
@@ -104,6 +113,8 @@ class GroupAuthorizationHttpTests {
         registry.add("sharewise.groups.attestation.trusted-primary-issuer", TestAccessTokens.PROFILE::issuer);
         registry.add("sharewise.groups.attestation.keys[0].id", () -> KEY_ID);
         registry.add("sharewise.groups.attestation.keys[0].public-key-file", GROUP_PUBLIC::toString);
+        registry.add("sharewise.groups.attestation.active-key-id", () -> KEY_ID);
+        registry.add("sharewise.groups.attestation.keys[0].private-key-file", GROUP_PRIVATE::toString);
     }
 
     @Autowired MockMvc mvc;
@@ -289,16 +300,83 @@ class GroupAuthorizationHttpTests {
         }
     }
 
-    private static Path publicPem(KeyPair key) {
+    static Map<String, Object> signingSettings() {
+        return Map.of("sharewise.groups.attestation.enabled", "true",
+            "sharewise.groups.attestation.issuer", ISSUER,
+            "sharewise.groups.attestation.trusted-primary-issuer", TestAccessTokens.PROFILE.issuer(),
+            "sharewise.groups.attestation.keys[0].id", KEY_ID,
+            "sharewise.groups.attestation.keys[0].public-key-file", GROUP_PUBLIC.toString(),
+            "sharewise.groups.attestation.active-key-id", KEY_ID,
+            "sharewise.groups.attestation.keys[0].private-key-file", GROUP_PRIVATE.toString());
+    }
+
+    private static Path pem(KeyPair key, boolean privateKey) {
         try {
-            Path path = Files.createTempFile("group-verification-test-", ".pem");
+            Path path = Files.createTempFile("group-credential-test-", ".pem");
             path.toFile().deleteOnExit();
-            Files.writeString(path, "-----BEGIN PUBLIC KEY-----\n"
-                + Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(key.getPublic().getEncoded())
-                + "\n-----END PUBLIC KEY-----\n");
+            String kind = privateKey ? "PRIVATE KEY" : "PUBLIC KEY";
+            byte[] encoded = privateKey ? key.getPrivate().getEncoded() : key.getPublic().getEncoded();
+            Files.writeString(path, "-----BEGIN " + kind + "-----\n"
+                + Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(encoded)
+                + "\n-----END " + kind + "-----\n");
             return path;
         } catch (Exception failure) {
             throw new IllegalStateException("Test key fixture failed", failure);
+        }
+    }
+
+    @Test
+    void realIssuerSignsLiveRoleAndConsumerAcceptsItWithSameSession() throws Exception {
+        int before = effects.count.get();
+        String x = acquire(X);
+        String y = acquire(Y);
+        mvc.perform(transfer().header(HEADER, x, y)).andExpect(status().isOk());
+        assertEquals(before + 1, effects.count.get());
+        mvc.perform(get("/api/__test/distributed-authorization/role/{group}", X)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + TestAccessTokens.accessToken(USER, UUID.randomUUID().toString()))
+            .header(HEADER, x)).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("invalid_attestation"));
+    }
+
+    @Test
+    void issuerRejectsUnsupportedInputDenialAndRecursiveCredentials() throws Exception {
+        mvc.perform(issue(Z)).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("group_not_found"));
+        mvc.perform(issue(X).header(HEADER, token(X, GroupRole.ADMIN))).andExpect(status().isUnauthorized());
+        String url = "/api/groups/v1/domain-principal/attestations";
+        for (String invalid : List.of("{}", "{\"kind\":\"other\",\"scope\":\"" + X + "\"}",
+                "{\"kind\":\"membership\",\"scope\":\"bad\"}", "{\"kind\":\"membership\",\"scope\":\"" + X + "\",\"role\":\"ADMIN\"}")) {
+            mvc.perform(post(url).header(HttpHeaders.AUTHORIZATION, TestAccessTokens.bearer(USER))
+                .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
+        }
+        mvc.perform(post(url).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    private String acquire(UUID group) throws Exception {
+        MvcResult response = mvc.perform(issue(group)).andExpect(status().isOk())
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store")).andReturn();
+        String body = response.getResponse().getContentAsString();
+        String token = JsonPath.read(body, "$.attestation");
+        Instant expires = Instant.parse(JsonPath.read(body, "$.expiresAt"));
+        assertEquals(expires, SIGNER.verify(token).evidence().origin().expiresAt().orElseThrow());
+        return token;
+    }
+
+    private static MockHttpServletRequestBuilder issue(UUID group) {
+        return post("/api/groups/v1/domain-principal/attestations")
+            .header(HttpHeaders.AUTHORIZATION, TestAccessTokens.bearer(USER)).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"kind\":\"membership\",\"scope\":\"" + group + "\"}");
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class MembershipFixture {
+        @Bean @Primary @Scope("operation")
+        GroupAuthorizationPort testMembershipAuthority(IdentityContext identity) {
+            return group -> {
+                UUID user = identity.requireUserId();
+                if (!X.equals(group) && !Y.equals(group)) return Result.err(GroupAuthorizationVerificationFailure.INELIGIBLE);
+                return Result.ok(new VerifiedGroupMembership(user, group, X.equals(group) ? GroupRole.ADMIN : GroupRole.MEMBER,
+                    Instant.now()));
+            };
         }
     }
 
