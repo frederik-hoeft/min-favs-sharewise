@@ -201,6 +201,10 @@ export class AttestationHandler implements ApiRequestHandler {
                 if (metadata?.type === 'invalid') {
                     const item = rejected(sent, metadata.rejectedIndex);
                     if (item) evict(item);
+                } else if (metadata?.type === 'required' && bound && affinity && sentMatches(sent)) {
+                    // A terminal challenge can still invalidate an obsolete prediction.
+                    // Do not publish a new affinity without a successful protected request.
+                    bound.requirements.observe(affinity, metadata, credentialReference(metadata.credential));
                 }
             },
             onSuccess(sent) {

@@ -192,6 +192,20 @@ describe('generic attestation handler and independent caches', () => {
         expect(f.traces.at(-2)?.credentials).toEqual([]);
     });
 
+    it('honors a terminal never-affine challenge without replay or evicting the credential', async () => {
+        const f = new Fixture();
+        const endpoint = '/finance/v1/item';
+        expect(await f.get(endpoint)).toBe(3);
+        f.businessOverride = () => challenge(need('X', never));
+        const before = f.traces.length;
+        await expect(f.api.get(endpoint)).rejects.toMatchObject({ status: 401 });
+        expect(f.traces.length - before).toBe(1);
+        f.businessOverride = undefined;
+        expect(await f.get(endpoint)).toBe(2);
+        expect(f.traces.at(-2)?.credentials).toEqual([]);
+        expect(f.issuanceCount).toBe(1);
+    });
+
     it('does not let late successful replay overwrite a newer association', async () => {
         const f = new Fixture();
         const delayed = deferred<Response>();
