@@ -61,9 +61,9 @@ An independent review of the integrated revision `a26fa0b` (GitHub mirror PR #38
 | R2 - Concurrent `updated_at` anomaly untested | Coverage gap | Confirmed. PRJ-T12 checks revision convergence only, and PRJ-T06 uses a seeded past timestamp. | Added PRJ-T19 to `FinanceProjectionConcurrencyE2E`. Both facts run as production dispatches through the unchanged service. Because the service's first statement acquires the root lock immediately after fixing the transaction start, the test imports a test-only, armed one-shot decorator of `FinancialGroupStore` that starts the higher revision's transaction with `SELECT now()` and pauses on a bounded latch before delegating to `ensureAndLock`. No production hook or schema change is involved, and the root lock still precedes all actor access. |
 | R3 - Membership projection in closed and archived roots untested | Optional coverage | Confirmed. Membership E2Es seeded only provisioning and open roots. | Added PRJ-T18, a parameterized `FinanceProjectionServiceE2E` over all four lifecycle states covering insert, supersede, duplicate and stale facts against a nonzero revision, with the complete root row unchanged after every fact. No lifecycle guard was added; the archived-root policy remains a P5.3 question. |
 
-The specification gained the PRJ-T18 and PRJ-T19 rows for traceability; both are additive test obligations awaiting maintainer approval with this resolution.
+The specification gained the PRJ-T18 and PRJ-T19 rows for traceability. The maintainer approved the resolutions, including both additive test obligations, and they are committed as `5c0d6cb`.
 
-**Resolution evidence.** Agent-run in the devcontainer against its PostgreSQL 18 service, on the uncommitted resolution working tree based on `a26fa0b`, from `src/backend/sharewise`:
+**Resolution evidence.** Agent-run in the devcontainer against its PostgreSQL 18 service, on the source tree committed as `5c0d6cb`, from `src/backend/sharewise`:
 
 | Command | Result |
 | --- | --- |
@@ -98,13 +98,13 @@ P3.2a registers no listener and adds no route, so the smoke only confirms that s
 | Evidence | Result |
 | --- | --- |
 | Specification and plan approval | Approved by maintainer |
-| Unit suite (including Modulith verification) | Pending |
-| PostgreSQL Integration suite | Pending |
-| PostgreSQL E2E suite, including concurrency and reordering | Pending |
+| Unit suite (including Modulith verification) | Passed at `5c0d6cb`: 430 tests |
+| PostgreSQL Integration suite | Passed at `5c0d6cb`: 79 tests |
+| PostgreSQL E2E suite, including concurrency and reordering | Passed at `5c0d6cb`: 149 tests, plus 62 Finance and Group E2Es at 16 workers |
 | Disposable deployment smoke | Pending |
-| Independent MR review and resolutions | Review of `a26fa0b` complete; findings resolved by the agent (see [resolutions](#independent-review-findings-and-resolutions)); pending human review |
+| Independent MR review and resolutions | Review of `a26fa0b` complete; [resolutions](#independent-review-findings-and-resolutions) approved by the maintainer and committed as `5c0d6cb` |
 | Human final diff review and merge authorization | Pending |
 
-- [ ] Perform an independent MR review of the integrated revision against the specification; resolve or explicitly justify findings, re-run affected suites and reconcile documentation when corrections change behavior. Suggested follow-up commit: `P3.2a: <specific review fix>`.
+- [x] Perform an independent MR review of the integrated revision against the specification; resolve or explicitly justify findings, re-run affected suites and reconcile documentation when corrections change behavior. Suggested follow-up commit: `P3.2a: <specific review fix>`.
 - [ ] Record the tested revision, commands and results above, plus the human's deployment smoke result or an approved exception.
 - [ ] After all gates pass, mark P3.2a complete in the backlog and link its specification and plan there. Suggested final commit: `P3.2a: Record acceptance and complete Finance projection operations`. The human authorizes and performs the merge.
