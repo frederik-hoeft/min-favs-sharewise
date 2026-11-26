@@ -17,8 +17,13 @@ import org.springframework.stereotype.Component;
  * failure or uncertain commit is safe. Changing outcomes commit; no-change outcomes abstain.
  *
  * <p>The service performs no caller authorization: only Finance's own inbound event adapter may
- * invoke it, and the module boundary keeps other callers out. It never retries, and persistence
- * or lock failures propagate unchanged after the segment rolls back.
+ * invoke it, and the module boundary keeps other callers out. It never retries and neither
+ * catches nor maps persistence or lock failures. Root and actor writes share the segment's
+ * physical transaction. A failure inside the segment rolls it back, so a confirmed rollback
+ * commits nothing of the attempt; a failed commit can leave the outcome uncertain, a failure
+ * after commit leaves the changes durable, and a finalization failure can replace the original
+ * exception, which is then retained as suppressed. Any exception means the fact must not be
+ * acknowledged; idempotent redelivery reprocesses it safely in every case.
  */
 @Component
 @Scope("operation")

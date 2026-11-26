@@ -12,6 +12,11 @@ import java.util.UUID;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Repository;
 
+/**
+ * jOOQ adapter of {@link FinancialActorStore}. As a {@code @Repository}, its argument and state exceptions
+ * reach callers translated by Spring as {@code InvalidDataAccessApiUsageException}; the port
+ * documents the caller-visible contract.
+ */
 @Repository
 @Scope("operation")
 class JooqFinancialActorStore implements FinancialActorStore {

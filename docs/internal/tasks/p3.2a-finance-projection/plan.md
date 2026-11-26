@@ -76,6 +76,19 @@ The specification gained the PRJ-T18 and PRJ-T19 rows for traceability. The main
 
 No `sharewise_it_*` database remained after the runs. No test was disabled, skipped or weakened.
 
+### Second independent review
+
+A second independent review of `3aaca28` confirmed the first review's resolutions and found no production correctness, authorization, concurrency or architectural defect. It reported two documentation and contract defects, each confirmed against the branch.
+
+| Finding | Severity | Validation | Resolution |
+| --- | --- | --- | --- |
+| S1 - Caller-visible exception contract | P3, documentation/contract | Confirmed. Both adapters are `@Repository` beans, so Spring's persistence exception translation wraps their `IllegalArgumentException` and `IllegalStateException`, including the segment guard's, in `InvalidDataAccessApiUsageException` with the original as cause; `JooqFinancialActorStoreIT` and `JooqFinancialGroupStoreIT` assert this. `NullPointerException` passes untranslated and SQL errors arrive as `DataAccessException` subtypes. The service catches none of them. | Documented the translated contract on `FinancialActorStore` and `FinancialGroupStore` and referred to it from both adapters; reconciled the operation protocol, PRJ-R09 and PRJ-T16 in the [specification](specification.md) and the Finance sections of the [persistence architecture](../../../architecture/persistence.md#finance-persistence). The translation mechanism is unchanged. `FinancialGroupStore`'s "both methods" wording, stale since `activate` was added, now reads "every method". |
+| S2 - Unconditional rollback guarantee | P3, documentation/contract | Confirmed. `SpringTransactions` and the [transaction architecture](../../../architecture/transactions.md#completion-and-failure-behavior) guarantee "nothing committed" only for a callback failure with a confirmed rollback. A failed commit can be uncertain, a failure after commit leaves changes durable, and a finalization failure can replace the callback exception, retaining it as suppressed. | Restated the failure semantics in the specification's decision table and failure paragraph, the persistence architecture and the `FinanceProjectionService` Javadoc: root and actor writes stay atomic within one physical transaction, a confirmed rollback commits nothing, no exception yields an outcome or acknowledgement, and idempotent redelivery is safe whether or not a failed attempt committed. |
+
+Both resolutions change only documentation and comments; no production behavior, test or schema changed, and the first review's resolutions (caller-enforced root lock, PRJ-T18, PRJ-T19) are retained unchanged.
+
+**Resolution evidence.** Because no executable code changed, the Unit, Integration and E2E results recorded for `5c0d6cb` remain the behavioral evidence; the suites were not rerun. `./mvnw -B -ntp -o -q compile` succeeded (the build runs no Javadoc or doclint step), and `git diff --check` is clean.
+
 ## Verification commands and final acceptance
 
 From `src/backend/sharewise` in the devcontainer:
