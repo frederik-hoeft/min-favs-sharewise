@@ -8,7 +8,7 @@ import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupMutationPort;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.Objects;
 import java.util.Optional;

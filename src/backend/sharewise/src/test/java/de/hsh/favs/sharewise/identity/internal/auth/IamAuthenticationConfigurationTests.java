@@ -54,7 +54,7 @@ class IamAuthenticationConfigurationTests {
                 .withPropertyValues(
                         "sharewise.iam.auth.enabled=true",
                         "sharewise.iam.auth.issuer=https://iam.sharewise.example",
-                        "sharewise.iam.auth.audience=sharewise-api",
+                        "sharewise.iam.auth.audience=sw-api-v1",
                         "sharewise.iam.auth.active-key-id=primary-2026",
                         "sharewise.iam.auth.keys[0].id=primary-2026",
                         "sharewise.iam.auth.keys[0].public-key-file=" + publicKey,

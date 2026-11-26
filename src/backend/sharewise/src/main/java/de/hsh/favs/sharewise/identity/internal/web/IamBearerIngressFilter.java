@@ -13,6 +13,8 @@ import java.util.Collections;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Verifies primary bearers once before entering an API handler. Ingress evidence
@@ -24,6 +26,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public final class IamBearerIngressFilter extends OncePerRequestFilter {
 
     public static final String VERIFIED_INGRESS_ATTRIBUTE = IamBearerIngressFilter.class.getName() + ".verified";
+    private static final RequestMatcher HEALTH = PathPatternRequestMatcher.withDefaults().matcher("/api/system/v1/health");
     private final IamCredentialVerifier verifier;
 
     public IamBearerIngressFilter(IamCredentialVerifier verifier) {
@@ -32,9 +35,8 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI().substring(request.getContextPath().length());
-        // The containing SecurityFilterChain owns API routing, including /api itself.
-        return "/api/system/v1/health".equals(path);
+        // Use the same decoded route semantics as MVC, including encoded path segments.
+        return HEALTH.matches(request);
     }
 
     @Override

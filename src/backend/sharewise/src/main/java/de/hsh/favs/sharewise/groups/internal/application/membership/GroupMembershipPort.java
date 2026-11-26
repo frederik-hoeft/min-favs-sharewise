@@ -1,7 +1,7 @@
 package de.hsh.favs.sharewise.groups.internal.application.membership;
 
 import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import java.util.Optional;
 import java.util.UUID;
 

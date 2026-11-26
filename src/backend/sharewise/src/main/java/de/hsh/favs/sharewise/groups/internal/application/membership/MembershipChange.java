@@ -1,6 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.application.membership;
 
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import java.util.Objects;
 
 /** The requested membership operation, independent of the caller's authorization. */

@@ -103,8 +103,8 @@ class IamPasswordHttpTests {
     @Test
     void rejectsWrongIssuerAudienceAndTypeEvenWithSignedCredentials() throws Exception {
         for (JwtCredentialProfile profile : List.of(
-                profile("https://not-iam.test", "sw-iam-access+jwt", "sharewise-api"),
-                profile("https://iam.sharewise.test", "sw-wrong+jwt", "sharewise-api"),
+                profile("https://not-iam.test", "sw-iam-access+jwt", "sw-api-v1"),
+                profile("https://iam.sharewise.test", "sw-wrong+jwt", "sw-api-v1"),
                 profile("https://iam.sharewise.test", "sw-iam-access+jwt", "wrong-audience"))) {
             mvc.perform(post(PASSWORD).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer(profile))
                     .contentType(MediaType.APPLICATION_JSON).content(BODY))
@@ -261,7 +261,7 @@ class IamPasswordHttpTests {
         @Bean("iamPrimaryJwtCredentialCodec")
         JwtCredentialCodec codec() {
             return new JwtCredentialCodec(profile("https://iam.sharewise.test",
-                    "sw-iam-access+jwt", "sharewise-api"),
+                    "sw-iam-access+jwt", "sw-api-v1"),
                     new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")),
                     Clock.fixed(NOW, ZoneOffset.UTC));
         }

@@ -215,7 +215,7 @@ class IdentityVerificationE2E {
         Map<String, Object> settings = Map.of(
                 "sharewise.iam.auth.enabled", "true",
                 "sharewise.iam.auth.issuer", "https://iam.sharewise.test",
-                "sharewise.iam.auth.audience", "sharewise-api",
+                "sharewise.iam.auth.audience", "sw-api-v1",
                 "sharewise.iam.auth.active-key-id", "e2e",
                 "sharewise.iam.auth.keys[0].id", "e2e",
                 "sharewise.iam.auth.keys[0].public-key-file", publicKey.toString(),

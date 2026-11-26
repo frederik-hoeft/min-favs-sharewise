@@ -50,7 +50,7 @@ class JwtCredentialCodecTests {
     private static final KeyPair GROUP_KEY = ec(3);
 
     private static final JwtCredentialProfile IAM = new JwtCredentialProfile(
-        "iam-access", IAM_ISSUER, "sw-iam-access+jwt", Set.of("sharewise-api"),
+        "iam-access", IAM_ISSUER, "sw-iam-access+jwt", Set.of("sw-api-v1"),
         JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
     private static final JwtCredentialProfile GROUP = new JwtCredentialProfile(
         "group-attestation", GROUP_ISSUER, "sw-group-attestation+jwt", Set.of("sharewise-finance"),
@@ -67,7 +67,7 @@ class JwtCredentialCodecTests {
         assertEquals(JwtCredentialProfile.Kind.PRIMARY, verified.kind());
         assertEquals(IAM_ISSUER, credential.origin().issuer());
         assertEquals("iam-access", credential.origin().profile());
-        assertEquals(Set.of("sharewise-api"), credential.origin().audiences());
+        assertEquals(Set.of("sw-api-v1"), credential.origin().audiences());
         assertEquals(Optional.of(ALICE.toString()), credential.origin().subject());
         assertEquals(Optional.of("test-token-1"), credential.origin().credentialId());
         assertEquals(Optional.of(NOW.minusSeconds(1)), credential.origin().issuedAt());
@@ -135,7 +135,7 @@ class JwtCredentialCodecTests {
             assertRejected(() -> verifier.verifyPrimary(signer.sign(issue(ALICE, SESSION))));
         }
         assertRejected(() -> verifier.verifyPrimary(manual(primaryHeader("old"),
-            validPayload().audience(List.of("sharewise-api", "other-service")).build(), IAM_OLD)));
+            validPayload().audience(List.of("sw-api-v1", "other-service")).build(), IAM_OLD)));
         JwtCredentialCodec groupSigner = subordinate();
         String groupToken = groupSigner.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER));
         assertRejected(() -> verifier.verifyPrimary(groupToken));
@@ -182,7 +182,7 @@ class JwtCredentialCodecTests {
             validPayload().claim("device", Map.of("arbitrary", "object")).build(), IAM_OLD)));
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("old"),
             new JWTClaimsSet.Builder().issuer(IAM_ISSUER).subject(ALICE.toString())
-                .audience("sharewise-api").issueTime(Date.from(NOW.minusSeconds(1)))
+                .audience("sw-api-v1").issueTime(Date.from(NOW.minusSeconds(1)))
                 .expirationTime(Date.from(NOW.plusSeconds(100)))
                 .jwtID("missing-nbf").claim("sid", SESSION).build(), IAM_OLD)));
     }
@@ -200,12 +200,12 @@ class JwtCredentialCodecTests {
             validPayload().claim("jti", 42).build(), IAM_OLD)));
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("old"),
             new JWTClaimsSet.Builder().issuer(IAM_ISSUER).subject(ALICE.toString())
-                .audience("sharewise-api").issueTime(Date.from(NOW.minusSeconds(1)))
+                .audience("sw-api-v1").issueTime(Date.from(NOW.minusSeconds(1)))
                 .notBeforeTime(Date.from(NOW.minusSeconds(1)))
                 .jwtID("missing-exp").claim("sid", SESSION).build(), IAM_OLD)));
         assertRejected(() -> codec.verifyPrimary(manual(primaryHeader("old"),
             new JWTClaimsSet.Builder().issuer(IAM_ISSUER).subject(ALICE.toString())
-                .audience("sharewise-api").expirationTime(Date.from(NOW.plusSeconds(100)))
+                .audience("sw-api-v1").expirationTime(Date.from(NOW.plusSeconds(100)))
                 .notBeforeTime(Date.from(NOW.minusSeconds(1)))
                 .jwtID("missing-iat").claim("sid", SESSION).build(), IAM_OLD)));
     }
@@ -285,7 +285,7 @@ class JwtCredentialCodecTests {
     @Test
     void subordinateRejectsOtherPrimaryProfileEvenFromTheSameTrustedIssuer() {
         JwtCredentialProfile specialPurpose = new JwtCredentialProfile("iam-special-purpose",
-            IAM_ISSUER, "sw-iam-special+jwt", Set.of("sharewise-api"),
+            IAM_ISSUER, "sw-iam-special+jwt", Set.of("sw-api-v1"),
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
@@ -301,7 +301,7 @@ class JwtCredentialCodecTests {
     @Test
     void subordinateCanExplicitlyTrustMultipleQualifiedPrimaryProfiles() {
         JwtCredentialProfile specialPurpose = new JwtCredentialProfile("iam-special-purpose",
-            IAM_ISSUER, "sw-iam-special+jwt", Set.of("sharewise-api"),
+            IAM_ISSUER, "sw-iam-special+jwt", Set.of("sw-api-v1"),
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
@@ -466,7 +466,7 @@ class JwtCredentialCodecTests {
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile("x", IAM_ISSUER,
             "x+jwt", Set.of(), JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ZERO, 4096));
         assertThrows(IllegalArgumentException.class, () -> new JwtCredentialProfile("x", IAM_ISSUER,
-            "x+jwt", Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY, Set.of(),
+            "x+jwt", Set.of("sw-api-v1"), JwtCredentialProfile.Kind.PRIMARY, Set.of(),
             Duration.ofMinutes(5), Duration.ofSeconds(61), 4096));
         assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(), Optional.empty()));
         assertThrows(IllegalArgumentException.class, () -> new Es256JwtSignatureService(List.of(
@@ -509,7 +509,7 @@ class JwtCredentialCodecTests {
 
     private static JWTClaimsSet.Builder validPayload() {
         return new JWTClaimsSet.Builder().issuer(IAM_ISSUER).subject(ALICE.toString())
-            .audience("sharewise-api").issueTime(Date.from(NOW.minusSeconds(1)))
+            .audience("sw-api-v1").issueTime(Date.from(NOW.minusSeconds(1)))
             .notBeforeTime(Date.from(NOW.minusSeconds(1))).expirationTime(Date.from(NOW.plusSeconds(100)))
             .jwtID("token-123").claim("sid", SESSION);
     }

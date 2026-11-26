@@ -3,6 +3,7 @@ package de.hsh.favs.sharewise.shared.infra.security;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -17,14 +18,16 @@ public final class VerifiedJwtCredentialCandidate {
     private final UUID userId;
     private final String sessionId;
     private final Optional<String> principalIssuer;
+    private final Set<String> scalarClaims;
 
     VerifiedJwtCredentialCandidate(AuthorizationCredential evidence, JwtCredentialProfile profile,
-                                   UUID userId, String sessionId, Optional<String> principalIssuer) {
+                                   UUID userId, String sessionId, Optional<String> principalIssuer, Set<String> scalarClaims) {
         this.evidence = Objects.requireNonNull(evidence, "evidence");
         this.profile = Objects.requireNonNull(profile, "profile");
         this.userId = Objects.requireNonNull(userId, "userId");
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.principalIssuer = Objects.requireNonNull(principalIssuer, "principalIssuer");
+        this.scalarClaims = Set.copyOf(scalarClaims);
     }
 
     /** Source-verified evidence, not yet admitted to an application context. */
@@ -38,6 +41,9 @@ public final class VerifiedJwtCredentialCandidate {
     public String sessionId() { return sessionId; }
 
     public Optional<String> principalIssuer() { return principalIssuer; }
+
+    /** Distinguishes a verified textual JSON scalar from even a single-element array. */
+    public boolean hasScalarClaim(String type) { return scalarClaims.contains(type); }
 
     public JwtCredentialProfile.Kind kind() { return profile.kind(); }
 }

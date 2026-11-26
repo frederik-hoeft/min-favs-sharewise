@@ -129,7 +129,7 @@ wrong_host_status="$("${compose[@]}" exec -T backend curl --silent --insecure \
 # signing key distribution and Group Management. All account fixtures remain disposable.
 export CONTAINER_CLI="$cli"
 issuer="$SHAREWISE_IAM_ISSUER"
-audience="${SHAREWISE_IAM_AUDIENCE:-sharewise-api}"
+audience="${SHAREWISE_IAM_AUDIENCE:-sw-api-v1}"
 python3 "$deploy_dir/scripts/api-http-smoke.py" --host "$host" --port "$https_port" \
     --issuer "$issuer" --audience "$audience"
 

@@ -41,6 +41,8 @@ server {
     # Nginx rejects oversize Content-Length and streamed/chunked bodies before
     # handing them to the backend. Larger endpoints need explicit location overrides.
     client_max_body_size 1m;
+    # The supplementary header is bounded to 8 KiB at backend ingress.
+    large_client_header_buffers 4 16k;
 
     root /usr/share/nginx/html;
     index index.html;

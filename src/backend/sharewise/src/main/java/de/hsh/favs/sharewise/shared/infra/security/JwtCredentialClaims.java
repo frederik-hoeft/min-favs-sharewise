@@ -95,6 +95,7 @@ final class JwtCredentialClaims {
             profile.audiences(), Optional.of(subject.toString()), Optional.of(tokenId),
             Optional.of(issuedAt), Optional.of(notBefore), Optional.of(expiresAt));
         List<Claim> translated = new ArrayList<>();
+        Set<String> scalarClaims = new HashSet<>();
         // JSON object member order is not significant; preserve repeated array element order.
         claims.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             if (METADATA_CLAIMS.contains(entry.getKey())) {
@@ -102,6 +103,7 @@ final class JwtCredentialClaims {
             }
             if (entry.getValue() instanceof String value) {
                 translated.add(new Claim(entry.getKey(), value, origin));
+                scalarClaims.add(entry.getKey());
             } else if (entry.getValue() instanceof List<?> values
                 && values.stream().allMatch(String.class::isInstance)) {
                 for (Object value : values) {
@@ -112,7 +114,7 @@ final class JwtCredentialClaims {
             }
         });
         return new VerifiedJwtCredentialCandidate(new AuthorizationCredential(origin, translated),
-            profile, subject, session, principalIssuer);
+            profile, subject, session, principalIssuer, scalarClaims);
     }
 
     private void validateLifetime(Instant issuedAt, Instant notBefore, Instant expiresAt) {

@@ -3,7 +3,7 @@ package de.hsh.favs.sharewise.groups.internal.persistence;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
 import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;

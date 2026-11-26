@@ -86,10 +86,10 @@ class IamAccountHttpTests {
                 .andExpect(jsonPath("$.code").value("invalid_credential"));
         for (JwtCredentialProfile profile : List.of(
                 new JwtCredentialProfile("iam-access", "https://wrong.issuer.test", "sw-iam-access+jwt",
-                        Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY,
+                        Set.of("sw-api-v1"), JwtCredentialProfile.Kind.PRIMARY,
                         Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096),
                 new JwtCredentialProfile("iam-access", "https://iam.sharewise.test", "sw-wrong+jwt",
-                        Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY,
+                        Set.of("sw-api-v1"), JwtCredentialProfile.Kind.PRIMARY,
                         Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096),
                 new JwtCredentialProfile("iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt",
                         Set.of("wrong-audience"), JwtCredentialProfile.Kind.PRIMARY,
@@ -230,7 +230,7 @@ class IamAccountHttpTests {
         @Bean("iamPrimaryJwtCredentialCodec")
         JwtCredentialCodec codec() throws Exception {
             JwtCredentialProfile profile = new JwtCredentialProfile("iam-access", "https://iam.sharewise.test",
-                    "sw-iam-access+jwt", Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY,
+                    "sw-iam-access+jwt", Set.of("sw-api-v1"), JwtCredentialProfile.Kind.PRIMARY,
                     Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
             return new JwtCredentialCodec(profile,
                     new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")),

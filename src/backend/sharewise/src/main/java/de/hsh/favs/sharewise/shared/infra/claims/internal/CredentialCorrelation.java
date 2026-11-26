@@ -6,6 +6,7 @@ import de.hsh.favs.sharewise.shared.infra.claims.CredentialValidationContext;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtPrincipalBinding;
+import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRejected;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.util.List;
 import java.util.Objects;
@@ -30,7 +31,11 @@ final class CredentialCorrelation {
         Optional<VerifiedJwtCredentialCandidate> primary = primaries.stream().findFirst();
         for (VerifiedJwtCredentialCandidate candidate : snapshot) {
             if (candidate.kind() == JwtCredentialProfile.Kind.SUBORDINATE) {
-                JwtPrincipalBinding.requireBound(primary.orElseThrow(JwtCredentialException::new), candidate);
+                try {
+                    JwtPrincipalBinding.requireBound(primary.orElseThrow(JwtCredentialException::new), candidate);
+                } catch (JwtCredentialException rejected) {
+                    throw new SupplementaryCredentialRejected(candidate);
+                }
             }
         }
         CredentialValidationContext context = new CandidateSet(snapshot, primary);

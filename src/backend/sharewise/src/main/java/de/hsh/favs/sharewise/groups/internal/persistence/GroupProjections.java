@@ -12,7 +12,7 @@ import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import java.util.Optional;
 import java.util.UUID;

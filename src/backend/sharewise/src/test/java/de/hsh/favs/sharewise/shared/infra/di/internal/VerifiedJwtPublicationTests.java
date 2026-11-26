@@ -11,6 +11,7 @@ import de.hsh.favs.sharewise.shared.infra.claims.internal.AuthorizationConfigura
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
+import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRejected;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
@@ -59,12 +60,12 @@ class VerifiedJwtPublicationTests {
             assertEquals(1, state.published.get());
 
             state.subordinateToken = state.group.sign(state.groupIssue("different-session"));
-            BeanCreationException failure = assertThrows(BeanCreationException.class,
+            SupplementaryCredentialRejected failure = assertThrows(SupplementaryCredentialRejected.class,
                 () -> dispatcher.dispatch(AuthorizationContext.class, context -> {
                     state.published.incrementAndGet();
                     return null;
                 }));
-            assertTrue(failure.getMostSpecificCause() instanceof JwtCredentialException);
+            assertTrue(failure.getCause() instanceof JwtCredentialException);
             assertEquals(1, state.published.get(), "no partial primary-only snapshot may escape");
 
             state.subordinateToken = state.group.sign(state.groupIssue(SESSION));
@@ -83,7 +84,8 @@ class VerifiedJwtPublicationTests {
             State state = spring.getBean(State.class);
             OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
             state.omitPrimary = true;
-            assertRejectedBeforeEntry(dispatcher);
+            assertThrows(SupplementaryCredentialRejected.class,
+                () -> dispatcher.dispatch(EffectEntry.class, entry -> entry));
             state.omitPrimary = false;
             state.duplicatePrimary = true;
             assertRejectedBeforeEntry(dispatcher);

@@ -9,7 +9,7 @@ import de.hsh.favs.sharewise.groups.internal.application.group.GroupReadPort;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
 import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.List;

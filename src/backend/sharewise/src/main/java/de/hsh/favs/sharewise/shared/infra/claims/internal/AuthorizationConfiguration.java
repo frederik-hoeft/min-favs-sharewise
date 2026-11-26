@@ -5,9 +5,12 @@ import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialValidator;
 import de.hsh.favs.sharewise.shared.infra.di.OperationAdmission;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
+import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRejected;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.beans.BeanInstantiationException;
+import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -26,7 +29,19 @@ public class AuthorizationConfiguration {
 
     @Bean
     OperationAdmission authorizationAdmission(ObjectProvider<AuthorizationContext> authorization) {
-        return () -> authorization.getObject();
+        return () -> {
+            try {
+                authorization.getObject();
+            } catch (BeanCreationException failure) {
+                // Only this pre-entry admission boundary unwraps the expected factory
+                // exception. A bean failure during business execution is not a replay signal.
+                if (failure.getCause() instanceof BeanInstantiationException instantiation
+                        && instantiation.getCause() instanceof SupplementaryCredentialRejected rejected) {
+                    throw rejected;
+                }
+                throw failure;
+            }
+        };
     }
 
     @Bean

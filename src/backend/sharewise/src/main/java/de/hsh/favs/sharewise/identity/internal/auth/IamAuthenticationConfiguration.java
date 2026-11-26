@@ -10,7 +10,7 @@ import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionLifecycleStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
-import de.hsh.favs.sharewise.identity.internal.auth.token.IamPemKeyLoader;
+import de.hsh.favs.sharewise.shared.infra.security.EcPemKeyLoader;
 import de.hsh.favs.sharewise.identity.internal.auth.token.PrimaryAccessTokenIssuer;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenParser;
@@ -88,12 +88,12 @@ class IamAuthenticationConfiguration {
         for (IamAuthenticationSettings.Key key : settings.keys()) {
             if (settings.activeKeyId().equals(key.id())) {
                 active++;
-                keys.add(IamPemKeyLoader.signing(key.id(), key.publicKeyFile(), key.privateKeyFile()));
+                keys.add(EcPemKeyLoader.signing(key.id(), key.publicKeyFile(), key.privateKeyFile()));
             } else {
                 if (key.privateKeyFile() != null && !key.privateKeyFile().isBlank()) {
                     throw new IllegalStateException("Only the active IAM signing key may contain private material");
                 }
-                keys.add(IamPemKeyLoader.verification(key.id(), key.publicKeyFile()));
+                keys.add(EcPemKeyLoader.verification(key.id(), key.publicKeyFile()));
             }
         }
         if (active != 1) {

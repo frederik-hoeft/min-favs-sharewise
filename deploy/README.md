@@ -89,7 +89,7 @@ The default `deploy/.env.example` specifies:
 SHAREWISE_IAM_KEY_MODE=generate-if-absent
 SHAREWISE_IAM_ACTIVE_KEY_ID=iam-local-1
 SHAREWISE_IAM_ISSUER=https://localhost:8443
-SHAREWISE_IAM_AUDIENCE=sharewise-api
+SHAREWISE_IAM_AUDIENCE=sw-api-v1
 ```
 
 `bootstrap.sh` runs `scripts/iam-keys.sh init` after building the images. `docker compose up` also runs the job as a startup prerequisite. On subsequent runs, it **verifies** the stored key ID, P-256 algorithm and public/private match without replacing the pair. A partial fixture, changed `kid`, invalid key, symlink, or concurrent/interrupted initializer causes failure instead of an implicit rotation. The volume-local `.iam-lock` prevents two provisioning jobs from both creating a new identity; an orphaned lock or staging directory requires operator investigation before removal. The backend uses the corresponding Spring configuration via Compose environment variables, including `sharewise.iam.auth.enabled=true` and key paths `/run/iam/{private,public}/active.pem`. Externally provisioned private keys must contain exactly one unencrypted PKCS#8 PEM block with **LF line endings**; this initializer rejects CRLF-formatted PEMs even though the Java key loader accepts them. Convert line endings before placing such keys in the volume.

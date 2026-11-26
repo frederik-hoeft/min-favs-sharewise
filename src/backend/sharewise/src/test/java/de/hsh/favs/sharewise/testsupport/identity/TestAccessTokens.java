@@ -37,7 +37,7 @@ public final class TestAccessTokens {
     public static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     /** The trusted primary profile; it mirrors the shape that IAM configures in production. */
     public static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
-        "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
+        "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sw-api-v1"),
         JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
     public static final String KEY_ID = "test";
 

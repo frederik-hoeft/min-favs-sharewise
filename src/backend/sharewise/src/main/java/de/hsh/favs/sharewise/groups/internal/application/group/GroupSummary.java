@@ -1,7 +1,7 @@
 package de.hsh.favs.sharewise.groups.internal.application.group;
 
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import java.util.Objects;
 import java.util.UUID;
 

@@ -91,7 +91,7 @@ class IamHttpSmokeTests(unittest.TestCase):
               patch.dict(os.environ, {"COMPOSE_PROJECT_NAME": "sharewise-p26ab-smoke", "COMPOSE_FILE": "compose.yaml"}),
               patch.object(smoke.subprocess, "run", return_value=SimpleNamespace(stdout="public.pem")),
               patch.object(sys, "argv", ["api-http-smoke.py", "--host", "localhost", "--port", "18443",
-                                         "--issuer", "https://localhost:18443", "--audience", "sharewise-api"])):
+                                         "--issuer", "https://localhost:18443", "--audience", "sw-api-v1"])):
             output = io.StringIO()
             try:
                 with contextlib.redirect_stdout(output):
@@ -124,7 +124,7 @@ class IamHttpSmokeTests(unittest.TestCase):
     def test_standalone_execution_refuses_non_disposable_project(self):
         with (patch.dict(os.environ, {"COMPOSE_PROJECT_NAME": "sharewise-p26ab-local", "COMPOSE_FILE": "compose.yaml"}),
               patch.object(sys, "argv", ["api-http-smoke.py", "--host", "localhost", "--port", "18443",
-                                         "--issuer", "https://localhost:18443", "--audience", "sharewise-api"]),
+                                         "--issuer", "https://localhost:18443", "--audience", "sw-api-v1"]),
               patch.object(smoke, "compose_exec") as compose):
             with self.assertRaisesRegex(RuntimeError, "disposable Compose project"):
                 smoke.main()
@@ -267,7 +267,7 @@ class GroupHttpSmokeTests(unittest.TestCase):
             invoke.assert_not_called()
 
     def test_second_account_uses_separate_cookie_jar_and_cleans_up_on_failure(self):
-        args = SimpleNamespace(host="localhost", port="18443", issuer="https://localhost:18443", audience="sharewise-api")
+        args = SimpleNamespace(host="localhost", port="18443", issuer="https://localhost:18443", audience="sw-api-v1")
         with (patch.object(smoke, "compose_exec", return_value="/tmp/guest-jar") as compose,
               patch.object(smoke, "mutate", side_effect=[(201, {}), (204, None)]) as mutate,
               patch.object(smoke, "authenticated_response", return_value=("guest", SESSION_ID, GUEST_ID)),

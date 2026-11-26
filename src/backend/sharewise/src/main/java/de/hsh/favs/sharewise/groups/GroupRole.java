@@ -1,4 +1,4 @@
-package de.hsh.favs.sharewise.groups.internal.domain;
+package de.hsh.favs.sharewise.groups;
 
 /** Organizational role of a group member, persisted as the {@code groups.group_role} enum. */
 public enum GroupRole {
