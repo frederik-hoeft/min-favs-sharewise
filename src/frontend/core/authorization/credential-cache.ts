@@ -1,4 +1,5 @@
 import { requestCanceled, sessionContextChanged } from '@/lib/api';
+import type { AcquisitionDiagnostic, CredentialDiagnostic } from './diagnostics.ts';
 import { unavailableAttestation, type CredentialReference, type IssuedCredential } from './credential.ts';
 
 export interface CredentialGeneration extends IssuedCredential {
@@ -24,8 +25,8 @@ export class CredentialCache {
     constructor(private readonly now: () => number, private readonly capacity: number = 128,
         private readonly flightCapacity: number = 32) { }
 
-    usable(value: CredentialGeneration): boolean {
-        return !this.closed && !value.rejected && value.expiresAt > this.now();
+    usable(value: CredentialGeneration, observedAt: number = this.now()): boolean {
+        return !this.closed && !value.rejected && value.expiresAt > observedAt;
     }
 
     get(reference: CredentialReference): CredentialGeneration | undefined {
@@ -104,6 +105,18 @@ export class CredentialCache {
             if (signal?.aborted) canceled();
             else if (flight.controller.signal.aborted) abandoned();
         });
+    }
+
+    diagnostics(observedAt: number): readonly CredentialDiagnostic[] {
+        return Object.freeze(Array.from(this.entries.values(), (entry: CredentialGeneration): CredentialDiagnostic =>
+            Object.freeze({ authority: entry.reference.descriptor.authority, kind: entry.reference.descriptor.kind,
+                scope: entry.reference.descriptor.scope, key: entry.reference.key, generation: entry.generation,
+                expiresAt: entry.expiresAt, remainingMs: Math.max(0, entry.expiresAt - observedAt), usable: this.usable(entry, observedAt) })));
+    }
+
+    acquisitionDiagnostics(): readonly AcquisitionDiagnostic[] {
+        return Object.freeze(Array.from(this.flights, ([key, flight]: [string, Flight]): AcquisitionDiagnostic =>
+            Object.freeze({ key, waiters: flight.waiters })));
     }
 
     close(): void {

@@ -2,6 +2,7 @@ import { ApiError, requestCanceled, sessionContextChanged, type ApiRequestHandle
     type RequestHandler, type SentRequest, type RecoveryAction } from '@/lib/api';
 import { ATTESTATION_HEADER, MAX_ATTESTATIONS, MAX_ATTESTATION_HEADER_LENGTH, type AttestationChallenge, type AuthorizationMetadata } from '@/lib/api/authorization-protocol.ts';
 import { credentialReference, issueCredential, unavailableAttestation, type CredentialReference, type IssuedCredential } from './credential.ts';
+import type { AuthorizationSnapshot } from './diagnostics.ts';
 import { CredentialCache, type CredentialGeneration } from './credential-cache.ts';
 import { RequirementCache, type PendingAffinity, type RequirementRequest } from './requirement-cache.ts';
 
@@ -65,6 +66,17 @@ export class AttestationHandler implements ApiRequestHandler {
     }
 
     dispose(): void { this.closed = true; this.unsubscribe(); this.clear(); }
+
+    /** Observation must neither initialize caches nor touch their eviction order. */
+    snapshot(): AuthorizationSnapshot {
+        const lifetime: number | undefined = this.session.current();
+        const caches: SessionCaches | undefined = this.caches?.lifetime === lifetime ? this.caches : undefined;
+        const capturedAt: number = this.now();
+        return Object.freeze({ lifetime: lifetime ?? null, capturedAt,
+            credentials: caches?.credentials.diagnostics(capturedAt) ?? Object.freeze([]),
+            requirements: caches?.requirements.diagnostics() ?? Object.freeze([]),
+            inFlight: caches?.credentials.acquisitionDiagnostics() ?? Object.freeze([]) });
+    }
 
     private current(): SessionCaches {
         const lifetime: number | undefined = this.session.current();

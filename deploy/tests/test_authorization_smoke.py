@@ -60,5 +60,7 @@ class AuthorizationSmokeContractTests(unittest.TestCase):
         self.assertNotIn('authorization-browser', (frontend / 'Dockerfile').read_text())
         dockerfile = (frontend / 'Dockerfile.e2e').read_text()
         self.assertIn("cp tests/deployed/browser/page.tsx 'app/(app)/app/authorization-smoke/page.tsx'", dockerfile)
+        self.assertIn('SHAREWISE_AUTHORIZATION_DEBUG=1 npm run build:static', dockerfile)
+        self.assertNotIn('SHAREWISE_AUTHORIZATION_DEBUG', (frontend / 'Dockerfile').read_text())
         self.assertIn('useAuthenticatedApis()', (frontend / 'tests/deployed/browser/page.tsx').read_text())
         self.assertFalse((frontend / 'app/(app)/app/authorization-smoke').exists())

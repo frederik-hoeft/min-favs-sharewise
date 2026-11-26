@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from "react";
 import type { Context, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { createIdentityRuntime, type AuthenticatedApis, type AuthState, type IdentityRuntime } from "@/core/identity";
+import { installAuthorizationDebug } from "./authorization-debug";
 
 const IdentityContext: Context<IdentityRuntime | null> = createContext<IdentityRuntime | null>(null);
 const AuthenticatedApisContext: Context<AuthenticatedApis | null> = createContext<AuthenticatedApis | null>(null);
@@ -13,8 +14,11 @@ export function IdentityProvider({ children, runtime: provided }: { children: Re
   const [runtime]: [IdentityRuntime, Dispatch<SetStateAction<IdentityRuntime>>] = useState(() => provided ?? createIdentityRuntime());
   useEffect(() => {
     runtime.connect();
+    const removeDebug: (() => void) | undefined = process.env.NODE_ENV === "development" ||
+      process.env.SHAREWISE_AUTHORIZATION_DEBUG === "1"
+      ? installAuthorizationDebug(window, runtime.authorizationSnapshot) : undefined;
     // Strict Mode repeats setup/cleanup; do not dispose the retained runtime or its session here.
-    return () => runtime.disconnect();
+    return (): void => { removeDebug?.(); runtime.disconnect(); };
   }, [runtime]);
   return <IdentityContext.Provider value={runtime}>{children}</IdentityContext.Provider>;
 }

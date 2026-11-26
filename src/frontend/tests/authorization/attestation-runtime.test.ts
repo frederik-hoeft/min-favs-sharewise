@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createIdentityRuntime, type IdentityRuntime } from '@/core/identity';
+import { createIdentityRuntime, type IdentityRuntime, type AuthenticatedApis } from '@/core/identity';
+import type { AuthorizationSnapshot } from '@/core/authorization/diagnostics';
 import type { AttestationCacheOptions } from '@/core/authorization/attestation-handler';
 import { ATTESTATION_HEADER, MAX_ATTESTATION_HEADER_LENGTH, type AffinityPolicy, type CredentialDescriptor } from '@/lib/api/authorization-protocol';
 import { authenticationResponse, ControlledLocks, deferred, jsonResponse, problemResponse, SESSION_TWO } from '../identity/support';
@@ -110,6 +111,36 @@ describe('generic attestation handler and independent caches', () => {
         expect(await f.get('/finance/v1/groups/X/expenses')).toBe(3);
         expect(await f.get('/finance/v1/groups/X/balance')).toBe(1);
         expect(f.issuanceCount).toBe(2);
+    });
+
+    it('reports detached token-free diagnostics across scoped facades and session changes without evicting expired entries', async () => {
+        const f: Fixture = new Fixture();
+        const initial: AuthorizationSnapshot = f.runtime.authorizationSnapshot();
+        expect(initial.credentials).toEqual([]);
+        expect(initial.requirements).toEqual([]);
+        const first: AuthenticatedApis = f.runtime.forSession(f.runtime.session.getSessionId()!);
+        const second: AuthenticatedApis = f.runtime.forSession(f.runtime.session.getSessionId()!);
+        await first.api.get('/finance/v1/groups/X/expenses');
+        await second.api.get('/finance/v1/groups/X/balance');
+        const snapshot: AuthorizationSnapshot = f.runtime.authorizationSnapshot();
+        expect(snapshot.credentials).toHaveLength(1);
+        expect(snapshot.credentials[0]).toMatchObject({ authority: 'groups', kind: 'membership', scope: 'X',
+            usable: true, remainingMs: 120_000 });
+        expect(snapshot.requirements).toHaveLength(2);
+        expect(snapshot.requirements.every((row): boolean => row.credentialKey === snapshot.credentials[0].key)).toBe(true);
+        expect(JSON.stringify(snapshot)).not.toContain('header.payload.sig');
+        expect(JSON.stringify(snapshot)).not.toContain('primary');
+        expect(Object.isFrozen(snapshot.credentials[0])).toBe(true);
+        expect(Object.isFrozen(snapshot.requirements[0].parameters)).toBe(true);
+        f.runtime.session.accept(authenticationResponse('rotated'));
+        expect(f.runtime.authorizationSnapshot()).toEqual(snapshot);
+        f.now += 120_001;
+        expect(f.runtime.authorizationSnapshot().credentials[0]).toMatchObject({ usable: false, remainingMs: 0 });
+        expect(f.runtime.authorizationSnapshot().requirements).toEqual(snapshot.requirements);
+        expect(snapshot.credentials[0].usable).toBe(true);
+        f.runtime.session.accept(authenticationResponse('different', undefined, SESSION_TWO));
+        expect(f.runtime.authorizationSnapshot()).toMatchObject({ credentials: [], requirements: [], inFlight: [] });
+        expect(f.runtime.authorizationSnapshot().lifetime).not.toEqual(snapshot.lifetime);
     });
 
     it('checks CC expiry on a cold method affinity before attempting fresh issuance', async () => {
@@ -293,10 +324,13 @@ describe('generic attestation handler and independent caches', () => {
         const a = f.api.get('/finance/v1/a', { signal: controller.signal });
         const b = f.api.get('/finance/v1/b');
         await vi.waitFor(() => expect(f.traces).toHaveLength(3));
+        await vi.waitFor(() => expect(f.runtime.authorizationSnapshot().inFlight).toEqual([{ key: key(descriptor('X')), waiters: 2 }]));
         controller.abort();
         await expect(a).rejects.toMatchObject({ code: 'request_aborted' });
+        expect(f.runtime.authorizationSnapshot().inFlight).toEqual([{ key: key(descriptor('X')), waiters: 1 }]);
         gate.resolve();
         await expect(b).resolves.toEqual({ ok: true });
+        expect(f.runtime.authorizationSnapshot().inFlight).toEqual([]);
         expect(f.issuanceCount).toBe(1);
         expect(await f.get('/finance/v1/b')).toBe(1);
         expect(await f.get('/finance/v1/a')).toBe(2);

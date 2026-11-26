@@ -1,8 +1,9 @@
 "use client";
 
 import { Alert, Button, Code, Group, Stack, Text, TextInput, Title } from "@mantine/core";
-import { useState, type ChangeEvent, type Dispatch, type ReactElement, type SetStateAction } from "react";
+import { useEffect, useState, type ChangeEvent, type Dispatch, type ReactElement, type SetStateAction } from "react";
 import { useAuthenticatedApis } from "@/app/identity-provider";
+import type { AuthorizationSnapshot } from "@/core/authorization/diagnostics";
 import { GroupsApi } from "@/core/groups/groups-api";
 import type { GroupDetails } from "@/core/groups/models";
 import { ApiError, type ApiClient } from "@/lib/api";
@@ -21,6 +22,13 @@ export default function AuthorizationSmokePage(): ReactElement {
     const operation: ExclusiveOperation<"request"> = useExclusiveOperation<"request">();
     const busy: boolean = operation.pending !== null;
     const [result, setResult]: [string, Dispatch<SetStateAction<string>>] = useState("Create two disposable groups to begin.");
+    const [diagnostics, setDiagnostics]: [AuthorizationSnapshot | undefined, Dispatch<SetStateAction<AuthorizationSnapshot | undefined>>] = useState<AuthorizationSnapshot>();
+    useEffect((): (() => void) => {
+        const update: () => void = (): void => setDiagnostics(window.sharewiseDebug?.authorization.snapshot());
+        update();
+        const timer: number = window.setInterval(update, 1000);
+        return (): void => window.clearInterval(timer);
+    }, []);
     const sourcePath: string = encodeURIComponent(source);
     const destinationParam: string = encodeURIComponent(destination);
     const timestampParam: string = encodeURIComponent(timestamp);
@@ -87,6 +95,17 @@ export default function AuthorizationSmokePage(): ReactElement {
         </Group>
         <Text fw={500}>Last outcome</Text>
         <Code block role="status">{result}</Code>
+        <Title order={2}>Authorization caches</Title>
+        <Text size="sm">Live session-local diagnostic metadata (no JWTs). Use the console via window.sharewiseDebug.authorization.</Text>
+        {diagnostics ? <>
+            <Text size="sm">Authenticated lifetime: {diagnostics.lifetime ?? "none"}</Text>
+            <Title order={3}>Credential cache ({diagnostics.credentials.length})</Title>
+            <Code block>{JSON.stringify(diagnostics.credentials, null, 2)}</Code>
+            <Title order={3}>Requirement cache ({diagnostics.requirements.length})</Title>
+            <Code block>{JSON.stringify(diagnostics.requirements, null, 2)}</Code>
+            <Title order={3}>In-flight acquisitions ({diagnostics.inFlight.length})</Title>
+            <Code block>{JSON.stringify(diagnostics.inFlight, null, 2)}</Code>
+        </> : <Text size="sm">Diagnostics unavailable.</Text>}
         <Text size="sm">Reload to clear the in-memory caches. Leave the page open for two minutes to exercise lazy attestation renewal.</Text>
     </Stack>;
 }

@@ -5,6 +5,7 @@ import { AuthSession } from './auth-session.ts';
 import { ANONYMOUS_IDENTITY_PATHS, IdentityApi } from './identity-api.ts';
 import { SessionContextChannel, SESSION_CONTEXT_CHANNEL } from './session-context-channel.ts';
 import { iamRequestHandler } from './iam-request-handler.ts';
+import type { AuthorizationSnapshot } from '@/core/authorization/diagnostics.ts';
 import { AttestationHandler, type AttestationCacheOptions } from '@/core/authorization/attestation-handler.ts';
 
 export { AUTH_COOKIE_LOCK, AuthCookieLock } from './auth-cookie-lock.ts';
@@ -26,6 +27,7 @@ export interface IdentityRuntime {
     forSession(sessionId: string): AuthenticatedApis;
     readonly cookieLock: AuthCookieLock;
     readonly session: AuthSession;
+    authorizationSnapshot(): AuthorizationSnapshot;
     connect(): void;
     disconnect(): void;
     dispose(): void;
@@ -73,6 +75,7 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
             const scopedIdentity: IdentityApi = new IdentityApi(scopedApi);
             return { api: scopedApi, account: scopedIdentity, security: scopedIdentity };
         },
+        authorizationSnapshot: (): AuthorizationSnapshot => attestations.snapshot(),
         connect: () => channel.connect(),
         disconnect: () => channel.disconnect(),
         dispose: () => { attestations.dispose(); auth.dispose(); channel.dispose(); session.dispose(); },

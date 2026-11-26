@@ -1,5 +1,6 @@
 import type { ApiRequestContext } from '@/lib/api';
 import type { AffinityPolicy, AttestationChallenge } from '@/lib/api/authorization-protocol.ts';
+import type { RequirementDiagnostic } from './diagnostics.ts';
 import { type CredentialReference } from './credential.ts';
 
 const MAX_TARGET_LENGTH: number = 4096;
@@ -132,6 +133,23 @@ export class RequirementCache {
         entries.delete(pending.projection);
         entries.set(pending.projection, pending.reference);
         if (entries.size > MAX_PROJECTIONS_PER_REQUIREMENT) entries.delete(entries.keys().next().value!);
+    }
+
+    diagnostics(): readonly RequirementDiagnostic[] {
+        const rows: RequirementDiagnostic[] = [];
+        for (const [bucketKey, bucket] of this.buckets) {
+            for (const [requirementId, record] of bucket) {
+                const parameters: readonly string[] = Object.freeze(record.policy.policy === 'query_affine' ? [...record.policy.parameters] : []);
+                const base: Omit<RequirementDiagnostic, 'projectedKey' | 'credentialKey'> = {
+                    bucketKey, requirementId, policy: record.policy.policy, parameters, sequence: record.sequence,
+                };
+                if (record.entries.size === 0) rows.push(Object.freeze({ ...base, projectedKey: null, credentialKey: null }));
+                for (const [projectedKey, reference] of record.entries) {
+                    rows.push(Object.freeze({ ...base, projectedKey, credentialKey: reference.key }));
+                }
+            }
+        }
+        return Object.freeze(rows);
     }
 
     clear(): void { this.buckets.clear(); }

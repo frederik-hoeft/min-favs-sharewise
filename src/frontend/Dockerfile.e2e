@@ -10,7 +10,7 @@ COPY . .
 FROM test-source AS authorization-browser-builder
 RUN mkdir -p 'app/(app)/app/authorization-smoke' \
     && cp tests/deployed/browser/page.tsx 'app/(app)/app/authorization-smoke/page.tsx' \
-    && npm run build:static
+    && SHAREWISE_AUTHORIZATION_DEBUG=1 npm run build:static
 
 FROM nginx:1.30.7-alpine3.24 AS authorization-browser
 ENV NGINX_ENVSUBST_FILTER="^SHAREWISE_"
