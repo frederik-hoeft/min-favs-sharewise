@@ -2,7 +2,7 @@
 
 **Status:** P2.1.0 completed, independently reviewed, approved and incorporated into the current baseline. This acceptance record preserves the automated evidence and its limits; the deferred framework-managed HTTP-chain migration belongs to P2.1a, not to P2.1.0's completion gate.
 
-The implemented system is described in [verified credentials and operation identity](../../../architecture/authorization.md) and [operation-scoped dependency injection](../../../architecture/dependency-injection.md). Remaining IAM login/session and Group-attestation designs stay in the [security design](../../../stack/security.md) and [domain-context proposal](../../../stack/claims-context-proposal.md).
+The implemented system is described in [verified credentials and operation identity](../../../architecture/verified-credentials.md) and [operation-scoped dependency injection](../../../architecture/dependency-injection.md). Remaining IAM login/session and Group-attestation designs stay in the [security design](../../../stack/security.md) and [domain-context proposal](../../../stack/claims-context-proposal.md).
 
 ## Verified automated evidence
 

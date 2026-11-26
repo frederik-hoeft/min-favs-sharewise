@@ -55,6 +55,8 @@ console.table(sharewiseDebug.authorization.snapshot().inFlight);
 
 The credential rows show the opaque key, descriptor, generation, expiry and usability. Requirement rows show the bucket, requirement ID, projection policy and referenced credential key. The snapshots contain no JWTs and do not initialize caches, evict entries or alter their order. Expired entries remain visible until normal lazy eviction, and an empty requirement marker has no credential reference. Resource identifiers and query projections can still contain development data; do not export them indiscriminately. The caches survive client-side page changes and same-session renewal; logout, lifetime replacement and document reload discard them. Ordinary production builds do not register the global.
 
+For interpreting diagnostic counts, the default credential cache holds up to 128 credentials and 32 simultaneous acquisition flights. The requirement cache holds up to 32 request buckets with eight requirement IDs per bucket and eight learned projections per requirement. These are resource bounds, not authorization rules. See [cache validity and lifecycle](../architecture/distributed-authorization.md#cache-validity-and-lifecycle) for eviction and recovery behavior.
+
 ## Test coverage and browser behavior
 
 All frontend tests live in `tests/`, including tests of `lib/` and domain modules. Vitest and React Testing Library cover observable component behavior, navigation and theme state. The API client is tested with an injected fetch implementation, so its success, `ProblemDetail`, network failure and bounded-retry cases run without a backend server or an additional Node test runner.
