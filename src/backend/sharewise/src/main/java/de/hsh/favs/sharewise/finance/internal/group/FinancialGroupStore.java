@@ -27,8 +27,9 @@ public interface FinancialGroupStore {
     /**
      * Transition a locked provisioning root to open, leaving its revision and creation timestamp
      * unchanged, and return the resulting snapshot. The caller must hold the root's lock from this
-     * store in the active segment; a non-provisioning snapshot is rejected, and a stored root that
-     * is no longer provisioning fails rather than being reported as an outcome.
+     * store in the active segment, which the store does not verify; a non-provisioning snapshot is
+     * rejected, and a stored root that is no longer provisioning fails rather than being reported
+     * as an outcome.
      */
     FinancialGroup activate(FinancialGroup locked);
 }

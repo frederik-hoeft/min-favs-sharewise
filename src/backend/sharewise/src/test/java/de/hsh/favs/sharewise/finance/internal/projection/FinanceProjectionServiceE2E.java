@@ -29,6 +29,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -38,7 +40,8 @@ import org.springframework.context.annotation.Scope;
 /**
  * Projection operations dispatched as production operations with real commits, observed from an
  * independent application-role connection: activation, membership ordering, contradiction,
- * failure atomicity and isolation of the financial revision (PRJ-T04 to PRJ-T10, PRJ-T14, PRJ-T15).
+ * failure atomicity, isolation of the financial revision and membership synchronization in every
+ * lifecycle state (PRJ-T04 to PRJ-T10, PRJ-T14, PRJ-T15, PRJ-T18).
  */
 @Tag("e2e")
 class FinanceProjectionServiceE2E extends E2ETestBase {
@@ -96,6 +99,36 @@ class FinanceProjectionServiceE2E extends E2ETestBase {
             assertEquals(List.of(new FinancialActor(existing, leaver, MembershipState.REMOVED, 2)),
                     FinanceTestFixture.actors(fixture, existing));
             assertEquals(Optional.of(root), FinanceTestFixture.rootRow(fixture, existing));
+        });
+    }
+
+    /** Membership synchronization is organizational replication and applies in every lifecycle state. */
+    @ParameterizedTest
+    @EnumSource(FinancialGroupState.class)
+    void membershipFactsApplyInEveryLifecycleStateWithoutChangingTheRoot(FinancialGroupState state) {
+        runFinanceTest(fixture -> {
+            UUID group = UUID.randomUUID();
+            UUID user = UUID.randomUUID();
+            FinanceTestFixture.seedRoot(fixture, group, state, SEEDED_REVISION);
+            Optional<GroupsRecord> root = FinanceTestFixture.rootRow(fixture, group);
+            assertTrue(SEEDED_AT.isEqual(root.orElseThrow().getCreatedAt()), root::toString);
+
+            assertEquals(MembershipOutcome.INSERTED, apply(fixture, group, user, 1, MembershipState.ACTIVE));
+            assertEquals(List.of(new FinancialActor(group, user, MembershipState.ACTIVE, 1)),
+                    FinanceTestFixture.actors(fixture, group));
+            assertEquals(root, FinanceTestFixture.rootRow(fixture, group));
+
+            assertEquals(MembershipOutcome.SUPERSEDED, apply(fixture, group, user, 2, MembershipState.REMOVED));
+            ActorsRecord superseded = FinanceTestFixture.actorRow(fixture, group, user);
+            assertEquals(List.of(new FinancialActor(group, user, MembershipState.REMOVED, 2)),
+                    FinanceTestFixture.actors(fixture, group));
+            assertEquals(root, FinanceTestFixture.rootRow(fixture, group));
+
+            // No-change outcomes do not depend on the lifecycle either.
+            assertEquals(MembershipOutcome.DUPLICATE, apply(fixture, group, user, 2, MembershipState.REMOVED));
+            assertEquals(MembershipOutcome.STALE, apply(fixture, group, user, 1, MembershipState.ACTIVE));
+            assertEquals(superseded, FinanceTestFixture.actorRow(fixture, group, user));
+            assertEquals(root, FinanceTestFixture.rootRow(fixture, group));
         });
     }
 

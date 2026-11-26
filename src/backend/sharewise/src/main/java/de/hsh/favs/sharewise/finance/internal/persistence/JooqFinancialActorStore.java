@@ -51,8 +51,9 @@ class JooqFinancialActorStore implements FinancialActorStore {
         if (next.upstreamRevision() <= current.upstreamRevision()) {
             throw new IllegalArgumentException("Superseding actor must have a greater revision");
         }
-        // Compare-and-set on the previously read state: the root lock should make a mismatch
-        // impossible, so one is a protocol violation rather than an expected outcome.
+        // Compare-and-set on the previously read state: under the caller's root lock a mismatch is
+        // impossible, so one is a protocol violation rather than an expected outcome. A match does
+        // not prove that the caller holds the root lock.
         int updated = database.dsl().update(ACTORS)
                 .set(ACTORS.DELETED, deleted(next.state()))
                 .set(ACTORS.UPSTREAM_REVISION, next.upstreamRevision())

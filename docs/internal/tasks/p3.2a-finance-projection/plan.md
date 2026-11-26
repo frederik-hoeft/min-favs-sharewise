@@ -51,6 +51,31 @@ Adds the application operations on top of Phase A and the specified acceptance t
 
 **Gate C:** Human approves the documentation change. Approved by the maintainer. The [test guide](../../../development/tests.md) additionally documents the shared PostgreSQL lock-wait helpers; the Phase 3 foundation and messaging design required no change.
 
+## Independent review findings and resolutions
+
+An independent review of the integrated revision `a26fa0b` (GitHub mirror PR #38) found no production correctness defect in the projection service's call path. It reported one contract defect and two coverage gaps, each confirmed against the branch before resolution. The resolutions change no production behavior, schema, module dependency or published interface.
+
+| Finding | Severity | Validation | Resolution |
+| --- | --- | --- | --- |
+| R1 - Root-lock enforcement overstated | P3, documentation/contract | Confirmed. `JooqAccess` checks only for an active segment; actor insert relies on the keys and supersede on a compare-and-set of the read state and revision, so a write without the root lock succeeds when no conflict exists, including while another transaction holds the lock. `FinanceProjectionService` always calls `ensureAndLock` first. | Documented root-lock ownership as a caller-enforced precondition and the guards as conflict detection in `FinancialActorStore`, `JooqFinancialActorStore`, `FinancialGroupStore.activate`, the [persistence architecture](../../../architecture/persistence.md#membership-projection-operations) and the [specification](specification.md#operation-protocol). Runtime enforcement was rejected: no requirement mandates it, PostgreSQL row locks are not observable through `pg_locks`, and a segment-bound lock registry or a re-lock inside each write would add infrastructure and lock-ordering risk for no current caller. |
+| R2 - Concurrent `updated_at` anomaly untested | Coverage gap | Confirmed. PRJ-T12 checks revision convergence only, and PRJ-T06 uses a seeded past timestamp. | Added PRJ-T19 to `FinanceProjectionConcurrencyE2E`. Both facts run as production dispatches through the unchanged service. Because the service's first statement acquires the root lock immediately after fixing the transaction start, the test imports a test-only, armed one-shot decorator of `FinancialGroupStore` that starts the higher revision's transaction with `SELECT now()` and pauses on a bounded latch before delegating to `ensureAndLock`. No production hook or schema change is involved, and the root lock still precedes all actor access. |
+| R3 - Membership projection in closed and archived roots untested | Optional coverage | Confirmed. Membership E2Es seeded only provisioning and open roots. | Added PRJ-T18, a parameterized `FinanceProjectionServiceE2E` over all four lifecycle states covering insert, supersede, duplicate and stale facts against a nonzero revision, with the complete root row unchanged after every fact. No lifecycle guard was added; the archived-root policy remains a P5.3 question. |
+
+The specification gained the PRJ-T18 and PRJ-T19 rows for traceability; both are additive test obligations awaiting maintainer approval with this resolution.
+
+**Resolution evidence.** Agent-run in the devcontainer against its PostgreSQL 18 service, on the uncommitted resolution working tree based on `a26fa0b`, from `src/backend/sharewise`:
+
+| Command | Result |
+| --- | --- |
+| `./mvnw -B -ntp -Punit-tests clean verify` | 430 tests passed, including `ApplicationModuleStructureTests` and `ModuleVerificationFixtureTests`. A first attempt reported 64 `NoClassDefFound` errors because the IDE's Java language server rebuilt `target/` concurrently; the immediate rerun, unchanged, passed. |
+| `./mvnw -B -ntp -Pintegration-tests clean verify` | 79 tests passed, including 12 Finance store tests. |
+| `./mvnw -B -ntp -Pe2e-tests clean verify` | 149 tests passed, including 13 `FinanceProjectionServiceE2E` (4 for PRJ-T18), 4 `FinanceProjectionConcurrencyE2E` (1 for PRJ-T19) and the Group E2Es sharing `testsupport.postgres` lock-wait helpers. |
+| `./mvnw -B -ntp -Pe2e-tests -DtestParallelism=16 -Dit.test='Finance*E2E,JooqFinancial*E2E,Group*E2E' verify` | 62 tests passed at the CI worker count. |
+| PRJ-T19 alone, five consecutive runs | 5 of 5 passed. |
+| `git diff --check` | Clean. |
+
+No `sharewise_it_*` database remained after the runs. No test was disabled, skipped or weakened.
+
 ## Verification commands and final acceptance
 
 From `src/backend/sharewise` in the devcontainer:
@@ -77,7 +102,7 @@ P3.2a registers no listener and adds no route, so the smoke only confirms that s
 | PostgreSQL Integration suite | Pending |
 | PostgreSQL E2E suite, including concurrency and reordering | Pending |
 | Disposable deployment smoke | Pending |
-| Independent MR review and resolutions | Pending |
+| Independent MR review and resolutions | Review of `a26fa0b` complete; findings resolved by the agent (see [resolutions](#independent-review-findings-and-resolutions)); pending human review |
 | Human final diff review and merge authorization | Pending |
 
 - [ ] Perform an independent MR review of the integrated revision against the specification; resolve or explicitly justify findings, re-run affected suites and reconcile documentation when corrections change behavior. Suggested follow-up commit: `P3.2a: <specific review fix>`.
