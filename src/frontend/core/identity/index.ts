@@ -1,10 +1,11 @@
-import { ApiError, createApiClient, scopeApiClient, type ApiClient } from '@/lib/api';
+import { ApiError, createApiClient, scopeApiClient, sessionContextChanged, type ApiClient } from '@/lib/api';
 import { AuthCoordinator } from './auth-coordinator.ts';
 import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';
 import { ANONYMOUS_IDENTITY_PATHS, IdentityApi } from './identity-api.ts';
 import { SessionContextChannel, SESSION_CONTEXT_CHANNEL } from './session-context-channel.ts';
-import { iamRequestHandler, sessionContextChanged } from './iam-request-handler.ts';
+import { iamRequestHandler } from './iam-request-handler.ts';
+import { AttestationHandler, type AttestationCacheOptions } from '@/core/authorization/attestation-handler.ts';
 
 export { AUTH_COOKIE_LOCK, AuthCookieLock } from './auth-cookie-lock.ts';
 export { AuthSession } from './auth-session.ts';
@@ -33,6 +34,7 @@ export interface IdentityRuntime {
 export interface IdentityRuntimeOptions {
     readonly fetchImpl?: typeof fetch;
     readonly origin?: string;
+    readonly attestationCaches?: AttestationCacheOptions;
     /** Lazily evaluated so server prerendering never touches browser-only APIs. */
     readonly locks?: () => LockManager | undefined;
     readonly channel?: () => BroadcastChannel | undefined;
@@ -48,7 +50,9 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
         options.locks ?? (() => typeof navigator === 'undefined' ? undefined : navigator.locks)
     );
     // Handler execution begins only after the runtime is fully constructed.
-    const api = createApiClient([iamRequestHandler(session, () => auth)], options.fetchImpl ?? fetch, options.origin);
+    const attestations = new AttestationHandler({ current: () => session.getAuthenticatedLifetime(), subscribe: session.subscribe },
+        options.attestationCaches);
+    const api = createApiClient([iamRequestHandler(session, () => auth), attestations], options.fetchImpl ?? fetch, options.origin);
     const identityApi = new IdentityApi(api);
     const auth = new AuthCoordinator(identityApi, session, cookieLock, channel);
     return {
@@ -71,6 +75,6 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
         },
         connect: () => channel.connect(),
         disconnect: () => channel.disconnect(),
-        dispose: () => { auth.dispose(); channel.dispose(); session.dispose(); },
+        dispose: () => { attestations.dispose(); auth.dispose(); channel.dispose(); session.dispose(); },
     };
 }

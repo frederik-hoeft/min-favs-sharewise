@@ -1,4 +1,4 @@
-import { ApiError } from '@/lib/api';
+import { ApiError, requestCanceled } from '@/lib/api';
 import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';
 import { IdentityApi } from './identity-api.ts';
@@ -14,10 +14,6 @@ interface RenewalFlight {
     action: Promise<void>;
     waiters: number;
     submitted: boolean;
-}
-
-function requestCanceled(): ApiError {
-    return authError('request_aborted', 'Request Canceled', 'The request was canceled before completion.');
 }
 
 function assertInterested(flight: RenewalFlight): void {

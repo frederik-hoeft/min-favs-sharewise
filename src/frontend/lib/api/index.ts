@@ -1,4 +1,4 @@
-export { ApiError, parseErrorResponse, type FieldError, type ProblemDetailPayload } from './api-error.ts';
+export { ApiError, parseErrorResponse, requestCanceled, sessionContextChanged, type FieldError, type ProblemDetailPayload } from './api-error.ts';
 
 export {
     apiClient,

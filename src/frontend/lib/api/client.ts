@@ -1,4 +1,4 @@
-import { ApiError, parseErrorResponse } from './api-error.ts';
+import { ApiError, parseErrorResponse, requestCanceled } from './api-error.ts';
 import { RecoveryBudget, type ApiRequestContext, type ApiRequestHandler, type RequestHandler, type SentRequest } from './handlers.ts';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
@@ -61,10 +61,7 @@ function prepareBody(body: unknown, headers: Headers): BodyInit | undefined {
 
 function assertNotCanceled(signal?: AbortSignal): void {
     if (signal?.aborted) {
-        throw new ApiError({
-            status: 0, code: 'request_aborted', title: 'Request Canceled',
-            detail: 'The request was canceled before completion.',
-        });
+        throw requestCanceled();
     }
 }
 
