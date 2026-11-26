@@ -5,6 +5,7 @@ package de.hsh.favs.sharewise.groups.internal.persistence.generated;
 
 
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
+import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Invitations;
 
 import org.jooq.Index;
 import org.jooq.OrderField;
@@ -23,4 +24,5 @@ public class Indexes {
     // -------------------------------------------------------------------------
 
     public static final Index GROUPS_GROUP_MEMBERS_USER_ID_IDX = Internal.createIndex(DSL.name("groups_group_members_user_id_idx"), GroupMembers.GROUP_MEMBERS, new OrderField[] { GroupMembers.GROUP_MEMBERS.USER_ID }, false);
+    public static final Index GROUPS_INVITATIONS_GROUP_ID_IDX = Internal.createIndex(DSL.name("groups_invitations_group_id_idx"), Invitations.INVITATIONS, new OrderField[] { Invitations.INVITATIONS.GROUP_ID }, false);
 }

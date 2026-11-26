@@ -3,6 +3,7 @@
 .header {
   background: var(--sw-surface);
   border-bottom: 1px solid var(--sw-border);
+  margin-inline-end: 0;
 }
 
 .navbar {
@@ -136,4 +137,12 @@
   .navLabel {
     transition: none;
   }
+}
+
+.aside {
+  top: var(--sw-app-header-height);
+  height: calc(100dvh - var(--sw-app-header-height));
+  overflow-y: auto;
+  background: var(--sw-surface);
+  border-inline-start: 1px solid var(--sw-border);
 }

@@ -2,7 +2,7 @@
 
 ShareWise is a group expense-sharing and bookkeeping application. Members record expenses and settlements of payments made outside the application, calculate their current balances, and inspect the group's financial position at earlier revisions. It does **not** move money, verify external payments, or enforce debts.
 
-The repository is an **early implementation baseline**, not a finished product. The backend contains platform foundations, IAM account and session workflows, Group Management's group creation, overview and metadata editing, and Finance group/actor persistence with transaction-bound root locking. The frontend has a selected visual design, the sign-in-gated Groups pages, static demonstration routes and shared API transport. The architecture documents describe implemented components; the stack design and domain model describe the wider product contracts.
+The repository is an **early implementation baseline**, not a finished product. The backend contains platform foundations, IAM account and session workflows, Group Management's group creation, metadata editing, membership administration and shareable invitations, and Finance group/actor persistence with transaction-bound root locking. The frontend has a selected visual design, the responsive, sign-in-gated group workspace and invitation acceptance, static demonstration routes and shared API transport. The architecture documents describe implemented components; the stack design and domain model describe the wider product contracts.
 
 ## Repository layout
 

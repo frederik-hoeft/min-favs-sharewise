@@ -3,8 +3,8 @@ package de.hsh.favs.sharewise.groups.internal.persistence;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupCreationPort;
-import de.hsh.favs.sharewise.groups.internal.application.GroupDetails;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationPort;
+import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;

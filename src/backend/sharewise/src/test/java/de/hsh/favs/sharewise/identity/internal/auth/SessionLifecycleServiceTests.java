@@ -8,13 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.identity.internal.auth.session.LoginSession;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenRecord;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionLifecycleStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenParser;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -47,25 +48,25 @@ class SessionLifecycleServiceTests {
         assertEquals(SESSION, result.sessionId());
         assertEquals(NOW.plusSeconds(300), result.accessToken().expiresAt());
         assertEquals(NOW.plus(Duration.ofDays(7)), result.refreshExpiresAt());
-        assertEquals(rig.original.tokenId(), rig.store.tokens.get(rig.original.tokenId()).id());
-        assertEquals(NOW, rig.store.tokens.get(rig.original.tokenId()).consumedAt());
+        assertEquals(rig.original.selector(), rig.store.tokens.get(rig.original.selector()).id());
+        assertEquals(NOW, rig.store.tokens.get(rig.original.selector()).consumedAt());
         assertEquals(2, rig.store.tokens.size());
         assertEquals(1, rig.store.tokens.values().stream().filter(token -> token.consumedAt() == null).count());
-        assertEquals(SESSION, rig.store.tokens.get(result.refreshCredential().tokenId()).sessionId());
+        assertEquals(SESSION, rig.store.tokens.get(result.refreshCredential().selector()).sessionId());
         assertEquals(result.refreshExpiresAt(), rig.store.session.deadlines().idleExpiresAt());
         assertEquals(rig.absolute, rig.store.session.deadlines().absoluteExpiresAt());
         assertEquals(1, rig.transactions.commits);
         assertEquals(1, rig.issuer.issued);
-        assertFalse(result.toString().contains(result.refreshCredential().cookieValue()));
+        assertFalse(result.toString().contains(result.refreshCredential().value()));
     }
 
     @Test
     void unboundRestorationAndNextGenerationRenewalRemainWithinSameSession() {
         Rig rig = new Rig();
         AuthenticationResult first = success(rig.service.refresh(rig.cookie, null));
-        AuthenticationResult second = success(rig.service.refresh(first.refreshCredential().cookieValue(), SESSION));
+        AuthenticationResult second = success(rig.service.refresh(first.refreshCredential().value(), SESSION));
         assertEquals(SESSION, second.sessionId());
-        assertNotEquals(first.refreshCredential().tokenId(), second.refreshCredential().tokenId());
+        assertNotEquals(first.refreshCredential().selector(), second.refreshCredential().selector());
         assertEquals(3, rig.store.tokens.size());
         assertEquals(1, rig.store.tokens.values().stream().filter(token -> token.consumedAt() == null).count());
     }
@@ -73,8 +74,8 @@ class SessionLifecycleServiceTests {
     @Test
     void invalidSelectorsAndIncorrectSecretsNeverRevokeEvenAConsumedGeneration() {
         Rig rig = new Rig();
-        String wrongSecret = rig.generators.generate(rig.original.tokenId()).cookieValue();
-        String unknownId = rig.generators.generate(OTHER).cookieValue();
+        String wrongSecret = rig.generators.generate(rig.original.selector()).value();
+        String unknownId = rig.generators.generate(OTHER).value();
         for (String cookie : new String[] {null, "", "invalid", "not-a-uuid.secret", wrongSecret, unknownId}) {
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
                     rig.service.refresh(cookie, SESSION));
@@ -86,7 +87,7 @@ class SessionLifecycleServiceTests {
         assertNull(rig.store.session.revokedAt());
         assertEquals(2, rig.store.tokens.size());
         assertEquals(1, rig.issuer.issued);
-        assertTrue(rig.store.tokens.containsKey(rotated.refreshCredential().tokenId()));
+        assertTrue(rig.store.tokens.containsKey(rotated.refreshCredential().selector()));
     }
 
     @Test
@@ -97,7 +98,7 @@ class SessionLifecycleServiceTests {
                 rig.service.refresh(rig.cookie, OTHER));
         assertEquals(NOW, rig.store.session.revokedAt());
         assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
-                rig.service.refresh(rotated.refreshCredential().cookieValue(), SESSION));
+                rig.service.refresh(rotated.refreshCredential().value(), SESSION));
         assertEquals(2, rig.store.tokens.size());
         assertEquals(2, rig.transactions.commits);
     }
@@ -111,7 +112,7 @@ class SessionLifecycleServiceTests {
                 rig.service.logout(rig.cookie, OTHER));
         assertEquals(0, rig.transactions.commits);
         assertNull(rig.store.session.revokedAt());
-        assertNull(rig.store.tokens.get(rig.original.tokenId()).consumedAt());
+        assertNull(rig.store.tokens.get(rig.original.selector()).consumedAt());
         assertEquals(1, rig.store.tokens.size());
         assertEquals(0, rig.issuer.issued);
     }
@@ -122,7 +123,7 @@ class SessionLifecycleServiceTests {
         idle.store.setIdle(NOW);
         assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
                 idle.service.refresh(idle.cookie, SESSION));
-        assertNull(idle.store.tokens.get(idle.original.tokenId()).consumedAt());
+        assertNull(idle.store.tokens.get(idle.original.selector()).consumedAt());
 
         Rig absolute = new Rig();
         absolute.store.setDeadlines(new SessionPolicy.Deadlines(
@@ -141,7 +142,7 @@ class SessionLifecycleServiceTests {
                     deadline, deadline));
             assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
                     rig.service.refresh(rig.cookie, SESSION));
-            assertNull(rig.store.tokens.get(rig.original.tokenId()).consumedAt());
+            assertNull(rig.store.tokens.get(rig.original.selector()).consumedAt());
             assertEquals(1, rig.store.tokens.size());
             assertEquals(0, rig.issuer.issued);
             assertEquals(0, rig.transactions.commits);
@@ -168,7 +169,7 @@ class SessionLifecycleServiceTests {
             assertEquals(NOW.plus(Duration.ofDays(7)), result.refreshExpiresAt());
             assertEquals(result.refreshExpiresAt(), rig.store.session.deadlines().idleExpiresAt());
             assertEquals(current.absoluteExpiresAt(), rig.store.session.deadlines().absoluteExpiresAt());
-            assertEquals(NOW, rig.store.tokens.get(rig.original.tokenId()).consumedAt());
+            assertEquals(NOW, rig.store.tokens.get(rig.original.selector()).consumedAt());
             assertEquals(2, rig.store.tokens.size());
             assertEquals(1, rig.transactions.commits);
         }
@@ -189,7 +190,7 @@ class SessionLifecycleServiceTests {
                 revoked.service.refresh(revoked.cookie, SESSION));
 
         Rig future = new Rig();
-        RefreshTokenRecord token = future.store.tokens.get(future.original.tokenId());
+        RefreshTokenRecord token = future.store.tokens.get(future.original.selector());
         future.store.tokens.put(token.id(), new RefreshTokenRecord(token.id(), SESSION,
                 token.verifierHash(), NOW.plusSeconds(1), null));
         assertEquals(Result.err(SessionLifecycleFailure.REFRESH_UNAVAILABLE),
@@ -279,7 +280,7 @@ class SessionLifecycleServiceTests {
     @Test
     void successfulMutationsHaveOneCommitAndDenialsAbstain() {
         Rig rig = new Rig();
-        rig.service.refresh(rig.generators.generate(OTHER).cookieValue(), SESSION);
+        rig.service.refresh(rig.generators.generate(OTHER).value(), SESSION);
         rig.service.refresh(rig.cookie, OTHER);
         assertEquals(0, rig.transactions.commits);
         assertEquals(2, rig.transactions.rollbacks);
@@ -295,11 +296,11 @@ class SessionLifecycleServiceTests {
     private static final class Rig {
         final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         final FakeStore store = new FakeStore();
-        final RefreshCredentialGenerator generators = new RefreshCredentialGenerator();
+        final ApplicationTokenGenerator generators = new ApplicationTokenGenerator();
         final FakeIssuer issuer = new FakeIssuer();
         final FakeTransactions transactions = new FakeTransactions(store);
         final SessionLifecycleService service;
-        final RefreshCredentialGenerator.GeneratedCredential original;
+        final ApplicationTokenGenerator.GeneratedToken original;
         final String cookie;
         final Instant absolute;
 
@@ -309,16 +310,16 @@ class SessionLifecycleServiceTests {
             SessionPolicy.Deadlines deadlines = policy.startAt(NOW.minus(Duration.ofDays(1)));
             store.session = new LoginSession(SESSION, USER, deadlines, null);
             original = generators.generate(UUID.randomUUID());
-            cookie = original.cookieValue();
-            store.tokens.put(original.tokenId(), new RefreshTokenRecord(original.tokenId(), SESSION,
+            cookie = original.value();
+            store.tokens.put(original.selector(), new RefreshTokenRecord(original.selector(), SESSION,
                     original.verifierHash(), NOW.minusSeconds(60), null));
             absolute = deadlines.absoluteExpiresAt();
-            service = new SessionLifecycleService(transactions, store, store, generators, policy, issuer, clock);
+            service = new SessionLifecycleService(transactions, store, store, generators, new ApplicationTokenParser(), policy, issuer, clock);
         }
 
         void assertUnchanged() {
             assertEquals(1, store.tokens.size());
-            assertNull(store.tokens.get(original.tokenId()).consumedAt());
+            assertNull(store.tokens.get(original.selector()).consumedAt());
             assertEquals(absolute, store.session.deadlines().absoluteExpiresAt());
             assertEquals(absolute.minus(Duration.ofDays(23)), store.session.deadlines().idleExpiresAt());
             assertNull(store.session.revokedAt());

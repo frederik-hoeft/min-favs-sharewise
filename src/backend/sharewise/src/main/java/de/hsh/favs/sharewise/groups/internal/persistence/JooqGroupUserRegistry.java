@@ -2,7 +2,7 @@ package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.USERS;
 
-import de.hsh.favs.sharewise.groups.internal.application.GroupUserRegistry;
+import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.Objects;
 import java.util.UUID;

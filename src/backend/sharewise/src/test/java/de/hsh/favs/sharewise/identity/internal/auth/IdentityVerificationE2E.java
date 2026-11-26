@@ -93,7 +93,7 @@ class IdentityVerificationE2E {
             assertEligible(fixture, other, otherToken);
 
             assertEquals(Result.ok(LogoutStatus.REVOKED), dispatcher.dispatch(SessionLifecycleService.class,
-                    service -> service.logout(first.refreshCredential().cookieValue(), first.sessionId())));
+                    service -> service.logout(first.refreshCredential().value(), first.sessionId())));
             assertDenied(fixture, firstToken);
 
             // Account disablement is not yet a public IAM operation. Use a committed independent

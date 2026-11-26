@@ -1,16 +1,16 @@
 "use client";
 
-import { Anchor, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
-import { PlusIcon, UsersThreeIcon } from "@phosphor-icons/react";
+import { Button, Card, Group, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
+import { CaretRightIcon, MagnifyingGlassIcon, PlusIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { GroupSummary } from "@/core/groups";
-import { useGroupsApi } from "./use-groups-api";
+import { useGroupsApi } from "@/app/use-groups-api";
 import { groupRoutes, groupViewHref } from "../../_components/app-routes";
 import { memberCountLabel } from "./group-format";
 import { GroupLoadingState, GroupProblemState } from "./GroupProblemState";
-import { RoleBadge } from "./RoleBadge";
-import { useGroupResource } from "./use-group-resource";
+import { GroupAvatar } from "./GroupAvatar";
+import { useGroupResource } from "@/app/use-group-resource";
 import styles from "./GroupsOverview.module.scss";
 
 export function GroupsOverview() {
@@ -30,7 +30,7 @@ export function GroupsOverview() {
       {state.status === "loading" ? <GroupLoadingState label="Loading your groups…" /> : null}
       {state.status === "failed" ? <GroupProblemState problem={state.problem} onRetry={() => void reload()} /> : null}
       {state.status === "ready" && state.data.items.length === 0 ? <EmptyGroups /> : null}
-      {state.status === "ready" && state.data.items.length > 0 ? <GroupCards groups={state.data.items} /> : null}
+      {state.status === "ready" && state.data.items.length > 0 ? <GroupResults groups={state.data.items} /> : null}
     </Stack>
   );
 }
@@ -55,25 +55,24 @@ function EmptyGroups() {
   );
 }
 
-function GroupCards({ groups }: { groups: ReadonlyArray<GroupSummary> }) {
-  return (
-    <ul className={styles.list} aria-label="Your groups">
-      {groups.map((group) => (
-        <li key={group.id}>
-          <Card padding="lg" className={styles.card}>
-            <Stack gap="xs">
-              <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
-                <Title order={2} size="h4" className={styles.name}>
-                  <Anchor component={Link} href={groupViewHref(group.id)} inherit>{group.name}</Anchor>
-                </Title>
-                <RoleBadge role={group.callerRole} />
-              </Group>
-              {group.description ? <Text c="dimmed" lineClamp={2} className={styles.description}>{group.description}</Text> : null}
-              <Text size="sm" c="dimmed">{memberCountLabel(group.memberCount)}</Text>
-            </Stack>
-          </Card>
-        </li>
-      ))}
-    </ul>
-  );
+function GroupResults({ groups }: { groups: ReadonlyArray<GroupSummary> }) {
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLowerCase();
+  const matches = groups.filter(({ name, description }) => name.toLowerCase().includes(query) || description?.toLowerCase().includes(query));
+  return <Stack gap="md">
+    <TextInput aria-label="Search groups" placeholder="Search groups by name or description" value={search} onChange={(event) => setSearch(event.currentTarget.value)} leftSection={<MagnifyingGlassIcon aria-hidden="true" />} />
+    {matches.length === 0 ? <Text role="status" c="dimmed">No groups match your search.</Text> : <Paper withBorder className={styles.results}>
+      <div className={styles.header} aria-hidden="true"><span>Group name</span><span>Members</span></div>
+      <ul className={styles.list} aria-label="Your groups">
+        {matches.map((group) => <li key={group.id}>
+          <Link className={styles.row} href={groupViewHref(group.id)} aria-label={group.name} aria-describedby={`group-count-${group.id}`}>
+            <GroupAvatar />
+            <Text fw={600} truncate title={group.name}>{group.name}</Text>
+            <Text id={`group-count-${group.id}`} size="sm" c="dimmed" className={styles.count}>{memberCountLabel(group.memberCount)}</Text>
+            <CaretRightIcon aria-hidden="true" className={styles.chevron} />
+          </Link>
+        </li>)}
+      </ul>
+    </Paper>}
+  </Stack>;
 }

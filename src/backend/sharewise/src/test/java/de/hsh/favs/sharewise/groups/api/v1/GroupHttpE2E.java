@@ -43,7 +43,7 @@ import org.springframework.boot.web.server.servlet.context.ServletWebServerAppli
 @Tag("e2e")
 class GroupHttpE2E {
 
-    private static final String GROUPS = GroupsController.GROUPS_PATH;
+    private static final String GROUPS = GroupApiPaths.GROUPS;
     private static final UUID ALICE = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be401");
     private static final UUID BOB = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be402");
     private static final UUID CAROL = UUID.fromString("018f8706-7b6e-7acc-9061-c3e78a1be403");
@@ -85,6 +85,65 @@ class GroupHttpE2E {
             HttpResponse<String> read = server.send("GET", GROUPS + "/" + id, ALICE, null);
             assertEquals(200, read.statusCode(), read.body());
             assertEquals(created.body(), read.body());
+        });
+    }
+
+    @Test
+    void invitationHttpLifecycleKeepsSecretsOneTimeAndChecksLiveAuthorization() throws Exception {
+        withServer(server -> {
+            GroupTestFixture.provision(server.fixture(), ALICE, BOB, CAROL);
+            String group = server.create(ALICE, "Trip");
+            String invitations = GROUPS + "/" + group + "/invitations";
+            String redeem = "/api/groups/v1/invitations/redeem";
+            String preview = "/api/groups/v1/invitations/preview";
+            assertEquals(404, server.send("GET", invitations, BOB, null).statusCode());
+            assertEquals(400, server.send("POST", invitations, ALICE, "{\"maxUses\":0}").statusCode());
+            for (String invalid : List.of("{\"maxUses\":1.5}", "{\"maxUses\":\"2\"}", "{\"expiresAt\":1234567890}")) {
+                assertEquals(400, server.send("POST", invitations, ALICE, invalid).statusCode());
+            }
+            HttpResponse<String> created = server.send("POST", invitations, ALICE, "{\"maxUses\":2}");
+            assertEquals(201, created.statusCode(), created.body());
+            assertTrue(created.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+            String token = JsonPath.read(created.body(), "$.token");
+            String id = JsonPath.read(created.body(), "$.invitation.id");
+            assertTrue(token.startsWith(id + "."));
+            String body = "{\"token\":\"" + token + "\"}";
+            assertEquals(401, server.send("POST", preview, Optional.empty(), body).statusCode());
+            HttpResponse<String> previewed = server.send("POST", preview, BOB, body);
+            assertEquals(200, previewed.statusCode(), previewed.body());
+            assertTrue(previewed.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+            assertEquals(Map.of("groupName", "Trip"), JsonPath.read(previewed.body(), "$"));
+            assertEquals(404, server.send("POST", preview, BOB, "{\"token\":\"broken\"}").statusCode());
+            assertEquals(404, server.send("GET", GROUPS + "/" + group, BOB, null).statusCode());
+            HttpResponse<String> listed = server.send("GET", invitations, ALICE, null);
+            assertEquals(200, listed.statusCode());
+            assertEquals(id, JsonPath.read(listed.body(), "$.items[0].id"));
+            assertFalse(listed.body().contains(token));
+            assertFalse(listed.body().contains("verifier"));
+            assertEquals(List.of(32), server.rows("SELECT octet_length(verifier_hash) FROM groups.invitations", row -> row.getInt(1)));
+            assertEquals(401, server.send("POST", redeem, Optional.empty(), body).statusCode());
+            for (String invalid : List.of("{\"token\":17}", "{\"token\":[]}", "{\"token\":{}}",
+                    "{\"token\":\"" + token + "\",\"unexpected\":true}")) {
+                HttpResponse<String> malformed = server.send("POST", redeem, BOB, invalid);
+                assertEquals(400, malformed.statusCode());
+                assertEquals("malformed_request", JsonPath.read(malformed.body(), "$.code"));
+                assertFalse(malformed.body().contains(token));
+            }
+            assertEquals(List.of(0), server.rows("SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
+            HttpResponse<String> joined = server.send("POST", redeem, BOB, body);
+            assertEquals(200, joined.statusCode(), joined.body());
+            assertEquals(group, JsonPath.read(joined.body(), "$.groupId"));
+            assertEquals("joined", JsonPath.read(joined.body(), "$.outcome"));
+            assertEquals("already_member", JsonPath.read(server.send("POST", redeem, BOB, body).body(), "$.outcome"));
+            assertEquals(403, server.send("GET", invitations, BOB, null).statusCode());
+            assertEquals(403, server.send("DELETE", invitations + "/" + id, BOB, null).statusCode());
+            assertEquals(List.of(1), server.rows("SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
+            assertEquals(204, server.send("DELETE", invitations + "/" + id, ALICE, null).statusCode());
+            assertEquals(404, server.send("POST", preview, CAROL, body).statusCode());
+            HttpResponse<String> rejected = server.send("POST", redeem, CAROL, body);
+            assertEquals(404, rejected.statusCode());
+            assertEquals("group_invitation_unavailable", JsonPath.read(rejected.body(), "$.code"));
+            assertFalse(rejected.body().contains(token));
         });
     }
 
@@ -286,6 +345,46 @@ class GroupHttpE2E {
             assertEquals(List.of("Winter trip|1"), server.groups());
             assertEquals(List.of(true), server.rows("SELECT description IS NULL FROM groups.groups",
                 row -> row.getBoolean(1)));
+        });
+    }
+
+    @Test
+    void workspaceAndMembershipEndpointsUseCurrentMembershipAndScopedTargets() throws Exception {
+        withServer(server -> {
+            GroupTestFixture.provision(server.fixture(), ALICE, BOB, CAROL);
+            String group = server.create(ALICE, "Trip");
+            String foreign = server.create(CAROL, "Other");
+            GroupTestFixture.addMember(server.fixture(), UUID.fromString(group), BOB, GroupRole.MEMBER);
+            String route = GROUPS + "/" + group;
+            HttpResponse<String> alice = server.send("GET", route + "/workspace", ALICE, null);
+            HttpResponse<String> bob = server.send("GET", route + "/workspace", BOB, null);
+            assertEquals(200, alice.statusCode(), alice.body());
+            assertEquals(200, bob.statusCode(), bob.body());
+            assertEquals(2, (int) JsonPath.read(alice.body(), "$.group.memberCount"));
+            assertEquals("member", JsonPath.read(bob.body(), "$.group.callerRole"));
+            assertEquals(2, JsonPath.<List<String>>read(alice.body(), "$.members[*].userId").size());
+            String aliceId = JsonPath.read(alice.body(), "$.callerMembershipId");
+            String bobId = JsonPath.read(bob.body(), "$.callerMembershipId");
+            String foreignId = JsonPath.read(server.send("GET", GROUPS + "/" + foreign + "/workspace", CAROL, null).body(),
+                "$.callerMembershipId");
+            HttpResponse<String> outsider = server.send("GET", route + "/workspace", CAROL, null);
+            HttpResponse<String> absent = server.send("GET", GROUPS + "/" + UUID.randomUUID() + "/workspace", CAROL, null);
+            assertEquals(404, outsider.statusCode());
+            assertEquals(absent.body(), outsider.body());
+            assertEquals(403, server.send("GET", route + "/workspace", UNKNOWN, null).statusCode());
+            String memberRoute = route + "/members/" + bobId;
+            assertFieldErrors(server.send("PUT", memberRoute + "/role", ALICE, "{\"role\":\"owner\"}"), "role:invalid");
+            assertEquals(403, server.send("PUT", memberRoute + "/role", BOB, "{\"role\":\"admin\"}").statusCode());
+            assertEquals(403, server.send("DELETE", route + "/members/" + foreignId, BOB, null).statusCode());
+            assertEquals(404, server.send("DELETE", route + "/members/" + foreignId, ALICE, null).statusCode());
+            assertEquals(409, server.send("DELETE", route + "/members/" + aliceId, ALICE, null).statusCode());
+            assertEquals(204, server.send("PUT", memberRoute + "/role", ALICE, "{\"role\":\"admin\"}").statusCode());
+            assertEquals(409, server.send("PUT", route + "/members/" + aliceId + "/role", ALICE, "{\"role\":\"member\"}").statusCode());
+            assertEquals(204, server.send("DELETE", route + "/members/" + aliceId, ALICE, null).statusCode());
+            GroupTestFixture.addMember(server.fixture(), UUID.fromString(group), ALICE, GroupRole.MEMBER);
+            assertEquals(404, server.send("DELETE", route + "/members/" + aliceId, BOB, null).statusCode());
+            assertEquals(2, (int) JsonPath.read(server.send("GET", route + "/workspace", BOB, null).body(), "$.group.memberCount"));
+            assertEquals(List.of("Other|0", "Trip|0"), server.groups());
         });
     }
 

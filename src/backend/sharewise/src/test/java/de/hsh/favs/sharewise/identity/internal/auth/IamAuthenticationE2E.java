@@ -10,12 +10,12 @@ import de.hsh.favs.sharewise.identity.internal.auth.account.AccountStore;
 import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.CredentialEncoder;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshTokenStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
@@ -229,12 +229,9 @@ class IamAuthenticationE2E extends E2ETestBase {
         @Bean Clock clock() { return Clock.fixed(NOW, ZoneOffset.UTC); }
         @Bean SessionPolicy sessionPolicy() { return SessionPolicy.initial(); }
         @Bean LoginLockoutPolicy loginLockoutPolicy() { return LoginLockoutPolicy.initial(); }
-        @Bean RefreshCredentialGenerator refreshCredentialGenerator() {
-            return new RefreshCredentialGenerator();
-        }
         @Bean @Scope("operation")
         InitialAuthentication initialAuthentication(SessionStore sessions, RefreshTokenStore tokens,
-                RefreshCredentialGenerator generator, SessionPolicy policy, FakeIssuer issuer) {
+                ApplicationTokenGenerator generator, SessionPolicy policy, FakeIssuer issuer) {
             return new InitialAuthentication(sessions, tokens, generator, policy, issuer);
         }
         @Bean @Scope("operation")

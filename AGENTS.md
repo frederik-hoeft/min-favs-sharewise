@@ -15,6 +15,8 @@ The skill files under `.agents/skills/` are **not necessarily discovered or load
 
 Revisit skill selection when a task expands into another kind of work; apply the guidance proportionately to the change. Keep this table current if repository skills are added or renamed. The authoritative product documentation lives in `docs/`, not in agent skills; do not duplicate it across agent configurations.
 
+Follow the [AI development workflow](docs/development/ai-development-workflow.md) for substantial tasks. Human-gated implementation is the default. Use the [autonomous implementation extension](docs/development/ai-development-workflow.md#autonomous-implementation-extension) only with explicit human authorization recorded in the approved task plan or linked workflow. Its phase self-review, reproducible handoffs and mandatory human gates govern delegated implementation; they do not replace final independent review or human merge authorization.
+
 For Java code, always declare local variables and enhanced-for loop variables with **explicit types**, including in tests and try-with-resources. Do not use Java `var`; favor reviewable types over inferred declarations.
 
 The backend uses **Maven**, not Gradle; frontend uses **npm**, not pnpm. Follow the actual `pom.xml`, `package-lock.json`, and the frontend's generated [Next.js agent notes](src/frontend/AGENTS.md). For backend changes, select Unit, Integration or E2E tests according to the [test architecture](docs/architecture/tests.md) and follow the [test authoring and execution guide](docs/development/tests.md); passing only the offline Unit gate never establishes PostgreSQL correctness. Validate the strongest applicable checks supported by the environment and state any tooling gaps precisely.

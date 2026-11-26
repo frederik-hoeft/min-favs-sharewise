@@ -16,11 +16,20 @@
 
 .account {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 @include breakpoints.down(appNavigation) {
   .content {
+    gap: 0.5rem;
     padding-inline: 1rem;
+  }
+
+  .account {
+    gap: 0.25rem;
   }
 
   .mobileToggle {

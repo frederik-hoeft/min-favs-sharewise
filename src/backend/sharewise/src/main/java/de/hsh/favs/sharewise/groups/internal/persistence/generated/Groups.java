@@ -5,12 +5,14 @@ package de.hsh.favs.sharewise.groups.internal.persistence.generated;
 
 
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
+import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Invitations;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Users;
 
 import java.util.Arrays;
 import java.util.List;
 
 import org.jooq.Catalog;
+import org.jooq.Domain;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SchemaImpl;
@@ -40,6 +42,11 @@ public class Groups extends SchemaImpl {
     public final de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Groups GROUPS_ = de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Groups.GROUPS_;
 
     /**
+     * The table <code>groups.invitations</code>.
+     */
+    public final Invitations INVITATIONS = Invitations.INVITATIONS;
+
+    /**
      * The table <code>groups.users</code>.
      */
     public final Users USERS = Users.USERS;
@@ -58,10 +65,19 @@ public class Groups extends SchemaImpl {
     }
 
     @Override
+    public final List<Domain<?>> getDomains() {
+        return Arrays.asList(
+            Domains.NATURAL0,
+            Domains.NATURAL1
+        );
+    }
+
+    @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
             GroupMembers.GROUP_MEMBERS,
             de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Groups.GROUPS_,
+            Invitations.INVITATIONS,
             Users.USERS
         );
     }

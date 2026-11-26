@@ -76,8 +76,8 @@ export function ResponsiveBreadcrumbs({ crumbs }: Props) {
       </Breadcrumbs>
       {/* Intrinsic-width reference, invisible and never part of the accessible trail. */}
       {crumbs.length > 2 && (
-        <div className={styles.measure} ref={fullRef} aria-hidden="true">
-          <Breadcrumbs separator="/" separatorMargin="xs" classNames={{ root: styles.measureRow }}>
+        <div className={styles.measure} aria-hidden="true">
+          <Breadcrumbs ref={fullRef} separator="/" separatorMargin="xs" classNames={{ root: styles.measureRow }}>
             {crumbs.map(({ href, label }) => <Text span size="sm" key={href}>{label}</Text>)}
           </Breadcrumbs>
         </div>

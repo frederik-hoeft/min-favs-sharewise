@@ -23,8 +23,8 @@ import de.hsh.favs.sharewise.identity.internal.auth.LogoutStatus;
 import de.hsh.favs.sharewise.identity.internal.auth.SessionLifecycleFailure;
 import de.hsh.favs.sharewise.identity.internal.auth.SessionLifecycleService;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
-import de.hsh.favs.sharewise.identity.internal.auth.session.RefreshCredentialGenerator;
 import de.hsh.favs.sharewise.identity.internal.auth.token.IssuedAccessToken;
+import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
@@ -223,7 +223,7 @@ class IamAuthenticationHttpTests {
                 && value.contains("Max-Age=0")));
         assertTrue(cookies.stream().anyMatch(value -> value.startsWith("__Host-sharewise-refresh=")
                 && value.contains("HttpOnly") && value.contains("SameSite=Strict")));
-        assertFalse(accepted.getResponse().getContentAsString().contains(issued.refreshCredential().cookieValue()));
+        assertFalse(accepted.getResponse().getContentAsString().contains(issued.refreshCredential().value()));
     }
 
     @Test
@@ -403,7 +403,7 @@ class IamAuthenticationHttpTests {
     }
 
     private static AuthenticationResult success() {
-        RefreshCredentialGenerator.GeneratedCredential refresh = new RefreshCredentialGenerator()
+        ApplicationTokenGenerator.GeneratedToken refresh = new ApplicationTokenGenerator()
                 .generate(UUID.randomUUID());
         return new AuthenticationResult(UUID.randomUUID(), UUID.randomUUID(),
                 new IssuedAccessToken("signed-token", NOW.plusSeconds(300)), refresh,

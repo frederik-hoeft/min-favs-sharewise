@@ -5,14 +5,15 @@ import axe from "axe-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { theme, cssVariablesResolver } from "@/lib/theme";
 import AppLayout from "@/app/(app)/app/layout";
+import StandardLayout from "@/app/(app)/app/(standard)/layout";
 import { IdentityProvider } from "@/app/identity-provider";
 import { createIdentityRuntime, type IdentityRuntime } from "@/core/identity";
 import { accountRoute, appBreadcrumbs, breadcrumbDemoRoutes } from "@/app/(app)/app/_components/app-routes";
-import DummyOnePage from "@/app/(app)/app/dummy1/page";
+import DummyOnePage from "@/app/(app)/app/(standard)/dummy1/page";
 import { TestProviders } from "./support/TestProviders";
 import { authenticationResponse } from "./identity/support";
 
-let pathname = "/app/dummy1";
+let pathname = "/app/groups";
 let searchParams: URLSearchParams | null = null;
 vi.mock("next/navigation", async (importOriginal) => ({
   ...await importOriginal<typeof import("next/navigation")>(),
@@ -29,7 +30,7 @@ function renderApp() {
   appRuntimes.push(runtime);
   return render(
     <TestProviders>
-      <IdentityProvider runtime={runtime}><AppLayout><DummyOnePage /></AppLayout></IdentityProvider>
+      <IdentityProvider runtime={runtime}><AppLayout><StandardLayout><DummyOnePage /></StandardLayout></AppLayout></IdentityProvider>
     </TestProviders>,
   );
 }
@@ -37,7 +38,7 @@ function renderApp() {
 afterEach(() => { for (const runtime of appRuntimes.splice(0)) runtime.dispose(); });
 
 beforeEach(() => {
-  pathname = "/app/dummy1";
+  pathname = "/app/groups";
   searchParams = null;
 });
 
@@ -49,13 +50,13 @@ describe("Application route shell", () => {
     expect(screen.getByRole("heading", { name: "Dummy 1", level: 1 })).toBeInTheDocument();
 
     const navigation = screen.getByRole("navigation", { name: "Workspace navigation" });
-    expect(within(navigation).getByRole("link", { name: "Dummy 1" })).toHaveAttribute("aria-current", "page");
-    expect(within(navigation).getByRole("link", { name: "Dummy 2" })).toHaveAttribute("href", "/app/dummy2");
-    expect(within(navigation).getByRole("link", { name: "Dummy 3" })).toHaveAttribute("href", "/app/dummy3");
+    expect(within(navigation).getByRole("link", { name: "Groups" })).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).queryByRole("link", { name: "Dummy 2" })).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Dummy 3" })).not.toBeInTheDocument();
 
     const breadcrumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
     const parentCrumb = within(breadcrumbs).getByRole("link", { name: "Workspace" });
-    const currentCrumb = within(breadcrumbs).getByText("Dummy 1");
+    const currentCrumb = within(breadcrumbs).getByText("Groups");
     expect(parentCrumb).toHaveAttribute("href", "/app");
     expect(parentCrumb).toHaveAttribute("data-size", "sm");
     expect(currentCrumb).toHaveAttribute("aria-current", "page");
@@ -86,7 +87,7 @@ describe("Application route shell", () => {
     await user.click(toggle);
     const drawer = await screen.findByRole("dialog", { name: "Workspace navigation" });
     expect(drawer).toBeInTheDocument();
-    expect(within(drawer).getByRole("link", { name: "Dummy 2" })).toHaveAttribute("href", "/app/dummy2");
+    expect(within(drawer).getByRole("link", { name: "Groups" })).toHaveAttribute("href", "/app/groups");
     expect(within(drawer).getByText("sharewise")).toBeInTheDocument();
     await user.click(within(drawer).getByRole("button", { name: "Close workspace navigation" }));
     expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false");
@@ -103,7 +104,7 @@ describe("Application route shell", () => {
     const navigation = screen.getByRole("navigation", { name: "Workspace navigation" });
     const rail = navigation.querySelector("[data-expanded]");
     expect(rail).not.toBeNull();
-    const destination = within(navigation).getByRole("link", { name: "Dummy 2" });
+    const destination = within(navigation).getByRole("link", { name: "Groups" });
     // jsdom has no Next.js router: prevent document navigation while exercising onClick.
     destination.addEventListener("click", (event) => event.preventDefault());
 
@@ -186,7 +187,7 @@ describe("Application route shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Open navigation" }));
     const drawer = await screen.findByRole("dialog", { name: "Workspace navigation" });
-    expect(within(drawer).getByRole("link", { name: "Dummy 1" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("link", { name: "Groups" })).toBeInTheDocument();
   });
 
   it("keeps the header noninteractive outside explicit controls", async () => {
@@ -225,7 +226,7 @@ describe("Application route shell", () => {
       root: { alignItems: "center", justifyContent: "center", minHeight: "2.75rem" },
     });
     const selected = within(screen.getByRole("navigation", { name: "Workspace navigation" }))
-      .getByRole("link", { name: "Dummy 1" });
+      .getByRole("link", { name: "Groups" });
     expect(selected.style.getPropertyValue("--nl-bg")).toBe("var(--mantine-color-indigoBrand-filled)");
     expect(selected.style.getPropertyValue("--nl-color")).toBe("var(--sw-action-ink)");
     await user.click(screen.getByRole("button", { name: "Account menu" }));
