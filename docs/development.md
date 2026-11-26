@@ -85,6 +85,21 @@ Group Management admits a caller only if their IAM user ID is in its local `grou
 
 To exercise membership administration and invitation acceptance, register two accounts (for example in separate browser profiles), create a group as one, issue an invitation from its group information panel and open the link as the other. Confirm the displayed group name and explicitly join, then use the administrator’s member controls to promote, demote or remove that membership.
 
+### Inspect the Finance projection of groups
+
+Finance mirrors every group and its members automatically: each group creation, join, leave and removal publishes an event, and Finance's listeners update `finance.groups` and `finance.actors` asynchronously, usually within milliseconds. Role changes do not affect Finance. To inspect the projection, connect as `sharewise_app` and compare it with Group's membership:
+
+```sql
+SELECT g.id, g.membership_revision, f.state, f.current_revision
+FROM groups.groups g LEFT JOIN finance.groups f ON f.id = g.id;
+
+SELECT group_id, user_id, deleted, upstream_revision, updated_at
+FROM finance.actors
+ORDER BY group_id, user_id;
+```
+
+Each actor's `upstream_revision` is the group's membership revision of that user's last join or departure; a departed member stays as a row with `deleted = true`. Groups that existed before this integration are initialized by the migration `V202611261930` on the next start. Stop the running backend before starting the upgraded one, because Flyway migrates during startup and no Group write may happen between the initialization and the start of the new listeners. With Compose, `docker compose up -d --build` replaces the backend container in this order.
+
 ### Inspect and resubmit event publications
 
 Pending and failed deliveries are visible in the registry. Completed publications are deleted, so an empty table means everything was delivered. Connect as `sharewise_app` (password `sharewise_app_dev`) to database `sharewise` and run:

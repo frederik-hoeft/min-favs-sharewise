@@ -114,9 +114,9 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 
 ## Phase G - Steady-state documentation
 
-- [ ] Reconcile the documents listed in the specification's [documentation reconciliation](specification.md#documentation-reconciliation): messaging implemented configuration (Group events, Finance listener IDs, contradiction resolution procedure), persistence architecture (Group revision, Finance consumer wiring, backfill), architecture overview module dependencies, Phase 2 foundation Group schema reference, Phase 3 foundation status, development guide (stop → migrate → start, inspecting the Finance projection), the recovery delay of a lost completion (Phase D finding) and backlog (P2.4b, P2.4c, P3.2b).
-- [ ] Resolve the specification's open question on the yEd ERD: update the diagram, or record that the maintainer updates it separately.
-- [ ] Search the documentation for statements that Group publishes no events, that Finance has no listener, or that the membership revision is a future requirement. Verify relative links and `git diff --check`; stage for review.
+- [x] Reconcile the documents listed in the specification's [documentation reconciliation](specification.md#documentation-reconciliation): messaging implemented configuration (Group events, Finance listener IDs, contradiction resolution procedure), persistence architecture (Group revision, Finance consumer wiring, backfill), architecture overview module dependencies, Phase 2 foundation Group schema reference, Phase 3 foundation status, development guide (stop → migrate → start, inspecting the Finance projection), the recovery delay of a lost completion (Phase D finding) and backlog (P2.4b, P2.4c, P3.2b).
+- [x] Resolve the specification's open question on the yEd ERD: update the diagram, or record that the maintainer updates it separately. The diagram already shows the column since P3.0; only the Phase 3 foundation's statement was corrected (see findings).
+- [x] Search the documentation for statements that Group publishes no events, that Finance has no listener, or that the membership revision is a future requirement. Verify relative links and `git diff --check`; stage for review.
 
 **Suggested commit:** `P3.2b-G: Document Group → Finance membership delivery`
 
@@ -147,6 +147,9 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 | F | `SpringGroupEventPublisher` sets `occurredAt` from `Clock.systemUTC()`, not an injected application clock as Phase B describes. ShareWise has no shared clock bean; IAM's clock is module-private, and the messaging resubmitter uses the same system-clock pattern with a test constructor. | No change: `occurredAt` is metadata only and is never used for ordering. |
 | F | A same-revision contradiction is logged at `ERROR` with a stack trace by the async exception handler on every attempt, at most every 30 minutes after backoff. | Intended fail-closed visibility (specification risk "Contradiction loops"); Phase G documents the operator procedure. |
 | F | Prerequisites still open: P2.4a is not on the local `origin/main` ref, the branch has not been updated from `main`, and the baseline suites are not recorded. | Human gate items, alongside the deployment smoke, DLV-T18, CI and the full suites. |
+| G | Specification open question on the yEd ERD: the authoritative diagram (`docs/assets/src/er-data-model.graphml` and its SVG) has shown `groups.groups.membership_revision: bignatural1 = 1`, with a note that it is incremented on every member insert and delete, since P3.0 (`c869744`). Only the Phase 3 foundation's sentence that the asset does not yet show it was stale. | No diagram change needed; the foundation sentence is corrected. |
+| G | The specification requires an operator procedure for same-revision contradictions, which no document defined. | Added to the messaging configuration: correct the producer defect, compare the retained actor with Group's current membership, then either delete the publication or correct `finance.actors.deleted` at the same revision and delete the publication in one transaction, as the migration role, recording the decision. Needs maintainer review as a new operating policy. |
+| G | The stale-statement search also found the domain model's status line ("delivering real Group events … remains future work") and the architecture overview's Group dependency list, which omitted `identity::events` since P2.4a. | Both corrected with the planned documents. |
 
 ## Verification commands and evidence
 
