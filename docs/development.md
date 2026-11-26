@@ -95,7 +95,7 @@ FROM messaging.event_publication
 ORDER BY publication_date;
 ```
 
-`FAILED` rows are resubmitted automatically by `FailedPublicationResubmitter` with exponential backoff (see the [messaging configuration](stack/messaging.md#implemented-configuration)). To retry immediately, restart the backend: outstanding publications are republished on startup. Do not delete rows by hand unless the publication is deliberately resolved, as described for renamed or removed listeners.
+`FAILED` rows are resubmitted automatically by `FailedPublicationResubmitter` with exponential backoff (see the [messaging configuration](stack/messaging.md#implemented-configuration)). To retry sooner, restart the backend: outstanding publications are republished on startup. Rows already in status `RESUBMITTED` are not republished; they become `FAILED` after the 10-minute staleness period and are then retried. Do not delete rows by hand unless the publication is deliberately resolved, as described for renamed or removed listeners.
 
 ## Build, test and run
 

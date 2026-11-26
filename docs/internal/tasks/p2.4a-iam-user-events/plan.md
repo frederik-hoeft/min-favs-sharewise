@@ -1,12 +1,12 @@
 # P2.4a: IAM user registration events implementation plan
 
-**Status:** Draft for review, together with the [P2.4a specification](specification.md). **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
+**Status:** Phases A–E implemented on `task/p2.4a-iam-user-events` (MR !38); Phase F acceptance in progress. **Workflow:** [AI development and quality assurance](../../../development/ai-development-workflow.md).
 
 ## Baseline and sequencing
 
-- [ ] Specification and plan are reviewed and committed to `task/p2.4a-iam-user-events` before dependent implementation is accepted.
-- [ ] Each phase starts from the last approved commit on the task branch, merged with the current `main`. Phases are delivered as separate, reviewable patches; a phase is checked only after the human has reviewed it and its gate passed.
-- [ ] Validation for every phase: `./mvnw verify` in the dev container (Unit, Integration and E2E against PostgreSQL 18) and the green GitLab pipeline for the pushed commit. A Maven success without PostgreSQL is not evidence for registry behavior.
+- [x] Specification and plan are reviewed and committed to `task/p2.4a-iam-user-events` before dependent implementation is accepted.
+- [x] Each phase starts from the last approved commit on the task branch, merged with the current `main`. Phases are delivered as separate, reviewable patches; a phase is checked only after the human has reviewed it and its gate passed.
+- [x] Validation for every phase: `./mvnw verify` in the dev container (Unit, Integration and E2E against PostgreSQL 18) and the green GitLab pipeline for the pushed commit. A Maven success without PostgreSQL is not evidence for registry behavior.
 
 **Dependency split.** P2.1a (producer) is merged into `main`. P2.2a (`groups.users`, `GroupUserRegistry`) is still under review. Phases A and B depend only on `main` and can be implemented immediately. Phase C and the bootstrap part of Phase D start after P2.2a is merged and the task branch has been updated from `main`.
 
@@ -100,7 +100,9 @@ flowchart LR
 
 ## Phase F - Review and acceptance
 
-- [ ] Independent agent review of the complete MR against this specification; resolve or justify findings.
+- [x] Independent agent review of the complete MR against this specification; resolve or justify findings.
+**Phase F review (2026-11-26):** An independent agent reviewed the full MR merged with `main` (including P3.2a) against the specification and the Spring Modulith 2.2.0 sources. No blockers. Resolved: (1) the resubmitter's backoff filter only saw `maxInFlight` rows because the framework limits its read before filtering, so not-yet-due old failures could starve newer ones; the framework now reads `batchSize` rows and the filter accepts at most `maxInFlight` due ones per run (unit tests added); (2) the filter deserialized payloads for logging, so one incompatible payload would abort every run; it now logs only ID and attempts; (3) TC-04's concurrent part never raced two first inserts; `IamUserProjectionE2E` now holds an uncommitted competing insert of a new ID, verifies the projection waits on it and succeeds after commit with exactly one row; (4) stale status lines and doc details (restart vs. `RESUBMITTED`, clock and payload-compatibility notes). Accepted as is: the registry uses the existing `Clock` bean (documented); TC-06 is proven with the probe consumer in `EventPublicationRegistryE2E`, not the Group consumer; TC-07 (restart) remains part of manual acceptance.
+
 - [ ] Manual acceptance TC-12 on the local production-style Compose stack (register in the browser, create a group without manual provisioning; restart with a pending publication). Record results here.
 - [ ] Human merge authorization.
 

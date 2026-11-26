@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -43,25 +44,42 @@ class FailedPublicationResubmitter {
         if (failed == null) {
             return;
         }
-        Instant now = clock.instant();
-        failed.resubmit(ResubmissionOptions.defaults()
-                .withBatchSize(settings.batchSize())
-                .withMaxInFlight(settings.maxInFlight())
-                .withFilter(publication -> select(publication, now)));
+        failed.resubmit(options(settings, clock.instant()));
     }
 
-    private boolean select(EventPublication publication, Instant now) {
+    /**
+     * Spring Modulith reads at most {@code min(batchSize, maxInFlight - RESUBMITTED)} failed rows,
+     * oldest first, and only then applies the filter. Passing our small {@code maxInFlight} there
+     * would let a few old, not-yet-due publications occupy every slot and starve newer ones. The
+     * framework therefore reads up to {@code batchSize} rows, and the filter accepts at most
+     * {@code maxInFlight} due publications per run. Concurrency is additionally bounded by the
+     * application task executor.
+     */
+    static ResubmissionOptions options(EventResubmissionSettings settings, Instant now) {
+        AtomicInteger accepted = new AtomicInteger();
+        return ResubmissionOptions.defaults()
+                .withBatchSize(settings.batchSize())
+                .withMaxInFlight(settings.batchSize())
+                .withFilter(publication -> select(publication, now, settings, accepted));
+    }
+
+    private static boolean select(EventPublication publication, Instant now, EventResubmissionSettings settings,
+            AtomicInteger accepted) {
+        if (accepted.get() >= settings.maxInFlight()) {
+            return false;
+        }
         Instant lastAttempt = publication.getLastResubmissionDate() == null
                 ? publication.getPublicationDate()
                 : publication.getLastResubmissionDate();
-        boolean due = isDue(publication.getCompletionAttempts(), lastAttempt, now,
-                settings.initialBackoff(), settings.maxBackoff());
-        if (due) {
-            LOG.info("Resubmitting failed event publication {} ({}) after {} attempt(s)",
-                    publication.getIdentifier(), publication.getEvent().getClass().getName(),
-                    publication.getCompletionAttempts());
+        if (!isDue(publication.getCompletionAttempts(), lastAttempt, now, settings.initialBackoff(),
+                settings.maxBackoff())) {
+            return false;
         }
-        return due;
+        accepted.incrementAndGet();
+        // Never deserialize the payload here: an incompatible event would abort the whole run.
+        LOG.info("Resubmitting failed event publication {} after {} attempt(s)",
+                publication.getIdentifier(), publication.getCompletionAttempts());
+        return true;
     }
 
     /**

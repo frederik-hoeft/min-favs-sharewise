@@ -23,8 +23,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,8 +36,8 @@ import org.springframework.modulith.events.ResubmissionOptions;
 
 /**
  * P2.4a Phase C: end-to-end IAM → Group user projection with the real Group consumer on
- * PostgreSQL (TC-01, TC-04, TC-05, TC-09). The test lives beside the IAM fixtures it reuses;
- * Group state is observed through SQL only.
+ * PostgreSQL (TC-01, TC-04 sequential and racing first insert, TC-05, TC-09). The test lives
+ * beside the IAM fixtures it reuses; Group state is observed through SQL only.
  */
 @Tag("e2e")
 class IamUserProjectionE2E extends E2ETestBase {
@@ -61,24 +59,41 @@ class IamUserProjectionE2E extends E2ETestBase {
     }
 
     @Test
-    void duplicateAndConcurrentDeliveryProvisionsExactlyOnce() throws Exception {
+    void duplicateDeliveryProvisionsExactlyOnce() {
         runTest(fixture -> {
             UUID userId = UUID.randomUUID();
             UserRegisteredV1 event = new UserRegisteredV1(UUID.randomUUID(), userId, Instant.now());
 
             project(fixture, event);
             project(fixture, event);
-            ExecutorService pool = Executors.newFixedThreadPool(2);
-            try {
-                List<Future<?>> deliveries = new ArrayList<>();
-                for (int i = 0; i < 2; i++) {
-                    deliveries.add(pool.submit(() -> project(fixture, event)));
+
+            assertEquals(1, count(fixture, "select count(*) from groups.users where id = ?", userId));
+        }, ProductionEntityScanConfiguration.class, IamAuthenticationE2E.Fixtures.class);
+    }
+
+    @Test
+    void concurrentFirstDeliveryWaitsForTheCompetingInsertAndSucceeds() {
+        runTest(fixture -> {
+            UUID userId = UUID.randomUUID();
+            UserRegisteredV1 event = new UserRegisteredV1(UUID.randomUUID(), userId, Instant.now());
+            ExecutorService pool = Executors.newSingleThreadExecutor();
+            try (Connection competing = fixture.connectAsApplication()) {
+                // A competing delivery has inserted the same new ID but not committed yet.
+                competing.setAutoCommit(false);
+                try (PreparedStatement insert = competing.prepareStatement(
+                        "insert into groups.users (id) values (?) on conflict do nothing")) {
+                    insert.setObject(1, userId);
+                    assertEquals(1, insert.executeUpdate());
                 }
-                for (Future<?> delivery : deliveries) {
-                    delivery.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-                }
+
+                Future<?> delivery = pool.submit(() -> project(fixture, event));
+                await("projection blocked on the uncommitted key", () -> waitingLocks(fixture) > 0);
+                assertFalse(delivery.isDone(), "the second insert must wait for the first transaction");
+
+                competing.commit();
+                delivery.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
             } catch (Exception failure) {
-                throw new AssertionError("Concurrent delivery failed", failure);
+                throw new AssertionError("Concurrent first delivery failed", failure);
             } finally {
                 pool.shutdownNow();
             }
@@ -164,6 +179,17 @@ class IamUserProjectionE2E extends E2ETestBase {
     private static int groupPublications(IntegrationTestContext fixture) {
         return count(fixture, "select count(*) from messaging.event_publication where listener_id = ?",
             GROUP_LISTENER_ID);
+    }
+
+    private static int waitingLocks(IntegrationTestContext fixture) {
+        try (Connection connection = fixture.connectAsApplication();
+             Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("select count(*) from pg_locks where not granted")) {
+            assertTrue(rows.next());
+            return rows.getInt(1);
+        } catch (SQLException failure) {
+            throw new AssertionError("Unable to inspect pg_locks", failure);
+        }
     }
 
     private static int failedGroupPublications(IntegrationTestContext fixture) {

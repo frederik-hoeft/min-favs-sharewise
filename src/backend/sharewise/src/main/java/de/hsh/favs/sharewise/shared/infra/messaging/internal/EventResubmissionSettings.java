@@ -6,11 +6,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Bounded, backed-off resubmission of failed event publications (P2.4a, D9).
  *
- * @param interval delay between resubmission runs
+ * @param interval delay between resubmission runs (read by {@code @Scheduled} from the same property;
+ *     bound here for validation)
  * @param initialBackoff wait after the first failed attempt; doubles with every further attempt
  * @param maxBackoff upper bound for the wait between attempts
- * @param batchSize maximum publications considered per run
- * @param maxInFlight maximum resubmitted publications processed concurrently
+ * @param batchSize maximum failed publications read per run (oldest first)
+ * @param maxInFlight maximum due publications resubmitted per run
  */
 @ConfigurationProperties(prefix = "sharewise.events.resubmission")
 public record EventResubmissionSettings(Duration interval, Duration initialBackoff, Duration maxBackoff,
