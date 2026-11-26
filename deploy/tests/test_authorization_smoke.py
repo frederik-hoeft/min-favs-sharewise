@@ -38,3 +38,27 @@ class AuthorizationSmokeContractTests(unittest.TestCase):
         self.assertIn('rejectUnauthorized: true', transport)
         self.assertIn('checkServerIdentity(url.hostname, certificate)', transport)
         self.assertNotIn('NODE_TLS_REJECT_UNAUTHORIZED', transport)
+
+    def test_vitest_token_location_is_ephemeral_and_writable(self):
+        dockerfile = (ROOT / 'src/frontend/Dockerfile.e2e').read_text()
+        runner = dockerfile.split('FROM test-source AS e2e-runner', 1)[1]
+        self.assertIn('ENV XDG_DATA_HOME=/tmp/sharewise-e2e-data', runner)
+        override = (ROOT / 'deploy/compose.authorization-smoke.yaml').read_text()
+        self.assertIn('target: e2e-runner', override)
+        config = (ROOT / 'src/frontend/tests/vitest.e2e.config.mts').read_text()
+        self.assertIn('cache: false', config)
+        self.assertIn('fsModuleCache: false', config)
+        self.assertIn('/tmp:rw,nosuid,nodev,size=32m,mode=1777', override)
+        self.assertIn('read_only: true', override)
+
+    def test_browser_fixture_is_opt_in_and_uses_actual_frontend(self):
+        frontend = ROOT / 'src/frontend'
+        browser = (ROOT / 'deploy/compose.authorization-browser.yaml').read_text()
+        self.assertIn('target: authorization-browser', browser)
+        self.assertIn('127.0.0.1:${SHAREWISE_HTTPS_PORT:', browser)
+        self.assertNotIn('authorization-browser', (ROOT / 'deploy/compose.yaml').read_text())
+        self.assertNotIn('authorization-browser', (frontend / 'Dockerfile').read_text())
+        dockerfile = (frontend / 'Dockerfile.e2e').read_text()
+        self.assertIn("cp tests/deployed/browser/page.tsx 'app/(app)/app/authorization-smoke/page.tsx'", dockerfile)
+        self.assertIn('useAuthenticatedApis()', (frontend / 'tests/deployed/browser/page.tsx').read_text())
+        self.assertFalse((frontend / 'app/(app)/app/authorization-smoke').exists())

@@ -197,9 +197,9 @@ From `deploy/`, run:
 ./scripts/test-compose.sh
 ```
 
-The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security (including IAM and Group Management workflows), and verifies data persistence after a database restart. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
+The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct loopback host ports (`28080`/`18443`) for the production-style smoke, and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security (including IAM and Group Management workflows), and verifies data persistence after a database restart. After the production-style checks, it replaces the backend with the disposable authorization fixture and removes proxy host bindings while the actual frontend Node E2E runner tests the distributed authorization protocol over HTTPS. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
 
-For inspection after a successful run, opt out of automatic cleanup:
+For inspection after a successful run, opt out of automatic cleanup. The retained authorization fixture is unpublished:
 
 ```sh
 ./scripts/test-compose.sh --keep
@@ -210,6 +210,16 @@ A retained test stack must be removed before rerunning with the same project nam
 ```sh
 SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh --keep
 ```
+
+For manual distributed authorization acceptance in a real browser, use the explicit browser mode instead:
+
+```sh
+./scripts/test-compose.sh --browser
+```
+
+This runs the same unpublished automated tests first. On success, it retains the disposable backend and database and replaces only the proxy/frontend with a test-only image containing `/app/authorization-smoke`. The proxy publishes the smoke HTTP/HTTPS ports on `127.0.0.1`; the backend and database remain unpublished. The normal deployment image has no fixture page or fixture endpoints. Open `https://localhost:18443/` (or the configured smoke origin) on the Docker daemon host, trust the local certificate, register or sign in with a disposable account, then open `/app/authorization-smoke`. **Use a separate browser profile or a separate TLS-covered hostname from the ordinary local deployment:** cookies are scoped by hostname, not port, so the two localhost stacks can otherwise interfere with each other's authentication cookies.
+
+The fixture page seeds only the authenticated caller's Group projection and creates two real groups through the production API. Use the buttons to call the protected fixture endpoints through the normal session-scoped frontend transport. With DevTools Network open, verify cold (`401`, issuance `200`, replay `200`), warm (`200`) and cross-endpoint (`401`, replay `200`, no issuance) flows. Change the target or timestamp to exercise affinity, compare the effect counter before and after mutations, and wait for expiration to test lazy renewal. Do not export bearer/attestation headers, cookie values or unredacted HAR files. Browser mode retains the stack for manual testing; clean up with `./scripts/cleanup.sh test sharewise-p26ab-smoke` when finished.
 
 If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
 

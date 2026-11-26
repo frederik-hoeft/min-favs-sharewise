@@ -16,20 +16,20 @@ interface Flight {
 
 /** One current generation per descriptor, scoped to one authenticated lifetime. */
 export class CredentialCache {
-    private readonly entries = new Map<string, CredentialGeneration>();
-    private readonly flights = new Map<string, Flight>();
-    private generation = 0;
-    private closed = false;
+    private readonly entries: Map<string, CredentialGeneration> = new Map<string, CredentialGeneration>();
+    private readonly flights: Map<string, Flight> = new Map<string, Flight>();
+    private generation: number = 0;
+    private closed: boolean = false;
 
-    constructor(private readonly now: () => number, private readonly capacity = 128,
-        private readonly flightCapacity = 32) { }
+    constructor(private readonly now: () => number, private readonly capacity: number = 128,
+        private readonly flightCapacity: number = 32) { }
 
     usable(value: CredentialGeneration): boolean {
         return !this.closed && !value.rejected && value.expiresAt > this.now();
     }
 
     get(reference: CredentialReference): CredentialGeneration | undefined {
-        const entry = this.entries.get(reference.key);
+        const entry: CredentialGeneration | undefined = this.entries.get(reference.key);
         if (!entry) return;
         this.entries.delete(reference.key);
         if (!this.usable(entry)) return;
@@ -46,27 +46,27 @@ export class CredentialCache {
         signal?: AbortSignal): Promise<CredentialGeneration> {
         if (this.closed) throw sessionContextChanged();
         if (signal?.aborted) throw requestCanceled();
-        const cached = this.get(reference);
+        const cached: CredentialGeneration | undefined = this.get(reference);
         if (cached) return cached;
-        let flight = this.flights.get(reference.key);
+        let flight: Flight | undefined = this.flights.get(reference.key);
         if (!flight) {
             if (this.flights.size >= this.flightCapacity) throw unavailableAttestation();
-            const controller = new AbortController();
+            const controller: AbortController = new AbortController();
             const created: Flight = {
                 controller, waiters: 0, settled: false,
-                promise: Promise.resolve().then(async () => {
+                promise: Promise.resolve().then(async (): Promise<CredentialGeneration> => {
                     if (controller.signal.aborted) throw this.closed ? sessionContextChanged() : requestCanceled();
-                    const issued = await load(controller.signal);
+                    const issued: IssuedCredential = await load(controller.signal);
                     if (this.closed) throw sessionContextChanged();
                     if (controller.signal.aborted || this.flights.get(reference.key) !== created) throw requestCanceled();
-                    const entry = { ...issued, reference, generation: ++this.generation, rejected: false };
+                    const entry: CredentialGeneration = { ...issued, reference, generation: ++this.generation, rejected: false };
                     if (!this.usable(entry)) throw unavailableAttestation();
                     if (this.capacity > 0) {
                         this.entries.set(reference.key, entry);
                         while (this.entries.size > this.capacity) this.entries.delete(this.entries.keys().next().value!);
                     }
                     return entry;
-                }).finally(() => {
+                }).finally((): void => {
                     created.settled = true;
                     if (this.flights.get(reference.key) === created) this.flights.delete(reference.key);
                 }),
@@ -79,9 +79,9 @@ export class CredentialCache {
 
     private wait(key: string, flight: Flight, signal?: AbortSignal): Promise<CredentialGeneration> {
         flight.waiters++;
-        return new Promise((resolve, reject) => {
-            let done = false;
-            const finish = () => {
+        return new Promise<CredentialGeneration>((resolve: (value: CredentialGeneration | PromiseLike<CredentialGeneration>) => void, reject: (reason?: unknown) => void): void => {
+            let done: boolean = false;
+            const finish: () => boolean = () => {
                 if (done) return false;
                 done = true;
                 signal?.removeEventListener('abort', canceled);
@@ -92,12 +92,15 @@ export class CredentialCache {
                 }
                 return true;
             };
-            const canceled = () => { if (finish()) reject(requestCanceled()); };
-            const abandoned = () => { if (finish()) reject(this.closed ? sessionContextChanged() : requestCanceled()); };
+            const canceled: () => void = () => { if (finish()) reject(requestCanceled()); };
+            const abandoned: () => void = () => { if (finish()) reject(this.closed ? sessionContextChanged() : requestCanceled()); };
             signal?.addEventListener('abort', canceled, { once: true });
             flight.controller.signal.addEventListener('abort', abandoned, { once: true });
             // Register promise handlers even if the last waiter has already canceled.
-            void flight.promise.then(value => { if (finish()) resolve(value); }, error => { if (finish()) reject(error); });
+            void flight.promise.then(
+                (value: CredentialGeneration): void => { if (finish()) resolve(value); },
+                (error: unknown): void => { if (finish()) reject(error); },
+            );
             if (signal?.aborted) canceled();
             else if (flight.controller.signal.aborted) abandoned();
         });

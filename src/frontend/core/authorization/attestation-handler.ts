@@ -1,7 +1,7 @@
-import { ApiError, requestCanceled, sessionContextChanged, type ApiRequestHandler, type ApiRequestContext,
+import { ApiError, requestCanceled, sessionContextChanged, type ApiRequestHandler, type ApiRequestContext, type ApiClient,
     type RequestHandler, type SentRequest, type RecoveryAction } from '@/lib/api';
-import { ATTESTATION_HEADER, MAX_ATTESTATIONS, MAX_ATTESTATION_HEADER_LENGTH, type AttestationChallenge } from '@/lib/api/authorization-protocol.ts';
-import { credentialReference, issueCredential, unavailableAttestation, type CredentialReference } from './credential.ts';
+import { ATTESTATION_HEADER, MAX_ATTESTATIONS, MAX_ATTESTATION_HEADER_LENGTH, type AttestationChallenge, type AuthorizationMetadata } from '@/lib/api/authorization-protocol.ts';
+import { credentialReference, issueCredential, unavailableAttestation, type CredentialReference, type IssuedCredential } from './credential.ts';
 import { CredentialCache, type CredentialGeneration } from './credential-cache.ts';
 import { RequirementCache, type PendingAffinity, type RequirementRequest } from './requirement-cache.ts';
 
@@ -35,15 +35,15 @@ interface Presented {
     readonly generations: CredentialGeneration[];
 }
 
-const ISSUANCE_ROUTE = /^\/api\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*\/v1\/domain-principal\/attestations$/;
+const ISSUANCE_ROUTE: RegExp = /^\/api\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*\/v1\/domain-principal\/attestations$/;
 
 /** One generic handler for all compliant authorities, with independent lifetime-scoped caches. */
 export class AttestationHandler implements ApiRequestHandler {
-    readonly kind = 'supplementary' as const;
+    readonly kind: ApiRequestHandler['kind'] = 'supplementary';
     private caches?: SessionCaches;
     private readonly unsubscribe: () => void;
     private readonly now: () => number;
-    private closed = false;
+    private closed: boolean = false;
 
     constructor(private readonly session: LifetimeSource, private readonly options: AttestationCacheOptions = {}) {
         this.now = options.now ?? Date.now;
@@ -58,7 +58,7 @@ export class AttestationHandler implements ApiRequestHandler {
     }
 
     private clear(): void {
-        const old = this.caches;
+        const old: SessionCaches | undefined = this.caches;
         this.caches = undefined;
         old?.credentials.close();
         old?.requirements.clear();
@@ -67,7 +67,7 @@ export class AttestationHandler implements ApiRequestHandler {
     dispose(): void { this.closed = true; this.unsubscribe(); this.clear(); }
 
     private current(): SessionCaches {
-        const lifetime = this.session.current();
+        const lifetime: number | undefined = this.session.current();
         if (this.closed || lifetime === undefined) throw sessionContextChanged();
         if (this.caches?.lifetime !== lifetime) {
             this.clear();
@@ -82,24 +82,29 @@ export class AttestationHandler implements ApiRequestHandler {
         if (ISSUANCE_ROUTE.test(request.pathname)) return;
         let bound: SessionCaches | undefined;
         let affinity: RequirementRequest | undefined;
-        const selections = new Map<string, RequirementSelection>();
-        const pending = new Map<string, PendingAffinity>();
-        const rejectedGenerations = new Map<string, number>();
+        const selections: Map<string, RequirementSelection> = new Map<string, RequirementSelection>();
+        const pending: Map<string, PendingAffinity> = new Map<string, PendingAffinity>();
+        const rejectedGenerations: Map<string, number> = new Map<string, number>();
         let presented: Presented[] = [];
-        const assertCurrent = () => {
+        const assertCurrent: () => void = () => {
             if (bound && (this.caches !== bound || this.session.current() !== bound.lifetime)) throw sessionContextChanged();
         };
-        const assertInterested = () => {
+        const assertInterested: () => void = () => {
             assertCurrent();
             if (request.signal?.aborted) throw requestCanceled();
         };
-        const sentMatches = (sent: SentRequest) => sent.headers.get(ATTESTATION_HEADER) ===
-            (presented.length ? presented.map(item => item.token).join(', ') : null);
+        function sentMatches(sent: SentRequest): boolean {
+            return sent.headers.get(ATTESTATION_HEADER) ===
+                (presented.length ? presented.map((item: Presented): string => item.token).join(', ') : null);
+        }
 
-        const rejected = (sent: SentRequest, index: number) => sentMatches(sent) ? presented[index] : undefined;
-        const evict = (item: Presented) => {
+        function rejected(sent: SentRequest, index: number): Presented | undefined {
+            return sentMatches(sent) ? presented[index] : undefined;
+        }
+
+        function evict(item: Presented): void {
             if (!bound) return;
-            const keys = new Set<string>();
+            const keys: Set<string> = new Set<string>();
             for (const generation of item.generations) {
                 bound.credentials.reject(generation);
                 keys.add(generation.reference.key);
@@ -111,26 +116,26 @@ export class AttestationHandler implements ApiRequestHandler {
                     pending.delete(id);
                 }
             }
-        };
+        }
 
-        const requireCredential = (challenge: AttestationChallenge, failure: ApiError): RecoveryAction | undefined => {
+        function requireCredential(challenge: AttestationChallenge, failure: ApiError): RecoveryAction | undefined {
             if (!bound || !affinity) return;
-            const caches = bound;
-            const context = affinity;
-            const reference = credentialReference(challenge.credential);
+            const caches: SessionCaches = bound;
+            const context: RequirementRequest = affinity;
+            const reference: CredentialReference = credentialReference(challenge.credential);
             // Another ID cannot force replay with an unchanged already-presented credential set.
-            if (presented.some(item => item.generations.some(entry => entry.reference.key === reference.key))) return;
+            if (presented.some((item: Presented): boolean => item.generations.some((entry: CredentialGeneration): boolean => entry.reference.key === reference.key))) return;
             return {
                 key: JSON.stringify(['required', challenge.requirementId, reference.key, rejectedGenerations.get(reference.key) ?? null]),
-                async run(primaryOnly) {
+                async run(primaryOnly: ApiClient): Promise<void> {
                     assertInterested();
-                    const learned = caches.requirements.observe(context, challenge, reference);
+                    const learned: PendingAffinity | undefined = caches.requirements.observe(context, challenge, reference);
                     pending.delete(challenge.requirementId);
                     let generation: CredentialGeneration;
                     try {
                         generation = await caches.credentials.acquire(reference,
-                            signal => issueCredential(primaryOnly, reference, now, signal), request.signal);
-                    } catch (cause) {
+                            (signal: AbortSignal): Promise<IssuedCredential> => issueCredential(primaryOnly, reference, now, signal), request.signal);
+                    } catch (cause: unknown) {
                         // Denial explains the original requirement. Availability and IAM failures retain their meaning.
                         if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) {
                             throw new ApiError({ status: cause.status, code: cause.code, title: cause.title,
@@ -139,17 +144,17 @@ export class AttestationHandler implements ApiRequestHandler {
                         throw cause;
                     }
                     assertInterested();
-                    if (presented.some(item => item.token === generation.token)) throw failure;
+                    if (presented.some((item: Presented): boolean => item.token === generation.token)) throw failure;
                     selections.set(challenge.requirementId, { reference, required: generation });
                     if (learned) pending.set(challenge.requirementId, learned);
                 },
             };
-        };
-        const now = this.now;
+        }
+        const now: () => number = this.now;
 
         return {
             assertCurrent,
-            prepare: headers => {
+            prepare: (headers: Headers): void => {
                 if (headers.has(ATTESTATION_HEADER)) {
                     throw new ApiError({ status: 0, code: 'invalid_request_context', title: 'Invalid Request Context',
                         detail: 'Managed requests cannot supply their own supplementary credentials.' });
@@ -160,23 +165,24 @@ export class AttestationHandler implements ApiRequestHandler {
                     affinity = bound.requirements.begin(request);
                     for (const [id, reference] of affinity.predictions) selections.set(id, { reference });
                 }
-                const cache = bound.credentials;
+                const cache: CredentialCache = bound.credentials;
                 const next: Presented[] = [];
-                let size = 0;
+                let size: number = 0;
                 // Required evidence first; optional predictions may be omitted under header pressure.
-                const ordered = [...selections.values()].sort((a, b) => Number(!!b.required) - Number(!!a.required));
+                const ordered: RequirementSelection[] = [...selections.values()].sort((a: RequirementSelection, b: RequirementSelection): number =>
+                    Number(b.required !== undefined) - Number(a.required !== undefined));
                 for (const selection of ordered) {
-                    const entry = cache.get(selection.reference) ?? selection.required;
+                    const entry: CredentialGeneration | undefined = cache.get(selection.reference) ?? selection.required;
                     if (!entry || !cache.usable(entry)) {
                         if (selection.required) throw unavailableAttestation();
                         continue;
                     }
-                    const same = next.find(item => item.token === entry.token);
+                    const same: Presented | undefined = next.find((item: Presented): boolean => item.token === entry.token);
                     if (same) {
                         if (!same.generations.includes(entry)) same.generations.push(entry);
                         continue;
                     }
-                    const addition = entry.token.length + (next.length ? 2 : 0);
+                    const addition: number = entry.token.length + (next.length ? 2 : 0);
                     if (next.length >= MAX_ATTESTATIONS || size + addition > MAX_ATTESTATION_HEADER_LENGTH) {
                         if (selection.required) throw unavailableAttestation();
                         continue;
@@ -185,21 +191,21 @@ export class AttestationHandler implements ApiRequestHandler {
                     size += addition;
                 }
                 presented = next;
-                if (next.length) headers.set(ATTESTATION_HEADER, next.map(item => item.token).join(', '));
+                if (next.length) headers.set(ATTESTATION_HEADER, next.map((item: Presented): string => item.token).join(', '));
             },
-            recover: (failure, sent) => {
-                const metadata = failure.authorization;
+            recover(failure: ApiError, sent: SentRequest): RecoveryAction | undefined {
+                const metadata: AuthorizationMetadata | undefined = failure.authorization;
                 if (!metadata || !sentMatches(sent)) return;
                 if (metadata.type === 'required') return requireCredential(metadata, failure);
-                const item = rejected(sent, metadata.rejectedIndex);
+                const item: Presented | undefined = rejected(sent, metadata.rejectedIndex);
                 if (!item) return;
-                return { key: JSON.stringify(['invalid', item.generations.map(entry => entry.generation)]),
-                    async run() { evict(item); } };
+                return { key: JSON.stringify(['invalid', item.generations.map((entry: CredentialGeneration): number => entry.generation)]),
+                    async run(): Promise<void> { evict(item); } };
             },
-            onTerminalFailure(failure, sent) {
-                const metadata = failure.authorization;
+            onTerminalFailure(failure: ApiError, sent: SentRequest): void {
+                const metadata: AuthorizationMetadata | undefined = failure.authorization;
                 if (metadata?.type === 'invalid') {
-                    const item = rejected(sent, metadata.rejectedIndex);
+                    const item: Presented | undefined = rejected(sent, metadata.rejectedIndex);
                     if (item) evict(item);
                 } else if (metadata?.type === 'required' && bound && affinity && sentMatches(sent)) {
                     // A terminal challenge can still invalidate an obsolete prediction.
@@ -207,11 +213,11 @@ export class AttestationHandler implements ApiRequestHandler {
                     bound.requirements.observe(affinity, metadata, credentialReference(metadata.credential));
                 }
             },
-            onSuccess(sent) {
+            onSuccess(sent: SentRequest): void {
                 if (!bound || !sentMatches(sent)) return;
                 for (const [id, learned] of pending) {
-                    if (selections.get(id)?.reference.key === learned.reference.key && presented.some(item =>
-                        item.generations.some(entry => entry.reference.key === learned.reference.key))) {
+                    if (selections.get(id)?.reference.key === learned.reference.key && presented.some((item: Presented): boolean =>
+                        item.generations.some((entry: CredentialGeneration): boolean => entry.reference.key === learned.reference.key))) {
                         bound.requirements.commit(learned);
                     }
                 }

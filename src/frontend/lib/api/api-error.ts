@@ -50,11 +50,11 @@ export class ApiError extends Error {
 }
 
 export async function parseErrorResponse(response: Response): Promise<ApiError> {
-    const contentType = response.headers.get('content-type') ?? '';
+    const contentType: string = response.headers.get('content-type') ?? '';
     if (contentType.includes('json')) {
         try {
-            const payload = (await response.json()) as ProblemDetailPayload;
-            const code = typeof payload.code === 'string' && payload.code.length > 0 ? payload.code : 'http_error';
+            const payload: ProblemDetailPayload = (await response.json()) as ProblemDetailPayload;
+            const code: string = typeof payload.code === 'string' && payload.code.length > 0 ? payload.code : 'http_error';
             return new ApiError({
                 status: response.status,
                 code,
@@ -62,8 +62,9 @@ export async function parseErrorResponse(response: Response): Promise<ApiError> 
                 title: typeof payload.title === 'string' && payload.title.length > 0 ? payload.title : (response.statusText || 'Request Failed'),
                 detail: typeof payload.detail === 'string' && payload.detail.length > 0 ? payload.detail : `Request failed with status ${response.status}.`,
                 fieldErrors: Array.isArray(payload.fieldErrors)
-                    ? payload.fieldErrors.filter((entry): entry is FieldError =>
+                    ? payload.fieldErrors.filter((entry: unknown): entry is FieldError =>
                         entry !== null && typeof entry === 'object' &&
+                        'field' in entry && 'code' in entry && 'message' in entry &&
                         (entry.field === 'email' || entry.field === 'password' ||
                             (typeof entry.field === 'string' && entry.field.length > 0)) &&
                         typeof entry.code === 'string' && typeof entry.message === 'string')

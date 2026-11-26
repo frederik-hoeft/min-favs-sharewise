@@ -16,18 +16,32 @@ printf '%s\n' "$*" >> "$MOCK_DOCKER_CALLS"
 case "$1 $2" in
     "volume inspect") exit 1 ;; # Fresh test project.
     "volume ls") exit 0 ;;
-    "inspect -f") echo '{}'; exit 0 ;; # No published backend or DB ports.
+    "inspect -f")
+        if [ "$4" = id-frontend ] && grep -q 'compose.authorization-browser.yaml.*up --build' "$MOCK_DOCKER_CALLS"; then
+            if [ "${MOCK_FAILURE:-}" = browser-bindings ]; then ip=0.0.0.0; else ip=127.0.0.1; fi
+            printf '{"80/tcp":[{"HostIp":"%s","HostPort":"%s"}],"443/tcp":[{"HostIp":"%s","HostPort":"%s"}]}\n' "$ip" "$SHAREWISE_HTTP_PORT" "$ip" "$SHAREWISE_HTTPS_PORT"
+        else echo '{}'; fi
+        exit 0 ;;
 esac
 [ "${1:-}" = compose ] || exit 0
 shift
 if [ "${1:-}" = -p ]; then shift 2; fi
-while [ "${1:-}" = -f ]; do shift 2; done
+browser=false
+while [ "${1:-}" = -f ]; do
+    [ "$2" != compose.authorization-browser.yaml ] || browser=true
+    shift 2
+done
 if [ "${1:-}" = --profile ]; then shift 2; fi
 case "${1:-}" in
     config)
         if [ "${2:-}" = --format ]; then
-            if [ "${MOCK_FAILURE:-}" = fixture-published ]; then ports='[{"target":443}]'; else ports='[]'; fi
-            printf '{"services":{"frontend":{"ports":%s},"backend":{"build":{"target":"authorization-smoke"}},"frontend-e2e":{"networks":{"edge":null}}}}\n' "$ports"
+            if [ "$browser" = true ]; then
+                if [ "${MOCK_FAILURE:-}" = browser-published ]; then ip=0.0.0.0; else ip=127.0.0.1; fi
+                printf '{"services":{"frontend":{"build":{"target":"authorization-browser"},"ports":[{"target":80,"published":"%s","host_ip":"%s"},{"target":443,"published":"%s","host_ip":"%s"}]},"backend":{"build":{"target":"authorization-smoke"}},"postgres":{}}}\n' "$SHAREWISE_HTTP_PORT" "$ip" "$SHAREWISE_HTTPS_PORT" "$ip"
+            else
+                if [ "${MOCK_FAILURE:-}" = fixture-published ]; then ports='[{"target":443}]'; else ports='[]'; fi
+                printf '{"services":{"frontend":{"ports":%s},"backend":{"build":{"target":"authorization-smoke"}},"frontend-e2e":{"networks":{"edge":null}}}}\n' "$ports"
+            fi
         fi
         exit 0 ;;
     down) [ "${MOCK_FAILURE:-}" != cleanup ] || exit 37; exit 0 ;;
@@ -154,6 +168,35 @@ class ComposeLifecycleTests(unittest.TestCase):
         result = self.run_smoke("--keep")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("retained (--keep)", result.stdout)
+        self.assertEqual(self.down_calls(), [])
+
+    def test_browser_publishes_only_after_automated_acceptance_and_retains_stack(self):
+        result = self.run_smoke("--browser")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Browser fixture retained on loopback only", result.stdout)
+        self.assertIn("/app/authorization-smoke", result.stdout)
+        calls = self.calls()
+        runner = next(i for i, call in enumerate(calls) if "run --build --no-deps -T frontend-e2e" in call)
+        browser = next(i for i, call in enumerate(calls) if "compose.authorization-browser.yaml" in call and "up --build" in call)
+        self.assertGreater(browser, runner)
+        self.assertEqual(self.down_calls(), [])
+
+    def test_browser_is_not_published_if_automated_smoke_fails(self):
+        result = self.run_smoke("--browser", MOCK_FAILURE="frontend-e2e")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any("compose.authorization-browser.yaml" in call for call in self.calls()))
+
+    def test_browser_refuses_non_loopback_configuration(self):
+        result = self.run_smoke("--browser", MOCK_FAILURE="browser-published")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("exactly the configured loopback ports", result.stderr)
+        self.assertFalse(any("compose.authorization-browser.yaml" in call and "up --build" in call for call in self.calls()))
+
+    def test_browser_stops_proxy_on_unexpected_actual_binding(self):
+        result = self.run_smoke("--browser", MOCK_FAILURE="browser-bindings")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("proxy stopped", result.stderr)
+        self.assertTrue(any("compose.authorization-browser.yaml" in call and "stop frontend" in call for call in self.calls()))
         self.assertEqual(self.down_calls(), [])
 
     def test_failed_acceptance_preserves_diagnostics(self):

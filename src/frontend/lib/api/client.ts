@@ -1,5 +1,5 @@
 import { ApiError, parseErrorResponse, requestCanceled } from './api-error.ts';
-import { RecoveryBudget, type ApiRequestContext, type ApiRequestHandler, type RequestHandler, type SentRequest } from './handlers.ts';
+import { RecoveryBudget, type ApiRequestContext, type ApiRequestHandler, type RequestHandler, type SentRequest, type RecoveryAction } from './handlers.ts';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
@@ -9,7 +9,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly expectedStatus?: number;
 }
 
-export const DEFAULT_API_TIMEOUT_MS = 45_000;
+export const DEFAULT_API_TIMEOUT_MS: number = 45_000;
 
 export interface ApiClient {
     request<T>(path: string, options?: ApiRequestOptions): Promise<T>;
@@ -22,15 +22,15 @@ export interface ApiClient {
 
 /** Keep routing policy and HTTP dispatch on the same unambiguous API path. */
 function normalizeApiPath(path: string): { pathname: string; target: string } {
-    const queryIndex = path.indexOf('?');
-    const rawPathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
-    const query = queryIndex === -1 ? '' : path.slice(queryIndex);
-    const rooted = rawPathname.startsWith('/') ? rawPathname : `/${rawPathname}`;
-    const pathname = rooted === '/api' || rooted.startsWith('/api/') ? rooted : `/api${rooted}`;
+    const queryIndex: number = path.indexOf('?');
+    const rawPathname: string = queryIndex === -1 ? path : path.slice(0, queryIndex);
+    const query: string = queryIndex === -1 ? '' : path.slice(queryIndex);
+    const rooted: string = rawPathname.startsWith('/') ? rawPathname : `/${rawPathname}`;
+    const pathname: string = rooted === '/api' || rooted.startsWith('/api/') ? rooted : `/api${rooted}`;
     // Route segments use unreserved ASCII characters. Reject spellings that a
     // browser, proxy or server could decode or normalize to a different route.
     if (!/^\/api(?:\/[A-Za-z0-9._~-]+)*$/.test(pathname) ||
-        pathname.split('/').some(segment => segment === '.' || segment === '..') ||
+        pathname.split('/').some((segment: string): boolean => segment === '.' || segment === '..') ||
         path.includes('#') || /\p{Cc}/u.test(path)) {
         throw new ApiError({
             status: 0, code: 'invalid_api_path', title: 'Invalid API Path',
@@ -79,27 +79,27 @@ interface DetourContext {
 
 /** A primary handler precedes supplementary handlers; anonymous requests have no active primary. */
 export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fetchImpl: typeof fetch = fetch,
-    origin = typeof location !== 'undefined' ? location.origin : 'http://sharewise.invalid'): ApiClient {
-    const pipeline = [...handlers];
-    if (pipeline.some((handler, index) => handler.kind === 'primary' && index !== 0)) {
+    origin: string = typeof location !== 'undefined' ? location.origin : 'http://sharewise.invalid'): ApiClient {
+    const pipeline: ApiRequestHandler[] = [...handlers];
+    if (pipeline.some((handler: ApiRequestHandler, index: number): boolean => handler.kind === 'primary' && index !== 0)) {
         throw new Error('Exactly one primary handler may precede supplementary handlers');
     }
-    const apiOrigin = new URL(origin).origin;
+    const apiOrigin: string = new URL(origin).origin;
     if (apiOrigin === 'null' || !/^https?:/.test(apiOrigin)) throw new Error('Invalid API origin');
 
     async function executeRequest<T>(path: string, options: ApiRequestOptions = {}, detour?: DetourContext): Promise<T> {
-        const normalized = normalizeApiPath(path);
+        const normalized: ReturnType<typeof normalizeApiPath> = normalizeApiPath(path);
         // Use the URL serialization used by Fetch, including significant query ordering/empty values.
-        const url = new URL(normalized.target, apiOrigin);
-        const target = url.href.slice(apiOrigin.length);
-        const requestSignal = options.signal ?? undefined;
-        const initialHeaders = new Headers(options.headers);
+        const url: URL = new URL(normalized.target, apiOrigin);
+        const target: string = url.href.slice(apiOrigin.length);
+        const requestSignal: AbortSignal | undefined = options.signal ?? undefined;
+        const initialHeaders: Headers = new Headers(options.headers);
         if (!initialHeaders.has('Accept')) initialHeaders.set('Accept', 'application/json, application/problem+json');
-        const method = (options.method ?? 'GET').toUpperCase();
-        const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+        const method: string = (options.method ?? 'GET').toUpperCase();
+        const { timeoutMs: configuredTimeout, expectedStatus, body, ...requestOptions }: ApiRequestOptions = options;
+        const timeoutMs: number = configuredTimeout ?? DEFAULT_API_TIMEOUT_MS;
         if (!Number.isFinite(timeoutMs) || timeoutMs < 0) throw new RangeError('Invalid HTTP request timeout');
-        const hasExplicitAuthorization = initialHeaders.has('Authorization');
-        const body = options.body;
+        const hasExplicitAuthorization: boolean = initialHeaders.has('Authorization');
         const request: ApiRequestContext = Object.freeze({ origin: apiOrigin, pathname: normalized.pathname,
             target, method, replayable: isReplayableBody(body), signal: requestSignal });
         assertNotCanceled(requestSignal);
@@ -108,45 +108,40 @@ export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fet
         if (!hasExplicitAuthorization) {
             for (const handler of pipeline) {
                 if (handler.kind === 'supplementary' && (detour || active.length === 0)) continue;
-                const state = handler.begin(request);
+                const state: RequestHandler | undefined = handler.begin(request);
                 if (state) active.push({ handler, state });
             }
         }
         if (detour && active.length === 0) throw new ApiError({ status: 0, code: 'invalid_request_context',
             title: 'Invalid Request Context', detail: 'Credential acquisition requires a managed primary credential.' });
-        const prepared = prepareBody(body, initialHeaders);
-        const expectedStatus = options.expectedStatus;
-        const requestOptions = { ...options };
-        delete requestOptions.timeoutMs;
-        delete requestOptions.expectedStatus;
-        delete requestOptions.body;
-        const budget = detour?.budget ?? new RecoveryBudget();
-        const assertCurrent = () => {
+        const prepared: BodyInit | undefined = prepareBody(body, initialHeaders);
+        const budget: RecoveryBudget = detour?.budget ?? new RecoveryBudget();
+        const assertCurrent: () => void = () => {
             detour?.assertCurrent();
             for (const { state } of active) state.assertCurrent?.();
         };
         // Only a recovery action can open a primary-only detour, sharing the outer budget and binding.
-        const primaryOnly = createApiMethods(<R>(path: string, options?: ApiRequestOptions) => {
+        const primaryOnly: ApiClient = createApiMethods(<R>(path: string, options?: ApiRequestOptions): Promise<R> => {
             if (detour) throw new Error('Nested credential acquisition is not allowed');
             return executeRequest<R>(path, options, { budget, assertCurrent });
         });
 
-        for (let attempt = 0; ; attempt++) {
+        for (let attempt: number = 0; ; attempt++) {
             assertNotCanceled(requestSignal);
             assertCurrent();
-            const headers = new Headers(initialHeaders);
+            const headers: Headers = new Headers(initialHeaders);
             for (const { state } of active) {
                 await state.prepare?.(headers);
                 assertNotCanceled(requestSignal);
                 assertCurrent();
             }
             const sent: SentRequest = { headers: new Headers(headers), attempt };
-            const controller = new AbortController();
-            const abort = () => controller.abort();
+            const controller: AbortController = new AbortController();
+            const abort: () => void = () => controller.abort();
             requestSignal?.addEventListener('abort', abort, { once: true });
             if (requestSignal?.aborted) controller.abort();
-            const timeout = timeoutMs > 0 ? setTimeout(abort, timeoutMs) : undefined;
-            const assertAttempt = () => {
+            const timeout: ReturnType<typeof setTimeout> | undefined = timeoutMs > 0 ? setTimeout(abort, timeoutMs) : undefined;
+            const assertAttempt: () => void = () => {
                 assertNotCanceled(requestSignal);
                 if (controller.signal.aborted) throw networkError(new Error('HTTP request timed out.'));
                 assertCurrent();
@@ -161,7 +156,7 @@ export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fet
                         credentials: options.credentials ?? 'same-origin', cache: options.cache ?? 'no-store',
                         redirect: 'error',
                     });
-                } catch (cause) {
+                } catch (cause: unknown) {
                     assertNotCanceled(requestSignal);
                     throw networkError(cause);
                 }
@@ -194,7 +189,7 @@ export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fet
                     for (const { state } of active) state.onSuccess?.(sent);
                     return value;
                 }
-            } catch (error) {
+            } catch (error: unknown) {
                 assertCurrent();
                 throw error;
             } finally {
@@ -204,10 +199,10 @@ export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fet
 
             assertNotCanceled(requestSignal);
             assertCurrent();
-            let recovered = false;
+            let recovered: boolean = false;
             if (request.replayable) {
                 for (const { handler, state } of active) {
-                    const action = state.recover?.(rejection, sent);
+                    const action: RecoveryAction | undefined = state.recover?.(rejection, sent);
                     if (!action) continue;
                     // A classified rejection belongs to one handler. Another handler cannot bypass its budget.
                     if (budget.reserve(handler.kind, action.key)) {
@@ -231,9 +226,9 @@ export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fet
 /** Expose the same transport through a narrower request lifetime. */
 export function scopeApiClient(client: ApiClient, assertRequest: (path: string, headers: Headers) => void): ApiClient {
     return createApiMethods(async <T>(path: string, options?: ApiRequestOptions): Promise<T> => {
-        const { pathname, target } = normalizeApiPath(path);
-        const headers = new Headers(options?.headers);
-        const scopedOptions = { ...options, headers };
+        const { pathname, target }: ReturnType<typeof normalizeApiPath> = normalizeApiPath(path);
+        const headers: Headers = new Headers(options?.headers);
+        const scopedOptions: ApiRequestOptions = { ...options, headers };
         assertRequest(pathname, headers);
         return client.request<T>(target, scopedOptions);
     });

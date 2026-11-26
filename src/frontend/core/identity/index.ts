@@ -42,24 +42,24 @@ export interface IdentityRuntimeOptions {
 
 /** A new runtime initially has no bearer; it restores the shared cookie on first use. */
 export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): IdentityRuntime {
-    const session = new AuthSession();
-    const channel = new SessionContextChannel(options.channel ?? (() =>
+    const session: AuthSession = new AuthSession();
+    const channel: SessionContextChannel = new SessionContextChannel(options.channel ?? ((): BroadcastChannel | undefined =>
         typeof window === 'undefined' || typeof BroadcastChannel === 'undefined'
             ? undefined : new BroadcastChannel(SESSION_CONTEXT_CHANNEL)));
-    const cookieLock = new AuthCookieLock(
-        options.locks ?? (() => typeof navigator === 'undefined' ? undefined : navigator.locks)
+    const cookieLock: AuthCookieLock = new AuthCookieLock(
+        options.locks ?? ((): LockManager | undefined => typeof navigator === 'undefined' ? undefined : navigator.locks)
     );
     // Handler execution begins only after the runtime is fully constructed.
-    const attestations = new AttestationHandler({ current: () => session.getAuthenticatedLifetime(), subscribe: session.subscribe },
+    const attestations: AttestationHandler = new AttestationHandler({ current: (): number | undefined => session.getAuthenticatedLifetime(), subscribe: session.subscribe },
         options.attestationCaches);
-    const api = createApiClient([iamRequestHandler(session, () => auth), attestations], options.fetchImpl ?? fetch, options.origin);
-    const identityApi = new IdentityApi(api);
-    const auth = new AuthCoordinator(identityApi, session, cookieLock, channel);
+    const api: ApiClient = createApiClient([iamRequestHandler(session, (): AuthCoordinator => auth), attestations], options.fetchImpl ?? fetch, options.origin);
+    const identityApi: IdentityApi = new IdentityApi(api);
+    const auth: AuthCoordinator = new AuthCoordinator(identityApi, session, cookieLock, channel);
     return {
         api, auth, cookieLock, session,
-        forSession(sessionId) {
-            const lifetime = session.getSessionId() === sessionId ? session.getAuthenticatedLifetime() : undefined;
-            const scopedApi = scopeApiClient(api, (path, headers) => {
+        forSession(sessionId: string): AuthenticatedApis {
+            const lifetime: number | undefined = session.getSessionId() === sessionId ? session.getAuthenticatedLifetime() : undefined;
+            const scopedApi: ApiClient = scopeApiClient(api, (path: string, headers: Headers): void => {
                 if (!lifetime || session.getAuthenticatedLifetime() !== lifetime) {
                     throw sessionContextChanged();
                 }
@@ -70,7 +70,7 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
                     });
                 }
             });
-            const scopedIdentity = new IdentityApi(scopedApi);
+            const scopedIdentity: IdentityApi = new IdentityApi(scopedApi);
             return { api: scopedApi, account: scopedIdentity, security: scopedIdentity };
         },
         connect: () => channel.connect(),

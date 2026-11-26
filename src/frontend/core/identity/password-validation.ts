@@ -1,7 +1,7 @@
 /** Java/JavaScript password limits count UTF-16 code units, not Unicode scalars. */
 export function hasValidSurrogatePairs(password: string): boolean {
-    for (let i = 0; i < password.length; i++) {
-        const unit = password.charCodeAt(i);
+    for (let i: number = 0; i < password.length; i++) {
+        const unit: number = password.charCodeAt(i);
         if (unit >= 0xd800 && unit <= 0xdbff) {
             if (++i >= password.length || password.charCodeAt(i) < 0xdc00 || password.charCodeAt(i) > 0xdfff) {
                 return false;

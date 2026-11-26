@@ -46,10 +46,10 @@ export interface ApiRequestHandler {
 
 /** Shared by the original request and all of its admitted acquisition detours. */
 export class RecoveryBudget implements RecoveryProgress {
-    private primaryAttempted = false;
-    private readonly supplementary = new Set<string>();
-    private static readonly MAX_SUPPLEMENTARY = 3;
-    private static readonly MAX_TOTAL = 4;
+    private primaryAttempted: boolean = false;
+    private readonly supplementary: Set<string> = new Set<string>();
+    private static readonly MAX_SUPPLEMENTARY: number = 3;
+    private static readonly MAX_TOTAL: number = 4;
 
     get primaryRecoveryAttempted(): boolean { return this.primaryAttempted; }
 

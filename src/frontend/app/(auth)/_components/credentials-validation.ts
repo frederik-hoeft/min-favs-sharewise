@@ -7,7 +7,7 @@ export interface CredentialErrors {
 
 /** Client-side hints only. The IAM service remains authoritative for email syntax and policy. */
 export function validateCredentials(mode: 'login' | 'register', emailInput: string, password: string): CredentialErrors {
-  const email = emailInput.trim();
+  const email: string = emailInput.trim();
   const errors: { email?: string; password?: string } = {};
 
   if (!email) {
@@ -15,7 +15,7 @@ export function validateCredentials(mode: 'login' | 'register', emailInput: stri
   } else if (Array.from(email).length > 256) {
     errors.email = 'Email must not exceed 256 characters.';
   } else {
-    const at = email.lastIndexOf('@');
+    const at: number = email.lastIndexOf('@');
     if (at <= 0 || at === email.length - 1 || !email.slice(at + 1).includes('.') ||
         /[\p{White_Space}\p{Cc}\p{Cf}]/u.test(email)) {
       errors.email = 'Enter a valid email address.';

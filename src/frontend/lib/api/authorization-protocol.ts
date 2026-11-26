@@ -1,8 +1,8 @@
 /** Wire bounds shared by the generic attestation protocol and its HTTP transport. */
-export const ATTESTATION_HEADER = 'ShareWise-Attestation';
-export const MAX_ATTESTATIONS = 4;
-export const MAX_ATTESTATION_LENGTH = 2048;
-export const MAX_ATTESTATION_HEADER_LENGTH = 8192;
+export const ATTESTATION_HEADER: string = 'ShareWise-Attestation';
+export const MAX_ATTESTATIONS: number = 4;
+export const MAX_ATTESTATION_LENGTH: number = 2048;
+export const MAX_ATTESTATION_HEADER_LENGTH: number = 8192;
 
 export interface CredentialDescriptor {
     readonly authority: string;
@@ -28,8 +28,8 @@ export interface AttestationRejection {
 
 export type AuthorizationMetadata = AttestationChallenge | AttestationRejection;
 
-const IDENTIFIER = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/u;
+const IDENTIFIER: RegExp = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const CONTROL: RegExp = /[\u0000-\u001f\u007f-\u009f]/u;
 const NEVER: AffinityPolicy = Object.freeze({ policy: 'never' });
 
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -46,7 +46,7 @@ function identifier(value: unknown): value is string {
 }
 
 function affinity(value: unknown): AffinityPolicy {
-    const cache = object(value);
+    const cache: Record<string, unknown> | undefined = object(value);
     if (!cache) return NEVER;
     if (cache.policy === 'path_affine' || cache.policy === 'request_affine') {
         return cache.parameters === undefined || (Array.isArray(cache.parameters) && cache.parameters.length === 0)
@@ -54,7 +54,7 @@ function affinity(value: unknown): AffinityPolicy {
     }
     if (cache.policy === 'query_affine' && Array.isArray(cache.parameters) &&
         cache.parameters.length > 0 && cache.parameters.length <= 8 &&
-        cache.parameters.every(parameter => boundedText(parameter, 64)) &&
+        cache.parameters.every((parameter: unknown): parameter is string => boundedText(parameter, 64)) &&
         new Set(cache.parameters).size === cache.parameters.length) {
         return Object.freeze({ policy: 'query_affine', parameters: Object.freeze([...cache.parameters].sort()) });
     }
@@ -63,17 +63,17 @@ function affinity(value: unknown): AffinityPolicy {
 
 /** Parse only recognized, bounded metadata; invalid hints never broaden a cache match. */
 export function parseAuthorizationMetadata(code: string, value: unknown): AuthorizationMetadata | undefined {
-    const data = object(value);
+    const data: Record<string, unknown> | undefined = object(value);
     if (!data) return;
     if (code === 'invalid_attestation') {
-        const index = data.rejectedIndex;
+        const index: unknown = data.rejectedIndex;
         if (typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < MAX_ATTESTATIONS) {
             return Object.freeze({ type: 'invalid', rejectedIndex: index });
         }
         return;
     }
     if (code !== 'attestation_required' || !boundedText(data.requirementId, 128)) return;
-    const credential = object(data.credential);
+    const credential: Record<string, unknown> | undefined = object(data.credential);
     if (!credential || !identifier(credential.authority) || !identifier(credential.kind) ||
         !boundedText(credential.scope, 256)) return;
     return Object.freeze({ type: 'required', requirementId: data.requirementId,

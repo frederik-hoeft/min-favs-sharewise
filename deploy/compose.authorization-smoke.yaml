@@ -16,6 +16,7 @@ services:
     build:
       context: ../src/frontend
       dockerfile: Dockerfile.e2e
+      target: e2e-runner
     environment:
       SHAREWISE_E2E_ORIGIN: ${SHAREWISE_IAM_ISSUER:?Disposable origin required}
       SHAREWISE_E2E_CONNECT_HOST: frontend

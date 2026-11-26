@@ -7,6 +7,9 @@ export default defineConfig({
     resolve: { alias: { '@': fileURLToPath(new URL('..', import.meta.url)) } },
     test: {
         environment: 'node',
+        // One-shot runner: no persistent test result or transform cache.
+        cache: false,
+        fsModuleCache: false,
         include: ['tests/deployed/**/*.e2e.ts'],
         passWithNoTests: false,
         testTimeout: 60_000,

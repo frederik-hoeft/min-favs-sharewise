@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # Acceptance probe against an explicitly DISPOSABLE production-style Compose stack.
-# Removes its disposable stack on success unless --keep is requested.
+# Removes its disposable stack on success unless --keep or --browser is requested.
 set -euo pipefail
 usage() {
     cat <<'USAGE'
-Usage: deploy/scripts/test-compose.sh [--keep]
+Usage: deploy/scripts/test-compose.sh [--keep | --browser]
 
   (default)  Remove disposable test containers, networks, and volumes on success.
   --keep     Preserve the test stack and volumes on success for inspection.
+  --browser  After automated checks pass, retain the fixture stack with a
+             disposable browser test page and loopback-only HTTPS/HTTP ports.
 
 A failed test always preserves its resources for troubleshooting.
 USAGE
 }
 keep=false
+browser=false
 case "${1:-}" in
     '') ;;
     --keep) keep=true; shift ;;
+    --browser) keep=true; browser=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
 esac
@@ -43,6 +47,8 @@ default_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$deploy_dir/.env" | tai
 # HTTPS request tests use Compose DNS, not these daemon-host port bindings.
 export SHAREWISE_HTTP_PORT="${SHAREWISE_SMOKE_HTTP_PORT:-28080}"
 export SHAREWISE_HTTPS_PORT="${SHAREWISE_SMOKE_HTTPS_PORT:-18443}"
+# All disposable host exposure is local, regardless of the ordinary deployment.
+export SHAREWISE_HTTP_BIND=127.0.0.1 SHAREWISE_HTTPS_BIND=127.0.0.1
 export COMPOSE_PROJECT_NAME="$project"
 # The disposable stack has a different HTTPS port from the normal local stack.
 # Align its token issuer with the browser-visible origin used for this test.
@@ -240,7 +246,42 @@ if grep -q -- '-----BEGIN .*PRIVATE KEY-----' "$ca_file"; then
 fi
 "${smoke_compose[@]}" run --build --no-deps -T frontend-e2e < "$ca_file"
 printf 'Deployed frontend authorization E2E passed.\n'
-if [[ "$keep" == true ]]; then
+if [[ "$browser" == true ]]; then
+    # The automated tests above always use an unpublished fixture. Re-expose
+    # only the proxy, only after success, with an explicit manual-test image.
+    browser_compose=("${smoke_compose[@]}" -f compose.authorization-browser.yaml)
+    "${browser_compose[@]}" config --format json | python3 -c '
+import json, os, sys
+services = json.load(sys.stdin)["services"]
+proxy = services["frontend"]
+expected = {(80, os.environ["SHAREWISE_HTTP_PORT"]), (443, os.environ["SHAREWISE_HTTPS_PORT"])}
+ports = proxy.get("ports", [])
+if (len(ports) != len(expected) or
+    {(int(p["target"]), str(p["published"])) for p in ports} != expected or
+    any(p.get("host_ip") != "127.0.0.1" or p.get("protocol", "tcp") != "tcp" for p in ports)):
+    sys.exit("Browser fixture proxy must publish exactly the configured loopback ports")
+if any(services[name].get("ports") for name in ("backend", "postgres")):
+    sys.exit("Browser fixture backend and database must remain unpublished")
+if proxy["build"]["target"] != "authorization-browser" or services["backend"]["build"]["target"] != "authorization-smoke":
+    sys.exit("Wrong browser fixture artifacts")
+'
+    "${browser_compose[@]}" up --build --wait --no-deps --force-recreate -d frontend
+    browser_proxy="$("${browser_compose[@]}" ps -q frontend)"
+    # Inspect the actual published bindings as well as the desired configuration.
+    if [[ -z "$browser_proxy" ]] || ! "$cli" inspect -f '{{json .HostConfig.PortBindings}}' "$browser_proxy" | python3 -c '
+import json, os, sys
+expected = {"80/tcp": [{"HostIp": "127.0.0.1", "HostPort": os.environ["SHAREWISE_HTTP_PORT"]}],
+            "443/tcp": [{"HostIp": "127.0.0.1", "HostPort": os.environ["SHAREWISE_HTTPS_PORT"]}]}
+sys.exit(0 if json.load(sys.stdin) == expected else 1)
+'; then
+        "${browser_compose[@]}" stop frontend || true
+        echo 'Unexpected browser fixture port bindings; proxy stopped.' >&2
+        exit 1
+    fi
+    printf 'Automated deployment acceptance checks passed. Browser fixture retained on loopback only.\n'
+    printf 'Open %s/app/authorization-smoke in an isolated browser profile on the Docker daemon host.\n' "$SHAREWISE_IAM_ISSUER"
+    printf 'Manual acceptance remains outstanding. Remove the test project with ./scripts/cleanup.sh test %s.\n' "$project"
+elif [[ "$keep" == true ]]; then
     printf 'Deployment acceptance checks passed. Test project %s retained (--keep), with fixture proxy unpublished. Remove it with ./scripts/cleanup.sh test %s.\n' "$project" "$project"
 else
     # Reuse the explicitly scoped cleanup path, including orphaned Compose
