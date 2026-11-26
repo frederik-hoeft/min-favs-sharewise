@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class BaselineMigrationE2E {
 
     private static final List<String> OWNED_SCHEMAS =
-        List.of("identity", "groups", "finance", "files", "notifications", "flyway");
+        List.of("identity", "groups", "finance", "files", "notifications", "messaging", "flyway");
 
     private PostgresTestDatabase database;
 
@@ -73,6 +73,8 @@ class BaselineMigrationE2E {
     void applicationRoleCannotChangeTheSchemaOrReadTheMigrationHistory() throws SQLException {
         try (Connection app = database.connectAsApplication()) {
             assertThrows(SQLException.class, () -> execute(app, "CREATE TABLE groups.it_ddl_probe (x int)"));
+            assertThrows(SQLException.class, () -> execute(app, "CREATE TABLE messaging.it_ddl_probe (x int)"));
+            assertThrows(SQLException.class, () -> execute(app, "ALTER TABLE messaging.event_publication ADD COLUMN x int"));
             assertThrows(SQLException.class, () -> execute(app, "CREATE SCHEMA it_ddl_probe"));
             assertThrows(SQLException.class, () -> execute(app, "CREATE TEMPORARY TABLE it_temp_probe (x int)"));
             assertThrows(SQLException.class, () -> execute(app, "SELECT * FROM flyway.flyway_schema_history"));

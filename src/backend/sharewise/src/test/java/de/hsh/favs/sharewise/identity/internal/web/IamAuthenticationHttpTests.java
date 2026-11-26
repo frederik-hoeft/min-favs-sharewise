@@ -60,7 +60,10 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
         + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
         + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
-        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration",
+        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration,"
+        // The event publication registry is database-backed infrastructure (P2.4a).
+        + "org.springframework.modulith.events.config.EventPublicationAutoConfiguration,"
+        + "org.springframework.modulith.events.jdbc.JdbcEventPublicationAutoConfiguration",
     "spring.main.lazy-initialization=true"
 })
 @AutoConfigureMockMvc
