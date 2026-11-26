@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.application.membership;
 
+import de.hsh.favs.sharewise.groups.internal.application.GroupEventPublisher;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.GroupOutcomes;
 import de.hsh.favs.sharewise.groups.internal.application.access.CallerAdmission;
@@ -13,20 +14,25 @@ import java.util.UUID;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
-/** Manages current membership while preserving at least one member and administrator. */
+/**
+ * Manages current membership while preserving at least one member and administrator. A committed
+ * removal publishes the removed user's membership fact; role changes publish nothing.
+ */
 @Component
 @Scope("operation")
 public class GroupMembershipService {
     private final CallerAdmission admission;
     private final GroupAccess access;
     private final GroupMembershipPort members;
+    private final GroupEventPublisher events;
     private final Transactions transactions;
 
     GroupMembershipService(CallerAdmission admission, GroupAccess access, GroupMembershipPort members,
-            Transactions transactions) {
+            GroupEventPublisher events, Transactions transactions) {
         this.admission = Objects.requireNonNull(admission, "admission");
         this.access = Objects.requireNonNull(access, "access");
         this.members = Objects.requireNonNull(members, "members");
+        this.events = Objects.requireNonNull(events, "events");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
     }
 
@@ -75,7 +81,8 @@ public class GroupMembershipService {
         if (member.role().isAdministrator() && !context.hasOtherAdministrators()) {
             return Result.err(new GroupFailure.LastAdministrator());
         }
-        members.removeMember(group, member.id());
+        long revision = members.removeMember(group, member.id());
+        events.memberRemoved(group.id(), member.userId(), revision);
         return completed();
     }
 

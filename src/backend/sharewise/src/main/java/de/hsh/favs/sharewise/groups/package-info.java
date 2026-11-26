@@ -1,8 +1,9 @@
 /**
  * Group Management: groups, their metadata, organizational membership and roles.
  *
- * <p>The top-level package publishes no types yet; HTTP adapters, application services,
- * domain values and persistence adapters are internal to the module.
+ * <p>The top-level package publishes no types. The {@code events} named interface publishes the
+ * versioned integration events for group creation and membership changes; HTTP adapters,
+ * application services, domain values and persistence adapters are internal to the module.
  */
 @ApplicationModule(allowedDependencies = {
     "identity", "identity::events", "shared::di", "shared::jooq", "shared::result", "shared::security", "shared::transactions", "shared::validation",

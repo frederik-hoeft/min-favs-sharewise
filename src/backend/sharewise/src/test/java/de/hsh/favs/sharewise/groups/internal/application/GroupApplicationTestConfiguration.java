@@ -15,9 +15,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Scope;
 
 /**
- * Explicitly imported wiring for Group application-service tests: the production services
- * of the Group application, in-memory ports and recording transactions. Never discovered by the
- * application's own component scan.
+ * Explicitly imported wiring for Group application-service tests: the production services of
+ * the Group application, in-memory ports, a recording event publisher and recording
+ * transactions. Never discovered by the application's own component scan.
  */
 @TestConfiguration(proxyBeanMethods = false)
 @Import({CallerAdmission.class, GroupCreationService.class, GroupQueryService.class, GroupMetadataService.class,
@@ -45,6 +45,11 @@ class GroupApplicationTestConfiguration {
     @Bean
     ApplicationTokenParser tokenParser() {
         return new ApplicationTokenParser();
+    }
+
+    @Bean
+    RecordingGroupEvents groupEvents(InMemoryGroups groups, RecordingTransactions.Log transactions) {
+        return new RecordingGroupEvents(groups, transactions);
     }
 
     @Bean

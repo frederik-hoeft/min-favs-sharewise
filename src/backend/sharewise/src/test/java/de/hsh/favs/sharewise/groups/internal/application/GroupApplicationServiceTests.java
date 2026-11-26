@@ -150,7 +150,7 @@ class GroupApplicationServiceTests {
         assertEquals(List.of("list", "list", "find", "workspace"), store.calls());
         store.clearCalls();
         assertTrue(change(ALICE, group, memberId(snapshot, BOB), new MembershipChange.Remove()).isSuccess());
-        assertEquals(List.of("lock", "changeContext", "remove"), store.calls());
+        assertEquals(List.of("lock", "changeContext", "remove", "publish:memberRemoved"), store.calls());
     }
 
     @Test

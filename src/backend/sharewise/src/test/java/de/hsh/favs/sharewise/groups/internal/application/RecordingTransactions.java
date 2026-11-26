@@ -29,11 +29,13 @@ final class RecordingTransactions implements Transactions {
         }
         active = true;
         rollbackOnly = false;
+        log.enter();
         try {
             TransactionOutcome<T> outcome = operation.get();
             log.record(rollbackOnly ? TransactionDecision.ROLLBACK : outcome.decision());
             return outcome.result();
         } finally {
+            log.exit();
             active = false;
         }
     }
@@ -51,6 +53,21 @@ final class RecordingTransactions implements Transactions {
     /** Singleton record of segment dispositions across operations. */
     static final class Log {
         private final List<TransactionDecision> decisions = new ArrayList<>();
+        // Per thread: operations on other threads have their own segments.
+        private final ThreadLocal<Boolean> inSegment = ThreadLocal.withInitial(() -> false);
+
+        void enter() {
+            inSegment.set(true);
+        }
+
+        void exit() {
+            inSegment.set(false);
+        }
+
+        /** Whether the current thread is inside a recorded segment. */
+        boolean inSegment() {
+            return inSegment.get();
+        }
 
         synchronized void record(TransactionDecision decision) {
             decisions.add(decision);

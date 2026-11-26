@@ -85,7 +85,8 @@ class GroupInvitationServiceTests {
         assertEquals(List.of("previewContext"), groups.calls());
         groups.clearCalls();
         assertEquals(InvitationRedemption.Outcome.JOINED, redeem(OUTSIDER, link).outcome());
-        assertEquals(List.of("previewContext", "redemptionLock", "redemptionContext", "addMember", "consumeInvitation"), groups.calls());
+        assertEquals(List.of("previewContext", "redemptionLock", "redemptionContext", "addMember", "consumeInvitation",
+            "publish:memberAdded"), groups.calls());
         groups.clearCalls();
         assertEquals(InvitationRedemption.Outcome.ALREADY_MEMBER, redeem(OUTSIDER, link).outcome());
         assertEquals(List.of("previewContext", "redemptionLock", "redemptionContext"), groups.calls());

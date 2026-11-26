@@ -85,7 +85,17 @@ class ApplicationModuleStructureTests {
                 "groups may consume only the IAM identity contract, IAM integration events (P2.4a) and its declared "
                 + "shared contracts");
         assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules, groups.getBasePackage().getName()),
-                "groups publishes no Java API until a consumer needs one");
+                "groups publishes no top-level Java API; its integration events use a named interface");
+    }
+
+    @Test
+    void groupsPublishesExactlyItsVersionedIntegrationEvents() {
+        assertEquals(List.of(
+                "groups :: events publishes de.hsh.favs.sharewise.groups.events.GroupCreatedV1",
+                "groups :: events publishes de.hsh.favs.sharewise.groups.events.GroupMemberAddedV1",
+                "groups :: events publishes de.hsh.favs.sharewise.groups.events.GroupMemberRemovedV1"),
+                ModulePublications.publishedTypesIn(modules, "de.hsh.favs.sharewise.groups"),
+                "event type names are persisted in the publication registry; publish only the reviewed contracts");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.application.invitation;
 
+import de.hsh.favs.sharewise.groups.internal.application.GroupEventPublisher;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.GroupOutcomes;
 import de.hsh.favs.sharewise.groups.internal.application.access.CallerAdmission;
@@ -38,17 +39,19 @@ public class GroupInvitationService {
     private final GroupInvitationPort invitations;
     private final ApplicationTokenGenerator generator;
     private final ApplicationTokenParser parser;
+    private final GroupEventPublisher events;
     private final Transactions transactions;
 
     GroupInvitationService(CallerAdmission admission, GroupAccess access,
             GroupMembershipPort members, GroupInvitationPort invitations, ApplicationTokenGenerator generator,
-            ApplicationTokenParser parser, Transactions transactions) {
+            ApplicationTokenParser parser, GroupEventPublisher events, Transactions transactions) {
         this.admission = Objects.requireNonNull(admission);
         this.access = Objects.requireNonNull(access);
         this.members = Objects.requireNonNull(members);
         this.invitations = Objects.requireNonNull(invitations);
         this.generator = Objects.requireNonNull(generator);
         this.parser = Objects.requireNonNull(parser);
+        this.events = Objects.requireNonNull(events);
         this.transactions = Objects.requireNonNull(transactions);
     }
 
@@ -148,8 +151,9 @@ public class GroupInvitationService {
         if (context.alreadyMember()) {
             return Result.ok(new InvitationRedemption(group.id(), InvitationRedemption.Outcome.ALREADY_MEMBER));
         }
-        members.addMember(group, userId);
+        long revision = members.addMember(group, userId);
         invitations.consume(group, token.selector());
+        events.memberAdded(group.id(), userId, revision);
         return Result.ok(new InvitationRedemption(group.id(), InvitationRedemption.Outcome.JOINED));
     }
 
