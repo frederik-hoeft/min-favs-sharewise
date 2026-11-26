@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.shared.infra.messaging.internal;
 
+import static de.hsh.favs.sharewise.testsupport.execution.Eventually.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,7 +26,6 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -168,22 +168,6 @@ class EventPublicationRegistryE2E extends E2ETestBase {
         } catch (SQLException failure) {
             throw new AssertionError("Unable to inspect messaging.event_publication", failure);
         }
-    }
-
-    private static void await(String description, BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("Interrupted while waiting for " + description, interrupted);
-            }
-        }
-        fail("Timed out waiting for " + description);
     }
 
     record Publication(String listenerId, String status, int completionAttempts) { }

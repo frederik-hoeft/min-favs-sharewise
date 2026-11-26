@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.hsh.favs.sharewise.finance.internal.actor.FinancialActor;
+import de.hsh.favs.sharewise.finance.internal.actor.MembershipState;
+import de.hsh.favs.sharewise.finance.internal.events.GroupDeliveryFixture;
+import de.hsh.favs.sharewise.finance.internal.persistence.FinanceTestFixture;
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
 import de.hsh.favs.sharewise.groups.internal.application.invitation.CreatedInvitation;
@@ -32,7 +36,10 @@ import de.hsh.favs.sharewise.testsupport.postgres.BoundedStatementsConfiguration
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -75,7 +82,10 @@ class GroupMembershipE2E extends E2ETestBase {
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
     }
 
-    /** DLV-R03: the row lock serializes concurrent joins, so each commits its own revision. */
+    /**
+     * DLV-R03 and DLV-T07: the row lock serializes concurrent joins, so each commits and publishes
+     * its own revision, and Finance retains each joiner at the revision committed with the join.
+     */
     @Test
     void concurrentJoinsCommitDistinctConsecutiveRevisions() {
         runTest(fixture -> {
@@ -96,6 +106,16 @@ class GroupMembershipE2E extends E2ETestBase {
             }
             assertEquals(3, membershipRevision(fixture, group));
             assertEquals(List.of(3L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
+
+            GroupDeliveryFixture.awaitDelivered(fixture);
+            Map<UUID, Long> revisions = new HashMap<>();
+            for (FinancialActor actor : FinanceTestFixture.actors(fixture, group)) {
+                assertEquals(MembershipState.ACTIVE, actor.state(), actor::toString);
+                revisions.put(actor.userId(), actor.upstreamRevision());
+            }
+            assertEquals(Set.of(ALICE, BOB, carol), revisions.keySet());
+            assertEquals(1L, revisions.get(ALICE));
+            assertEquals(Set.of(2L, 3L), Set.of(revisions.get(BOB), revisions.get(carol)));
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 

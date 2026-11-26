@@ -1,8 +1,8 @@
 package de.hsh.favs.sharewise.shared.infra.messaging.internal;
 
+import static de.hsh.favs.sharewise.testsupport.execution.Eventually.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
@@ -15,7 +15,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
@@ -42,8 +41,8 @@ class EventPublicationRecoveryE2E extends E2ETestBase {
             UUID id = UUID.randomUUID();
             insertStuckPublication(fixture, id);
 
-            await("staleness + resubmission delivered the stuck publication", () -> projected(fixture, id));
-            await("publication deletion", () -> publications(fixture, id) == 0);
+            await("staleness + resubmission delivered the stuck publication", TIMEOUT, () -> projected(fixture, id));
+            await("publication deletion", TIMEOUT, () -> publications(fixture, id) == 0);
         }, ProductionEntityScanConfiguration.class, EventPublicationRegistryE2E.Fixtures.class, FastRecovery.class);
     }
 
@@ -103,22 +102,6 @@ class EventPublicationRecoveryE2E extends E2ETestBase {
         } catch (SQLException failure) {
             throw new AssertionError("Unable to count rows", failure);
         }
-    }
-
-    private static void await(String description, BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("Interrupted while waiting for " + description, interrupted);
-            }
-        }
-        fail("Timed out waiting for " + description);
     }
 
     /** Shortens the production recovery timings for this context only. */

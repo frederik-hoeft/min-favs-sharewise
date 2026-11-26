@@ -1,13 +1,12 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
+import static de.hsh.favs.sharewise.testsupport.execution.Eventually.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import de.hsh.favs.sharewise.identity.events.UserRegisteredV1;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
@@ -16,6 +15,7 @@ import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
+import de.hsh.favs.sharewise.testsupport.transactions.CommitFailures;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -27,16 +27,11 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionExecution;
-import org.springframework.transaction.TransactionExecutionListener;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
@@ -101,7 +96,7 @@ class UserRegisteredPublicationE2E extends E2ETestBase {
             assertEquals(1, publications(fixture).size());
 
             // Commit failure after publication: account and publication roll back together (TC-03).
-            IllegalStateException expected = failNextCommit(fixture);
+            IllegalStateException expected = CommitFailures.failNextCommit(fixture);
             IllegalStateException actual = assertThrows(IllegalStateException.class,
                     () -> register(fixture, "third@example.org"));
             assertSame(expected, actual);
@@ -126,29 +121,6 @@ class UserRegisteredPublicationE2E extends E2ETestBase {
             return ok.value();
         }
         throw new AssertionError("Expected successful registration but was " + result);
-    }
-
-    /** Arms a one-shot failure just before the next physical commit of the production manager. */
-    private static IllegalStateException failNextCommit(IntegrationTestContext fixture) {
-        JpaTransactionManager manager = assertInstanceOf(JpaTransactionManager.class,
-                fixture.context().getBean(PlatformTransactionManager.class));
-        IllegalStateException failure = new IllegalStateException("Simulated failure before physical commit");
-        List<TransactionExecutionListener> listeners = new ArrayList<>(manager.getTransactionExecutionListeners());
-        // Fires only on the arming thread, so background registry transactions cannot consume it.
-        Thread armingThread = Thread.currentThread();
-        listeners.add(new TransactionExecutionListener() {
-            private volatile boolean armed = true;
-
-            @Override
-            public void beforeCommit(TransactionExecution transaction) {
-                if (armed && transaction.isNewTransaction() && Thread.currentThread() == armingThread) {
-                    armed = false;
-                    throw failure;
-                }
-            }
-        });
-        manager.setTransactionExecutionListeners(listeners);
-        return failure;
     }
 
     private static List<StoredPublication> publications(IntegrationTestContext fixture) {
@@ -180,22 +152,6 @@ class UserRegisteredPublicationE2E extends E2ETestBase {
         } catch (SQLException failure) {
             throw new AssertionError("Unable to count rows", failure);
         }
-    }
-
-    private static void await(String description, BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("Interrupted while waiting for " + description, interrupted);
-            }
-        }
-        fail("Timed out waiting for " + description);
     }
 
     record StoredPublication(String listenerId, String payload) { }

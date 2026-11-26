@@ -1,9 +1,9 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
+import static de.hsh.favs.sharewise.testsupport.execution.Eventually.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import de.hsh.favs.sharewise.groups.internal.application.projection.IamUserProjectionService;
 import de.hsh.favs.sharewise.identity.events.UserRegisteredV1;
@@ -12,6 +12,7 @@ import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
+import de.hsh.favs.sharewise.testsupport.messaging.EventPublications;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,7 +29,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.events.FailedEventPublications;
@@ -176,9 +176,8 @@ class IamUserProjectionE2E extends E2ETestBase {
         return count(fixture, "select count(*) from groups.users where id = ?", userId) == 1;
     }
 
-    private static int groupPublications(IntegrationTestContext fixture) {
-        return count(fixture, "select count(*) from messaging.event_publication where listener_id = ?",
-            GROUP_LISTENER_ID);
+    private static int groupPublications(IntegrationTestContext fixture) throws SQLException {
+        return EventPublications.count(fixture, GROUP_LISTENER_ID);
     }
 
     private static int waitingLocks(IntegrationTestContext fixture) {
@@ -192,10 +191,8 @@ class IamUserProjectionE2E extends E2ETestBase {
         }
     }
 
-    private static int failedGroupPublications(IntegrationTestContext fixture) {
-        return count(fixture,
-            "select count(*) from messaging.event_publication where listener_id = ? and status = 'FAILED'",
-            GROUP_LISTENER_ID);
+    private static int failedGroupPublications(IntegrationTestContext fixture) throws SQLException {
+        return EventPublications.count(fixture, GROUP_LISTENER_ID, "FAILED");
     }
 
     private static int count(IntegrationTestContext fixture, String sql, Object parameter) {
@@ -231,19 +228,4 @@ class IamUserProjectionE2E extends E2ETestBase {
         }
     }
 
-    private static void await(String description, BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("Interrupted while waiting for " + description, interrupted);
-            }
-        }
-        fail("Timed out waiting for " + description);
-    }
 }

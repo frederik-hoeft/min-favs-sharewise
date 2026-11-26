@@ -99,11 +99,12 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
-    void financePublishesNoApiAndDependsOnlyOnJooqResultAndTransactions() {
+    void financePublishesNoApiAndConsumesOnlyGroupEventsAndItsSharedContracts() {
         ApplicationModule finance = modules.getModuleByName("finance")
                 .orElseThrow(() -> new AssertionError("module 'finance' must exist"));
-        assertEquals(List.of("shared::jooq", "shared::result", "shared::transactions"),
-                ApplicationModuleInformation.of(finance.getBasePackage()).getDeclaredDependencies());
+        assertEquals(List.of("groups::events", "shared::di", "shared::jooq", "shared::result", "shared::transactions"),
+                ApplicationModuleInformation.of(finance.getBasePackage()).getDeclaredDependencies(),
+                "finance may consume only Group integration events (P3.2b) and its declared shared contracts");
         assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules,
                 finance.getBasePackage().getName()));
     }
