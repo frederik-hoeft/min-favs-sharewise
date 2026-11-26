@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import de.hsh.favs.sharewise.identity.internal.IamCredentialVerifier;
@@ -28,8 +29,10 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
     public static final String VERIFIED_INGRESS_ATTRIBUTE = IamBearerIngressFilter.class.getName() + ".verified";
     private static final RequestMatcher HEALTH = PathPatternRequestMatcher.withDefaults().matcher("/api/system/v1/health");
     private final IamCredentialVerifier verifier;
+    private final HttpProblemWriter problems;
 
-    public IamBearerIngressFilter(IamCredentialVerifier verifier) {
+    public IamBearerIngressFilter(IamCredentialVerifier verifier, HttpProblemWriter problems) {
+        this.problems = java.util.Objects.requireNonNull(problems);
         this.verifier = verifier;
     }
 
@@ -65,10 +68,10 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
             }
         } catch (JwtCredentialException exception) {
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-            IamHttpProblemWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_credential", "Invalid Bearer Credential");
+            problems.write(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_credential", "Invalid Bearer Credential");
             return;
         } catch (IllegalStateException exception) {
-            IamHttpProblemWriter.write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+            problems.write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                 "security_unavailable", "Security Configuration Unavailable");
             return;
         }

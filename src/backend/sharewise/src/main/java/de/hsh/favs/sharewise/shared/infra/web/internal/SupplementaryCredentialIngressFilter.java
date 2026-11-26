@@ -2,6 +2,7 @@ package de.hsh.favs.sharewise.shared.infra.web.internal;
 
 import de.hsh.favs.sharewise.shared.infra.web.AttestationProblems;
 import de.hsh.favs.sharewise.shared.infra.web.AttestationTransport;
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
 
 import de.hsh.favs.sharewise.shared.infra.claims.SupplementaryCredentialInputs;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
@@ -28,10 +29,12 @@ final class SupplementaryCredentialIngressFilter extends OncePerRequestFilter {
     private static final String INPUT_ATTRIBUTE = SupplementaryCredentialIngressFilter.class.getName() + ".verified";
     private static final Pattern COMPACT_JWS = Pattern.compile("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+");
     private final SupplementaryCredentialRouter router;
+    private final HttpProblemWriter problems;
     private final Predicate<HttpServletRequest> hasVerifiedPrimary;
 
     SupplementaryCredentialIngressFilter(SupplementaryCredentialRouter router,
-            Predicate<HttpServletRequest> hasVerifiedPrimary) {
+            Predicate<HttpServletRequest> hasVerifiedPrimary, HttpProblemWriter problems) {
+        this.problems = Objects.requireNonNull(problems);
         this.router = Objects.requireNonNull(router);
         this.hasVerifiedPrimary = Objects.requireNonNull(hasVerifiedPrimary);
     }
@@ -43,11 +46,11 @@ final class SupplementaryCredentialIngressFilter extends OncePerRequestFilter {
         try {
             tokens = parse(request);
         } catch (JwtCredentialException rejected) {
-            AttestationProblems.writeInvalid(response, OptionalInt.empty());
+            problems.write(response, AttestationProblems.invalid(OptionalInt.empty()));
             return;
         }
         if (!tokens.isEmpty() && !hasVerifiedPrimary.test(request)) {
-            AttestationProblems.writeInvalid(response, tokens.size() == 1 ? OptionalInt.of(0) : OptionalInt.empty());
+            problems.write(response, AttestationProblems.invalid(tokens.size() == 1 ? OptionalInt.of(0) : OptionalInt.empty()));
             return;
         }
         List<VerifiedJwtCredentialCandidate> candidates = new ArrayList<>();
@@ -55,7 +58,7 @@ final class SupplementaryCredentialIngressFilter extends OncePerRequestFilter {
             try {
                 candidates.add(router.verify(tokens.get(i)));
             } catch (JwtCredentialException rejected) {
-                AttestationProblems.writeInvalid(response, OptionalInt.of(i));
+                problems.write(response, AttestationProblems.invalid(OptionalInt.of(i)));
                 return;
             }
         }

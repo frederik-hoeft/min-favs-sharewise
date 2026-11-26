@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
 import de.hsh.favs.sharewise.shared.infra.web.AttestationProblems;
 import de.hsh.favs.sharewise.shared.infra.web.AttestationTransport;
 import jakarta.servlet.FilterChain;
@@ -20,6 +21,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** Applies no-store and strict same-origin checks at the HTTP boundary before credential entry. */
 final class IamCredentialEntryFilter extends OncePerRequestFilter {
+
+    private final HttpProblemWriter problems;
+
+    IamCredentialEntryFilter(HttpProblemWriter problems) {
+        this.problems = java.util.Objects.requireNonNull(problems);
+    }
 
     static final String CSRF_PATH = "/api/iam/v1/auth/csrf";
     private static final RequestMatcher CSRF_BOOTSTRAP = PathPatternRequestMatcher.withDefaults().matcher(CSRF_PATH);
@@ -59,13 +66,13 @@ final class IamCredentialEntryFilter extends OncePerRequestFilter {
         // In particular bootstrap creates a cookie without dispatching an application operation.
         if ((CSRF_BOOTSTRAP.matches(request) || isAuthMutation(request))
                 && request.getHeader(AttestationTransport.HEADER) != null) {
-            AttestationProblems.writeInvalid(response, OptionalInt.empty());
+            problems.write(response, AttestationProblems.invalid(OptionalInt.empty()));
             return;
         }
         // A credential mutation must come from the exact effective request origin.
         // Forwarded headers must only be interpreted by a separately trusted proxy configuration.
         if (isAuthMutation(request) && !isSameOrigin(request)) {
-            IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
+            problems.write(response, HttpServletResponse.SC_FORBIDDEN,
                     "invalid_origin", "Origin Verification Failed");
             return;
         }

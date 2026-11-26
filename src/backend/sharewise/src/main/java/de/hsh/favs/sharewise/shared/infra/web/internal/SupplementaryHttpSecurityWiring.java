@@ -5,6 +5,7 @@ import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRouter
 import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialVerifier;
 import de.hsh.favs.sharewise.shared.infra.web.SupplementaryApiSecurityContribution;
 import java.util.List;
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -15,9 +16,10 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 @Import({SupplementaryCredentialConfiguration.class, HttpSupplementaryInputContributor.class})
 public class SupplementaryHttpSecurityWiring {
     @Bean
-    SupplementaryApiSecurityContribution supplementaryApiSecurityContribution(List<SupplementaryCredentialVerifier> verifiers) {
-        var router = new SupplementaryCredentialRouter(verifiers);
-        return (api, primary) -> api.addFilterBefore(new SupplementaryCredentialIngressFilter(router, primary),
+    SupplementaryApiSecurityContribution supplementaryApiSecurityContribution(List<SupplementaryCredentialVerifier> verifiers,
+            HttpProblemWriter problems) {
+        SupplementaryCredentialRouter router = new SupplementaryCredentialRouter(verifiers);
+        return (api, primary) -> api.addFilterBefore(new SupplementaryCredentialIngressFilter(router, primary, problems),
             AuthorizationFilter.class);
     }
 }

@@ -204,7 +204,8 @@ class PhaseDIamIngressTests {
         assertThrows(IllegalStateException.class, verifierWithOversizedProfile::requireCodec);
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new IdentityController(httpIngress))
-            .addFilters(new IamBearerIngressFilter(verifierWithoutProvider)).build();
+            .addFilters(new IamBearerIngressFilter(verifierWithoutProvider,
+                new de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter(tools.jackson.databind.json.JsonMapper.builder().build()))).build();
         mvc.perform(get("/api/test/protected"))
             .andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.code").value("security_unavailable"));
@@ -467,6 +468,10 @@ class PhaseDIamIngressTests {
         ApiHttpSecurityConfiguration.class, IamHttpSecurityConfiguration.class, HttpIamInputContributor.class, IamIdentityExceptionHandler.class,
         DefaultIdentityContext.class, TestAccessTokenConfiguration.class})
     static class Fixture {
+        @Bean
+        de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter httpProblemWriter() {
+            return new de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter(tools.jackson.databind.json.JsonMapper.builder().build());
+        }
         // This legacy ingress test builds standalone MockMvc controllers outside the
         // Spring mapping registry; global MVC endpoint admission is exercised in
         // FullApplicationIamIngressTests instead.

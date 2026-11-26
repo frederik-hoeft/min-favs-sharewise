@@ -1,8 +1,5 @@
 package de.hsh.favs.sharewise.shared.infra.web;
 
-import jakarta.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
@@ -36,20 +33,6 @@ public final class AttestationProblems {
     private static ResponseEntity<ProblemDetail> response(ProblemDetail problem) {
         return ResponseEntity.status(problem.getStatus()).header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
             .header(HttpHeaders.CACHE_CONTROL, "no-store").contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem);
-    }
-
-    /** Writes the same fixed problem before MVC is reached. */
-    public static void writeInvalid(HttpServletResponse response, OptionalInt index) throws IOException {
-        validateIndex(index);
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.setContentType("application/problem+json");
-        // Static trusted strings and a bounded numeric index only; never interpolate token material.
-        response.getWriter().write("{\"type\":\"about:blank\",\"status\":401,\"title\":\"" + INVALID_TITLE
-            + "\",\"code\":\"" + INVALID_CODE + "\",\"detail\":\"" + INVALID_DETAIL + "\""
-            + (index.isPresent() ? ",\"authorization\":{\"rejectedIndex\":" + index.getAsInt() + "}" : "") + "}");
     }
 
     private static void validateIndex(OptionalInt index) {
