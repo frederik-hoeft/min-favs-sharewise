@@ -1,7 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.LOCK_WAIT_TIMEOUT;
-import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.awaitLockWaiters;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.lockGroup;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.ALICE;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.BOB;
@@ -12,6 +11,7 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.query;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.workspace;
 import static de.hsh.favs.sharewise.testsupport.identity.IdentityTestFixture.withUser;
+import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.awaitLockWaiters;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,12 +24,12 @@ import de.hsh.favs.sharewise.groups.internal.application.invitation.GroupInvitat
 import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemption;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
-import de.hsh.favs.sharewise.groups.internal.persistence.GroupConcurrencyFixture.BoundedStatements;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.identity.IdentityTestConfiguration;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
+import de.hsh.favs.sharewise.testsupport.postgres.BoundedStatementsConfiguration;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -92,7 +92,7 @@ class GroupInvitationE2E extends E2ETestBase {
             assertEquals(List.of(1), query(fixture, "SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
             assertEquals(List.of(2L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
             assertEquals(List.of(0L), query(fixture, "SELECT version FROM groups.groups", row -> row.getLong(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -129,7 +129,7 @@ class GroupInvitationE2E extends E2ETestBase {
             }
             assertEquals(List.of(2L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
             assertEquals(List.of(0, 0, 1), query(fixture, "SELECT use_count FROM groups.invitations ORDER BY use_count", row -> row.getInt(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -151,7 +151,7 @@ class GroupInvitationE2E extends E2ETestBase {
                 assertEquals(Result.err(new GroupFailure.InvitationUnavailable()), redemption.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS));
             }
             assertEquals(List.of(1L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
@@ -194,7 +194,7 @@ class GroupInvitationE2E extends E2ETestBase {
             }
             assertEquals(List.of(0), query(fixture, "SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
             assertEquals(List.of(1L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
-        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatements.class);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
     }
 
     @Test
