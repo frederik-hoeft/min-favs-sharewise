@@ -41,8 +41,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * P2.4a Phase B: {@link RegistrationService} records {@link UserRegisteredV1} in the registration
- * transaction (EV-01, EV-02, EV-07). A test-only listener stands in for the Group consumer
- * (Phase C) and holds delivery so committed publications can be inspected.
+ * transaction (EV-01, EV-02, EV-07). A test-only listener holds delivery so committed
+ * publications can be inspected; the real Group consumer is covered by IamUserProjectionE2E.
  */
 @Tag("e2e")
 class UserRegisteredPublicationE2E extends E2ETestBase {
@@ -62,7 +62,7 @@ class UserRegisteredPublicationE2E extends E2ETestBase {
             AuthenticationResult registered = success(register(fixture, EMAIL));
 
             List<StoredPublication> stored = publications(fixture);
-            assertEquals(1, stored.size(), "exactly one publication for the one listener");
+            assertEquals(1, stored.size(), "exactly one publication for the probe listener");
             StoredPublication publication = stored.getFirst();
             assertEquals(LISTENER_ID, publication.listenerId());
             assertTrue(publication.payload().contains(registered.userId().toString()));
@@ -134,12 +134,14 @@ class UserRegisteredPublicationE2E extends E2ETestBase {
                 fixture.context().getBean(PlatformTransactionManager.class));
         IllegalStateException failure = new IllegalStateException("Simulated failure before physical commit");
         List<TransactionExecutionListener> listeners = new ArrayList<>(manager.getTransactionExecutionListeners());
+        // Fires only on the arming thread, so background registry transactions cannot consume it.
+        Thread armingThread = Thread.currentThread();
         listeners.add(new TransactionExecutionListener() {
-            private boolean armed = true;
+            private volatile boolean armed = true;
 
             @Override
             public void beforeCommit(TransactionExecution transaction) {
-                if (armed && transaction.isNewTransaction()) {
+                if (armed && transaction.isNewTransaction() && Thread.currentThread() == armingThread) {
                     armed = false;
                     throw failure;
                 }
@@ -152,8 +154,11 @@ class UserRegisteredPublicationE2E extends E2ETestBase {
     private static List<StoredPublication> publications(IntegrationTestContext fixture) {
         try (Connection connection = fixture.connectAsApplication();
              PreparedStatement statement = connection.prepareStatement(
-                     "select listener_id, serialized_event from messaging.event_publication where event_type = ?")) {
+                     "select listener_id, serialized_event from messaging.event_publication"
+                     + " where event_type = ? and listener_id = ?")) {
+            // The real Group consumer also receives each registration; observe only the probe's row.
             statement.setString(1, UserRegisteredV1.class.getName());
+            statement.setString(2, LISTENER_ID);
             List<StoredPublication> found = new ArrayList<>();
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
