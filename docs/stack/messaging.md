@@ -1,6 +1,6 @@
 # Cross-context messaging architecture
 
-**Status:** Preliminary architecture decision, subject to review and refinement during integration. This describes the intended event-messaging system, not an implemented feature of the starter. The [application architecture](../architecture.md) defines module and transaction boundaries; the [domain model](../data-model-design.md) defines the consistency and authorization contracts; the [persistence architecture](../architecture/persistence.md) defines schema ownership and database validation.
+**Status:** Architecture decision, implemented for the first integration (P2.4a: IAM `UserRegisteredV1` → Group `groups.users` projection). Broker externalization and inbox conventions remain intended design. The [implemented configuration](#implemented-configuration) lists the chosen settings. The [application architecture](../architecture.md) defines module and transaction boundaries; the [domain model](../data-model-design.md) defines the consistency and authorization contracts; the [persistence architecture](../architecture/persistence.md) defines schema ownership and database validation.
 
 **Contents:**
 
@@ -12,6 +12,7 @@
 - [Event publication and delivery](#event-publication-and-delivery)
 - [Consumption and idempotency](#consumption-and-idempotency)
 - [Recovery and retention](#recovery-and-retention)
+  - [Implemented configuration](#implemented-configuration)
 - [Service extraction](#service-extraction)
 - [Verification and design refinement](#verification-and-design-refinement)
 
@@ -95,6 +96,24 @@ Monitoring covers outstanding and failed publication age, repeated attempts, lis
 
 During a coordinated modulith deployment, a Finance projection introduced after Group Management data exists can be initialized by a one-time Flyway data migration from authoritative membership tables while application writes are suspended. This controlled deployment migration is separate from runtime cross-context database access. Because Finance has no pre-existing financial history at first introduction, current membership is sufficient for its initial `FinancialActor` population. After startup, versioned membership events maintain the projection. If independently deployed services or concurrent writes later require online initialization, an authoritative snapshot and a gap-free event/reconciliation protocol become part of that migration. Access to serialized event payloads is restricted and their retention bounded.
 
+### Implemented configuration
+
+P2.4a installed the Spring Modulith 2.2 JDBC Event Publication Registry with the Jackson serializer. The settings live in the backend `application.properties`:
+
+| Concern | Setting |
+| --- | --- |
+| Storage | Flyway migration `platform/V202611251400__platform_event_publication_registry.sql` creates schema `messaging` and the framework's PostgreSQL `event_publication` table; `spring.modulith.events.jdbc.schema=messaging`, framework schema initialization disabled. |
+| Completion | `completion-mode=delete`: a completed publication row is removed. `completion=in-interceptor` is pinned; for our non-`@Transactional` listeners completion happens after the consumer operation, including its commit, returns. |
+| Executor | Boot's application task executor, bounded (`core = max = 4`, queue 1000, graceful shutdown), thread prefix `sharewise-async-`; `@EnableAsync` in shared infrastructure. |
+| Restart | `republish-outstanding-events-on-restart=true`. This assumes a **single backend instance**; multiple instances would deliver the same outstanding publications concurrently. |
+| Staleness | Check every minute; publications stuck in `PUBLISHED`, `PROCESSING` or `RESUBMITTED` for 10 minutes become `FAILED`. `@EnableScheduling` is enabled once in shared infrastructure. |
+| Resubmission | `FailedPublicationResubmitter` (`sharewise.events.resubmission.*`) resubmits `FAILED` publications every minute with exponential backoff from 1 to 30 minutes, at most 50 per run and 4 in flight. |
+| Abandonment | Never automatic: `abandon-after-attempts=-1`, no `AbandonPolicy` bean. Do not call `applyAbandonPolicy()`; in `DELETE` mode abandoned publications would be deleted. |
+
+The first published event is `de.hsh.favs.sharewise.identity.events.UserRegisteredV1(eventId, userId, occurredAt)`, exposed through IAM's `identity::events` named interface. Group's listener `groups.iam-user-projection.v1` dispatches `IamUserProjectionService` without identity inputs and provisions `groups.users` idempotently (`INSERT … ON CONFLICT DO NOTHING`), so no Group inbox is needed. Accounts that existed before the listener are copied once by the Flyway data migration `platform/V202611251410__platform_bootstrap_group_users_from_identity.sql`, applied with the application stopped.
+
+**Renamed or removed listeners and event types.** The registry stores the listener ID and the event's fully qualified class name. Before renaming or removing a listener ID or moving `UserRegisteredV1`, drain outstanding publications (no rows for the old listener or type in `messaging.event_publication`). Rows for a listener that no longer exists are never completed; after confirming that the effect is not needed or was applied otherwise, an operator deletes them explicitly as the migration role and records the decision.
+
 ## Service extraction
 
 The producer's event contract and the consumer's application operation remain stable when a bounded context is extracted. Spring Modulith can externalize selected events to a broker such as RabbitMQ/AMQP or Kafka. An externalization adapter supplies routing, serialization and transport-specific acknowledgments; a consumer transport adapter invokes the same idempotent application operation in the extracted service. This preserves business semantics, **not** the illusion that an in-process callback and distributed delivery have identical ordering, latency or failure behavior.
@@ -132,4 +151,4 @@ Unit tests for publishers and consumers use mocked or in-memory event ports. Pos
 
 Once broker externalization is installed, test an unreachable broker, process crashes after the local commit, lost or uncertain publisher confirmations, recovery after restart and duplicate broker acceptance. A test must prove that a committed business change retains recoverable publication intent throughout an outage; simulated transports alone are not evidence of broker durability.
 
-The event registry, inbox table conventions, recovery scheduling, retention horizons and transport configuration require implementation validation before they become operational guarantees. Spring Modulith is installed only for module structure verification; the backend does not yet include its event publication registry, Flyway-managed publication storage, consumer inboxes or a message broker. The [alternative technologies and tradeoffs](messaging-alternatives.md) are documented separately; detailed setup and runtime commands belong in developer documentation once implemented. See [Spring Modulith's event reference](https://docs.spring.io/spring-modulith/reference/events.html) for the framework's publication, recovery and externalization facilities.
+The event registry, its Flyway-managed storage and recovery scheduling are implemented and verified by `EventPublicationRegistryE2E`, `EventPublicationRecoveryE2E`, `UserRegisteredPublicationE2E` and `IamUserProjectionE2E` against PostgreSQL. Inbox table conventions, retention horizons and transport configuration still require implementation validation before they become operational guarantees; the backend does not yet include consumer inboxes or a message broker. The [alternative technologies and tradeoffs](messaging-alternatives.md) are documented separately; detailed setup and runtime commands belong in developer documentation once implemented. See [Spring Modulith's event reference](https://docs.spring.io/spring-modulith/reference/events.html) for the framework's publication, recovery and externalization facilities.

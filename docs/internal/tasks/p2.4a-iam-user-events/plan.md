@@ -65,7 +65,7 @@ flowchart LR
 - [x] Add the listener `@Async @TransactionalEventListener(id = "groups.iam-user-projection.v1")` that dispatches `IamUserProjectionService` without identity inputs. Remove the Phase B test-only listener.
 - [x] Unit tests for the operation (fake registry) and the module-boundary verification (TC-10).
 - [x] E2E: TC-01 (register → projected → publication deleted), TC-04 (sequential and concurrent duplicate delivery), TC-05 (first attempt fails, resubmission succeeds), TC-06 (commit failure keeps the publication), TC-11 (immediate group creation is `201` or `403 group_user_unknown`, then succeeds).
-- [ ] Replace P2.2a's manual `groups.users` provisioning note (S3) with automatic provisioning in the developer docs.
+- [x] Replace P2.2a's manual `groups.users` provisioning note (S3) with automatic provisioning in the developer docs.
 
 **Phase C notes:** Applied after P2.2a–c landed on `main` (via P2.2bc); the registry and bootstrap migrations were renumbered after the latest `main` migrations (`V202611251400`, `V202611251410`), and `GroupMigrationE2E` now asserts that the bootstrap projects the pre-existing account instead of inserting it manually. The listener dispatches through an event-side `ContributingOperationDispatcher` (Q3). `IamUserProjectionE2E` covers TC-01 (registration → `groups.users` → publication completed), TC-04 (sequential and concurrent duplicates), TC-05 with a real database failure (revoked `INSERT` on `groups.users`, then resubmission) and TC-09 (bootstrap statement on a seeded account, executed twice). TC-06 is proven generically by `EventPublicationRegistryE2E`; TC-07 (restart) and TC-11 (immediate group creation) are part of manual acceptance TC-12. The Phase B probe E2E now filters on its own listener ID because the real consumer also receives each registration.
 
@@ -82,7 +82,7 @@ flowchart LR
 - [x] E2E: a publication stuck in `PUBLISHED` becomes `FAILED` through the staleness monitor and is then delivered by the resubmitter.
 - [x] Add the Flyway data migration copying existing `identity.users.id` into `groups.users` with `ON CONFLICT DO NOTHING`, versioned after the registry and both feature migrations; document the stop → migrate → start precondition (D10).
 - [x] E2E: TC-09 (bootstrap statement on a seeded pre-existing account, executed twice; in `IamUserProjectionE2E`). TC-07 (restart republication) moves to manual acceptance TC-12, because the E2E harness cannot restart a context on the same database.
-- [ ] Document the operator procedure for renamed or removed listeners (specification failure table).
+- [x] Document the operator procedure for renamed or removed listeners (specification failure table).
 
 **Phase D notes:** The recovery part (everything except the bootstrap migration, TC-07 and TC-09) is independent of P2.2a and implemented ahead of Phase C: `EventPublicationRecoveryConfiguration` (`@EnableScheduling`, settings), `FailedPublicationResubmitter` (exponential backoff on `lastResubmissionDate`/`completionAttempts`, `withMaxInFlight`, no-op without a registry), unit tests for the backoff, and `EventPublicationRecoveryE2E` (stuck `PUBLISHED` row → staleness → resubmission → delivered; no `AbandonPolicy`). TC-07 and the bootstrap follow with Phase C because they need the real consumer.
 
@@ -90,9 +90,11 @@ flowchart LR
 
 ## Phase E - Documentation, offline handoff and backlog
 
-- [ ] Reconcile steady-state documentation: [messaging architecture](../../../stack/messaging.md) (implemented for the first integration; chosen completion, recovery and retention settings), [persistence architecture](../../../architecture/persistence.md) (`messaging` schema and grants), [Phase 2 foundation](../../integration/phase-2-foundation.md), [backend testing guide](../../../development/tests.md) and [development guide](../../../development.md) (inspecting `messaging.event_publication`, manual resubmission).
+- [x] Reconcile steady-state documentation: [messaging architecture](../../../stack/messaging.md) (implemented for the first integration; chosen completion, recovery and retention settings), [persistence architecture](../../../architecture/persistence.md) (`messaging` schema and grants), [Phase 2 foundation](../../integration/phase-2-foundation.md), [backend testing guide](../../../development/tests.md) and [development guide](../../../development.md) (inspecting `messaging.event_publication`, manual resubmission).
 - [ ] Refresh and verify the offline dependency handoff after the POM change (`scripts/test-offline-handoff.sh`).
-- [ ] Backlog: mark P2.4a (and P2.2d's consumer part, if Q1 is accepted) complete; record that P2.4b/P2.4c move to Phase 3 with P3.2 (Q5).
+- [x] Backlog: mark P2.4a (and P2.2d's consumer part, if Q1 is accepted) complete; record that P2.4b/P2.4c move to Phase 3 with P3.2 (Q5).
+
+**Phase E notes:** The operator procedure for renamed or removed listeners and the implemented settings are in the [messaging architecture](../../../stack/messaging.md#implemented-configuration); inspection and immediate retry are in the [development guide](../../../development.md#inspect-and-resubmit-event-publications). The developer guide no longer asks for manual `groups.users` inserts. The offline handoff is an external artifact, not a repository file: the POM change invalidates existing handoffs, so the next handoff must be repacked with `scripts/create-offline-handoff.sh pack` and checked with `scripts/test-offline-handoff.sh` (still open).
 
 **Gate E:** Docs reviewed; offline handoff test passes.
 
