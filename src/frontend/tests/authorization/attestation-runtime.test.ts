@@ -112,6 +112,28 @@ describe('generic attestation handler and independent caches', () => {
         expect(f.issuanceCount).toBe(2);
     });
 
+    it('checks CC expiry on a cold method affinity before attempting fresh issuance', async () => {
+        let clientOffset: number = 0;
+        const f: Fixture = new Fixture({ now: (): number => NOW + clientOffset });
+        const target: string = '/finance/v1/groups/X/expenses';
+        expect(await f.get(target)).toBe(3);
+        // The authority no longer issues membership evidence, but previously
+        // issued JWTs are still valid according to its independent clock.
+        f.issueOverride = (): Response => {
+            clientOffset = 0;
+            return problemResponse(404, 'group_not_found');
+        };
+        expect(await f.get(target)).toBe(1);
+        clientOffset = 121_000;
+        const before: number = f.traces.length;
+        await expect(f.api.post(target, {})).rejects.toMatchObject({ status: 404, code: 'group_not_found' });
+        expect(f.traces.slice(before).map((trace: Trace): string => trace.target)).toEqual([
+            `/api${target}`, '/api/groups/v1/domain-principal/attestations',
+        ]);
+        expect(f.issuanceCount).toBe(2);
+        expect(f.effects).toBe(0);
+    });
+
     it('projects selected query values, not timestamps, and never derives a scope from the path', async () => {
         const f = new Fixture();
         f.needs = ({ target }) => [need(target.searchParams.get('target')!, query)];

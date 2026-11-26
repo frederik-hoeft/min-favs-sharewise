@@ -15,7 +15,7 @@ class Fixture {
     readonly credentials = { email: `authorization-${randomUUID()}@example.invalid`, password: randomUUID() + randomUUID() };
     readonly runtime: IdentityRuntime;
     readonly api: ApiClient;
-    offset = 0;
+    private offset: number = 0;
     x!: string;
     y!: string;
     constructor(options: { credentialCapacity?: number; requirementBucketCapacity?: number } = {}) {
@@ -38,6 +38,24 @@ class Fixture {
         const trace = this.traces.slice(from);
         expect(trace.map(item => item.status)).toEqual(statuses);
         return trace;
+    }
+    /** Advance only the client clock until a real issuance response is received. */
+    async withExpiredAttestations<T>(action: () => Promise<T>): Promise<T> {
+        const previousOffset: number = this.offset;
+        const previousAfterResponse: DeployedHttpsTransport['afterResponse'] = this.transport.afterResponse;
+        this.offset += 121_000;
+        this.transport.afterResponse = async (trace: Trace): Promise<void> => {
+            // A challenge alone does not imply CC was consulted (e.g. cold RC).
+            // Keep the old credential expired until acquisition reaches the authority,
+            // but restore the clock before validating a freshly issued credential.
+            if (trace.target === ISSUANCE) this.offset = previousOffset;
+            await previousAfterResponse?.(trace);
+        };
+        try { return await action(); }
+        finally {
+            this.offset = previousOffset;
+            this.transport.afterResponse = previousAfterResponse;
+        }
     }
     async count(): Promise<number> { return (await this.api.get<{ effects: number }>(`${ROOT}/effects`)).effects; }
     path(group = this.x): string { return `${ROOT}/path/${group}`; }
@@ -80,12 +98,7 @@ describe('deployed distributed authorization (real HTTPS, real IAM/Group authori
         const before = await f.count();
         await f.step(() => f.mutate(), [401, 200]);
         expect(await f.count()).toBe(before + 1);
-        // Advance only the advisory client clock to omit the cached JWT; reset
-        // on the actual 401 so the next real issuer response remains usable.
-        f.offset = 121_000;
-        f.transport.afterResponse = async trace => { if (trace.code === 'attestation_required') f.offset = 0; };
-        const renewed = await f.step(() => f.read(), [401, 200, 200]);
-        f.transport.afterResponse = undefined;
+        const renewed: Trace[] = await f.withExpiredAttestations(() => f.step(() => f.read(), [401, 200, 200]));
         expect(renewed[0].credentials).toHaveLength(0);
         expect(renewed[2].credentials).not.toEqual(token);
         expect((await f.step(() => f.api.get(`${ROOT}/other/${f.x}`), [200]))[0].credentials).toEqual(renewed[2].credentials);
@@ -232,12 +245,14 @@ describe('deployed distributed authorization (real HTTPS, real IAM/Group authori
         // The asynchronous consumer may accept the previously issued evidence
         // until its expiry. The authority must reject a new issuance now.
         await guest.step(() => guest.read(owner.x), [200]);
-        guest.offset = 121_000;
-        guest.transport.afterResponse = async trace => { if (trace.code === 'attestation_required') guest.offset = 0; };
-        const before = await guest.count();
-        await guest.step(async () => {
+        const before: number = await guest.count();
+        const denied: Trace[] = await guest.withExpiredAttestations(() => guest.step(async () => {
             await expect(guest.mutate(owner.x)).rejects.toMatchObject({ status: 404, code: 'group_not_found' });
-        }, [401, 404]);
+        }, [401, 404]));
+        expect(denied[0].credentials).toHaveLength(0);
+        expect(denied[1].target).toBe(ISSUANCE);
+        expect(denied[1].acquisition).toEqual({ authority: 'groups', kind: 'membership', scope: owner.x });
+        expect(denied[1].credentials).toHaveLength(0);
         expect(await guest.count()).toBe(before);
     });
 
