@@ -104,13 +104,13 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 
 ## Phase F - Aggregate implementation acceptance
 
-- [ ] Agent self-review of the complete branch against the specification and the [review checklist](../../../../.agents/skills/engineering-quality/references/review-checklist.md); record findings and resolutions below.
+- [x] Agent self-review of the complete branch against the specification and the [review checklist](../../../../.agents/skills/engineering-quality/references/review-checklist.md); record findings and resolutions below.
 - [ ] Human runs `cd deploy && ./scripts/test-compose.sh` on the integrated revision and records the result.
 - [ ] Human performs manual acceptance DLV-T18 on the local Compose stack, including the stop → migrate → start upgrade of a database with pre-existing groups, and records the tested revision and observations below.
 - [ ] CI pipeline green for the pushed revision, including `verify-backend-jooq-codegen`.
 - [ ] Accepted findings are fixed in focused follow-up commits with affected checks rerun.
 
-**Gate F:** Human accepts the implementation behavior before documentation is reconciled.
+**Gate F:** Human accepts the implementation behavior before documentation is reconciled. The maintainer authorized Phase G to start before the human Gate F items complete (2026-11-26); behavior changes from those items require Phase G to be revisited.
 
 ## Phase G - Steady-state documentation
 
@@ -143,6 +143,10 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 | D | Self-review: expected actor lists were sorted with `UUID.compareTo`, which orders signed longs, unlike PostgreSQL's `uuid` order. | Expected actors are listed in the database's order, with fixed user IDs chosen accordingly, as in Phase C. |
 | E | `IntegrationTestContext` migrates to the latest version before a test can seed data, so one test cannot both stop Flyway before the backfill and join a member through a live context. | DLV-T17 is split. `GroupMigrationE2E` migrates in stages over seeded groups and re-executes the script. `GroupFinanceDeliveryE2E` seeds a group by SQL, which publishes nothing, executes the script as the migrator and joins a member through the Group services, as P2.4a's IAM bootstrap test does. Script execution is shared in `MigrationScripts`, which the IAM test also uses. |
 | E | Migration-sequence tests checked: `GroupMigrationE2E` pins only the historical baseline, `GroupInvitationSchemaE2E` and `FinanceSchemaE2E` target historical versions, and `BaselineMigrationE2E` checks schema ownership and cross-schema foreign keys, which the backfill does not add. Upgrade tests that seed groups now also receive Finance rows, which none of them asserts against. | No expectation changes; all of them pass with the backfill. |
+| F | Branch self-review against the specification and the review checklist: every DLV requirement maps to a passing test (R01 T05 and the column migration test; R02/R05 T02, T05, T10; R03 T07; R04/R06/R13 T06; R07 T01, T08; R08 T14; R09 T03; R10 T09–T15; R11 T12, T16; R12 T07, T11; R14 T04; R15 T17; R16 T09). The only writes of `group_members` are creation, add, remove and role change; add and remove advance the revision, and no JPA entity maps Group or Finance tables. Removal publishes the user ID read from the locked target; joins publish only for `JOINED`, after the invitation is consumed. | No substantive defect found. |
+| F | `SpringGroupEventPublisher` sets `occurredAt` from `Clock.systemUTC()`, not an injected application clock as Phase B describes. ShareWise has no shared clock bean; IAM's clock is module-private, and the messaging resubmitter uses the same system-clock pattern with a test constructor. | No change: `occurredAt` is metadata only and is never used for ordering. |
+| F | A same-revision contradiction is logged at `ERROR` with a stack trace by the async exception handler on every attempt, at most every 30 minutes after backoff. | Intended fail-closed visibility (specification risk "Contradiction loops"); Phase G documents the operator procedure. |
+| F | Prerequisites still open: P2.4a is not on the local `origin/main` ref, the branch has not been updated from `main`, and the baseline suites are not recorded. | Human gate items, alongside the deployment smoke, DLV-T18, CI and the full suites. |
 
 ## Verification commands and evidence
 
