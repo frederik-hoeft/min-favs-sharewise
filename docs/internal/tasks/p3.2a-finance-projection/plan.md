@@ -145,10 +145,10 @@ P3.2a registers no listener and adds no route, so the smoke only confirms that s
 | Unit suite (including Modulith verification) | Passed at `5c0d6cb`: 430 tests |
 | PostgreSQL Integration suite | Passed at `5c0d6cb`: 79 tests |
 | PostgreSQL E2E suite, including concurrency and reordering | Passed at `5c0d6cb`: 149 tests, plus 62 Finance and Group E2Es at 16 workers |
-| Disposable deployment smoke | Pending |
-| Independent MR review and resolutions | Review of `a26fa0b` complete; [resolutions](#independent-review-findings-and-resolutions) approved by the maintainer and committed as `5c0d6cb` |
-| Human final diff review and merge authorization | Pending |
+| Disposable deployment smoke | Passed: run by the maintainer with `cd deploy && ./scripts/test-compose.sh` |
+| Independent MR review and resolutions | Three reviews of PR #38 (`a26fa0b`, `3aaca28`, `ef53e80`) and the messaging acknowledgement finding are complete; their [resolutions](#independent-review-findings-and-resolutions) are committed through `5b2c886` and accepted by the maintainer |
+| Human final diff review and merge authorization | Accepted by the maintainer, who performs the merge into `main` |
 
 - [x] Perform an independent MR review of the integrated revision against the specification; resolve or explicitly justify findings, re-run affected suites and reconcile documentation when corrections change behavior. Suggested follow-up commit: `P3.2a: <specific review fix>`.
-- [ ] Record the tested revision, commands and results above, plus the human's deployment smoke result or an approved exception.
-- [ ] After all gates pass, mark P3.2a complete in the backlog and link its specification and plan there. Suggested final commit: `P3.2a: Record acceptance and complete Finance projection operations`. The human authorizes and performs the merge.
+- [x] Record the tested revision, commands and results above, plus the human's deployment smoke result or an approved exception.
+- [x] After all gates pass, mark P3.2a complete in the backlog and link its specification and plan there. Suggested final commit: `P3.2a: Record acceptance and complete Finance projection operations`. The human authorizes and performs the merge.
