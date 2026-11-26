@@ -10,7 +10,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
  * from token-supplied key locations. Verification checks the protected header and
  * cryptographic signature, but does not establish issuer, audience, principal,
  * lifetime or domain authorization. {@link JwtCredentialCodec} completes those
- * checks before exposing an authenticated credential.
+ * checks before exposing an independently verified candidate.
  */
 public interface JwtSignatureService {
     /**

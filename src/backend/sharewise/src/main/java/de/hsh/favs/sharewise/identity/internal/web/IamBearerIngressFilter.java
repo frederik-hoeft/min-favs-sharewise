@@ -1,7 +1,7 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import de.hsh.favs.sharewise.identity.internal.IamCredentialVerifier;
 import java.util.Optional;
 import jakarta.servlet.FilterChain;
@@ -40,7 +40,7 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
-        Optional<VerifiedJwtCredential> identity;
+        Optional<VerifiedJwtCredentialCandidate> identity;
         try {
             // Even anonymous operations require trusted IAM profile configuration.
             verifier.requireCodec();

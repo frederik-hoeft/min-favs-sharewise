@@ -18,7 +18,6 @@ import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
 import de.hsh.favs.sharewise.shared.infra.claims.Claim;
 import de.hsh.favs.sharewise.shared.infra.claims.ClaimOrigin;
 import java.util.List;
-import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import de.hsh.favs.sharewise.shared.infra.claims.internal.AuthorizationConfiguration;
@@ -37,7 +36,7 @@ import org.springframework.security.web.FilterChainProxy;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
 import de.hsh.favs.sharewise.testsupport.configuration.OperationScopeTestComponents;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
@@ -134,8 +133,8 @@ class PhaseDIamIngressTests {
 
     @Test
     void semanticIdentityRejectsAmbiguousPrimaryOrCorruptSessionWithoutSelectingTheFirst() {
-        AuthorizationCredential first = codec.verifyPrimary(token(ALICE, ALICE_SESSION.toString())).credential();
-        AuthorizationCredential second = codec.verifyPrimary(token(BOB, BOB_SESSION.toString())).credential();
+        AuthorizationCredential first = codec.verifyPrimary(token(ALICE, ALICE_SESSION.toString())).evidence();
+        AuthorizationCredential second = codec.verifyPrimary(token(BOB, BOB_SESSION.toString())).evidence();
         assertThrows(IllegalStateException.class,
             () -> new DefaultIdentityContext(evidence(List.of(first, second)), verifier));
         assertThrows(IllegalStateException.class,
@@ -146,17 +145,35 @@ class PhaseDIamIngressTests {
             first.claims().stream().filter(claim -> !"sid".equals(claim.type())).toList());
         assertThrows(IllegalStateException.class,
             () -> new DefaultIdentityContext(evidence(List.of(missingSession)), verifier));
-        // A cryptographically verified JWT with an opaque/noncanonical sid is not a valid IAM identity.
-        BeanCreationException rejected = assertThrows(BeanCreationException.class,
+        // IAM rejects a noncanonical session at ingress, before any operation effects.
+        assertThrows(JwtCredentialException.class,
             () -> bearer(token(ALICE, "session-a")).dispatch(IdentityContext.class,
                 IdentityContext::requireSessionId));
-        assertEquals("Invalid primary IAM session evidence", rejected.getMostSpecificCause().getMessage());
+        VerifiedJwtCredentialCandidate invalid = codec.verifyPrimary(token(ALICE, "session-a"));
+        assertThrows(JwtCredentialException.class, () -> dispatcher.dispatch(
+            inputs -> inputs.add(VerifiedJwtCredentialCandidate.class, invalid),
+            IdentityContext.class, IdentityContext::requireSessionId));
         ClaimOrigin differentProfile = new ClaimOrigin(origin.issuer(), "group-attestation", origin.audiences(),
             origin.subject(), origin.credentialId(), origin.issuedAt(), origin.notBefore(), origin.expiresAt());
         AuthorizationCredential subordinateOnly = new AuthorizationCredential(differentProfile,
             List.of(new Claim("member", "true", differentProfile)));
         assertThrows(IllegalStateException.class,
             () -> new DefaultIdentityContext(evidence(List.of(subordinateOnly)), verifier));
+    }
+
+    @Test
+    void nonHttpPrimaryInputMustMatchTheConfiguredIamProfile() {
+        JwtCredentialProfile alternative = new JwtCredentialProfile("other-purpose", PROFILE.issuer(),
+            "sw-other+jwt", PROFILE.audiences(), JwtCredentialProfile.Kind.PRIMARY, Set.of(),
+            PROFILE.maximumLifetime(), PROFILE.clockSkew(), PROFILE.maximumTokenLength());
+        JwtCredentialCodec other = TestAccessTokens.codec(alternative, CLOCK);
+        VerifiedJwtCredentialCandidate candidate = other.verifyPrimary(other.sign(
+            new de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest(ALICE, ALICE_SESSION.toString(),
+                "other", CLOCK.instant(), CLOCK.instant(), CLOCK.instant().plusSeconds(60),
+                Optional.empty(), Map.of())));
+        assertThrows(JwtCredentialException.class, () -> dispatcher.dispatch(
+            inputs -> inputs.add(VerifiedJwtCredentialCandidate.class, candidate),
+            IdentityContext.class, IdentityContext::requireUserId));
     }
 
     @Test
@@ -219,12 +236,12 @@ class PhaseDIamIngressTests {
     @Test
     void admittedNonHttpIdentityCanFlowAcrossOperationsAfterTokenExpiry() {
         String jwt = token(ALICE, ALICE_SESSION.toString());
-        VerifiedJwtCredential admitted = verifier.verify(jwt);
+        VerifiedJwtCredentialCandidate admitted = verifier.verify(jwt);
         JwtCredentialCodec later = TestAccessTokens.codec(PROFILE, Clock.offset(CLOCK, Duration.ofSeconds(400)));
         assertThrows(JwtCredentialException.class, () -> later.verifyPrimary(jwt));
 
         OperationIngressDispatcher continuation = new ContributingOperationDispatcher(dispatcher,
-            List.of(inputs -> inputs.add(VerifiedJwtCredential.class, admitted)));
+            List.of(inputs -> inputs.add(VerifiedJwtCredentialCandidate.class, admitted)));
         assertEquals(Optional.of(ALICE), continuation.dispatch(IdentityContext.class, IdentityContext::userId));
         assertEquals(Optional.of(ALICE), continuation.dispatch(IdentityContext.class, IdentityContext::userId));
     }
@@ -272,6 +289,9 @@ class PhaseDIamIngressTests {
             .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/test/public").header(HttpHeaders.AUTHORIZATION, "Bearer token1", "Bearer token2"))
             .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/test/protected").header(HttpHeaders.AUTHORIZATION,
+                "Bearer " + token(ALICE, "not-a-session-uuid")))
+            .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("invalid_credential"));
         mvc.perform(get("/api/test/protected").header(HttpHeaders.AUTHORIZATION, "Bearer " + expiredToken()))
             .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/test/protected").header(HttpHeaders.AUTHORIZATION, "Bearer " + wrongProfileToken()))
@@ -298,7 +318,7 @@ class PhaseDIamIngressTests {
 
     @Test
     void nonHttpContributorsComposeAndRejectDuplicateRegistration() {
-        OperationInputContributor identity = inputs -> inputs.add(VerifiedJwtCredential.class,
+        OperationInputContributor identity = inputs -> inputs.add(VerifiedJwtCredentialCandidate.class,
             verifier.verify(token(ALICE, ALICE_SESSION.toString())));
         OperationInputContributor additional = inputs -> inputs.add(AdditionalInput.class, new AdditionalInput("job"));
         OperationIngressDispatcher composed = new ContributingOperationDispatcher(dispatcher,
@@ -320,7 +340,7 @@ class PhaseDIamIngressTests {
     }
 
     private OperationIngressDispatcher bearer(String token) {
-        OperationInputContributor contribution = inputs -> inputs.add(VerifiedJwtCredential.class, verifier.verify(token));
+        OperationInputContributor contribution = inputs -> inputs.add(VerifiedJwtCredentialCandidate.class, verifier.verify(token));
         return new ContributingOperationDispatcher(dispatcher, List.of(contribution));
     }
 

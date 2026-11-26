@@ -79,7 +79,7 @@ public final class TestAccessTokens {
 
     /**
      * A valid access token for the user and raw {@code sid} claim. IAM admits only canonical
-     * session UUIDs, so any other value yields a token that ingress verifies but IAM rejects.
+     * session UUIDs, so any other value yields a signed token that IAM ingress rejects.
      */
     public static String accessToken(UUID user, String sessionId) {
         return PRIMARY.sign(new JwtIssueRequest(user, sessionId, "test-token", NOW.minusSeconds(1),

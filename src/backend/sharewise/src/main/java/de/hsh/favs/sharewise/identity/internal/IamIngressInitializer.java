@@ -1,13 +1,13 @@
 package de.hsh.favs.sharewise.identity.internal;
 
 import de.hsh.favs.sharewise.shared.infra.di.ScopedServiceInitializer;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /** Transfers verified primary evidence to the operation scope; absent evidence is anonymous. */
 @Component
-final class IamIngressInitializer implements ScopedServiceInitializer<IamOperationSecurityConfiguration, VerifiedJwtCredential> {
+final class IamIngressInitializer implements ScopedServiceInitializer<IamOperationSecurityConfiguration, VerifiedJwtCredentialCandidate> {
 
     @Override
     public Class<IamOperationSecurityConfiguration> configurationType() {
@@ -15,12 +15,12 @@ final class IamIngressInitializer implements ScopedServiceInitializer<IamOperati
     }
 
     @Override
-    public Class<VerifiedJwtCredential> inputType() {
-        return VerifiedJwtCredential.class;
+    public Class<VerifiedJwtCredentialCandidate> inputType() {
+        return VerifiedJwtCredentialCandidate.class;
     }
 
     @Override
-    public void initialize(IamOperationSecurityConfiguration configuration, Optional<VerifiedJwtCredential> input) {
+    public void initialize(IamOperationSecurityConfiguration configuration, Optional<VerifiedJwtCredentialCandidate> input) {
         configuration.seed(input);
     }
 }

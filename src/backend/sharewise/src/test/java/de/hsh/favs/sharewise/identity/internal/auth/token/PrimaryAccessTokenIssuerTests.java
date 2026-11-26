@@ -8,7 +8,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
@@ -33,11 +33,11 @@ class PrimaryAccessTokenIssuerTests {
         JwtCredentialCodec codec = codec(pair, "https://iam.sharewise.example", "sharewise-api");
         PrimaryAccessTokenIssuer issuer = new PrimaryAccessTokenIssuer(codec);
         IssuedAccessToken issued = issuer.issue(USER, SESSION, NOW, NOW.plusSeconds(300));
-        VerifiedJwtCredential verified = codec.verifyPrimary(issued.value());
+        VerifiedJwtCredentialCandidate verified = codec.verifyPrimary(issued.value());
         assertEquals(USER, verified.userId());
         assertEquals(SESSION.toString(), verified.sessionId());
-        assertEquals("https://iam.sharewise.example", verified.credential().origin().issuer());
-        assertEquals(Set.of("sharewise-api"), verified.credential().origin().audiences());
+        assertEquals("https://iam.sharewise.example", verified.evidence().origin().issuer());
+        assertEquals(Set.of("sharewise-api"), verified.evidence().origin().audiences());
         assertEquals(NOW.plusSeconds(300), issued.expiresAt());
         assertThrows(JwtCredentialException.class,
                 () -> codec(pair, "https://wrong.example", "sharewise-api").verifyPrimary(issued.value()));

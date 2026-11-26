@@ -96,7 +96,7 @@ class IamHttpAuthenticationE2E {
             assertFalse(registered.body().contains(firstRefresh.split("=", 2)[1].split(";", 2)[0]));
             assertEquals("no-store", registered.headers().firstValue("Cache-Control").orElseThrow());
             JwtCredentialCodec verifier = fixture.context().getBean("iamPrimaryJwtCredentialCodec", JwtCredentialCodec.class);
-            assertEquals("https://iam.sharewise.test", verifier.verifyPrimary(firstToken).credential().origin().issuer());
+            assertEquals("https://iam.sharewise.test", verifier.verifyPrimary(firstToken).evidence().origin().issuer());
             assertEquals(1, count(fixture, "identity.users"));
             assertEquals(1, count(fixture, "identity.sessions"));
             assertEquals(1, count(fixture, "identity.refresh_tokens"));
@@ -185,7 +185,7 @@ class IamHttpAuthenticationE2E {
             String renewedBearer = JsonPath.read(refresh.body(), "$.accessToken");
             assertEquals("https://iam.sharewise.test", fixture.context()
                     .getBean("iamPrimaryJwtCredentialCodec", JwtCredentialCodec.class)
-                    .verifyPrimary(renewedBearer).credential().origin().issuer());
+                    .verifyPrimary(renewedBearer).evidence().origin().issuer());
             String rotatedCookie = findCookie(refresh, "__Host-sharewise-refresh").split(";", 2)[0];
             assertNotEquals(loginCookie, rotatedCookie);
             assertDeletedCookie(refresh, "__Host-sharewise-csrf");

@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.shared.infra.di.internal;
 
+import de.hsh.favs.sharewise.shared.infra.di.OperationAdmission;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputContributor;
@@ -26,9 +27,10 @@ class OperationScopeConfiguration {
     static OperationDispatcher operationDispatcher(
         SpringServiceScopeFactory serviceScopeFactory,
         ConfigurableListableBeanFactory beanFactory,
-        ObjectProvider<ScopedServiceInitializer<?, ?>> initializers
+        ObjectProvider<ScopedServiceInitializer<?, ?>> initializers,
+        ObjectProvider<OperationAdmission> admissions
     ) {
-        return new SpringOperationDispatcher(serviceScopeFactory, beanFactory, initializers);
+        return new SpringOperationDispatcher(serviceScopeFactory, beanFactory, initializers, admissions);
     }
 
     /** Builds the outer, request-scoped dispatcher using all caller-side contributors. */

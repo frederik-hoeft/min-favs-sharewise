@@ -56,7 +56,7 @@ final class JwtCredentialClaims {
         return claims.build();
     }
 
-    VerifiedJwtCredential accept(Jwt jwt, VerifiedJwtCredential primary) {
+    VerifiedJwtCredentialCandidate accept(Jwt jwt) {
         Map<String, Object> claims = jwt.getClaims();
         if (!profile.issuer().equals(claims.get("iss"))
             || !(claims.get("aud") instanceof List<?> audienceList)
@@ -67,21 +67,18 @@ final class JwtCredentialClaims {
         }
         UUID subject = parseUuid(claims.get("sub"));
         String session;
+        Optional<String> principalIssuer = Optional.empty();
         if (profile.kind() == JwtCredentialProfile.Kind.PRIMARY) {
             if (claims.containsKey("principal_iss") || claims.containsKey("principal_sid")) {
                 throw new JwtCredentialException();
             }
             session = requiredString(claims.get("sid"));
         } else {
-            if (claims.containsKey("sid") || primary == null
-                || !primary.credential().origin().issuer().equals(requiredString(claims.get("principal_iss")))
-                || !primary.userId().equals(subject)) {
+            if (claims.containsKey("sid")) {
                 throw new JwtCredentialException();
             }
             session = requiredString(claims.get("principal_sid"));
-            if (!primary.sessionId().equals(session)) {
-                throw new JwtCredentialException();
-            }
+            principalIssuer = Optional.of(requiredString(claims.get("principal_iss")));
         }
         String tokenId = requiredString(claims.get("jti"));
         Instant issuedAt = Objects.requireNonNull(jwt.getIssuedAt());
@@ -114,8 +111,8 @@ final class JwtCredentialClaims {
                 throw new JwtCredentialException();
             }
         });
-        return new VerifiedJwtCredential(new AuthorizationCredential(origin, translated),
-            subject, session, profile.kind());
+        return new VerifiedJwtCredentialCandidate(new AuthorizationCredential(origin, translated),
+            profile, subject, session, principalIssuer);
     }
 
     private void validateLifetime(Instant issuedAt, Instant notBefore, Instant expiresAt) {

@@ -1,8 +1,7 @@
 package de.hsh.favs.sharewise.identity.internal;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationScopedConfiguration;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
-import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.util.Objects;
 import java.util.Optional;
 import org.springframework.context.annotation.Scope;
@@ -13,19 +12,20 @@ import org.springframework.stereotype.Component;
 @Scope("operation")
 final class IamOperationSecurityConfiguration extends OperationScopedConfiguration {
 
-    private Optional<VerifiedJwtCredential> primary;
+    private final IamCredentialVerifier verifier;
+    private Optional<VerifiedJwtCredentialCandidate> primary;
 
-    void seed(Optional<VerifiedJwtCredential> input) {
+    IamOperationSecurityConfiguration(IamCredentialVerifier verifier) {
+        this.verifier = Objects.requireNonNull(verifier);
+    }
+
+    void seed(Optional<VerifiedJwtCredentialCandidate> input) {
         requireInitializing();
         if (primary != null) {
             throw new IllegalStateException("IAM ingress has already been initialized");
         }
         Objects.requireNonNull(input, "input");
-        input.ifPresent(credential -> {
-            if (credential.kind() != JwtCredentialProfile.Kind.PRIMARY) {
-                throw new IllegalArgumentException("IAM ingress requires a verified primary credential");
-            }
-        });
+        input.ifPresent(verifier::requireIamPrimary);
         primary = input;
     }
 
@@ -36,7 +36,7 @@ final class IamOperationSecurityConfiguration extends OperationScopedConfigurati
         }
     }
 
-    Optional<VerifiedJwtCredential> primary() {
+    Optional<VerifiedJwtCredentialCandidate> primary() {
         requireReady();
         return primary;
     }

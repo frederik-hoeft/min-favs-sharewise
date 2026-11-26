@@ -1,6 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal;
 
-import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider;
 import java.util.List;
 import org.springframework.context.annotation.Scope;
@@ -18,7 +18,7 @@ final class IamPrimaryCredentialProvider implements AuthorizationCredentialProvi
     }
 
     @Override
-    public List<AuthorizationCredential> credentials() {
-        return ingress.primary().map(primary -> List.of(primary.credential())).orElseGet(List::of);
+    public List<VerifiedJwtCredentialCandidate> credentials() {
+        return ingress.primary().map(List::of).orElseGet(List::of);
     }
 }

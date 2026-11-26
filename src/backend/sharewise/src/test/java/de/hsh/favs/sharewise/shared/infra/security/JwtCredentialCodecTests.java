@@ -59,8 +59,8 @@ class JwtCredentialCodecTests {
     @Test
     void signsAndVerifiesTypedPrimaryEvidenceWithOriginAndDirectClaimProvenance() {
         JwtCredentialCodec codec = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
-        VerifiedJwtCredential verified = codec.verifyPrimary(codec.sign(issue(ALICE, SESSION)));
-        AuthorizationCredential credential = verified.credential();
+        VerifiedJwtCredentialCandidate verified = codec.verifyPrimary(codec.sign(issue(ALICE, SESSION)));
+        AuthorizationCredential credential = verified.evidence();
 
         assertEquals(ALICE, verified.userId());
         assertEquals(SESSION, verified.sessionId());
@@ -219,34 +219,45 @@ class JwtCredentialCodecTests {
         assertEquals(ALICE, signer.verifyPrimary(token).userId());
     }
 
+    private static VerifiedJwtCredentialCandidate verifyAndBind(JwtCredentialCodec codec, String token,
+                                                                 VerifiedJwtCredentialCandidate primary) {
+        VerifiedJwtCredentialCandidate candidate = codec.verify(token);
+        JwtPrincipalBinding.requireBound(primary, candidate);
+        return candidate;
+    }
+
     @Test
     void subordinateVerificationRequiresMatchingVerifiedPrimaryIssuerUserAndSession() {
         JwtCredentialCodec iam = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         JwtCredentialCodec group = subordinate();
-        VerifiedJwtCredential primary = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
+        VerifiedJwtCredentialCandidate primary = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
         String matching = group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER));
-        VerifiedJwtCredential valid = group.verifySubordinate(matching, primary);
-        assertEquals(GROUP_ISSUER, valid.credential().origin().issuer());
-        assertEquals("group-attestation", valid.credential().origin().profile());
+        VerifiedJwtCredentialCandidate valid = group.verify(matching);
+        assertEquals(JwtCredentialProfile.Kind.SUBORDINATE, valid.kind());
+        assertEquals(GROUP, valid.profile());
+        assertEquals(Optional.of(IAM_ISSUER), valid.principalIssuer());
+        JwtPrincipalBinding.requireBound(primary, valid);
+        assertEquals(GROUP_ISSUER, valid.evidence().origin().issuer());
+        assertEquals("group-attestation", valid.evidence().origin().profile());
         assertEquals(ALICE, valid.userId());
         assertEquals(SESSION, valid.sessionId());
-        assertEquals("admin", claim(valid.credential(), "role"));
-        assertEquals(IAM_ISSUER, claim(valid.credential(), "principal_iss"));
-        assertEquals(SESSION, claim(valid.credential(), "principal_sid"));
+        assertEquals("admin", claim(valid.evidence(), "role"));
+        assertEquals(IAM_ISSUER, claim(valid.evidence(), "principal_iss"));
+        assertEquals(SESSION, claim(valid.evidence(), "principal_sid"));
 
-        assertRejected(() -> group.verifySubordinate(matching, null));
-        assertRejected(() -> group.verifySubordinate(group.sign(subordinateIssue(BOB, SESSION, IAM_ISSUER)), primary));
-        assertRejected(() -> group.verifySubordinate(group.sign(subordinateIssue(ALICE, "other-session", IAM_ISSUER)), primary));
-        assertRejected(() -> group.verifySubordinate(group.sign(subordinateIssue(ALICE, SESSION, "https://other.test")), primary));
-        assertRejected(() -> group.verifySubordinate(matching, valid));
-        assertRejected(() -> iam.verifySubordinate(iam.sign(issue(ALICE, SESSION)), primary));
+        assertRejected(() -> verifyAndBind(group, matching, null));
+        assertRejected(() -> verifyAndBind(group, group.sign(subordinateIssue(BOB, SESSION, IAM_ISSUER)), primary));
+        assertRejected(() -> verifyAndBind(group, group.sign(subordinateIssue(ALICE, "other-session", IAM_ISSUER)), primary));
+        assertRejected(() -> verifyAndBind(group, group.sign(subordinateIssue(ALICE, SESSION, "https://other.test")), primary));
+        assertRejected(() -> verifyAndBind(group, matching, valid));
+        assertRejected(() -> verifyAndBind(iam, iam.sign(issue(ALICE, SESSION)), primary));
     }
 
     @Test
     void subordinateRequiresTrustedPrimaryProfileButDoesNotRecheckPrimaryExpiry() {
         JwtCredentialCodec iam = primary(List.of(JwtEcKey.signing("old", IAM_OLD)), "old");
         JwtCredentialCodec group = subordinate();
-        VerifiedJwtCredential verified = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
+        VerifiedJwtCredentialCandidate verified = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
 
         JwtCredentialCodec laterGroup = new JwtCredentialCodec(GROUP,
             new Es256JwtSignatureService(List.of(JwtEcKey.verification("group-1", ecPublic(GROUP_KEY))), Optional.empty()),
@@ -256,9 +267,9 @@ class JwtCredentialCodecTests {
             Optional.of(IAM_ISSUER), Map.of("role", "member"));
         // Both credentials were trusted at their respective admissions. Primary expiry
         // cannot revoke an already admitted workflow's identity between operations.
-        assertEquals(ALICE, laterGroup.verifySubordinate(group.sign(laterIssue), verified).userId());
+        assertEquals(ALICE, verifyAndBind(laterGroup, group.sign(laterIssue), verified).userId());
         // The subordinate token still has its own independent admission-time expiry.
-        assertRejected(() -> laterGroup.verifySubordinate(
+        assertRejected(() -> verifyAndBind(laterGroup,
             group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER)), verified));
 
         JwtCredentialProfile otherPrimary = new JwtCredentialProfile("external-identity",
@@ -266,9 +277,9 @@ class JwtCredentialCodecTests {
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec externalIam = new JwtCredentialCodec(otherPrimary,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
-        VerifiedJwtCredential externalPrimary = externalIam.verifyPrimary(externalIam.sign(issue(ALICE, SESSION)));
+        VerifiedJwtCredentialCandidate externalPrimary = externalIam.verifyPrimary(externalIam.sign(issue(ALICE, SESSION)));
         String matchingForeignIssuer = group.sign(subordinateIssue(ALICE, SESSION, otherPrimary.issuer()));
-        assertRejected(() -> group.verifySubordinate(matchingForeignIssuer, externalPrimary));
+        assertRejected(() -> verifyAndBind(group, matchingForeignIssuer, externalPrimary));
     }
 
     @Test
@@ -278,13 +289,13 @@ class JwtCredentialCodecTests {
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
-        VerifiedJwtCredential otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
-        assertEquals(IAM_ISSUER, otherPrimary.credential().origin().issuer());
-        assertEquals("iam-special-purpose", otherPrimary.credential().origin().profile());
+        VerifiedJwtCredentialCandidate otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
+        assertEquals(IAM_ISSUER, otherPrimary.evidence().origin().issuer());
+        assertEquals("iam-special-purpose", otherPrimary.evidence().origin().profile());
 
         JwtCredentialCodec group = subordinate();
         String attestation = group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER));
-        assertRejected(() -> group.verifySubordinate(attestation, otherPrimary));
+        assertRejected(() -> verifyAndBind(group, attestation, otherPrimary));
     }
 
     @Test
@@ -294,7 +305,7 @@ class JwtCredentialCodecTests {
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
         JwtCredentialCodec otherCodec = new JwtCredentialCodec(specialPurpose,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("old", IAM_OLD)), Optional.of("old")), CLOCK);
-        VerifiedJwtCredential otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
+        VerifiedJwtCredentialCandidate otherPrimary = otherCodec.verifyPrimary(otherCodec.sign(issue(ALICE, SESSION)));
 
         JwtCredentialProfile groupWithTwoPrimaries = new JwtCredentialProfile(
             GROUP.name(), GROUP.issuer(), GROUP.tokenType(), GROUP.audiences(), GROUP.kind(),
@@ -303,7 +314,7 @@ class JwtCredentialCodecTests {
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("group-1", GROUP_KEY)),
                 Optional.of("group-1")), CLOCK);
         String attestation = group.sign(subordinateIssue(ALICE, SESSION, IAM_ISSUER));
-        assertEquals(ALICE, group.verifySubordinate(attestation, otherPrimary).userId());
+        assertEquals(ALICE, verifyAndBind(group, attestation, otherPrimary).userId());
     }
 
     @Test
@@ -343,12 +354,12 @@ class JwtCredentialCodecTests {
         JwtCredentialCodec group = new JwtCredentialCodec(subordinateProfile,
             new Es256JwtSignatureService(List.of(JwtEcKey.signing("group-1", GROUP_KEY)),
                 Optional.of("group-1")), CLOCK);
-        VerifiedJwtCredential verifiedPrimary = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
-        VerifiedJwtCredential verifiedSubordinate = group.verifySubordinate(
+        VerifiedJwtCredentialCandidate verifiedPrimary = iam.verifyPrimary(iam.sign(issue(ALICE, SESSION)));
+        VerifiedJwtCredentialCandidate verifiedSubordinate = verifyAndBind(group,
             group.sign(subordinateIssue(ALICE, SESSION, maximumIssuer)), verifiedPrimary);
 
-        assertEquals(maximumIssuer, verifiedPrimary.credential().origin().issuer());
-        assertEquals(maximumIssuer, claim(verifiedSubordinate.credential(), "principal_iss"));
+        assertEquals(maximumIssuer, verifiedPrimary.evidence().origin().issuer());
+        assertEquals(maximumIssuer, claim(verifiedSubordinate.evidence(), "principal_iss"));
         assertEquals(ALICE, verifiedSubordinate.userId());
     }
 
@@ -378,7 +389,7 @@ class JwtCredentialCodecTests {
         JwtCredentialCodec codec = primary(List.of(JwtEcKey.verification("old", ecPublic(IAM_OLD))), null);
         String token = manual(primaryHeader("old"), validPayload()
             .claim("groups", List.of("group-a", "group-b", "group-a")).build(), IAM_OLD);
-        AuthorizationCredential credential = codec.verifyPrimary(token).credential();
+        AuthorizationCredential credential = codec.verifyPrimary(token).evidence();
         List<Claim> groups = credential.claims().stream().filter(c -> c.type().equals("groups")).toList();
         assertEquals(List.of("group-a", "group-b", "group-a"), groups.stream().map(Claim::value).toList());
         assertTrue(groups.stream().allMatch(c -> c.origin().equals(credential.origin())));
@@ -437,17 +448,17 @@ class JwtCredentialCodecTests {
         JwtIssueRequest primaryRequest = new JwtIssueRequest(ALICE, maximum, maximum,
             NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180),
             Optional.empty(), Map.of());
-        VerifiedJwtCredential primary = iam.verifyPrimary(iam.sign(primaryRequest));
+        VerifiedJwtCredentialCandidate primary = iam.verifyPrimary(iam.sign(primaryRequest));
         assertEquals(maximum, primary.sessionId());
-        assertEquals(Optional.of(maximum), primary.credential().origin().credentialId());
+        assertEquals(Optional.of(maximum), primary.evidence().origin().credentialId());
 
         JwtCredentialCodec group = subordinate();
         JwtIssueRequest subordinateRequest = new JwtIssueRequest(ALICE, maximum, maximum,
             NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(90),
             Optional.of(IAM_ISSUER), Map.of("role", "member"));
-        VerifiedJwtCredential subordinate = group.verifySubordinate(group.sign(subordinateRequest), primary);
+        VerifiedJwtCredentialCandidate subordinate = verifyAndBind(group, group.sign(subordinateRequest), primary);
         assertEquals(maximum, subordinate.sessionId());
-        assertEquals(Optional.of(maximum), subordinate.credential().origin().credentialId());
+        assertEquals(Optional.of(maximum), subordinate.evidence().origin().credentialId());
     }
 
     @Test
