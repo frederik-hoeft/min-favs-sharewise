@@ -1,0 +1,10 @@
+# Disposable Node E2E runner, never the static production image.
+FROM node:24-alpine
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci --no-audit --no-fund
+COPY . .
+USER node
+# Only public trust material is streamed from the invoking checkout.
+CMD ["sh", "-ec", "umask 077; cat > /tmp/sharewise-smoke-ca.pem; test -s /tmp/sharewise-smoke-ca.pem; npm run test:e2e -- --reporter=default --reporter=json --outputFile.json=/tmp/sharewise-e2e.json; node -e 'const r = require(\"/tmp/sharewise-e2e.json\"); if (!r.success || r.numPassedTests < 1) process.exit(1)'"]

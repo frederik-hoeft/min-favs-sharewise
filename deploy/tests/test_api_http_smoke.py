@@ -83,11 +83,12 @@ class FakeIam:
 
 
 class IamHttpSmokeTests(unittest.TestCase):
-    def run_smoke(self, fake):
+    def run_smoke(self, fake, fixture_status=404):
         with (patch.object(smoke, "compose_exec", side_effect=fake.compose_exec),
               patch.object(smoke, "curl", side_effect=fake.curl),
               patch.object(smoke, "verify_es256", return_value={"sid": SESSION_ID, "sub": SESSION_ID}),
               patch.object(smoke, "exercise_groups") as groups,
+              patch.object(smoke, "json_request", return_value=(fixture_status, {})),
               patch.dict(os.environ, {"COMPOSE_PROJECT_NAME": "sharewise-p26ab-smoke", "COMPOSE_FILE": "compose.yaml"}),
               patch.object(smoke.subprocess, "run", return_value=SimpleNamespace(stdout="public.pem")),
               patch.object(sys, "argv", ["api-http-smoke.py", "--host", "localhost", "--port", "18443",
@@ -112,6 +113,10 @@ class IamHttpSmokeTests(unittest.TestCase):
         self.assertIn("refresh rotation, logout", output)
         self.assertNotIn("token-", output)
         self.assertNotIn("cookie-", output)
+
+    def test_production_fixture_route_must_be_absent(self):
+        with self.assertRaisesRegex(RuntimeError, "fixture route exposed"):
+            self.run_smoke(FakeIam(), fixture_status=200)
 
     def test_unchanged_cookie_after_refresh_fails(self):
         with self.assertRaisesRegex(RuntimeError, "did not rotate"):

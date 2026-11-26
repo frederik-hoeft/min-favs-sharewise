@@ -21,10 +21,19 @@ esac
 [ "${1:-}" = compose ] || exit 0
 shift
 if [ "${1:-}" = -p ]; then shift 2; fi
+while [ "${1:-}" = -f ]; do shift 2; done
+if [ "${1:-}" = --profile ]; then shift 2; fi
 case "${1:-}" in
+    config)
+        if [ "${2:-}" = --format ]; then
+            if [ "${MOCK_FAILURE:-}" = fixture-published ]; then ports='[{"target":443}]'; else ports='[]'; fi
+            printf '{"services":{"frontend":{"ports":%s},"backend":{"build":{"target":"authorization-smoke"}},"frontend-e2e":{"networks":{"edge":null}}}}\n' "$ports"
+        fi
+        exit 0 ;;
     down) [ "${MOCK_FAILURE:-}" != cleanup ] || exit 37; exit 0 ;;
     up) [ "${MOCK_FAILURE:-}" != startup ] || exit 23; exit 0 ;;
     ps) [ "${2:-}" != -q ] || echo "id-$3"; exit 0 ;;
+    run) [ "${MOCK_FAILURE:-}" != frontend-e2e ] || exit 29; cat >/dev/null; exit 0 ;;
     exec) ;;
     *) exit 0 ;;
 esac
@@ -82,6 +91,9 @@ class ComposeLifecycleTests(unittest.TestCase):
             "assert os.environ.get('MOCK_FAILURE') != 'api-smoke'\n"
         )
         (self.deploy / ".env").write_text("COMPOSE_PROJECT_NAME=sharewise-p26ab-local\n")
+        tls = self.deploy / ".local" / "tls"
+        tls.mkdir(parents=True)
+        (tls / "fullchain.pem").write_text("public-certificate-fixture")
         self.cli = root / "docker"
         self.cli.write_text(FAKE_DOCKER)
         self.cli.chmod(0o755)
@@ -110,6 +122,7 @@ class ComposeLifecycleTests(unittest.TestCase):
         result = self.run_smoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("and its volumes were removed", result.stdout)
+        self.assertTrue(any("run --build --no-deps -T frontend-e2e" in call for call in self.calls()))
         self.assertEqual(self.down_calls(), [
             "compose -p sharewise-p26ab-smoke down --volumes --remove-orphans",
         ])
@@ -161,6 +174,27 @@ class ComposeLifecycleTests(unittest.TestCase):
         self.assertIn("preserved for diagnosis", result.stderr)
         self.assertEqual(self.down_calls(), [])
 
+    def test_published_fixture_is_rejected_before_fixture_start(self):
+        result = self.run_smoke(MOCK_FAILURE="fixture-published")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Fixture host ports must be disabled", result.stderr)
+        self.assertFalse(any("--force-recreate" in call for call in self.calls()))
+        self.assertEqual(self.down_calls(), [])
+
+    def test_private_key_is_not_streamed_to_runner(self):
+        (self.deploy / ".local" / "tls" / "fullchain.pem").write_text("-----BEGIN PRIVATE KEY-----")
+        result = self.run_smoke()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing to send private key material", result.stderr)
+        self.assertFalse(any("run --build --no-deps -T frontend-e2e" in call for call in self.calls()))
+
+    def test_frontend_e2e_failure_preserves_stack(self):
+        result = self.run_smoke(MOCK_FAILURE="frontend-e2e")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("preserved for diagnosis", result.stderr)
+        self.assertNotIn("Deployed frontend authorization E2E passed.", result.stdout)
+        self.assertEqual(self.down_calls(), [])
+
     def test_startup_failure_does_not_attempt_teardown(self):
         result = self.run_smoke(MOCK_FAILURE="startup")
         self.assertNotEqual(result.returncode, 0)
@@ -172,7 +206,7 @@ class ComposeLifecycleTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cleanup failed", result.stderr)
         self.assertIn("cleanup was incomplete", result.stderr)
-        self.assertNotIn("checks passed.", result.stdout)
+        self.assertNotIn("Deployment acceptance checks passed.", result.stdout)
 
     def test_custom_disposable_project_is_removed(self):
         result = self.run_smoke(SHAREWISE_COMPOSE_TEST_PROJECT="sharewise-p26ab-smoke2")

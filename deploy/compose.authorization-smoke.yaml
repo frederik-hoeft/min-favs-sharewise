@@ -1,0 +1,34 @@
+# Explicitly selected by test-compose.sh AFTER production-style smoke checks.
+# Disposable-only image names; never replace the normal deployment's image tag.
+services:
+  backend:
+    image: ${COMPOSE_PROJECT_NAME:?Disposable project required}-backend-e2e:local
+    build:
+      target: authorization-smoke
+    environment:
+      SHAREWISE_SMOKE_PROJECT: ${COMPOSE_PROJECT_NAME:?Disposable project required}
+  frontend:
+    # Compose v2 reset tag: do not expose any test fixture to the host.
+    ports: !reset []
+  frontend-e2e:
+    profiles: [authorization-smoke]
+    image: ${COMPOSE_PROJECT_NAME:?Disposable project required}-frontend-e2e:local
+    build:
+      context: ../src/frontend
+      dockerfile: Dockerfile.e2e
+    environment:
+      SHAREWISE_E2E_ORIGIN: ${SHAREWISE_IAM_ISSUER:?Disposable origin required}
+      SHAREWISE_E2E_CONNECT_HOST: frontend
+      SHAREWISE_E2E_CONNECT_PORT: "443"
+      SHAREWISE_E2E_CA: /tmp/sharewise-smoke-ca.pem
+      npm_config_cache: /tmp/npm-cache
+      npm_config_update_notifier: "false"
+    networks: [edge]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=32m,mode=1777
+      - /app/node_modules/.vite:rw,nosuid,nodev,size=16m,mode=1777
+      - /app/node_modules/.vite-temp:rw,nosuid,nodev,size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
