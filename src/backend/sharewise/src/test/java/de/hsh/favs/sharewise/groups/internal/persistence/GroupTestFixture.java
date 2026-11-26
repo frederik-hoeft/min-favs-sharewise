@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
 import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
@@ -45,6 +46,26 @@ public final class GroupTestFixture {
                 return TransactionOutcome.commit(provisioned.size());
             });
         });
+    }
+
+    /**
+     * Commits a group with its administrator on an independent application-role connection,
+     * bypassing Group creation: nothing is published, as for a group created before any listener
+     * existed. Returns the group ID.
+     */
+    public static UUID seedGroup(IntegrationTestContext fixture, String name, UUID administrator)
+            throws SQLException {
+        Objects.requireNonNull(fixture, "fixture");
+        UUID groupId = UUID.randomUUID();
+        IntegrationTestContext.seedCommitted(fixture.database(), connection -> {
+            DSLContext db = DSL.using(connection, SQLDialect.POSTGRES);
+            db.insertInto(GROUPS_)
+                .set(GROUPS_.ID, groupId)
+                .set(GROUPS_.NAME, Objects.requireNonNull(name, "name"))
+                .execute();
+            addMember(db, groupId, administrator, GroupRole.ADMIN);
+        });
+        return groupId;
     }
 
     /** Commits an additional membership on an independent application-role connection. */

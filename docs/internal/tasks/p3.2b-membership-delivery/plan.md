@@ -93,10 +93,10 @@ Test-only phase proving ordering, idempotency and failure semantics through the 
 
 Can be reviewed independently of Phase D. Covers DLV-R15.
 
-- [ ] Add `platform/V<timestamp>__platform_bootstrap_finance_from_groups.sql` with the specification's two `INSERT … SELECT … ON CONFLICT DO NOTHING` statements, ordered after the Group revision migration. A header comment states the stop → migrate → start precondition and that it is a one-time deployment initialization.
-- [ ] E2E DLV-T17, following the pattern of P2.4a's bootstrap test in `GroupMigrationE2E`: migrate to the version before the backfill, seed groups with several members, apply the remaining migrations, execute the statements again as the migrator, then join a new member through Group and await delivery.
-- [ ] Check `BaselineMigrationE2E` and other migration-sequence tests for expectations that the new migrations change.
-- [ ] Run the Unit, Integration and E2E suites and `git diff --check`; stage for review.
+- [x] Add `platform/V<timestamp>__platform_bootstrap_finance_from_groups.sql` with the specification's two `INSERT … SELECT … ON CONFLICT DO NOTHING` statements, ordered after the Group revision migration. A header comment states the stop → migrate → start precondition and that it is a one-time deployment initialization.
+- [x] E2E DLV-T17, following the pattern of P2.4a's bootstrap test in `GroupMigrationE2E`: migrate to the version before the backfill, seed groups with several members, apply the remaining migrations, execute the statements again as the migrator, then join a new member through Group and await delivery. Split into a staged migration test and a delivery test (see findings).
+- [x] Check `BaselineMigrationE2E` and other migration-sequence tests for expectations that the new migrations change.
+- [x] Run the Unit, Integration and E2E suites and `git diff --check`; stage for review. The migration-upgrade and backfill tests passed (18 tests) and `git diff --check` is clean; at the maintainer's request, the full suites run once at the end of the task.
 
 **Suggested commit:** `P3.2b-E: Initialize the Finance projection for pre-existing Groups`
 
@@ -141,6 +141,8 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 | D | Spring Modulith completes a publication outside the listener's failure handling. A completion `DELETE` that fails after the Finance commit therefore leaves the publication `PROCESSING`, not `FAILED`, until the staleness monitor moves it after `staleness.processing` (10 minutes in production); only then can resubmission redeliver it. | Behavior as documented in the messaging configuration; no production change. DLV-T16 shortens only the processing staleness and its check interval in its own context, and recovers through the production staleness → resubmission path. Maintainer decision: accepted as configured; Phase G states the delay explicitly in the messaging documentation. |
 | D | Self-review: DLV-T16 could pass without exercising a lost completion if the test restored `DELETE` before the listener thread attempted completion. | The test waits until the listener executor is idle (shared `AsyncDeliveries`), then asserts that the publication is still retained before restoring the privilege. |
 | D | Self-review: expected actor lists were sorted with `UUID.compareTo`, which orders signed longs, unlike PostgreSQL's `uuid` order. | Expected actors are listed in the database's order, with fixed user IDs chosen accordingly, as in Phase C. |
+| E | `IntegrationTestContext` migrates to the latest version before a test can seed data, so one test cannot both stop Flyway before the backfill and join a member through a live context. | DLV-T17 is split. `GroupMigrationE2E` migrates in stages over seeded groups and re-executes the script. `GroupFinanceDeliveryE2E` seeds a group by SQL, which publishes nothing, executes the script as the migrator and joins a member through the Group services, as P2.4a's IAM bootstrap test does. Script execution is shared in `MigrationScripts`, which the IAM test also uses. |
+| E | Migration-sequence tests checked: `GroupMigrationE2E` pins only the historical baseline, `GroupInvitationSchemaE2E` and `FinanceSchemaE2E` target historical versions, and `BaselineMigrationE2E` checks schema ownership and cross-schema foreign keys, which the backfill does not add. Upgrade tests that seed groups now also receive Finance rows, which none of them asserts against. | No expectation changes; all of them pass with the backfill. |
 
 ## Verification commands and evidence
 
@@ -172,7 +174,7 @@ The human runs the deployment smoke from the repository root with `cd deploy && 
 | Baseline suites | Pending |
 | Unit suite (including Modulith verification) | Focused runs green through Phase C, including Modulith verification and module-structure tests; full suite pending |
 | PostgreSQL Integration suite | `GroupPersistenceIT` green (Phase A); full suite pending |
-| PostgreSQL E2E suite, including at 16 workers | Group-mutating, Finance, messaging and IAM delivery E2Es green; Group and Finance classes also at 16 workers (Phase C, 64 tests); the eight Phase D tests (DLV-T11–T16) green in five consecutive runs at 16 workers, with the injected completion failure observed in each run; full suite pending, run by the maintainer at the end |
+| PostgreSQL E2E suite, including at 16 workers | Group-mutating, Finance, messaging and IAM delivery E2Es green; Group and Finance classes also at 16 workers (Phase C, 64 tests); the eight Phase D tests (DLV-T11–T16) green in five consecutive runs at 16 workers, with the injected completion failure observed in each run; the migration-upgrade and backfill tests green (Phase E, 18 tests); full suite pending, run by the maintainer at the end |
 | jOOQ freshness (CI `verify-backend-jooq-codegen`) | Regenerated against a fresh and a recreated dev database with identical output (Phase A); CI pending |
 | Disposable deployment smoke | Pending |
 | Manual acceptance DLV-T18 | Pending |

@@ -13,10 +13,8 @@ import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.messaging.EventPublications;
+import de.hsh.favs.sharewise.testsupport.postgres.MigrationScripts;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -145,9 +143,8 @@ class IamUserProjectionE2E extends E2ETestBase {
             }
             assertFalse(projected(fixture, existing));
 
-            String bootstrap = classpathText(BOOTSTRAP_MIGRATION);
-            asMigrator(fixture, bootstrap);
-            asMigrator(fixture, bootstrap);
+            MigrationScripts.executeAsMigrator(fixture.database(), BOOTSTRAP_MIGRATION);
+            MigrationScripts.executeAsMigrator(fixture.database(), BOOTSTRAP_MIGRATION);
 
             assertEquals(1, count(fixture, "select count(*) from groups.users where id = ?", existing));
         }, ProductionEntityScanConfiguration.class, IamAuthenticationE2E.Fixtures.class);
@@ -214,17 +211,6 @@ class IamUserProjectionE2E extends E2ETestBase {
             statement.execute(sql);
         } catch (SQLException failure) {
             throw new AssertionError("Migrator statement failed: " + sql, failure);
-        }
-    }
-
-    private static String classpathText(String resource) {
-        try (InputStream input = IamUserProjectionE2E.class.getClassLoader().getResourceAsStream(resource)) {
-            if (input == null) {
-                throw new AssertionError("Missing classpath resource " + resource);
-            }
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException failure) {
-            throw new AssertionError("Unable to read " + resource, failure);
         }
     }
 

@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.finance.internal.actor.FinancialActor;
 import de.hsh.favs.sharewise.finance.internal.actor.MembershipState;
+import de.hsh.favs.sharewise.finance.internal.group.FinancialGroup;
+import de.hsh.favs.sharewise.finance.internal.group.FinancialGroupState;
 import de.hsh.favs.sharewise.finance.internal.persistence.FinanceTestFixture;
 import de.hsh.favs.sharewise.finance.internal.persistence.generated.tables.records.ActorsRecord;
 import de.hsh.favs.sharewise.groups.events.GroupCreatedV1;
@@ -38,6 +40,7 @@ import de.hsh.favs.sharewise.testsupport.identity.IdentityTestConfiguration;
 import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.messaging.EventPublications;
 import de.hsh.favs.sharewise.testsupport.messaging.EventPublications.StoredPublication;
+import de.hsh.favs.sharewise.testsupport.postgres.MigrationScripts;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import de.hsh.favs.sharewise.testsupport.transactions.CommitFailures;
 import java.sql.Connection;
@@ -45,6 +48,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -56,13 +60,15 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Group → Finance membership delivery through the real Group services, publication registry and
- * Finance listener on PostgreSQL (DLV-T06, DLV-T08 to DLV-T10, DLV-T14). Finance state is observed on
+ * Finance listener on PostgreSQL (DLV-T06, DLV-T08 to DLV-T10, DLV-T14, DLV-T17). Finance state is observed on
  * independent connections; delivery is held by revoking a Finance privilege the listener needs.
  */
 @Tag("e2e")
 class GroupFinanceDeliveryE2E extends E2ETestBase {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final String FINANCE_BACKFILL =
+        "db/migration/platform/V202611261930__platform_bootstrap_finance_from_groups.sql";
 
     /** DLV-T09: creation opens the Finance root with the owner active at revision 1. */
     @Test
@@ -194,6 +200,32 @@ class GroupFinanceDeliveryE2E extends E2ETestBase {
             fixture.context().getBean(FailedEventPublications.class).resubmit(ResubmissionOptions.defaults());
             awaitActor(fixture, group, BOB, MembershipState.ACTIVE, 2);
             awaitDelivered(fixture);
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    /**
+     * DLV-T17: a group that existed before the Finance listeners is initialized by the backfill
+     * migration, and its next membership change is delivered and applied at the next revision.
+     */
+    @Test
+    void membershipChangeAfterTheBackfillIsAppliedAtTheNextRevision() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = GroupTestFixture.seedGroup(fixture, "Pre-existing", ALICE);
+            assertEquals(List.of(), EventPublications.forListeners(fixture, LISTENERS), "nothing to deliver");
+
+            MigrationScripts.executeAsMigrator(fixture.database(), FINANCE_BACKFILL);
+            assertEquals(Optional.of(new FinancialGroup(group, FinancialGroupState.OPEN, 0)),
+                FinanceTestFixture.root(fixture, group));
+            assertEquals(List.of(new FinancialActor(group, ALICE, MembershipState.ACTIVE, 1)),
+                FinanceTestFixture.actors(fixture, group));
+
+            ok(redeem(fixture, BOB, invitation(fixture, group, null, null)));
+            awaitActor(fixture, group, BOB, MembershipState.ACTIVE, 2);
+            awaitDelivered(fixture);
+            assertEquals(List.of(new FinancialActor(group, ALICE, MembershipState.ACTIVE, 1),
+                    new FinancialActor(group, BOB, MembershipState.ACTIVE, 2)),
+                FinanceTestFixture.actors(fixture, group));
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
     }
 
