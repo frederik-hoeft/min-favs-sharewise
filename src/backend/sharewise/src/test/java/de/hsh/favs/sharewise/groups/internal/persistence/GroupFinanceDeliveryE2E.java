@@ -12,6 +12,7 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.change;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.create;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.invitation;
+import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.membershipRevision;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.ok;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.query;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.redeem;
@@ -21,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.finance.internal.actor.FinancialActor;
 import de.hsh.favs.sharewise.finance.internal.actor.MembershipState;
@@ -54,7 +56,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Group → Finance membership delivery through the real Group services, publication registry and
- * Finance listener on PostgreSQL (DLV-T06, DLV-T08 to DLV-T10). Finance state is observed on
+ * Finance listener on PostgreSQL (DLV-T06, DLV-T08 to DLV-T10, DLV-T14). Finance state is observed on
  * independent connections; delivery is held by revoking a Finance privilege the listener needs.
  */
 @Tag("e2e")
@@ -164,6 +166,34 @@ class GroupFinanceDeliveryE2E extends E2ETestBase {
             assertEquals(List.of(new FinancialActor(group, ALICE, MembershipState.ACTIVE, 1),
                     new FinancialActor(group, BOB, MembershipState.REMOVED, 3)),
                 FinanceTestFixture.actors(fixture, group));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    /**
+     * DLV-T14: a real database failure in Finance's own transaction leaves the join committed and
+     * its publication failed; restored privilege and resubmission apply it.
+     */
+    @Test
+    void consumerFailureLeavesTheJoinCommittedAndResubmissionAppliesIt() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            awaitDelivered(fixture);
+            // The root and owner exist, so only the new actor's INSERT fails.
+            asMigrator(fixture, "REVOKE INSERT ON finance.actors FROM sharewise_app");
+
+            ok(redeem(fixture, BOB, invitation(fixture, group, null, null)));
+            StoredPublication failed = EventPublications.awaitSingle(fixture, MEMBERSHIP_ADDED,
+                "failed join publication", publication -> "FAILED".equals(publication.status()));
+            assertTrue(failed.completionAttempts() >= 1, "the failed attempt is counted");
+            assertEquals(2, membershipRevision(fixture, group), "the join committed independently of Finance");
+            assertEquals(List.of(new FinancialActor(group, ALICE, MembershipState.ACTIVE, 1)),
+                FinanceTestFixture.actors(fixture, group));
+
+            asMigrator(fixture, "GRANT INSERT ON finance.actors TO sharewise_app");
+            fixture.context().getBean(FailedEventPublications.class).resubmit(ResubmissionOptions.defaults());
+            awaitActor(fixture, group, BOB, MembershipState.ACTIVE, 2);
+            awaitDelivered(fixture);
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
     }
 

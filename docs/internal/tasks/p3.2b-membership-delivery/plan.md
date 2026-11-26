@@ -77,13 +77,13 @@ Registers the real consumer and proves the main producer-to-consumer paths. Cove
 
 Test-only phase proving ordering, idempotency and failure semantics through the real registry. Covers DLV-R10–R12.
 
-- [ ] Add a test-only fixture publisher that publishes Group event records inside a `Transactions` segment of the E2E context, without a production entry point.
-- [ ] DLV-T11: the three delivery orders, each fact in its own committed producer segment with completion awaited before the next.
-- [ ] DLV-T12 and DLV-T13: identical redelivery (same event ID), stale revision, repeated creation and an unknown-member removal. Assert the outcomes through Finance state, unchanged `updated_at`, and deleted publications.
-- [ ] DLV-T14: consumer failure through a revoked `INSERT` on `finance.actors`, a Group join that still succeeds, a retained `FAILED` publication, then restored privilege, `FailedEventPublications.resubmit(...)` and completion.
-- [ ] DLV-T15: same-revision contradiction. The second publication remains incomplete across at least two resubmissions, and the actor is unchanged.
-- [ ] DLV-T16: completion failure through a revoked `DELETE` on `messaging.event_publication` after the Finance commit, then restored privilege and resubmission. Finance state is applied once and the publication is deleted.
-- [ ] Run each new test five consecutive times and the full E2E suite at the CI worker count; `git diff --check`; stage for review.
+- [x] Add a test-only fixture publisher that publishes Group event records inside a `Transactions` segment of the E2E context, without a production entry point. `TestEventPublisher` in shared test support accepts any event record (maintainer decision).
+- [x] DLV-T11: the three delivery orders, each fact in its own committed producer segment with completion awaited before the next.
+- [x] DLV-T12 and DLV-T13: identical redelivery (same event ID), stale revision, repeated creation and an unknown-member removal. Assert the outcomes through Finance state, unchanged `updated_at`, and deleted publications.
+- [x] DLV-T14: consumer failure through a revoked `INSERT` on `finance.actors`, a Group join that still succeeds, a retained `FAILED` publication, then restored privilege, `FailedEventPublications.resubmit(...)` and completion.
+- [x] DLV-T15: same-revision contradiction. The second publication remains incomplete across at least two resubmissions, and the actor is unchanged.
+- [x] DLV-T16: completion failure through a revoked `DELETE` on `messaging.event_publication` after the Finance commit, then restored privilege and resubmission. Finance state is applied once and the publication is deleted.
+- [x] Run each new test five consecutive times and the full E2E suite at the CI worker count; `git diff --check`; stage for review. The eight new tests passed five consecutive runs at 16 workers and `git diff --check` is clean; at the maintainer's request, the full suites run once at the end of the task.
 
 **Suggested commit:** `P3.2b-D: Verify ordering, redelivery and recovery of membership delivery`
 
@@ -114,7 +114,7 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 
 ## Phase G - Steady-state documentation
 
-- [ ] Reconcile the documents listed in the specification's [documentation reconciliation](specification.md#documentation-reconciliation): messaging implemented configuration (Group events, Finance listener IDs, contradiction resolution procedure), persistence architecture (Group revision, Finance consumer wiring, backfill), architecture overview module dependencies, Phase 2 foundation Group schema reference, Phase 3 foundation status, development guide (stop → migrate → start, inspecting the Finance projection) and backlog (P2.4b, P2.4c, P3.2b).
+- [ ] Reconcile the documents listed in the specification's [documentation reconciliation](specification.md#documentation-reconciliation): messaging implemented configuration (Group events, Finance listener IDs, contradiction resolution procedure), persistence architecture (Group revision, Finance consumer wiring, backfill), architecture overview module dependencies, Phase 2 foundation Group schema reference, Phase 3 foundation status, development guide (stop → migrate → start, inspecting the Finance projection), the recovery delay of a lost completion (Phase D finding) and backlog (P2.4b, P2.4c, P3.2b).
 - [ ] Resolve the specification's open question on the yEd ERD: update the diagram, or record that the maintainer updates it separately.
 - [ ] Search the documentation for statements that Group publishes no events, that Finance has no listener, or that the membership revision is a future requirement. Verify relative links and `git diff --check`; stage for review.
 
@@ -138,6 +138,9 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 | C | Four E2E classes carried identical private polling loops, and two read the registry by hand. | Added `Eventually`, `EventPublications` and `CommitFailures` to shared test support and moved the P2.4a tests onto them; `GroupDeliveryFixture` observes Finance delivery for producer-side tests. |
 | C | With live listeners, an E2E that ends right after a Group mutation can close its context while a Finance delivery is in flight; the delivery then fails with `EntityManagerFactory is closed` or `Socket closed`. Tests stay green because the fixture drops its database `WITH (FORCE)`, but the same ordering contradicts the `application.properties` note that shutdown waits for in-flight deliveries (inherited from P2.4a). | Maintainer decision: the production fix is follow-up P2.4d in the backlog; Phase C corrects the `application.properties` comment and the messaging configuration reference to state the actual shutdown behavior. Delivery stays at-least-once: an interrupted publication is republished on restart. |
 | C | The full E2E suite was not run during Phase C, at the maintainer's request to limit test runs. | Ran every E2E class that mutates Groups, plus all Finance E2Es, at `-DtestParallelism=16`, and the messaging and IAM delivery E2Es serially. The full suites remain a Gate C prerequisite. |
+| D | Spring Modulith completes a publication outside the listener's failure handling. A completion `DELETE` that fails after the Finance commit therefore leaves the publication `PROCESSING`, not `FAILED`, until the staleness monitor moves it after `staleness.processing` (10 minutes in production); only then can resubmission redeliver it. | Behavior as documented in the messaging configuration; no production change. DLV-T16 shortens only the processing staleness and its check interval in its own context, and recovers through the production staleness → resubmission path. Maintainer decision: accepted as configured; Phase G states the delay explicitly in the messaging documentation. |
+| D | Self-review: DLV-T16 could pass without exercising a lost completion if the test restored `DELETE` before the listener thread attempted completion. | The test waits until the listener executor is idle (shared `AsyncDeliveries`), then asserts that the publication is still retained before restoring the privilege. |
+| D | Self-review: expected actor lists were sorted with `UUID.compareTo`, which orders signed longs, unlike PostgreSQL's `uuid` order. | Expected actors are listed in the database's order, with fixed user IDs chosen accordingly, as in Phase C. |
 
 ## Verification commands and evidence
 
@@ -169,7 +172,7 @@ The human runs the deployment smoke from the repository root with `cd deploy && 
 | Baseline suites | Pending |
 | Unit suite (including Modulith verification) | Focused runs green through Phase C, including Modulith verification and module-structure tests; full suite pending |
 | PostgreSQL Integration suite | `GroupPersistenceIT` green (Phase A); full suite pending |
-| PostgreSQL E2E suite, including at 16 workers | Group-mutating, Finance, messaging and IAM delivery E2Es green; Group and Finance classes also at 16 workers (Phase C, 64 tests); full suite pending |
+| PostgreSQL E2E suite, including at 16 workers | Group-mutating, Finance, messaging and IAM delivery E2Es green; Group and Finance classes also at 16 workers (Phase C, 64 tests); the eight Phase D tests (DLV-T11–T16) green in five consecutive runs at 16 workers, with the injected completion failure observed in each run; full suite pending, run by the maintainer at the end |
 | jOOQ freshness (CI `verify-backend-jooq-codegen`) | Regenerated against a fresh and a recreated dev database with identical output (Phase A); CI pending |
 | Disposable deployment smoke | Pending |
 | Manual acceptance DLV-T18 | Pending |

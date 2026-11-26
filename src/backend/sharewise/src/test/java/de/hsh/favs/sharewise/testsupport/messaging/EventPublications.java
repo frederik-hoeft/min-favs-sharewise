@@ -9,6 +9,8 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 
 /**
  * Committed rows of the Spring Modulith publication registry, read on an independent
@@ -61,5 +63,25 @@ public final class EventPublications {
     /** Waits until the listeners have no outstanding publications. */
     public static void awaitCompleted(IntegrationTestContext fixture, List<String> listenerIds) {
         Eventually.await("completion of " + listenerIds, () -> forListeners(fixture, listenerIds).isEmpty());
+    }
+
+    /**
+     * Waits until the listener has exactly one publication and it satisfies {@code condition},
+     * then returns that publication as read.
+     */
+    public static StoredPublication awaitSingle(IntegrationTestContext fixture, String listenerId, String description,
+            Predicate<StoredPublication> condition) {
+        Objects.requireNonNull(listenerId, "listenerId");
+        Objects.requireNonNull(condition, "condition");
+        AtomicReference<StoredPublication> found = new AtomicReference<>();
+        Eventually.await(description, () -> {
+            List<StoredPublication> publications = forListeners(fixture, List.of(listenerId));
+            if (publications.size() == 1 && condition.test(publications.getFirst())) {
+                found.set(publications.getFirst());
+                return true;
+            }
+            return false;
+        });
+        return found.get();
     }
 }
