@@ -110,6 +110,16 @@ Both resolutions change only test code and the specification's test catalog. No 
 
 The full suites were not rerun, because no production or shared test-support code changed. The results recorded for `5c0d6cb` remain the evidence for everything outside the two changed test classes.
 
+### Messaging acknowledgement contract
+
+A further PR #38 review finding reported that the [messaging design](../../../stack/messaging.md#consumption-and-idempotency) contradicted this specification. The design tied listener success and acknowledgement to a physical commit. The specification and the [persistence architecture](../../../architecture/persistence.md#membership-projection-operations) treat the abstaining outcomes `UNCHANGED`, `DUPLICATE` and `STALE` as successes that complete the publication. The finding is confirmed: `SpringTransactions` returns an abstaining result normally once the rollback is confirmed, so a listener that required a commit would never complete a redelivered or stale fact.
+
+| Finding | Severity | Resolution |
+| --- | --- | --- |
+| M1 - Acknowledgement required a physical commit | Documentation/contract | The messaging design now completes a publication after any successful outcome, whether it committed or abstained with a confirmed rollback. Exceptions and consumer-defined unsuccessful outcomes still prevent completion. The P3.2b and P2.4c entries in the [backlog](../backlog.md#phase-3---finance-actor-synchronization-and-accounting-foundations) carry this as an acceptance criterion. The specification's P3.2b handoff, which completes the publication after any returned outcome and fails the delivery on an exception, already matched it. |
+
+The correction changes only documentation. No production code, test or schema changed. The test results recorded above remain the behavioral evidence, and `git diff --check` is clean.
+
 ## Verification commands and final acceptance
 
 From `src/backend/sharewise` in the devcontainer:
