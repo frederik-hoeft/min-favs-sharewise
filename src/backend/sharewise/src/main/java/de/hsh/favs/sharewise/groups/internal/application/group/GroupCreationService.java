@@ -36,7 +36,7 @@ public class GroupCreationService {
                 Result.err(new GroupFailure.InvalidMetadata(violations));
             case Result.Ok<GroupMetadata, List<MetadataViolation>>(GroupMetadata valid) -> transactions.execute(() ->
                 GroupOutcomes.mutation(admission.admit()
-                    .map(caller -> groups.createWithAdministrator(caller.userId(), valid))));
+                    .map(caller -> groups.createWithAdministrator(caller.userId(), valid).details())));
         };
     }
 }

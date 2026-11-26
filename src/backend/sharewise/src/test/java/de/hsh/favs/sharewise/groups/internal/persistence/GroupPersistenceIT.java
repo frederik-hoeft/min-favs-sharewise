@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -8,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import de.hsh.favs.sharewise.groups.internal.application.access.GroupLockPort;
 import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
 import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.group.CreatedGroup;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationPort;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupMutationPort;
@@ -81,11 +83,15 @@ class GroupPersistenceIT extends IntegrationTestBase {
             UUID creator = UUID.randomUUID();
             GroupMetadata metadata = metadata("Flat share", "Rent");
 
-            GroupDetails created = transactions.execute(() -> {
+            CreatedGroup result = transactions.execute(() -> {
                 users.provision(creator);
                 return TransactionOutcome.commit(creation.createWithAdministrator(creator, metadata));
             });
+            GroupDetails created = result.details();
 
+            assertEquals(1, result.membershipRevision());
+            assertEquals(List.of(1L), scope.inspect(sql -> sql.query(
+                "SELECT membership_revision FROM groups.groups WHERE id = ?", (row, index) -> row.getLong(1), created.id())));
             assertEquals(metadata, created.metadata());
             assertEquals(0, created.version());
             assertEquals(1, created.memberCount());
@@ -127,9 +133,9 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 users.provision(alice);
                 users.provision(bob);
                 users.provision(loner);
-                UUID beta = creation.createWithAdministrator(alice, metadata("beta", "second")).id();
-                UUID alpha = creation.createWithAdministrator(alice, metadata("Alpha", null)).id();
-                UUID gamma = creation.createWithAdministrator(bob, metadata("Gamma", null)).id();
+                UUID beta = creation.createWithAdministrator(alice, metadata("beta", "second")).details().id();
+                UUID alpha = creation.createWithAdministrator(alice, metadata("Alpha", null)).details().id();
+                UUID gamma = creation.createWithAdministrator(bob, metadata("Gamma", null)).details().id();
                 creation.createWithAdministrator(bob, metadata("Bob only", null));
                 GroupTestFixture.addMember(jooq.dsl(), gamma, alice, GroupRole.MEMBER);
                 assertEquals(Optional.empty(), reads.listForMember(UUID.randomUUID()));
@@ -181,8 +187,8 @@ class GroupPersistenceIT extends IntegrationTestBase {
             transactions.execute(() -> {
                 users.provision(alice);
                 users.provision(bob);
-                UUID group = creation.createWithAdministrator(alice, TRIP).id();
-                UUID foreign = creation.createWithAdministrator(bob, TRIP).id();
+                UUID group = creation.createWithAdministrator(alice, TRIP).details().id();
+                UUID foreign = creation.createWithAdministrator(bob, TRIP).details().id();
                 GroupTestFixture.addMember(jooq.dsl(), group, bob, GroupRole.MEMBER);
                 GroupWorkspace snapshot = reads.findWorkspace(group, bob).orElseThrow();
                 assertEquals(2, snapshot.group().memberCount());
@@ -218,6 +224,40 @@ class GroupPersistenceIT extends IntegrationTestBase {
     }
 
     @Test
+    void onlyMembershipInsertsAndDeletesAdvanceTheirGroupsRevision() {
+        runTransactionTest((transactions, scope) -> {
+            GroupUserRegistry users = scope.resolve(GroupUserRegistry.class);
+            GroupCreationPort creation = scope.resolve(GroupCreationPort.class);
+            GroupLockPort locks = scope.resolve(GroupLockPort.class);
+            GroupMutationPort mutations = scope.resolve(GroupMutationPort.class);
+            GroupMembershipPort memberships = scope.resolve(GroupMembershipPort.class);
+            JooqAccess jooq = scope.resolve(JooqAccess.class);
+            UUID alice = UUID.randomUUID();
+            UUID bob = UUID.randomUUID();
+
+            transactions.execute(() -> {
+                users.provision(alice);
+                users.provision(bob);
+                UUID group = creation.createWithAdministrator(alice, TRIP).details().id();
+                UUID other = creation.createWithAdministrator(bob, TRIP).details().id();
+                LockedGroup locked = locks.lockGroupForMember(group, alice).orElseThrow();
+
+                assertEquals(2, memberships.addMember(locked, bob));
+                UUID bobMembership = memberships.memberForUser(locked, bob).orElseThrow().id();
+                memberships.setRole(locked, bobMembership, GroupRole.ADMIN);
+                assertEquals(2, membershipRevision(jooq, group));
+                assertEquals(1, mutations.replaceMetadata(locked, alice, metadata("Renamed", null)).version());
+                assertEquals(2, membershipRevision(jooq, group));
+                assertEquals(3, memberships.removeMember(locked, bobMembership));
+                assertEquals(4, memberships.addMember(locked, bob));
+                assertEquals(4, membershipRevision(jooq, group));
+                assertEquals(1, membershipRevision(jooq, other), "other groups keep their own revision");
+                return TransactionOutcome.abstain(true);
+            });
+        });
+    }
+
+    @Test
     void consolidatedProjectionsEachExecuteOneStatementAndScopeTheirData() {
         runTransactionTest((transactions, scope) -> {
             GroupUserRegistry users = scope.resolve(GroupUserRegistry.class);
@@ -243,7 +283,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 users.provision(admin);
                 users.provision(member);
                 users.provision(outsider);
-                UUID group = creation.createWithAdministrator(admin, TRIP).id();
+                UUID group = creation.createWithAdministrator(admin, TRIP).details().id();
                 GroupTestFixture.addMember(actual.dsl(), group, member, GroupRole.MEMBER);
                 assertEquals(1, reads.listForMember(admin).orElseThrow().size());
                 assertEquals(1, statements.getAndSet(0));
@@ -319,7 +359,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 users.provision(admin);
                 users.provision(member);
                 users.provision(stranger);
-                GroupDetails created = creation.createWithAdministrator(admin, TRIP);
+                GroupDetails created = creation.createWithAdministrator(admin, TRIP).details();
                 GroupTestFixture.addMember(jooq.dsl(), created.id(), member, GroupRole.MEMBER);
 
                 GroupDetails seenByMember = reads.findForMember(created.id(), member).orElseThrow();
@@ -353,7 +393,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 users.provision(admin);
                 users.provision(member);
                 users.provision(stranger);
-                UUID group = creation.createWithAdministrator(admin, metadata("Trip", "Old")).id();
+                UUID group = creation.createWithAdministrator(admin, metadata("Trip", "Old")).details().id();
                 GroupTestFixture.addMember(jooq.dsl(), group, member, GroupRole.MEMBER);
 
                 assertEquals(Optional.empty(), locks.lockGroupForMember(UUID.randomUUID(), admin));
@@ -390,7 +430,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
             InvalidDataAccessApiUsageException failure = assertThrows(InvalidDataAccessApiUsageException.class,
                 () -> transactions.execute(() -> {
                 users.provision(admin);
-                UUID group = creation.createWithAdministrator(admin, TRIP).id();
+                UUID group = creation.createWithAdministrator(admin, TRIP).details().id();
                 LockedGroup stale = new LockedGroup(group, 7);
                 return TransactionOutcome.commit(mutations.replaceMetadata(stale, admin, TRIP));
             }));
@@ -420,6 +460,9 @@ class GroupPersistenceIT extends IntegrationTestBase {
         "65-character name;     INSERT INTO groups.groups (name) VALUES (repeat('x', 65));                       22001",
         "513-character text;    INSERT INTO groups.groups (name, description) VALUES ('x', repeat('d', 513));    22001",
         "negative version;      INSERT INTO groups.groups (name, version) VALUES ('x', -1);                      23514",
+        "zero revision;         UPDATE groups.groups SET membership_revision = 0 WHERE id = '{group}';           23514",
+        "negative revision;     INSERT INTO groups.groups (name, membership_revision) VALUES ('x', -1);          23514",
+        "missing revision;      UPDATE groups.groups SET membership_revision = NULL WHERE id = '{group}';        23502",
         "duplicate membership;  INSERT INTO groups.group_members (group_id, user_id, role) VALUES ('{group}', '{user}', 'member'); 23505",
         "unknown member user;   INSERT INTO groups.group_members (group_id, user_id, role) VALUES ('{group}', gen_random_uuid(), 'member'); 23503",
         "unknown member group;  INSERT INTO groups.group_members (group_id, user_id, role) VALUES (gen_random_uuid(), '{user}', 'member'); 23503",
@@ -434,7 +477,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
 
             RuntimeException failure = assertThrows(RuntimeException.class, () -> transactions.execute(() -> {
                 users.provision(user);
-                UUID group = creation.createWithAdministrator(user, TRIP).id();
+                UUID group = creation.createWithAdministrator(user, TRIP).details().id();
                 DSLContext db = jooq.dsl();
                 db.execute(statement.replace("{group}", group.toString()).replace("{user}", user.toString()));
                 return TransactionOutcome.commit(true);
@@ -490,9 +533,22 @@ class GroupPersistenceIT extends IntegrationTestBase {
                     SELECT EXISTS (SELECT 1 FROM aclexplode((SELECT typacl FROM pg_type
                         WHERE oid = 'groups.group_role'::regtype)) WHERE grantee = 0)"""),
                     "PUBLIC must not use the role type");
+                assertEquals(Boolean.TRUE, db.fetchValue(
+                    "SELECT has_type_privilege('sharewise_app', 'groups.bignatural1', 'USAGE')"));
+                assertEquals(Boolean.FALSE, db.fetchValue("""
+                    SELECT EXISTS (SELECT 1 FROM aclexplode((SELECT typacl FROM pg_type
+                        WHERE oid = 'groups.bignatural1'::regtype)) WHERE grantee = 0)"""),
+                    "PUBLIC must not use the revision domain");
+                assertEquals("bigint", db.fetchValue("""
+                    SELECT format_type(typbasetype, NULL) FROM pg_type WHERE oid = 'groups.bignatural1'::regtype"""));
                 return TransactionOutcome.abstain(true);
             });
         });
+    }
+
+    private static long membershipRevision(JooqAccess jooq, UUID group) {
+        return jooq.dsl().select(GROUPS_.MEMBERSHIP_REVISION).from(GROUPS_).where(GROUPS_.ID.eq(group))
+            .fetchSingle().value1();
     }
 
     private static GroupMetadata metadata(String name, String description) {

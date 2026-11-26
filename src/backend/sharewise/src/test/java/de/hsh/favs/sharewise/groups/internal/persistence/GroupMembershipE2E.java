@@ -6,8 +6,11 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.BOB;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.change;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.create;
+import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.invitation;
+import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.membershipRevision;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.ok;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.query;
+import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.redeem;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.replace;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.workspace;
 import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.awaitLockWaiters;
@@ -17,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.CreatedInvitation;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemption;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeStatus;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
@@ -36,9 +41,63 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** Durable membership changes, identity and concurrent administrator invariants. */
+/** Durable membership changes, identity, membership revisions and concurrent administrator invariants. */
 @Tag("e2e")
 class GroupMembershipE2E extends E2ETestBase {
+
+    /** DLV-T05: only committed membership insertions and deletions advance the revision. */
+    @Test
+    void committedMembershipChangesAdvanceTheRevisionAndOtherOperationsDoNot() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            assertEquals(1, membershipRevision(fixture, group));
+
+            CreatedInvitation link = invitation(fixture, group, null, null);
+            assertEquals(InvitationRedemption.Outcome.JOINED, ok(redeem(fixture, BOB, link)).outcome());
+            assertEquals(2, membershipRevision(fixture, group));
+
+            UUID aliceId = workspace(fixture, ALICE, group).callerMembershipId();
+            UUID bobId = workspace(fixture, BOB, group).callerMembershipId();
+            ok(change(fixture, ALICE, group, bobId, new MembershipChange.SetRole(GroupRole.ADMIN)));
+            assertEquals(2, membershipRevision(fixture, group));
+
+            ok(change(fixture, BOB, group, bobId, new MembershipChange.Remove()));
+            assertEquals(3, membershipRevision(fixture, group));
+
+            assertEquals(InvitationRedemption.Outcome.ALREADY_MEMBER, ok(redeem(fixture, ALICE, link)).outcome());
+            assertEquals(3, membershipRevision(fixture, group));
+
+            assertEquals(Result.err(new GroupFailure.LastMember()),
+                change(fixture, ALICE, group, aliceId, new MembershipChange.Remove()));
+            assertEquals(3, membershipRevision(fixture, group));
+            assertEquals(List.of(0L), query(fixture, "SELECT version FROM groups.groups", row -> row.getLong(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
+    }
+
+    /** DLV-R03: the row lock serializes concurrent joins, so each commits its own revision. */
+    @Test
+    void concurrentJoinsCommitDistinctConsecutiveRevisions() {
+        runTest(fixture -> {
+            UUID carol = UUID.randomUUID();
+            GroupTestFixture.provision(fixture, ALICE, BOB, carol);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            CreatedInvitation link = invitation(fixture, group, null, null);
+            try (ExecutorService callers = Executors.newFixedThreadPool(2);
+                 Connection holder = lockGroup(fixture, group)) {
+                Future<Result<InvitationRedemption, GroupFailure>> bob = callers.submit(() -> redeem(fixture, BOB, link));
+                Future<Result<InvitationRedemption, GroupFailure>> other = callers.submit(() -> redeem(fixture, carol, link));
+                awaitLockWaiters(fixture, holder, 2, LOCK_WAIT_TIMEOUT);
+                holder.commit();
+                for (Future<Result<InvitationRedemption, GroupFailure>> joiner : List.of(bob, other)) {
+                    assertEquals(InvitationRedemption.Outcome.JOINED,
+                        ok(joiner.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS)).outcome());
+                }
+            }
+            assertEquals(3, membershipRevision(fixture, group));
+            assertEquals(List.of(3L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
+    }
 
     @Test
     void simultaneousAdministratorDeparturesCannotRemoveTheLastMember() {

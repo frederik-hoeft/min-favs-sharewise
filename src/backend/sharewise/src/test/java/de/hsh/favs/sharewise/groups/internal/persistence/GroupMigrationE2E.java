@@ -17,18 +17,14 @@ import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** Verifies forward-only deployment over main's IAM and Finance migrations. */
+/** Verifies forward-only deployment of the Group migrations over existing data. */
 @Tag("e2e")
 class GroupMigrationE2E {
 
     @Test
     void upgradesMainWithoutChangingExistingIamOrFinanceData() throws SQLException {
         try (PostgresTestDatabase database = PostgresTestDatabase.createBootstrapped()) {
-            FluentConfiguration configuration = Flyway.configure()
-                .dataSource(database.jdbcUrl(), PostgresTestDatabase.MIGRATOR_USER,
-                    database.connectionSettings().migratorPassword())
-                .locations("classpath:db/migration").defaultSchema("flyway").schemas("flyway")
-                .outOfOrder(false);
+            FluentConfiguration configuration = migrations(database);
             Flyway baseline = configuration.target("202611241838").load();
             baseline.migrate();
             // Exact historical main baseline, not an inventory of the latest schema.
@@ -67,6 +63,39 @@ class GroupMigrationE2E {
                     + groupId + "' AND user_id = '" + userId + "'"));
             }
         }
+    }
+
+    /** DLV-R01: the revision column gives groups that existed before it revision 1. */
+    @Test
+    void existingGroupsStartAtMembershipRevisionOne() throws SQLException {
+        try (PostgresTestDatabase database = PostgresTestDatabase.createBootstrapped()) {
+            FluentConfiguration configuration = migrations(database);
+            configuration.target("202611251410").load().migrate();
+
+            try (Connection app = database.connectAsApplication(); Statement sql = app.createStatement()) {
+                assertEquals("true", scalar(sql, """
+                    SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'groups'
+                        AND table_name = 'groups' AND column_name = 'membership_revision'))::text"""));
+                String groupId = scalar(sql, "INSERT INTO groups.groups (name) VALUES ('Existing') RETURNING id::text");
+
+                Flyway upgraded = configuration.target(MigrationVersion.LATEST).load();
+                upgraded.migrate();
+                upgraded.validate();
+                assertEquals("1", scalar(sql, "SELECT membership_revision::text FROM groups.groups WHERE id = '" + groupId + "'"));
+                assertEquals("groups.bignatural1:NO:1", scalar(sql, """
+                    SELECT domain_schema || '.' || domain_name || ':' || is_nullable || ':' || column_default
+                    FROM information_schema.columns
+                    WHERE table_schema = 'groups' AND table_name = 'groups' AND column_name = 'membership_revision'"""));
+            }
+        }
+    }
+
+    private static FluentConfiguration migrations(PostgresTestDatabase database) {
+        return Flyway.configure()
+            .dataSource(database.jdbcUrl(), PostgresTestDatabase.MIGRATOR_USER,
+                database.connectionSettings().migratorPassword())
+            .locations("classpath:db/migration").defaultSchema("flyway").schemas("flyway")
+            .outOfOrder(false);
     }
 
     private static String scalar(Statement sql, String query) throws SQLException {

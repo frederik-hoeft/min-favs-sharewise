@@ -10,6 +10,10 @@ import de.hsh.favs.sharewise.groups.internal.application.group.GroupMetadataServ
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupQueryService;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
 import de.hsh.favs.sharewise.groups.internal.application.group.ReplaceGroupMetadataCommand;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.CreateInvitationCommand;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.CreatedInvitation;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.GroupInvitationService;
+import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemption;
 import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipService;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeCommand;
@@ -21,6 +25,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -55,6 +60,37 @@ final class GroupE2ESupport {
             UUID group, UUID target, MembershipChange change) {
         return withUser(caller, () -> dispatcher(fixture).dispatch(GroupMembershipService.class,
             service -> service.change(new MembershipChangeCommand(group, target, change))));
+    }
+
+    /** Creates an invitation as {@link #ALICE}, who must administer the group. */
+    static CreatedInvitation invitation(IntegrationTestContext fixture, UUID group, Instant expires, Integer limit) {
+        return ok(withUser(ALICE, () -> dispatcher(fixture).dispatch(GroupInvitationService.class,
+            service -> service.create(new CreateInvitationCommand(group, expires, limit)))));
+    }
+
+    static Result<InvitationRedemption, GroupFailure> redeem(IntegrationTestContext fixture, UUID user,
+            CreatedInvitation link) {
+        return redeem(fixture, user, link.token().value());
+    }
+
+    static Result<InvitationRedemption, GroupFailure> redeem(IntegrationTestContext fixture, UUID user, String token) {
+        return withUser(user, () -> dispatcher(fixture).dispatch(GroupInvitationService.class,
+            service -> service.redeem(token)));
+    }
+
+    /** The group's committed membership revision. */
+    static long membershipRevision(IntegrationTestContext fixture, UUID group) throws SQLException {
+        try (Connection connection = fixture.connectAsApplication();
+             PreparedStatement statement = connection.prepareStatement(
+                 "SELECT membership_revision FROM groups.groups WHERE id = ?")) {
+            statement.setObject(1, group);
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new AssertionError("No group " + group);
+                }
+                return rows.getLong(1);
+            }
+        }
     }
 
     static OperationDispatcher dispatcher(IntegrationTestContext fixture) {

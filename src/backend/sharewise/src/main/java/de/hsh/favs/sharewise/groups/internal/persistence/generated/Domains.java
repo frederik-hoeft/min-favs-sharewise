@@ -19,6 +19,17 @@ import org.jooq.impl.SQLDataType;
 public class Domains {
 
     /**
+     * The domain <code>groups.bignatural1</code>.
+     */
+    public static final Domain<Long> BIGNATURAL1 = Internal.createDomain(
+          schema()
+        , DSL.name("bignatural1")
+        , DSL.comment("")
+        , SQLDataType.BIGINT
+        , Internal.createCheck(null, null, "CHECK ((VALUE > 0))")
+    );
+
+    /**
      * The domain <code>groups.natural0</code>.
      */
     public static final Domain<Integer> NATURAL0 = Internal.createDomain(

@@ -1,12 +1,12 @@
 # P3.2b - Durable Group → Finance membership delivery: implementation plan
 
-**Status:** Draft for review, following approval of the [specification](specification.md). Checkboxes denote verified and human-approved work, not merely written code. Follow the [AI development workflow](../../../development/ai-development-workflow.md) in its default human-gated form; no autonomous execution is authorized.
+**Status:** Approved; implementation in progress. Follows the approved [specification](specification.md). Checkboxes denote verified and human-approved work, not merely written code. Follow the [AI development workflow](../../../development/ai-development-workflow.md) in its default human-gated form; no autonomous execution is authorized.
 
 ## Baseline and prerequisites
 
 - [x] Maintainer approves the specification.
-- [ ] Maintainer approves this plan.
-- [ ] P2.4a is merged into `main`. Its registry migration, recovery configuration, `ContributingOperationDispatcher` usage and `FailedEventPublications` test patterns are prerequisites for Phases C–E.
+- [x] Maintainer approves this plan.
+- [ ] P2.4a is merged into `main`. Until then, the maintainer merged `origin/task/p2.4a-iam-user-events` into this branch (`620e97b`) so implementation can proceed. Its registry migration, recovery configuration, `ContributingOperationDispatcher` usage and `FailedEventPublications` test patterns are prerequisites for Phases C–E.
 - [x] Create `task/p3.2b-membership-delivery` from `main` at `6296c31` (P3.2a merged) and commit the approved specification and the draft plan for review.
 - [ ] After plan approval and the P2.4a merge, update the branch from `main`, commit the approved plan and push before implementation begins.
 - [ ] Run the unchanged Unit, Integration and E2E suites on the branch baseline and record the results, so later failures are not confused with pre-existing ones.
@@ -130,7 +130,10 @@ Can be reviewed independently of Phase D. Covers DLV-R15.
 
 ## Self-review and review findings
 
-_None yet._
+| Phase | Finding | Resolution |
+| --- | --- | --- |
+| A | In the order create → join → leave → set role, only the creator remains when the role change runs, so it cannot write. | DLV-T05 promotes the joiner before they leave: create → join → set role → leave → `ALREADY_MEMBER` → rejected removal yields 1, 2, 2, 3, 3, 3. Accepted by the maintainer. |
+| A | The concurrent-join E2E cannot attribute revisions 2 and 3 to individual joiners before events exist. | Phase A asserts both joins and final revision 3; DLV-T07 in Phase C asserts the per-joiner revisions through delivery. Accepted by the maintainer. |
 
 ## Verification commands and evidence
 
@@ -158,7 +161,7 @@ The human runs the deployment smoke from the repository root with `cd deploy && 
 | Evidence | Result |
 | --- | --- |
 | Specification approval | Approved by maintainer (2026-11-26) |
-| Plan approval | Pending |
+| Plan approval | Approved by maintainer (2026-11-26) |
 | Baseline suites | Pending |
 | Unit suite (including Modulith verification) | Pending |
 | PostgreSQL Integration suite | Pending |

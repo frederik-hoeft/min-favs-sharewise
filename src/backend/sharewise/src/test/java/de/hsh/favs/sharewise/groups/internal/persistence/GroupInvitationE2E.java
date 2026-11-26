@@ -6,11 +6,11 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.BOB;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.change;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.create;
-import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.dispatcher;
+import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.invitation;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.ok;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.query;
+import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.redeem;
 import static de.hsh.favs.sharewise.groups.internal.persistence.GroupE2ESupport.workspace;
-import static de.hsh.favs.sharewise.testsupport.identity.IdentityTestFixture.withUser;
 import static de.hsh.favs.sharewise.testsupport.postgres.PostgresLockWaits.awaitLockWaiters;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -18,9 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
-import de.hsh.favs.sharewise.groups.internal.application.invitation.CreateInvitationCommand;
 import de.hsh.favs.sharewise.groups.internal.application.invitation.CreatedInvitation;
-import de.hsh.favs.sharewise.groups.internal.application.invitation.GroupInvitationService;
 import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemption;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
@@ -28,7 +26,6 @@ import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.identity.IdentityTestConfiguration;
-import de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext;
 import de.hsh.favs.sharewise.testsupport.postgres.BoundedStatementsConfiguration;
 import de.hsh.favs.sharewise.testsupport.postgres.ProductionEntityScanConfiguration;
 import java.sql.Connection;
@@ -211,19 +208,5 @@ class GroupInvitationE2E extends E2ETestBase {
             assertEquals(List.of(1L), query(fixture, "SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
             assertEquals(List.of(0), query(fixture, "SELECT use_count FROM groups.invitations", row -> row.getInt(1)));
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class);
-    }
-
-    private static CreatedInvitation invitation(IntegrationTestContext fixture, UUID group, Instant expires, Integer limit) {
-        return ok(withUser(ALICE, () -> dispatcher(fixture).dispatch(GroupInvitationService.class,
-            service -> service.create(new CreateInvitationCommand(group, expires, limit)))));
-    }
-
-    private static Result<InvitationRedemption, GroupFailure> redeem(IntegrationTestContext fixture, UUID user, CreatedInvitation link) {
-        return redeem(fixture, user, link.token().value());
-    }
-
-    private static Result<InvitationRedemption, GroupFailure> redeem(IntegrationTestContext fixture, UUID user, String token) {
-        return withUser(user, () -> dispatcher(fixture).dispatch(GroupInvitationService.class,
-            service -> service.redeem(token)));
     }
 }

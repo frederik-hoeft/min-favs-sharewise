@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.persistence;
 
+import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUPS_;
 import static de.hsh.favs.sharewise.groups.internal.persistence.generated.Tables.GROUP_MEMBERS;
 
 import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
@@ -14,11 +15,15 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.Record1;
 import org.jooq.impl.DSL;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Repository;
 
-/** Membership persistence under the group-root mutation protocol. */
+/**
+ * Membership persistence under the group-root mutation protocol. Membership inserts and deletes
+ * advance the group's membership revision in the same segment; see {@link GroupMembershipPort}.
+ */
 @Repository
 @Scope("operation")
 class JooqGroupMemberships implements GroupMembershipPort {
@@ -62,17 +67,29 @@ class JooqGroupMemberships implements GroupMembershipPort {
     }
 
     @Override
-    public void addMember(LockedGroup group, UUID userId) {
+    public long addMember(LockedGroup group, UUID userId) {
         requireChanged(database.dsl().insertInto(GROUP_MEMBERS)
             .set(GROUP_MEMBERS.GROUP_ID, group.id())
             .set(GROUP_MEMBERS.USER_ID, userId)
             .set(GROUP_MEMBERS.ROLE, GroupProjections.toDatabase(GroupRole.MEMBER)).execute());
+        return advanceMembershipRevision(group);
     }
 
     @Override
-    public void removeMember(LockedGroup group, UUID membershipId) {
+    public long removeMember(LockedGroup group, UUID membershipId) {
         requireChanged(database.dsl().deleteFrom(GROUP_MEMBERS)
             .where(GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(GROUP_MEMBERS.ID.eq(membershipId))).execute());
+        return advanceMembershipRevision(group);
+    }
+
+    /** The only write of {@code membership_revision}; runs after the membership row change. */
+    private long advanceMembershipRevision(LockedGroup group) {
+        return database.dsl().update(GROUPS_)
+            .set(GROUPS_.MEMBERSHIP_REVISION, GROUPS_.MEMBERSHIP_REVISION.plus(1L))
+            .where(GROUPS_.ID.eq(group.id()))
+            .returningResult(GROUPS_.MEMBERSHIP_REVISION)
+            .fetchOptional(Record1::value1)
+            .orElseThrow(() -> new IllegalStateException("Expected the locked group to exist"));
     }
 
     private static void requireChanged(int changed) {

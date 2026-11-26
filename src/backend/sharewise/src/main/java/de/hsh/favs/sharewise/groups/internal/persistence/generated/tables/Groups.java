@@ -4,6 +4,7 @@
 package de.hsh.favs.sharewise.groups.internal.persistence.generated.tables;
 
 
+import de.hsh.favs.sharewise.groups.internal.persistence.generated.Domains;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.Keys;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers.GroupMembersPath;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.Invitations.InvitationsPath;
@@ -85,6 +86,11 @@ public class Groups extends TableImpl<GroupsRecord> {
      * The column <code>groups.groups.version</code>.
      */
     public final TableField<GroupsRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+
+    /**
+     * The column <code>groups.groups.membership_revision</code>.
+     */
+    public final TableField<GroupsRecord, Long> MEMBERSHIP_REVISION = createField(DSL.name("membership_revision"), Domains.BIGNATURAL1.getDataType().nullable(false).defaultValue(DSL.field(DSL.raw("1"), Domains.BIGNATURAL1.getDataType())), this, "");
 
     private Groups(Name alias, Table<GroupsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

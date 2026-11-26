@@ -3,6 +3,7 @@ package de.hsh.favs.sharewise.groups.internal.application;
 import de.hsh.favs.sharewise.groups.internal.application.access.GroupLockPort;
 import de.hsh.favs.sharewise.groups.internal.application.access.GroupUserRegistry;
 import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
+import de.hsh.favs.sharewise.groups.internal.application.group.CreatedGroup;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupCreationPort;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupMutationPort;
@@ -21,6 +22,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -37,6 +39,7 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     private final Set<UUID> users = new HashSet<>();
     private final Map<UUID, StoredGroup> groups = new LinkedHashMap<>();
     private final Map<UUID, Map<UUID, UUID>> membershipIds = new LinkedHashMap<>();
+    private final Map<UUID, Long> membershipRevisions = new LinkedHashMap<>();
     private final List<String> calls = new ArrayList<>();
     private int writes;
 
@@ -44,11 +47,12 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
         users.clear();
         groups.clear();
         membershipIds.clear();
+        membershipRevisions.clear();
         calls.clear();
         writes = 0;
     }
 
-    /** Seeds a group with explicit memberships, bypassing the services. */
+    /** Seeds a group with explicit memberships at membership revision 1, bypassing the services. */
     synchronized UUID seedGroup(GroupMetadata metadata, long version, Map<UUID, GroupRole> members) {
         if (!users.containsAll(members.keySet())) {
             throw new IllegalStateException("Unknown seeded member");
@@ -58,7 +62,13 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
         Map<UUID, UUID> ids = new LinkedHashMap<>();
         members.keySet().forEach(user -> ids.put(user, UUID.randomUUID()));
         membershipIds.put(id, ids);
+        membershipRevisions.put(id, 1L);
         return id;
+    }
+
+    /** The group's current membership revision, advanced only by membership inserts and deletes. */
+    synchronized long membershipRevision(UUID groupId) {
+        return Objects.requireNonNull(membershipRevisions.get(groupId), "unknown group");
     }
 
     synchronized Optional<StoredGroup> stored(UUID groupId) {
@@ -99,14 +109,14 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized GroupDetails createWithAdministrator(UUID creatorId, GroupMetadata metadata) {
+    public synchronized CreatedGroup createWithAdministrator(UUID creatorId, GroupMetadata metadata) {
         calls.add("create");
         if (!users.contains(creatorId)) {
             throw new IllegalStateException("simulated foreign-key violation for unknown creator");
         }
         writes++;
         UUID id = seedGroup(metadata, 0, Map.of(creatorId, GroupRole.ADMIN));
-        return details(groups.get(id), creatorId);
+        return new CreatedGroup(details(groups.get(id), creatorId), membershipRevision(id));
     }
 
     @Override
@@ -198,24 +208,27 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     @Override
-    public synchronized void removeMember(LockedGroup group, UUID membershipId) {
+    public synchronized long removeMember(LockedGroup group, UUID membershipId) {
         GroupMember target = memberById(group, membershipId).orElseThrow();
         groups.get(group.id()).members().remove(target.userId());
         membershipIds.get(group.id()).remove(target.userId());
         calls.add("remove");
         writes++;
+        return membershipRevisions.merge(group.id(), 1L, Long::sum);
     }
 
     @Override
-    public synchronized void addMember(LockedGroup group, UUID userId) {
+    public synchronized long addMember(LockedGroup group, UUID userId) {
         if (groups.get(group.id()).members().containsKey(userId)) {
             throw new IllegalStateException("Membership already exists");
         }
         addMembership(group.id(), userId, GroupRole.MEMBER);
         calls.add("addMember");
         writes++;
+        return membershipRevisions.merge(group.id(), 1L, Long::sum);
     }
 
+    /** Seeds an additional membership without advancing the revision, like a direct SQL fixture. */
     synchronized void addMembership(UUID groupId, UUID userId, GroupRole role) {
         if (!users.contains(userId)) {
             throw new IllegalStateException("Unknown member");

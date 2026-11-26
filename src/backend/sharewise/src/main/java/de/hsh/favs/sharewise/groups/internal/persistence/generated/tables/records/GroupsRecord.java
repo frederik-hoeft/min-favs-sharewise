@@ -91,6 +91,20 @@ public class GroupsRecord extends UpdatableRecordImpl<GroupsRecord> {
         return (Long) get(4);
     }
 
+    /**
+     * Setter for <code>groups.groups.membership_revision</code>.
+     */
+    public void setMembershipRevision(Long value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>groups.groups.membership_revision</code>.
+     */
+    public Long getMembershipRevision() {
+        return (Long) get(5);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -114,7 +128,7 @@ public class GroupsRecord extends UpdatableRecordImpl<GroupsRecord> {
     /**
      * Create a detached, initialised GroupsRecord
      */
-    public GroupsRecord(UUID id, String name, String description, OffsetDateTime createdAt, Long version) {
+    public GroupsRecord(UUID id, String name, String description, OffsetDateTime createdAt, Long version, Long membershipRevision) {
         super(Groups.GROUPS_);
 
         setId(id);
@@ -122,6 +136,7 @@ public class GroupsRecord extends UpdatableRecordImpl<GroupsRecord> {
         setDescription(description);
         setCreatedAt(createdAt);
         setVersion(version);
+        setMembershipRevision(membershipRevision);
         resetTouchedOnNotNull();
     }
 }

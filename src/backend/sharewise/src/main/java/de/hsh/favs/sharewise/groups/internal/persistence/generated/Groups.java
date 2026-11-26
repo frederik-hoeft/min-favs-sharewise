@@ -67,6 +67,7 @@ public class Groups extends SchemaImpl {
     @Override
     public final List<Domain<?>> getDomains() {
         return Arrays.asList(
+            Domains.BIGNATURAL1,
             Domains.NATURAL0,
             Domains.NATURAL1
         );
