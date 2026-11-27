@@ -41,18 +41,20 @@ export class IdentityApi {
         });
     }
 
-    getAccount(options?: { readonly signal?: AbortSignal }): Promise<AccountProfile> {
-        return this.client.get<AccountProfile>(`${ROOT}/account`, options);
+    async getAccount(options?: { readonly signal?: AbortSignal }): Promise<AccountProfile> {
+        return parseAccountProfile(await this.client.get<unknown>(`${ROOT}/account`, options));
     }
 
-    setDisplayName(displayName: string): Promise<AccountProfile> {
-        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName });
+    async setDisplayName(displayName: string): Promise<AccountProfile> {
+        const profile: AccountProfile = parseAccountProfile(await this.client.patch<unknown>(`${ROOT}/account`, { displayName }));
+        if (profile.displayName !== displayName) throw invalidProfileResponse();
+        return profile;
     }
 
     async lookupProfiles(userIds: readonly string[], signal: AbortSignal): Promise<readonly PublicProfile[]> {
         const response: unknown = await this.client.post<unknown>(`${ROOT}/profiles/lookup`, { userIds }, { signal });
         if (typeof response !== 'object' || response === null || !('profiles' in response) || !Array.isArray(response.profiles)) {
-            throw new ApiError({ status: 0, code: 'invalid_response', title: 'Invalid Profile Response', detail: 'Unable to resolve profiles.' });
+            throw invalidProfileResponse();
         }
         const requested: Set<string> = new Set(userIds);
         const profiles: PublicProfile[] = [];
@@ -60,7 +62,7 @@ export class IdentityApi {
             if (typeof profile !== 'object' || profile === null || !('userId' in profile) || typeof profile.userId !== 'string' ||
                 !requested.delete(profile.userId) || !('displayName' in profile) || typeof profile.displayName !== 'string' ||
                 validateDisplayName(profile.displayName) !== undefined) {
-                throw new ApiError({ status: 0, code: 'invalid_response', title: 'Invalid Profile Response', detail: 'Unable to resolve profiles.' });
+                throw invalidProfileResponse();
             }
             profiles.push({ userId: profile.userId, displayName: profile.displayName });
         }
@@ -89,4 +91,18 @@ export class IdentityApi {
             expectedSessionId ? { expectedSessionId } : {},
             { headers: { [CSRF_HEADER]: csrfToken } });
     }
+}
+
+function invalidProfileResponse(): ApiError {
+    return new ApiError({ status: 0, code: 'invalid_response', title: 'Invalid Profile Response', detail: 'Unable to validate the profile response.' });
+}
+
+function parseAccountProfile(response: unknown): AccountProfile {
+    if (typeof response !== 'object' || response === null || !('userId' in response) || typeof response.userId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(response.userId) ||
+        !('email' in response) || typeof response.email !== 'string' || !response.email ||
+        !('displayName' in response) || typeof response.displayName !== 'string' || validateDisplayName(response.displayName) !== undefined) {
+        throw invalidProfileResponse();
+    }
+    return { userId: response.userId, email: response.email, displayName: response.displayName };
 }

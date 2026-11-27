@@ -2,7 +2,7 @@ import { apiTarget } from "../support/api-target";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIdentityRuntime } from "@/core/identity";
 import { ApiError } from "@/lib/api";
-import { SESSION_ONE, authenticationResponse, jsonResponse, problemResponse } from "./support";
+import { SESSION_ONE, authenticationResponse, deferred, jsonResponse, problemResponse } from "./support";
 
 const profile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: "Alice" };
 const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
@@ -35,6 +35,34 @@ describe("Typed IAM account API", () => {
       { path: "/api/iam/v1/account", method: "PATCH", authorization: "Bearer account-bearer", body: JSON.stringify({ displayName: "  Alice 🦊  " }), credentials: "same-origin" },
       { path: "/api/iam/v1/account", method: "PATCH", authorization: "Bearer account-bearer", body: JSON.stringify({ displayName: "Alice" }), credentials: "same-origin" },
     ]);
+  });
+
+  it("rejects malformed or mismatched account responses without poisoning the profile cache", async () => {
+    const responses = [jsonResponse({ ...profile, displayName: null }), jsonResponse({ ...profile, userId: "not-a-uuid" }),
+      jsonResponse({ ...profile, displayName: "Unexpected" }), jsonResponse({ profiles: [profile] })];
+    const runtime = createRuntime(vi.fn(async () => responses.shift()!) as typeof fetch);
+    const apis = runtime.forSession(SESSION_ONE);
+    await expect(apis.account.getAccount()).rejects.toMatchObject({ code: "invalid_response" });
+    await expect(apis.account.setDisplayName("Renamed")).rejects.toMatchObject({ code: "invalid_response" });
+    await expect(apis.account.setDisplayName("Renamed")).rejects.toMatchObject({ code: "invalid_response" });
+    expect((await apis.profiles.resolve([profile.userId])).get(profile.userId)).toEqual({ status: "resolved", displayName: "Alice" });
+  });
+
+  it("publishes a confirmed rename across consumers even with an older lookup in flight", async () => {
+    const lookup = deferred<Response>();
+    const started = deferred<void>();
+    const fetchImpl = vi.fn(async (path: RequestInfo | URL) => {
+      if (apiTarget(path).endsWith("/profiles/lookup")) { started.resolve(undefined); return lookup.promise; }
+      return jsonResponse({ ...profile, displayName: "Renamed" });
+    });
+    const runtime = createRuntime(fetchImpl as typeof fetch);
+    const pending = runtime.forSession(SESSION_ONE).profiles.resolve([profile.userId]);
+    await started.promise;
+    await runtime.forSession(SESSION_ONE).account.setDisplayName("Renamed");
+    expect((await pending).get(profile.userId)).toEqual({ status: "resolved", displayName: "Renamed" });
+    lookup.resolve(jsonResponse({ profiles: [profile] }));
+    expect((await runtime.forSession(SESSION_ONE).profiles.resolve([profile.userId])).get(profile.userId)).toEqual({ status: "resolved", displayName: "Renamed" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("preserves structured field errors and non-validation IAM denials", async () => {
