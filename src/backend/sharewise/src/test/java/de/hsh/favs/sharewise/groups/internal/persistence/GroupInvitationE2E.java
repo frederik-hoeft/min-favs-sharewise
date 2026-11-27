@@ -23,7 +23,7 @@ import de.hsh.favs.sharewise.groups.internal.application.invitation.CreatedInvit
 import de.hsh.favs.sharewise.groups.internal.application.invitation.GroupInvitationService;
 import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemption;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;

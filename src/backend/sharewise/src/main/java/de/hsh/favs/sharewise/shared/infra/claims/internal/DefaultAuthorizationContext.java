@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Materialized once, after all providers have produced valid evidence. */
+/** Materialized once, after independent verification and contextual admission. */
 final class DefaultAuthorizationContext implements AuthorizationContext {
 
     private final List<AuthorizationCredential> credentials;

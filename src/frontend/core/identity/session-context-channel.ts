@@ -1,12 +1,12 @@
 import { SESSION_ID_PATTERN } from './auth-session.ts';
 import type { SessionContextEvent } from './models.ts';
 
-export const SESSION_CONTEXT_CHANNEL = 'sharewise:iam:session-context';
+export const SESSION_CONTEXT_CHANNEL: string = 'sharewise:iam:session-context';
 
 /** Broadcasts only non-secret login/logout context changes, never refresh rotations. */
 export class SessionContextChannel {
     private channel: BroadcastChannel | undefined;
-    private readonly listeners = new Set<(event: SessionContextEvent) => void>();
+    private readonly listeners: Set<(event: SessionContextEvent) => void> = new Set<(event: SessionContextEvent) => void>();
 
     constructor(private readonly factory: () => BroadcastChannel | undefined) {}
 
@@ -24,7 +24,7 @@ export class SessionContextChannel {
         this.channel = channel;
     }
 
-    readonly subscribe = (listener: (event: SessionContextEvent) => void): (() => void) => {
+    readonly subscribe: (listener: (event: SessionContextEvent) => void) => (() => void) = (listener: (event: SessionContextEvent) => void): (() => void) => {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
     };
@@ -48,7 +48,7 @@ export class SessionContextChannel {
         this.listeners.clear();
     }
 
-    private readonly receive = (message: MessageEvent): void => {
+    private readonly receive: (message: MessageEvent<unknown>) => void = (message: MessageEvent<unknown>): void => {
         const event: unknown = message.data;
         if (!event || typeof event !== 'object') return;
         if (!('type' in event) || !('sessionId' in event)) return;

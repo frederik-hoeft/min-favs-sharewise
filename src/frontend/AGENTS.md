@@ -14,4 +14,6 @@ Read the [frontend architecture](../../docs/architecture/frontend.md) before cha
 
 Mantine's checked-in [component and Styles API reference](../../.agents/references/frontend-mantine-llms-full.txt) is the primary local UI reference. Search for the relevant component or theme API, then check the installed package types. Do not introduce competing UI libraries, per-page global overrides or duplicate HTTP clients. The [official Mantine docs](https://mantine.dev/) are supplementary when online. Use `@phosphor-icons/react/ssr` in Server Components and the root icon package in Client Components.
 
+In authentication, authorization and shared API transport code, explicitly declare TypeScript types for locals, fields, parameters and function returns where the syntax permits. Type the iterable for `for...of` and `for...in` bindings, which do not support explicit binding annotations. Do not introduce `any` or unchecked assertions merely to satisfy the convention.
+
 Follow [engineering quality](../../.agents/skills/engineering-quality/SKILL.md) for code changes and [documentation](../../.agents/skills/documentation/SKILL.md) for document edits. The architecture/design/development guides are authoritative; avoid copying their content into agent notes.

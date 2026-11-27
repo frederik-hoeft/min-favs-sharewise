@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 class DefaultIdentityContextTests {
 
     private static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
-            "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
+            "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sw-api-v1"),
             JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5),
             Duration.ofSeconds(30), 4096);
     private static final UUID USER = UUID.fromString("019ab800-0000-7000-8000-000000000201");
@@ -84,7 +84,7 @@ class DefaultIdentityContextTests {
     }
 
     private static ClaimOrigin origin(String userId) {
-        return new ClaimOrigin(PROFILE.issuer(), PROFILE.name(), Set.of("sharewise-api"),
+        return new ClaimOrigin(PROFILE.issuer(), PROFILE.name(), Set.of("sw-api-v1"),
                 Optional.of(userId), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
     }
 }

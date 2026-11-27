@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jayway.jsonpath.JsonPath;
 import de.hsh.favs.sharewise.ShareWiseApplication;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.GroupTestFixture;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;

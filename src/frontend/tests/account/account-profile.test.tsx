@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
@@ -50,7 +51,7 @@ describe("Account profile page", () => {
 
   it("loads an unset profile, keeps email read-only, and saves Unicode without trimming or HTML interpretation", async () => {
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toBe("/api/iam/v1/account");
+      expect(apiTarget(path)).toBe("/api/iam/v1/account");
       return jsonResponse(init?.method === "PATCH" ? { ...initial, displayName: JSON.parse(String(init.body)).displayName } : initial);
     });
     renderAccount(fetchImpl as typeof fetch);
@@ -78,7 +79,7 @@ describe("Account profile page", () => {
 
   it.each(["", "  \t  "])("clears an existing display name by updating a blank entry %j", async (blank) => {
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toBe("/api/iam/v1/account");
+      expect(apiTarget(path)).toBe("/api/iam/v1/account");
       return jsonResponse(init?.method === "PATCH" ? initial : { ...initial, displayName: "Alice" });
     });
     renderAccount(fetchImpl as typeof fetch);
@@ -223,7 +224,7 @@ describe("Account profile page", () => {
 
   it("keeps unsaved profile edits through a transparent same-session renewal", async () => {
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(path);
+      const url = apiTarget(path);
       if (url.endsWith("/account")) return jsonResponse({ ...initial, displayName: "Alice" });
       if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
       if (url.endsWith("/refresh")) return jsonResponse(authenticationResponse("renewed"));
@@ -237,14 +238,14 @@ describe("Account profile page", () => {
     expect(runtime.session.getAccessToken()).toBe("renewed");
     expect(nameInput()).toHaveValue("Unsaved draft");
     expect(screen.getByRole("button", { name: "Update display name" })).toBeEnabled();
-    expect(fetchImpl.mock.calls.filter(([path]) => String(path).endsWith("/account"))).toHaveLength(1);
+    expect(fetchImpl.mock.calls.filter(([path]) => apiTarget(path).endsWith("/account"))).toHaveLength(1);
   });
 
   it("keeps the mutation pending across renewal and applies the successful replay without reloading", async () => {
     const refresh = deferred<Response>();
     const reply = deferred<Response>();
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(path);
+      const url = apiTarget(path);
       if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
       if (url.endsWith("/refresh")) return refresh.promise;
       if (init?.method === "PATCH") {
@@ -258,7 +259,7 @@ describe("Account profile page", () => {
     await screen.findByDisplayValue("Alice");
     fireEvent.change(nameInput(), { target: { value: "Edited" } });
     fireEvent.submit(screen.getByRole("form", { name: "Account profile" }));
-    await waitFor(() => expect(fetchImpl.mock.calls.some(([path]) => String(path).endsWith("/refresh"))).toBe(true));
+    await waitFor(() => expect(fetchImpl.mock.calls.some(([path]) => apiTarget(path).endsWith("/refresh"))).toBe(true));
     expect(nameInput()).toBeDisabled();
     expect(nameInput()).toHaveValue("Edited");
     await act(async () => refresh.resolve(jsonResponse(authenticationResponse("renewed"))));
@@ -273,7 +274,7 @@ describe("Account profile page", () => {
     expect(nameInput()).toHaveValue("Edited");
     expect(nameInput()).toBeEnabled();
     expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
-    expect(fetchImpl.mock.calls.filter(([path, init]) => String(path).endsWith("/account") && init?.method === "GET")).toHaveLength(1);
+    expect(fetchImpl.mock.calls.filter(([path, init]) => apiTarget(path).endsWith("/account") && init?.method === "GET")).toHaveLength(1);
   });
 
   it("never displays a previous account while reloading for a new authentication context", async () => {

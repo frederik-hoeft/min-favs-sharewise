@@ -7,6 +7,8 @@ const backendUrl: string = process.env.BACKEND_URL || "http://localhost:8080";
 const staticExport = process.env.SHAREWISE_STATIC_EXPORT === "1";
 
 const nextConfig: NextConfig = {
+  // Always inline an explicit build-time value, including the disabled default.
+  env: { SHAREWISE_AUTHORIZATION_DEBUG: process.env.SHAREWISE_AUTHORIZATION_DEBUG === "1" ? "1" : "0" },
   output: staticExport ? "export" : "standalone",
   ...(staticExport && { distDir: ".next-export" }),
   ...(!staticExport && {

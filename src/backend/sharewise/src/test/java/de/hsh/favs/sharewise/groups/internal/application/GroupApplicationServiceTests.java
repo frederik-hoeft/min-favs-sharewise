@@ -22,7 +22,7 @@ import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipCh
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.domain.MetadataViolation;
 import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;

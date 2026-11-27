@@ -1,9 +1,9 @@
 /**
- * Source-agnostic, read-only authorization evidence contracts.
+ * Source-agnostic, read-only authorization evidence and credential admission SPI.
  *
  * <p>The {@code shared::claims} named interface exposes verified evidence to
  * domain-owned semantic contexts. Verified credentials establish evidence,
- * not permission to perform any particular business action. Spring implementations and provider composition are private
+ * not permission to perform any particular business action. The application-facing evidence is format-neutral; the current provider SPI carries independently verified JWT proofs. Spring implementations and correlation are private
  * to the {@code internal} package.
  */
 @NamedInterface("claims")

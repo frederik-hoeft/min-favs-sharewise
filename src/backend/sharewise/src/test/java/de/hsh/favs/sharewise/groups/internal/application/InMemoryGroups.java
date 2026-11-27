@@ -13,7 +13,7 @@ import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipPort;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeContext;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;

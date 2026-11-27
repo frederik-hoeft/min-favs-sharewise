@@ -1,7 +1,8 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import de.hsh.favs.sharewise.identity.internal.IamCredentialVerifier;
 import java.util.Optional;
 import jakarta.servlet.FilterChain;
@@ -13,6 +14,8 @@ import java.util.Collections;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Verifies primary bearers once before entering an API handler. Ingress evidence
@@ -24,23 +27,25 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public final class IamBearerIngressFilter extends OncePerRequestFilter {
 
     public static final String VERIFIED_INGRESS_ATTRIBUTE = IamBearerIngressFilter.class.getName() + ".verified";
+    private static final RequestMatcher HEALTH = PathPatternRequestMatcher.withDefaults().matcher("/api/system/v1/health");
     private final IamCredentialVerifier verifier;
+    private final HttpProblemWriter problems;
 
-    public IamBearerIngressFilter(IamCredentialVerifier verifier) {
+    public IamBearerIngressFilter(IamCredentialVerifier verifier, HttpProblemWriter problems) {
+        this.problems = java.util.Objects.requireNonNull(problems);
         this.verifier = verifier;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI().substring(request.getContextPath().length());
-        // The containing SecurityFilterChain owns API routing, including /api itself.
-        return "/api/system/v1/health".equals(path);
+        // Use the same decoded route semantics as MVC, including encoded path segments.
+        return HEALTH.matches(request);
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
-        Optional<VerifiedJwtCredential> identity;
+        Optional<VerifiedJwtCredentialCandidate> identity;
         try {
             // Even anonymous operations require trusted IAM profile configuration.
             verifier.requireCodec();
@@ -63,10 +68,10 @@ public final class IamBearerIngressFilter extends OncePerRequestFilter {
             }
         } catch (JwtCredentialException exception) {
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-            IamHttpProblemWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_credential", "Invalid Bearer Credential");
+            problems.write(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_credential", "Invalid Bearer Credential");
             return;
         } catch (IllegalStateException exception) {
-            IamHttpProblemWriter.write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+            problems.write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                 "security_unavailable", "Security Configuration Unavailable");
             return;
         }

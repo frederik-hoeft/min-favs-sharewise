@@ -2,7 +2,7 @@ package de.hsh.favs.sharewise.identity.internal.web;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputContributor;
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,10 +28,10 @@ public final class HttpIamInputContributor implements OperationInputContributor 
             throw new IllegalStateException("Trusted IAM HTTP middleware did not process this request");
         }
         candidate.ifPresent(value -> {
-            if (!(value instanceof VerifiedJwtCredential verified)) {
+            if (!(value instanceof VerifiedJwtCredentialCandidate verified)) {
                 throw new IllegalStateException("Invalid IAM middleware evidence type");
             }
-            inputs.add(VerifiedJwtCredential.class, verified);
+            inputs.add(VerifiedJwtCredentialCandidate.class, verified);
         });
     }
 }

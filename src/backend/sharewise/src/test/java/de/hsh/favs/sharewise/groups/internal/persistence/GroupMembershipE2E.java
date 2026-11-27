@@ -19,7 +19,7 @@ import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupWorkspace;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeStatus;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.testsupport.e2e.E2ETestBase;
 import de.hsh.favs.sharewise.testsupport.identity.IdentityTestConfiguration;

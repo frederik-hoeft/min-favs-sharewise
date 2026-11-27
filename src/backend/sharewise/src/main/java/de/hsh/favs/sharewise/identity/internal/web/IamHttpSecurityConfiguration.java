@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
 import de.hsh.favs.sharewise.identity.internal.IamCredentialVerifier;
 import de.hsh.favs.sharewise.identity.transport.IamApiSecurityContribution;
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,7 +34,7 @@ public class IamHttpSecurityConfiguration {
 
     @Bean
     IamApiSecurityContribution iamApiSecurityContribution(IamCredentialVerifier verifier,
-            CsrfTokenRepository iamCsrfTokenRepository) {
+            CsrfTokenRepository iamCsrfTokenRepository, HttpProblemWriter problems) {
         return new IamApiSecurityContribution() {
             @Override
             public boolean hasVerifiedIdentity(HttpServletRequest request) {
@@ -48,21 +49,21 @@ public class IamHttpSecurityConfiguration {
                 .requireCsrfProtectionMatcher(IamCredentialEntryFilter::isAuthMutation))
             .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
                 if (hasVerifiedIdentity(request)) {
-                    IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
+                    problems.write(response, HttpServletResponse.SC_FORBIDDEN,
                             "access_denied", "Access Denied");
                 } else {
                     response.setHeader(org.springframework.http.HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-                    IamHttpProblemWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED,
+                    problems.write(response, HttpServletResponse.SC_UNAUTHORIZED,
                             "authentication_required", "IAM Authentication Required");
                 }
             }).accessDeniedHandler((request, response, exception) -> {
                 boolean csrfFailure = exception instanceof CsrfException;
-                IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
+                problems.write(response, HttpServletResponse.SC_FORBIDDEN,
                         csrfFailure ? "csrf_invalid" : "access_denied",
                         csrfFailure ? "CSRF Validation Failed" : "Access Denied");
             }))
-            .addFilterBefore(new IamBearerIngressFilter(verifier), CsrfFilter.class)
-            .addFilterAfter(new IamCredentialEntryFilter(), IamBearerIngressFilter.class);
+            .addFilterBefore(new IamBearerIngressFilter(verifier, problems), CsrfFilter.class)
+            .addFilterAfter(new IamCredentialEntryFilter(problems), IamBearerIngressFilter.class);
             }
         };
     }

@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIdentityRuntime } from "@/core/identity";
 import { ApiError } from "@/lib/api";
@@ -18,7 +19,7 @@ afterEach(() => { for (const instance of runtimes.splice(0)) instance.dispose();
 describe("IAM password-change transport", () => {
   it("sends the exact bearer-only payload, accepts 204, and does not replace the current session", async () => {
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toBe("/api/iam/v1/auth/password");
+      expect(apiTarget(path)).toBe("/api/iam/v1/auth/password");
       expect(init?.method).toBe("POST");
       expect(init?.credentials).toBe("same-origin");
       expect(init?.cache).toBe("no-store");
@@ -77,9 +78,9 @@ describe("IAM password-change transport", () => {
   it.each([false, true])("classifies query-bearing password denial as terminal (replayed: %s)", async (replay) => {
     const path = "/api/iam/v1/auth/password?example=1";
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
-      if (String(input).endsWith("/csrf")) return jsonResponse({ token: "csrf" });
-      if (String(input).endsWith("/refresh")) return jsonResponse(authenticationResponse("fresh-bearer"));
-      expect(String(input)).toBe(path);
+      if (apiTarget(input).endsWith("/csrf")) return jsonResponse({ token: "csrf" });
+      if (apiTarget(input).endsWith("/refresh")) return jsonResponse(authenticationResponse("fresh-bearer"));
+      expect(apiTarget(input)).toBe(path);
       const bearer = (init?.headers as Headers).get("Authorization");
       return replay && bearer === "Bearer current-bearer"
         ? problemResponse(401, "invalid_credential") : problemResponse(401, "session_unavailable");
@@ -104,7 +105,7 @@ describe("IAM password-change transport", () => {
   it("renews only after a recognized pre-dispatch 401, then replays once on the same session", async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(path);
+      const url = apiTarget(path);
       calls.push(url);
       if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
       if (url.endsWith("/refresh")) return jsonResponse(authenticationResponse("fresh-bearer"));
@@ -138,7 +139,7 @@ describe("IAM password-change transport", () => {
 
   it("treats session_unavailable on a password replay as terminal without a second refresh", async () => {
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(path);
+      const url = apiTarget(path);
       if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
       if (url.endsWith("/refresh")) return jsonResponse(authenticationResponse("fresh-bearer"));
       return (init?.headers as Headers).get("Authorization") === "Bearer current-bearer"
@@ -158,7 +159,7 @@ describe("IAM password-change transport", () => {
   ])("distinguishes a replay's $code from a bearer-specific rejection ($replacement)", async ({ code, replacement, invalidated }) => {
     const reply = deferred<Response>();
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(path);
+      const url = apiTarget(path);
       if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
       if (url.endsWith("/refresh")) return jsonResponse(authenticationResponse("fresh-bearer"));
       return (init?.headers as Headers).get("Authorization") === "Bearer current-bearer"
@@ -179,7 +180,7 @@ describe("IAM password-change transport", () => {
     const passwordReply = deferred<Response>();
     const refreshReply = deferred<Response>();
     const fetchImpl = vi.fn(async (path: RequestInfo | URL) => {
-      const url = String(path);
+      const url = apiTarget(path);
       if (url.endsWith("/password")) return passwordReply.promise;
       if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
       if (url.endsWith("/refresh")) return refreshReply.promise;

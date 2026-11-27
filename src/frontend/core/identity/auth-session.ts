@@ -1,8 +1,8 @@
 import { ApiError } from '@/lib/api';
 import type { AuthenticationResponse, AuthState } from './models.ts';
 
-const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ISO_INSTANT: RegExp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+export const SESSION_ID_PATTERN: RegExp = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Tab-local access bearer and session binding. Timestamps are advisory: only
@@ -11,17 +11,17 @@ export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89
 export class AuthSession {
     private accessToken: string | undefined;
     private sessionId: string | undefined;
-    private lifetimeSequence = 0;
+    private lifetimeSequence: number = 0;
     private authenticatedLifetime: number | undefined;
-    private readonly listeners = new Set<() => void>();
+    private readonly listeners: Set<() => void> = new Set<() => void>();
     private state: AuthState = { status: 'reauthentication-required', reason: 'initial' };
 
-    readonly subscribe = (listener: () => void): (() => void) => {
+    readonly subscribe: (listener: () => void) => (() => void) = (listener: () => void): (() => void) => {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
     };
 
-    readonly getSnapshot = (): AuthState => this.state;
+    readonly getSnapshot: () => AuthState = (): AuthState => this.state;
 
     /** Never persists or exposes the bearer through observable React state. */
     getAccessToken(): string | undefined {
@@ -44,7 +44,7 @@ export class AuthSession {
 
     /** Validate before publishing credentials or interpreting the response session. */
     static validateResponse(response: AuthenticationResponse): void {
-        const expiresAt = typeof response?.expiresAt === 'string' && ISO_INSTANT.test(response.expiresAt)
+        const expiresAt: number = typeof response?.expiresAt === 'string' && ISO_INSTANT.test(response.expiresAt)
             ? Date.parse(response.expiresAt)
             : NaN;
         if (

@@ -22,7 +22,12 @@ import de.hsh.favs.sharewise.groups.internal.application.group.GroupQueryService
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupAuthorizationPort;
+import de.hsh.favs.sharewise.groups.GroupAuthorizationVerificationFailure;
+import de.hsh.favs.sharewise.groups.VerifiedGroupMembership;
+import de.hsh.favs.sharewise.identity.UnauthenticatedCallerException;
+import static de.hsh.favs.sharewise.testsupport.identity.IdentityTestFixture.anonymously;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
@@ -176,6 +181,41 @@ class GroupOperationsE2E extends E2ETestBase {
             assertEquals(List.of("Trip|0"), query(fixture,
                 "SELECT name, version FROM groups.groups", row -> row.getString(1) + "|" + row.getLong(2)));
         }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
+    }
+
+    @Test
+    void authoritativeMembershipWaitsForRootAndObservesCommittedRoleWithoutAttestation() {
+        runTest(fixture -> {
+            GroupTestFixture.provision(fixture, ALICE, BOB);
+            UUID group = ok(create(fixture, ALICE, "Trip")).id();
+            GroupTestFixture.addMember(fixture, group, BOB, GroupRole.ADMIN);
+            assertEquals(GroupRole.ADMIN, verified(fixture, ALICE, group).role());
+            try (ExecutorService callers = Executors.newSingleThreadExecutor();
+                 Connection holder = lockGroup(fixture, group)) {
+                Future<VerifiedGroupMembership> lookup = callers.submit(() -> verified(fixture, ALICE, group));
+                awaitLockWaiters(fixture, holder, 1, LOCK_WAIT_TIMEOUT);
+                GroupTestFixture.changeRole(DSL.using(holder, SQLDialect.POSTGRES), group, ALICE, GroupRole.MEMBER);
+                holder.commit();
+                assertEquals(GroupRole.MEMBER, lookup.get(LOCK_WAIT_TIMEOUT.toSeconds(), TimeUnit.SECONDS).role());
+            }
+            assertThrows(UnauthenticatedCallerException.class, () -> anonymously(() -> dispatcher(fixture)
+                .dispatch(GroupAuthorizationPort.class, port -> port.verifyCurrent(group))));
+            assertThrows(IllegalStateException.class, () -> withUser(ALICE, () -> inOperation(fixture, scope -> {
+                GroupAuthorizationPort port = scope.resolve(GroupAuthorizationPort.class);
+                return scope.resolve(Transactions.class).execute(() -> TransactionOutcome.abstain(port.verifyCurrent(group)));
+            })));
+            GroupE2ESupport.ok(GroupE2ESupport.change(fixture, BOB, group,
+                GroupE2ESupport.workspace(fixture, ALICE, group).callerMembershipId(),
+                new de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChange.Remove()));
+            assertEquals(Result.err(GroupAuthorizationVerificationFailure.INELIGIBLE), withUser(ALICE, () -> dispatcher(fixture)
+                .dispatch(GroupAuthorizationPort.class, port -> port.verifyCurrent(group))));
+        }, ProductionEntityScanConfiguration.class, IdentityTestConfiguration.class, BoundedStatementsConfiguration.class);
+    }
+
+    private static VerifiedGroupMembership verified(de.hsh.favs.sharewise.testsupport.integration.IntegrationTestContext fixture,
+            UUID caller, UUID group) {
+        return withUser(caller, () -> dispatcher(fixture).dispatch(GroupAuthorizationPort.class,
+            port -> port.verifyCurrent(group))).fold(value -> value, failure -> { throw new AssertionError(failure); });
     }
 
     @Test

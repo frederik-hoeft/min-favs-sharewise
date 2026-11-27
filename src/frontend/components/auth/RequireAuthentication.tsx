@@ -2,8 +2,9 @@
 
 import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type ReactElement, type ReactNode } from "react";
 import { AuthenticatedApisProvider, useAuthState, useIdentity } from "@/app/identity-provider";
+import type { AuthState, IdentityRuntime } from "@/core/identity";
 import { safeAppReturnPath } from "@/lib/navigation/return-path";
 
 /**
@@ -11,11 +12,11 @@ import { safeAppReturnPath } from "@/lib/navigation/return-path";
  * the presentation layer: the HTTP client owns recovery and publishes terminal
  * identity state, but never redirects or treats every application 401 as logout.
  */
-export function RequireAuthentication({ children }: Readonly<{ children: ReactNode }>) {
-  const { auth, session } = useIdentity();
-  const state = useAuthState();
-  const pathname = usePathname();
-  const router = useRouter();
+export function RequireAuthentication({ children }: Readonly<{ children: ReactNode }>): ReactElement {
+  const { auth, session }: Pick<IdentityRuntime, "auth" | "session"> = useIdentity();
+  const state: AuthState = useAuthState();
+  const pathname: string = usePathname();
+  const router: ReturnType<typeof useRouter> = useRouter();
 
   useEffect(() => {
     void auth.ensureAuthenticated().catch(() => {
@@ -26,7 +27,7 @@ export function RequireAuthentication({ children }: Readonly<{ children: ReactNo
   useEffect(() => {
     if (state.status === "reauthentication-required" &&
       (state.reason === "expired" || state.reason === "unauthorized" || state.reason === "uncertain")) {
-      const next = safeAppReturnPath(`${pathname}${window.location.search}`);
+      const next: string = safeAppReturnPath(`${pathname}${window.location.search}`);
       router.replace(`/auth/login?next=${encodeURIComponent(next)}`);
     }
   }, [pathname, router, state]);

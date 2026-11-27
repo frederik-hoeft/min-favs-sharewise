@@ -1,6 +1,6 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import java.util.Optional;
 
 /** The API representation of group roles, matching the {@code groups.group_role} values. */

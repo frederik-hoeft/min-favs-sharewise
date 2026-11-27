@@ -65,6 +65,7 @@ class IamAccountHttpTests {
 
     private static final String ACCOUNT = "/api/iam/v1/account";
     private static final UUID ALICE = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
+    private static final UUID SESSION = UUID.fromString("12345678-1234-4123-8123-1234567890ac");
     private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
 
     @Autowired MockMvc mvc;
@@ -85,10 +86,10 @@ class IamAccountHttpTests {
                 .andExpect(jsonPath("$.code").value("invalid_credential"));
         for (JwtCredentialProfile profile : List.of(
                 new JwtCredentialProfile("iam-access", "https://wrong.issuer.test", "sw-iam-access+jwt",
-                        Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY,
+                        Set.of("sw-api-v1"), JwtCredentialProfile.Kind.PRIMARY,
                         Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096),
                 new JwtCredentialProfile("iam-access", "https://iam.sharewise.test", "sw-wrong+jwt",
-                        Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY,
+                        Set.of("sw-api-v1"), JwtCredentialProfile.Kind.PRIMARY,
                         Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096),
                 new JwtCredentialProfile("iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt",
                         Set.of("wrong-audience"), JwtCredentialProfile.Kind.PRIMARY,
@@ -195,7 +196,7 @@ class IamAccountHttpTests {
     }
 
     private String bearer() {
-        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, "session-a", "test-token",
+        return iamPrimaryJwtCredentialCodec.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "test-token",
                 NOW.minusSeconds(1), NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
     }
 
@@ -203,7 +204,7 @@ class IamAccountHttpTests {
         JwtCredentialCodec alternative = new JwtCredentialCodec(profile,
                 new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", Fixture.KEY)), Optional.of("test")),
                 Clock.fixed(NOW, ZoneOffset.UTC));
-        return alternative.sign(new JwtIssueRequest(ALICE, "session-a", "test-token", NOW.minusSeconds(1),
+        return alternative.sign(new JwtIssueRequest(ALICE, SESSION.toString(), "test-token", NOW.minusSeconds(1),
                 NOW.minusSeconds(1), NOW.plusSeconds(180), Optional.empty(), Map.of()));
     }
 
@@ -229,7 +230,7 @@ class IamAccountHttpTests {
         @Bean("iamPrimaryJwtCredentialCodec")
         JwtCredentialCodec codec() throws Exception {
             JwtCredentialProfile profile = new JwtCredentialProfile("iam-access", "https://iam.sharewise.test",
-                    "sw-iam-access+jwt", Set.of("sharewise-api"), JwtCredentialProfile.Kind.PRIMARY,
+                    "sw-iam-access+jwt", Set.of("sw-api-v1"), JwtCredentialProfile.Kind.PRIMARY,
                     Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
             return new JwtCredentialCodec(profile,
                     new Es256JwtSignatureService(List.of(JwtEcKey.signing("test", KEY)), Optional.of("test")),

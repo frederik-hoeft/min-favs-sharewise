@@ -12,7 +12,7 @@ import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationPr
 import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRedemptionContext;
 import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationSummary;
 import de.hsh.favs.sharewise.groups.internal.application.invitation.StoredInvitation;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.time.Instant;
 import java.time.OffsetDateTime;

@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
@@ -20,8 +21,8 @@ const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function mount(passwordResponse: () => Promise<Response> = async () => new Response(null, { status: 204 }), signedIn = true) {
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ path: String(path), init });
-    return String(path).endsWith("/auth/password") ? passwordResponse() : jsonResponse(profile);
+    requests.push({ path: apiTarget(path), init });
+    return apiTarget(path).endsWith("/auth/password") ? passwordResponse() : jsonResponse(profile);
   });
   const runtime = createIdentityRuntime({ fetchImpl: fetchImpl as typeof fetch });
   runtimes.push(runtime);

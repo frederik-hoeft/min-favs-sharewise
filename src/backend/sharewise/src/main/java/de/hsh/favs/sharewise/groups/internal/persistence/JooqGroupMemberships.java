@@ -6,7 +6,7 @@ import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
 import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipPort;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeContext;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.Objects;
@@ -30,10 +30,10 @@ class JooqGroupMemberships implements GroupMembershipPort {
 
     @Override
     public Optional<GroupMember> memberForUser(LockedGroup group, UUID userId) {
-        return database.dsl().select(GROUP_MEMBERS.ID, GROUP_MEMBERS.USER_ID, GROUP_MEMBERS.ROLE,
+        return GroupMembershipRead.execute(() -> database.dsl().select(GROUP_MEMBERS.ID, GROUP_MEMBERS.USER_ID, GROUP_MEMBERS.ROLE,
                 GROUP_MEMBERS.JOINED_AT).from(GROUP_MEMBERS)
             .where(GROUP_MEMBERS.GROUP_ID.eq(group.id()).and(GROUP_MEMBERS.USER_ID.eq(userId)))
-            .fetchOptional(row -> GroupProjections.member(row, GROUP_MEMBERS));
+            .fetchOptional(row -> GroupProjections.member(row, GROUP_MEMBERS)));
     }
 
     @Override

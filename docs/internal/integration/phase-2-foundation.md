@@ -4,7 +4,7 @@
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
-The [domain model](../../data-model-design.md) owns business invariants, the [security design](../../stack/security.md) owns the trust model, and the [messaging design](../../stack/messaging.md) owns delivery guarantees. The [implemented verified-credential architecture](../../architecture/authorization.md) explains the operation identity and evidence foundation; the [domain-context proposal](../../stack/claims-context-proposal.md) covers later Group attestation policies. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
+The [domain model](../../data-model-design.md) owns business invariants, the [security design](../../stack/security.md) owns the trust model, and the [messaging design](../../stack/messaging.md) owns delivery guarantees. The [implemented verified-credential architecture](../../architecture/verified-credentials.md) explains the operation identity and evidence foundation; the [distributed authorization architecture](../../architecture/distributed-authorization.md) covers Group attestation policies. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
 
 ## Boundaries and the first usable application operation
 
@@ -35,7 +35,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
     dispatcher.dispatch(GroupOperation.class, GroupOperation::run));
 ```
 
-The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login, session creation and refresh/logout are implemented, and IAM publishes [live eligibility verification](../../architecture/authorization.md#synchronous-authority-verification); Group does not yet use it for local-miss provisioning. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
+The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login, session creation and refresh/logout are implemented, and IAM publishes [live eligibility verification](../../architecture/verified-credentials.md#synchronous-authority-verification); Group does not yet use it for local-miss provisioning. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
 Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 
@@ -166,7 +166,7 @@ Invitation links are **shareable bearer capabilities**, not messages addressed t
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
-| `id` (PK) | `uuid DEFAULT uuidv7()` | Link-record selector; token format `<id>.<base64url(secret)>` (**ER**; see [opaque application tokens](../../architecture/authorization.md#opaque-application-tokens)). |
+| `id` (PK) | `uuid DEFAULT uuidv7()` | Link-record selector; token format `<id>.<base64url(secret)>` (**ER**; see [opaque application tokens](../../architecture/verified-credentials.md#opaque-application-tokens)). |
 | `group_id` (FK → `groups.groups.id`, indexed) | `uuid` | Invitation is owned by one Group; listing and group deletion invalidation (**Domain, ER**). |
 | `verifier_hash` | `bytea` | SHA-256 verifier of 32 CSPRNG secret bytes; link secret may only be returned on creation and must not be stored or logged (**ER** security choice supporting **Backlog P2.2c** forged-link rejection). |
 | `created_at` | `timestamptz DEFAULT now()` | Link creation and expiration baseline (**ER**). |

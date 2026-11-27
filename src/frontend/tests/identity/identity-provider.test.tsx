@@ -5,9 +5,34 @@ import { IdentityProvider, useIdentity } from '@/app/identity-provider';
 import { createIdentityRuntime } from '@/core/identity';
 import { ControlledChannels, ControlledLocks, SESSION_TWO, authenticationResponse, credentials, jsonResponse } from './support';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('IdentityProvider lifecycle', () => {
+  it('publishes diagnostic functions only in development or an explicitly enabled fixture build', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SHAREWISE_AUTHORIZATION_DEBUG', '0');
+    const normal = render(<IdentityProvider><div /></IdentityProvider>);
+    expect(window.sharewiseDebug).toBeUndefined();
+    normal.unmount();
+    vi.stubEnv('NODE_ENV', 'development');
+    const runtime = createIdentityRuntime({ channel: () => undefined });
+    const dev = render(<StrictMode><IdentityProvider runtime={runtime}><div /></IdentityProvider></StrictMode>);
+    try {
+      expect(window.sharewiseDebug?.authorization.snapshot()).toMatchObject({ lifetime: null, credentials: [] });
+      runtime.session.accept(authenticationResponse('alice'));
+      expect(window.sharewiseDebug?.authorization.snapshot().lifetime).toBe(runtime.session.getAuthenticatedLifetime());
+      expect(window.sharewiseDebug?.authorization.credentials()).toEqual([]);
+      expect(window.sharewiseDebug?.authorization.requirements()).toEqual([]);
+    } finally { dev.unmount(); runtime.dispose(); }
+    expect(window.sharewiseDebug).toBeUndefined();
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SHAREWISE_AUTHORIZATION_DEBUG', '1');
+    const smoke = render(<IdentityProvider><div /></IdentityProvider>);
+    expect(window.sharewiseDebug?.authorization.snapshot()).toBeDefined();
+    smoke.unmount();
+    expect(window.sharewiseDebug).toBeUndefined();
+  });
+
   it('keeps exactly one channel connected after Strict Mode effect replay and releases it on unmount', async () => {
     const channels = new ControlledChannels();
     vi.stubGlobal('BroadcastChannel', function MockBroadcastChannel() { return channels.create(); });

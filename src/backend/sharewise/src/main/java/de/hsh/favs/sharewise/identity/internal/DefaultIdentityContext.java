@@ -35,7 +35,7 @@ final class DefaultIdentityContext implements IdentityContext {
             if (sessions.size() != 1) {
                 throw new IllegalStateException("Invalid primary IAM session evidence");
             }
-            selected = Optional.of(new Caller(subject, parseSessionId(sessions.getFirst().value())));
+            selected = Optional.of(new Caller(subject, IamCredentialVerifier.parseSessionId(sessions.getFirst().value())));
         }
         if (selected.isEmpty() && !authorization.credentials().isEmpty()) {
             throw new IllegalStateException("Authorization evidence without a primary IAM credential");
@@ -54,18 +54,6 @@ final class DefaultIdentityContext implements IdentityContext {
         } catch (IllegalArgumentException | java.util.NoSuchElementException exception) {
             throw new IllegalStateException("Invalid primary IAM identity evidence");
         }
-    }
-
-    private static UUID parseSessionId(String value) {
-        try {
-            UUID id = UUID.fromString(value);
-            if (id.toString().equals(value)) {
-                return id;
-            }
-        } catch (IllegalArgumentException invalid) {
-            // A verified JWT may contain a non-UUID sid; it is not a valid IAM session identity.
-        }
-        throw new IllegalStateException("Invalid primary IAM session evidence");
     }
 
     @Override

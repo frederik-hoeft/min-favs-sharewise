@@ -176,6 +176,7 @@ class IamKeyInitializationTests(unittest.TestCase):
         (deploy / ".env").write_text("COMPOSE_PROJECT_NAME=sharewise-p26ab-local\n")
         shutil.copy2(ROOT / "deploy/scripts/lib-compose.sh", scripts / "lib-compose.sh")
         shutil.copy2(ROOT / "deploy/scripts/iam-keys.sh", scripts / "iam-keys.sh")
+        shutil.copy2(ROOT / "deploy/scripts/jwt-keys.sh", scripts / "jwt-keys.sh")
         docker = self.root / "mock-docker"
         docker.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$IAM_MOCK_LOG\"\n"
                           "case \"$*\" in *iam-public-export*) printf '%s\\n' PUBLIC_PEM;; esac\n")
@@ -194,6 +195,30 @@ class IamKeyInitializationTests(unittest.TestCase):
         self.assertIn("compose --profile setup run --rm --no-deps -T iam-public-export", calls.read_text())
         self.assertNotIn("iam-signing", calls.read_text())
         self.assertNotIn("iam-key-init", calls.read_text())
+
+    def test_group_provisioning_uses_independent_key_material(self) -> None:
+        self.assertEqual(self.run_init().returncode, 0)
+        private = self.root / "groups-private"
+        public = self.root / "groups-public"
+        private.mkdir()
+        public.mkdir()
+        command = ["sh", str(INIT.with_name("init-jwt-keys.sh"))]
+        environment = self.environment | {"JWT_KEY_AUTHORITY": "groups", "JWT_KEY_ID": "groups-local-1",
+            "JWT_KEY_MODE": "generate-if-absent", "JWT_PRIVATE_DIR": str(private), "JWT_PUBLIC_DIR": str(public)}
+        generated = subprocess.run(command, env=environment, capture_output=True, text=True)
+        self.assertEqual(generated.returncode, 0, generated.stderr)
+        self.assertNotEqual((public / "active.pem").read_bytes(), (self.public / "active.pem").read_bytes())
+        self.assertEqual((private / "key-id").read_text(), "groups-local-1")
+        old = (public / "active.pem").read_bytes()
+        self.assertEqual(subprocess.run(command, env=environment | {"JWT_KEY_MODE": "require-existing"},
+            capture_output=True).returncode, 0)
+        self.assertEqual((public / "active.pem").read_bytes(), old)
+        self.assertIn("groups_signing_private:/run/groups/private:ro", COMPOSE)
+        self.assertIn("groups_verification_public:/run/groups/public:ro", COMPOSE)
+        exporter = COMPOSE.split("\n  groups-public-export:\n", 1)[1].split("\n  # Only public", 1)[0]
+        self.assertIn("groups_verification_public:/keys/public:ro", exporter)
+        self.assertNotIn("signing_private", exporter)
+        self.assertIn("network_mode: none", exporter)
 
     def test_public_exporter_cannot_mount_private_volume(self) -> None:
         self.assertIn("iam_signing_private:/keys/private", COMPOSE)

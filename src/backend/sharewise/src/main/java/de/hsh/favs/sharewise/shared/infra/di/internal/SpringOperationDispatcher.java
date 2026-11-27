@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.shared.infra.di.internal;
 
+import de.hsh.favs.sharewise.shared.infra.di.OperationAdmission;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.OperationInputRegistry;
 import de.hsh.favs.sharewise.shared.infra.di.OperationScopedConfiguration;
@@ -24,17 +25,20 @@ final class SpringOperationDispatcher implements OperationDispatcher {
     private final SpringServiceScopeFactory scopeFactory;
     private final ConfigurableListableBeanFactory beanFactory;
     private final ObjectProvider<ScopedServiceInitializer<?, ?>> initializers;
+    private final ObjectProvider<OperationAdmission> admissions;
     // Remains bound through destruction, after the DI scope binding has unwound.
     private final ScopedValue<Boolean> dispatchInProgress = ScopedValue.newInstance();
 
     SpringOperationDispatcher(
         SpringServiceScopeFactory scopeFactory,
         ConfigurableListableBeanFactory beanFactory,
-        ObjectProvider<ScopedServiceInitializer<?, ?>> initializers
+        ObjectProvider<ScopedServiceInitializer<?, ?>> initializers,
+        ObjectProvider<OperationAdmission> admissions
     ) {
         this.scopeFactory = Objects.requireNonNull(scopeFactory);
         this.beanFactory = Objects.requireNonNull(beanFactory);
         this.initializers = Objects.requireNonNull(initializers);
+        this.admissions = Objects.requireNonNull(admissions);
     }
 
     @Override
@@ -68,6 +72,7 @@ final class SpringOperationDispatcher implements OperationDispatcher {
                 try (ServiceScope scope = scopeFactory.createScope()) {
                     return scope.run(provider -> {
                         initializeConfigurations(provider, inputs);
+                        admissions.orderedStream().forEach(OperationAdmission::admit);
                         return action.apply(provider.getRequiredService(entryType));
                     });
                 }

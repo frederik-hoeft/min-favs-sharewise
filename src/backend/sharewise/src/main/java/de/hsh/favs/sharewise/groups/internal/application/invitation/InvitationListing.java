@@ -1,6 +1,6 @@
 package de.hsh.favs.sharewise.groups.internal.application.invitation;
 
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import java.util.List;
 import java.util.Objects;
 

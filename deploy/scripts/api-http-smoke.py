@@ -334,6 +334,10 @@ def main() -> None:
         if not replacement_cookie or replacement_cookie == original_cookie:
             raise RuntimeError("IAM refresh did not rotate the cookie")
 
+        # A normal production artifact must not expose the disposable fixture, even to an authenticated caller.
+        fixture_status, _ = json_request(edge_options(args.host, args.port) + ["--config", "-"],
+            origin + "/api/smoke/v1/effects", f"header = {json.dumps('Authorization: Bearer ' + renewed_token)}\n")
+        require(fixture_status == 404, "Disposable fixture route exposed by the production artifact")
         exercise_groups(args, origin, public, renewed_token, user_id)
 
         # Retain the current credential in a separate private jar so the test

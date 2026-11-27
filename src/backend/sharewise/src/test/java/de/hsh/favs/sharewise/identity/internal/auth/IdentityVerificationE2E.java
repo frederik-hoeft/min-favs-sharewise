@@ -12,7 +12,7 @@ import de.hsh.favs.sharewise.identity.VerifiedIdentity;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
@@ -86,7 +86,7 @@ class IdentityVerificationE2E {
             ChangePasswordCommand change = ChangePasswordCommand.tryFrom(PASSWORD, "replacement-password-long",
                     PasswordPolicy.initial()).fold(command -> command, errors -> { throw new AssertionError(errors); });
             assertEquals(Result.ok(PasswordChangeStatus.CHANGED), dispatcher.dispatch(
-                    inputs -> inputs.add(VerifiedJwtCredential.class, evidence(fixture, firstToken)),
+                    inputs -> inputs.add(VerifiedJwtCredentialCandidate.class, evidence(fixture, firstToken)),
                     PasswordChangeService.class, service -> service.change(change)));
             assertEligible(fixture, first, firstToken);
             assertDenied(fixture, secondToken);
@@ -215,7 +215,7 @@ class IdentityVerificationE2E {
         Map<String, Object> settings = Map.of(
                 "sharewise.iam.auth.enabled", "true",
                 "sharewise.iam.auth.issuer", "https://iam.sharewise.test",
-                "sharewise.iam.auth.audience", "sharewise-api",
+                "sharewise.iam.auth.audience", "sw-api-v1",
                 "sharewise.iam.auth.active-key-id", "e2e",
                 "sharewise.iam.auth.keys[0].id", "e2e",
                 "sharewise.iam.auth.keys[0].public-key-file", publicKey.toString(),
@@ -245,7 +245,7 @@ class IdentityVerificationE2E {
                 .fold(value -> value, failure -> { throw new AssertionError(failure); });
     }
 
-    private static VerifiedJwtCredential evidence(IntegrationTestContext fixture, String token) {
+    private static VerifiedJwtCredentialCandidate evidence(IntegrationTestContext fixture, String token) {
         return fixture.context().getBean("iamPrimaryJwtCredentialCodec", JwtCredentialCodec.class)
                 .verifyPrimary(token);
     }
@@ -253,7 +253,7 @@ class IdentityVerificationE2E {
     private static <T> T dispatch(IntegrationTestContext fixture, String token,
             java.util.function.Function<Entry, T> call) {
         return fixture.context().getBean(OperationDispatcher.class).dispatch(
-                inputs -> inputs.add(VerifiedJwtCredential.class, evidence(fixture, token)), Entry.class, call);
+                inputs -> inputs.add(VerifiedJwtCredentialCandidate.class, evidence(fixture, token)), Entry.class, call);
     }
 
     private static Result<VerifiedIdentity, IdentityVerificationFailure> verify(

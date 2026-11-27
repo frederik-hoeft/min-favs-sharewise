@@ -22,7 +22,7 @@ args = sys.argv[1:]
 if os.environ.get("MOCK_DOCKER_CALLS"):
     with open(os.environ["MOCK_DOCKER_CALLS"], "a", encoding="utf-8") as log:
         log.write(" ".join(args) + "\n")
-if "iam-key-init" in args and "run" in args:
+if any(name in args for name in ("iam-key-init", "groups-key-init")) and "run" in args:
     sys.exit(0)
 if "build" in args:
     sys.exit(0)
@@ -95,7 +95,7 @@ class AssetImportTests(unittest.TestCase):
             deploy = root / "deploy"
             (deploy / "scripts").mkdir(parents=True)
             shutil.copy2(DEPLOY / ".env.example", deploy / ".env.example")
-            for name in ("lib-compose.sh", "prepare-local.sh", "import-assets.sh", "bootstrap.sh", "iam-keys.sh"):
+            for name in ("lib-compose.sh", "prepare-local.sh", "import-assets.sh", "bootstrap.sh", "iam-keys.sh", "jwt-keys.sh"):
                 shutil.copy2(DEPLOY / "scripts" / name, deploy / "scripts" / name)
             docker = root / "mock-docker"
             docker.write_text(MOCK_DOCKER)
@@ -115,6 +115,7 @@ class AssetImportTests(unittest.TestCase):
                 self.assertTrue((deploy / ".local/tls/fullchain.pem").exists())
             self.assertEqual(calls.read_text().count("compose build\n"), 2)
             self.assertEqual(calls.read_text().count("compose run --rm --no-deps -T iam-key-init\n"), 2)
+            self.assertEqual(calls.read_text().count("compose run --rm --no-deps -T groups-key-init\n"), 2)
             self.assertNotIn(" up ", calls.read_text())
 
     def test_local_deployment_does_not_require_daemon_host_paths(self):

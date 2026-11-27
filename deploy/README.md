@@ -89,7 +89,7 @@ The default `deploy/.env.example` specifies:
 SHAREWISE_IAM_KEY_MODE=generate-if-absent
 SHAREWISE_IAM_ACTIVE_KEY_ID=iam-local-1
 SHAREWISE_IAM_ISSUER=https://localhost:8443
-SHAREWISE_IAM_AUDIENCE=sharewise-api
+SHAREWISE_IAM_AUDIENCE=sw-api-v1
 ```
 
 `bootstrap.sh` runs `scripts/iam-keys.sh init` after building the images. `docker compose up` also runs the job as a startup prerequisite. On subsequent runs, it **verifies** the stored key ID, P-256 algorithm and public/private match without replacing the pair. A partial fixture, changed `kid`, invalid key, symlink, or concurrent/interrupted initializer causes failure instead of an implicit rotation. The volume-local `.iam-lock` prevents two provisioning jobs from both creating a new identity; an orphaned lock or staging directory requires operator investigation before removal. The backend uses the corresponding Spring configuration via Compose environment variables, including `sharewise.iam.auth.enabled=true` and key paths `/run/iam/{private,public}/active.pem`. Externally provisioned private keys must contain exactly one unencrypted PKCS#8 PEM block with **LF line endings**; this initializer rejects CRLF-formatted PEMs even though the Java key loader accepts them. Convert line endings before placing such keys in the volume.
@@ -143,9 +143,30 @@ Changing `SHAREWISE_IAM_ACTIVE_KEY_ID` is **not rotation**: the job rejects it a
 
 When changing `SHAREWISE_PUBLIC_HOST` or the exposed HTTPS port, also set `SHAREWISE_IAM_ISSUER` to the exact intended stable origin. The disposable Compose acceptance script substitutes its separate HTTPS port for the IAM issuer so tests do not accidentally inherit the normal local origin.
 
+## Group attestation signing keys
+
+Group Management uses an independent ES256 key pair, provisioned by the `groups-key-init` service using the same key-init mechanics as IAM. The backend mounts `groups_signing_private` and `groups_verification_public` read-only; the Group public exporter mounts only the public volume. The configured Group issuer, audience and accepted primary IAM issuer must match the intended trust configuration. The default audience for both authorities is `sw-api-v1`; deployments using an older custom audience must coordinate issuer and verifier configuration rather than accepting both implicitly.
+
+Independent signing material is a provisioning requirement for every credential authority, including verification-only keys retained during rotation. Never reuse an IAM key pair for Group or another authority, even under a different issuer, profile or `kid`: possession of the shared private key would permit signing credentials for every authority that trusts it. The default stack provisions separate key pairs; custom deployments must establish and audit that separation when provisioning trust material, including after service extraction. The application validates configured keys within their respective profiles, not deployment-wide key ownership.
+
+For an existing local deployment without Group keys, explicitly authorize initial provisioning in `deploy/.env`:
+
+```dotenv
+SHAREWISE_GROUPS_KEY_MODE=generate-if-absent
+SHAREWISE_GROUPS_ACTIVE_KEY_ID=groups-local-1
+```
+
+Run `./scripts/jwt-keys.sh groups init` after building the key-init image (or run the normal bootstrap). Once provisioned, use `SHAREWISE_GROUPS_KEY_MODE=require-existing`. Missing or mismatched key material fails the provisioning job rather than generating a replacement identity. Export only the public key for independent consumers:
+
+```bash
+./scripts/jwt-keys.sh groups export > ../groups-local-1-public.pem
+```
+
+The rotation constraints above apply separately to each authority. A verifier may be configured with overlapping trusted public keys; changing a key ID against an existing volume is not rotation. See [distributed authorization](../docs/architecture/distributed-authorization.md#authority-and-trust) for the trust and binding rules.
+
 ## Configuration, secrets and Docker-outside-of-Docker
 
-The local `deploy/.env` is based on [`.env.example`](.env.example) and is loaded automatically by Docker Compose when invoked in `deploy/`. It contains public hostname, loopback bind addresses, host ports, project name, IAM issuer/audience/key-ID/mode and optional image overrides; **no passwords or signing-key bytes**. Exported shell variables take precedence over `.env`, so avoid conflicting `SHAREWISE_PUBLIC_HOST`, `SHAREWISE_HTTPS_PORT`, or `COMPOSE_PROJECT_NAME` overrides. The bootstrap script preserves any existing `.env` rather than changing user-selected ports or hostnames.
+The local `deploy/.env` is based on [`.env.example`](.env.example) and is loaded automatically by Docker Compose when invoked in `deploy/`. It contains public hostname, loopback bind addresses, host ports, project name, IAM and Group issuer/audience/key-ID/mode and optional image overrides; **no passwords or signing-key bytes**. Exported shell variables take precedence over `.env`, so avoid conflicting `SHAREWISE_PUBLIC_HOST`, `SHAREWISE_HTTPS_PORT`, or `COMPOSE_PROJECT_NAME` overrides. The bootstrap script preserves any existing `.env` rather than changing user-selected ports or hostnames.
 
 Private input files live under ignored `deploy/.local/secrets/` and `deploy/.local/tls/`, with restrictive file modes. The import helper streams them over the Docker API into named volumes, rather than using bind mounts that require the same source paths on the Docker daemon host. The PostgreSQL initialization script is copied into the database image, not mounted from the developer's workspace.
 
@@ -157,8 +178,10 @@ Private input files live under ignored `deploy/.local/secrets/` and `deploy/.loc
 | `tls_certs` | Nginx certificate and private key |
 | `iam_signing_private` | IAM ES256 private key and key ID; backend read-only |
 | `iam_verification_public` | IAM ES256 public key and key ID; exportable independently |
+| `groups_signing_private` | Group ES256 private key and key ID; backend read-only |
+| `groups_verification_public` | Group ES256 public key and key ID; exportable independently |
 
-The database/TLS importer is idempotent when files are unchanged; it rejects changed passwords in existing volumes. IAM keys are provisioned by the separate one-shot container, not imported from host files. Password rotation on persistent PostgreSQL data requires separate, coordinated database and application changes. Local generated passwords and private keys must never be committed. The Docker socket confers extensive control of the host and is appropriate only for trusted local development and acceptance.
+The database/TLS importer is idempotent when files are unchanged; it rejects changed passwords in existing volumes. IAM and Group keys are provisioned by separate one-shot containers, not imported from host files. Password rotation on persistent PostgreSQL data requires separate, coordinated database and application changes. Local generated passwords and private keys must never be committed. The Docker socket confers extensive control of the host and is appropriate only for trusted local development and acceptance.
 
 A devcontainer and the Docker host share the daemon, **not** a network namespace. Open the published HTTPS URL from the daemon host browser/terminal. The acceptance script communicates through Compose service DNS inside the deployment networks, so it does not depend on `localhost` from the devcontainer.
 
@@ -197,9 +220,9 @@ From `deploy/`, run:
 ./scripts/test-compose.sh
 ```
 
-The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct published host ports (`28080`/`18443`), and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security (including IAM and Group Management workflows), and verifies data persistence after a database restart. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
+The script uses a separate `sharewise-p26ab-smoke` Compose project, with distinct loopback host ports (`28080`/`18443`) for the production-style smoke, and refuses to reuse an existing test database volume. It builds and starts a fresh stack, verifies PostgreSQL initialization and Flyway ownership, checks runtime-role permissions, exercises HTTPS API and proxy security (including IAM and Group Management workflows), and verifies data persistence after a database restart. After the production-style checks, it replaces the backend with the disposable authorization fixture and removes proxy host bindings while the actual frontend Node E2E runner tests the distributed authorization protocol over HTTPS. On success it **removes the disposable stack and its volumes**; on failure it preserves them for troubleshooting.
 
-For inspection after a successful run, opt out of automatic cleanup:
+For inspection after a successful run, opt out of automatic cleanup. The retained authorization fixture is unpublished:
 
 ```sh
 ./scripts/test-compose.sh --keep
@@ -211,11 +234,23 @@ A retained test stack must be removed before rerunning with the same project nam
 SHAREWISE_COMPOSE_TEST_PROJECT=sharewise-p26ab-smoke2 ./scripts/test-compose.sh --keep
 ```
 
+For manual distributed authorization acceptance in a real browser, use the explicit browser mode instead:
+
+```sh
+./scripts/test-compose.sh --browser
+```
+
+This runs the same unpublished automated tests first. On success, it retains the disposable backend and database and replaces only the proxy/frontend with a test-only image containing `/app/authorization-smoke`. The proxy publishes the smoke HTTP/HTTPS ports on `127.0.0.1`; the backend and database remain unpublished. The normal deployment image has no fixture page or fixture endpoints. Open `https://localhost:18443/` (or the configured smoke origin) on the Docker daemon host, trust the local certificate, register or sign in with a disposable account, then open `/app/authorization-smoke`. **Use a separate browser profile or a separate TLS-covered hostname from the ordinary local deployment:** cookies are scoped by hostname, not port, so the two localhost stacks can otherwise interfere with each other's authentication cookies.
+
+The fixture page seeds only the authenticated caller's Group projection and creates two real groups through the production API. Use the buttons to call the protected fixture endpoints through the normal session-scoped frontend transport. With DevTools Network open, verify cold (`401`, issuance `200`, replay `200`), warm (`200`) and cross-endpoint (`401`, replay `200`, no issuance) flows. Change the target or timestamp to exercise affinity, compare the effect counter before and after mutations, and wait for expiration to test lazy renewal. Do not export bearer/attestation headers, cookie values or unredacted HAR files. Browser mode retains the stack for manual testing; clean up with `./scripts/cleanup.sh test sharewise-p26ab-smoke` when finished.
+
+The browser fixture also displays live diagnostic snapshots of the tab-local credential and requirement caches. See [authorization diagnostics](../docs/development/frontend.md#authorization-diagnostics) for console inspection from any page in development or this disposable build.
+
 If a test fails, inspect `docker compose -p sharewise-p26ab-smoke ps -a` and `docker compose -p sharewise-p26ab-smoke logs` before explicitly cleaning it up. The ordinary local deployment and its volumes are unaffected.
 
 The disposable Compose smoke performs CSRF bootstrap, registration and login through the real HTTPS proxy, rotates the refresh cookie while retaining the session ID, validates the replacement JWT against the exported public-only IAM key, and confirms that logout clears the cookie and prevents further refresh. It also checks the static Groups list, workspace and invitation routes and exercises a two-account Group lifecycle through the HTTPS API: creation and listing, outsider denial, invitation creation, preview and single-use redemption, administrator-only access, promotion, revocation and departure. It verifies that the existing bearer observes the promoted role without renewal. Until IAM-to-Group provisioning is integrated, the probe inserts only the two verified IAM user IDs into `groups.users` using the application database role; all business state changes use the public API.
 
-The smoke generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Group API bearer headers and invitation secrets are passed via stdin, not process arguments. Run it on a Docker host with Python 3 and OpenSSL. The probe complements rather than replaces PostgreSQL-backed E2E tests or interactive browser acceptance. Major implementation phases must satisfy the [local smoke gate](../docs/development/ai-development-workflow.md#6-perform-local-deployment-smoke-and-manual-acceptance) before merge.
+The smoke generates disposable credentials and does not print passwords, cookies, signing keys or bearer tokens. Group API bearer headers and invitation secrets are passed via stdin, not process arguments. Run it on a Docker host with Python 3 and OpenSSL. The probe complements rather than replaces PostgreSQL-backed E2E tests or interactive browser acceptance. The deployed frontend suite is a local acceptance gate; the GitLab pipeline does not run this Compose stack. Do not expose a Docker socket to untrusted CI jobs to enable it. Major implementation phases must satisfy the [local smoke gate](../docs/development/ai-development-workflow.md#6-perform-local-deployment-smoke-and-manual-acceptance) before merge.
 
 For independent production-image smoke checks, use `./scripts/test-images.sh`. Focused static/integration tests run with `python3 -m unittest discover -s tests -p 'test_*.py' -v` (Nginx, OpenSSL and `envsubst` are needed for the Nginx tests).
 
@@ -231,6 +266,6 @@ For independent production-image smoke checks, use `./scripts/test-images.sh`. F
 ./scripts/cleanup.sh local               # DANGER: delete local database + ALL local configuration
 ```
 
-`local` removes the normal Compose project's data/credential/certificate/**IAM signing-key** volumes and ignored `deploy/.env`/`.local` state, so the next bootstrap starts completely fresh. `tests` discovers projects by Docker's Compose project labels and the reserved test prefix, including orphaned test volumes. It does not target the normal local project. The `tls` mode stops the normal stack and removes just its TLS volume and local certificate files, preserving PostgreSQL data, database passwords and `.env`. Bootstrap and start again afterward.
+`local` removes the normal Compose project's data/credential/certificate/**IAM and Group signing-key** volumes and ignored `deploy/.env`/`.local` state, so the next bootstrap starts completely fresh. `tests` discovers projects by Docker's Compose project labels and the reserved test prefix, including orphaned test volumes. It does not target the normal local project. The `tls` mode stops the normal stack and removes just its TLS volume and local certificate files, preserving PostgreSQL data, database passwords and `.env`. Bootstrap and start again afterward.
 
 If `docker compose up` fails due to a host-port conflict, choose free loopback ports in `.env`; this does not require regenerating secrets or rebuilding images. Inspect `docker compose ps` and `docker compose logs` for startup failures. Database role initialization happens **only on an empty database volume**; do not delete that volume to retry a persistent installation. A backend readiness failure may indicate unavailable PostgreSQL, migration failure or a missing required secret.
