@@ -1,0 +1,13 @@
+.identity, .label {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.name, .identifier {
+  overflow-wrap: anywhere;
+}
+
+.identifier {
+  font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+}

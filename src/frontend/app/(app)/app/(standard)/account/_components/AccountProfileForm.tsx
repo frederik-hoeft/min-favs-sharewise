@@ -1,12 +1,13 @@
 "use client";
 
-import { Alert, Button, Card, Group, Loader, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Card, CopyButton, Group, Loader, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useAuthenticatedApis } from "@/app/identity-provider";
 import type { AccountProfile } from "@/core/identity";
 import { MAX_DISPLAY_NAME_CHARACTERS, validateDisplayName, withinDisplayNameLimit } from "@/core/identity/display-name";
 import { ApiError } from "@/lib/api";
+import { UserIdentity } from "@/components/participants/UserIdentity";
 
 type ProfileView =
   | { readonly attempt: number; readonly status: "loading" }
@@ -156,6 +157,13 @@ export function AccountProfileForm() {
         <Stack gap={4}>
           <Title order={2} size="h3">Profile</Title>
           <Text size="sm" c="dimmed">Your email is private and read-only. Your display name is visible to signed-in ShareWise users.</Text>
+        </Stack>
+        <Stack gap="xs">
+          <UserIdentity userId={profile.userId} profile={{ status: "resolved", displayName: profile.displayName }} own />
+          <Group gap="xs" wrap="wrap">
+            <Text size="xs" c="dimmed" style={{ overflowWrap: "anywhere", minWidth: 0 }}>User ID: <bdi dir="ltr">{profile.userId}</bdi></Text>
+            <CopyButton value={profile.userId}>{({ copied, copy }) => <Button size="compact-xs" variant="subtle" onClick={copy}>{copied ? "Copied" : "Copy user ID"}</Button>}</CopyButton>
+          </Group>
         </Stack>
         {feedback && (
           <Alert color={feedback.kind === "success" ? "indigo" : "red"}
