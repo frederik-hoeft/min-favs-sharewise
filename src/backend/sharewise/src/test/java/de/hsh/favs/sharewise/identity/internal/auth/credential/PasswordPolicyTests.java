@@ -43,14 +43,14 @@ class PasswordPolicyTests {
     @Test
     void immutableCommandsCarryCanonicalEmailAndDoNotLeakPasswords() {
         RegistrationCommand registration = RegistrationCommand.from(
-                " One@Example.COM ", "aSecretPassword", policy);
+                " One@Example.COM ", "aSecretPassword", "Test user", policy);
         LoginCommand login = LoginCommand.from(" ONE@example.com ", "legacy", policy);
         assertEquals(registration.email(), login.email());
         assertEquals("aSecretPassword", registration.password());
         assertFalse(registration.toString().contains("aSecretPassword"));
         assertFalse(login.toString().contains("legacy"));
         assertThrows(IllegalArgumentException.class,
-                () -> RegistrationCommand.from("user@example.com", "short", policy));
+                () -> RegistrationCommand.from("user@example.com", "short", "Test user", policy));
     }
 
     @Test

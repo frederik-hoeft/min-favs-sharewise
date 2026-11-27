@@ -25,12 +25,12 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 
-/** PostgreSQL profile projection, atomic upsert, ownership, and rollback across committed segments. */
+/** PostgreSQL profile projection, serialized update, ownership, and rollback across committed segments. */
 @Tag("e2e")
 class AccountProfileE2E extends E2ETestBase {
 
     @Test
-    void optionalProfileCanBeSetAndClearedWithoutAffectingOtherUsers() {
+    void requiredProfileCanBeRenamedWithoutAffectingOtherUsers() {
         runTest(fixture -> {
             UUID alice;
             UUID bob;
@@ -39,21 +39,21 @@ class AccountProfileE2E extends E2ETestBase {
                 bob = insertUser(app, "bob@example.org");
             }
             OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
-            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", null)),
+            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "Initial name")),
                     get(dispatcher, alice));
             assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "🌍 Alice")),
                     update(dispatcher, alice, "🌍 Alice"));
             assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "🌍 Alice")),
                     get(dispatcher, alice));
-            assertEquals(Result.ok(new AccountProfile(bob, "bob@example.org", null)),
+            assertEquals(Result.ok(new AccountProfile(bob, "bob@example.org", "Initial name")),
                     get(dispatcher, bob));
-            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", null)),
-                    update(dispatcher, alice, null));
-            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", null)),
-                    update(dispatcher, alice, null));
+            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "Initial name")),
+                    update(dispatcher, alice, "Initial name"));
+            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "Initial name")),
+                    update(dispatcher, alice, "Initial name"));
             try (Connection app = fixture.connectAsApplication()) {
                 assertEquals(1, countProfiles(app, alice));
-                assertEquals(0, countProfiles(app, bob));
+                assertEquals(1, countProfiles(app, bob));
             }
         }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
@@ -80,13 +80,13 @@ class AccountProfileE2E extends E2ETestBase {
             assertEquals(Result.err(AccountProfileFailure.ACCOUNT_UNAVAILABLE),
                     update(dispatcher, alice, "Rejected"));
             try (Connection app = fixture.connectAsApplication()) {
-                assertEquals(0, countProfiles(app, alice));
+                assertEquals(1, countProfiles(app, alice));
             }
         }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
     @Test
-    void simultaneousFirstWritesProduceOneProfileAndRollbackDoesNotPersist() {
+    void simultaneousUpdatesPreserveOneProfileAndRollbackDoesNotPersist() {
         runTest(fixture -> {
             UUID alice;
             try (Connection app = fixture.connectAsApplication()) {
@@ -116,11 +116,38 @@ class AccountProfileE2E extends E2ETestBase {
 
             assertThrows(IllegalStateException.class, () -> dispatcher.dispatch(Probe.class,
                     probe -> probe.transactions().execute(() -> {
-                        assertTrue(probe.profiles().setDisplayNameIfActive(alice, "Must roll back").isPresent());
+                        assertTrue(probe.profiles().setDisplayNameIfActive(alice, DisplayName.from("Must roll back")).isPresent());
                         throw new IllegalStateException("induced rollback");
                     })));
             assertEquals(persisted, ((Result.Ok<AccountProfile, AccountProfileFailure>) get(dispatcher, alice))
                     .value().displayName());
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
+    }
+
+    @Test
+    void publicLookupIncludesDisabledProfilesAndDistinguishesMissingIntegrityFailure() {
+        runTest(fixture -> {
+            UUID alice;
+            UUID bob;
+            try (Connection app = fixture.connectAsApplication()) {
+                alice = insertUser(app, "Alice@example.org");
+                bob = insertUser(app, "Bob@example.org");
+                try (PreparedStatement disable = app.prepareStatement("update identity.users set disabled_at = now() where id = ?")) {
+                    disable.setObject(1, bob);
+                    disable.executeUpdate();
+                }
+            }
+            OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
+            ProfileLookup command = ProfileLookup.tryFrom(java.util.List.of(bob.toString(), UUID.randomUUID().toString(), alice.toString(), bob.toString()))
+                    .fold(value -> value, errors -> { throw new AssertionError(errors); });
+            assertEquals(java.util.List.of(new PublicProfile(bob, "Initial name"), new PublicProfile(alice, "Initial name")),
+                    dispatcher.dispatch(Probe.class, probe -> new ProfileLookupService(identity(alice), probe.transactions(), probe.profiles()).lookup(command)));
+            try (Connection app = fixture.connectAsApplication(); PreparedStatement remove = app.prepareStatement("delete from identity.user_profiles where user_id = ?")) {
+                remove.setObject(1, bob);
+                remove.executeUpdate();
+            }
+            assertThrows(RuntimeException.class, () -> dispatcher.dispatch(Probe.class,
+                    probe -> new ProfileLookupService(identity(alice), probe.transactions(), probe.profiles()).lookup(command)));
         }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
@@ -131,17 +158,20 @@ class AccountProfileE2E extends E2ETestBase {
 
     private static Result<AccountProfile, AccountProfileFailure> update(OperationDispatcher dispatcher, UUID userId,
             String displayName) {
-        DisplayNameUpdate command = ((Result.Ok<DisplayNameUpdate, ?>) DisplayNameUpdate.tryFrom(displayName))
+        DisplayName command = ((Result.Ok<DisplayName, ?>) DisplayName.tryFrom(displayName))
                 .value();
         return dispatcher.dispatch(Probe.class, probe -> service(userId, probe).setDisplayName(command));
     }
 
     private static AccountProfileService service(UUID userId, Probe probe) {
-        IdentityContext identity = new IdentityContext() {
+        return new AccountProfileService(identity(userId), probe.transactions(), probe.profiles());
+    }
+
+    private static IdentityContext identity(UUID userId) {
+        return new IdentityContext() {
             @Override public Optional<UUID> userId() { return Optional.of(userId); }
             @Override public Optional<UUID> sessionId() { return Optional.of(userId); }
         };
-        return new AccountProfileService(identity, probe.transactions(), probe.profiles());
     }
 
     private static UUID insertUser(Connection connection, String email) throws SQLException {
@@ -153,7 +183,13 @@ class AccountProfileE2E extends E2ETestBase {
             insert.setString(2, email);
             try (ResultSet rows = insert.executeQuery()) {
                 assertTrue(rows.next());
-                return rows.getObject(1, UUID.class);
+                UUID id = rows.getObject(1, UUID.class);
+                try (PreparedStatement profile = connection.prepareStatement(
+                        "insert into identity.user_profiles(user_id, display_name) values (?, 'Initial name')")) {
+                    profile.setObject(1, id);
+                    assertEquals(1, profile.executeUpdate());
+                }
+                return id;
             }
         }
     }

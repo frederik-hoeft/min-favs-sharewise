@@ -278,7 +278,7 @@ def exercise_groups(args: argparse.Namespace, origin: str, public: str, owner: s
     try:
         status, response = mutate(args.host, args.port, cookie_file, "register", origin,
                                   {"email": f"smoke-{secrets.token_hex(12)}@example.invalid",
-                                   "password": secrets.token_urlsafe(32)})
+                                   "password": secrets.token_urlsafe(32), "displayName": "Smoke guest"})
         require(status == 201, "Group invitee registration failed")
         guest, session_id, guest_id = authenticated_response(response, public, args.issuer, args.audience)
         require(guest_id != owner_id, "Group smoke requires distinct accounts")
@@ -312,7 +312,7 @@ def main() -> None:
                                 capture_output=True, text=True, check=True).stdout
         registered_user_id = None
         for operation, expected in (("register", 201), ("login", 200)):
-            status, response = mutate(args.host, args.port, cookie_file, operation, origin, payload)
+            status, response = mutate(args.host, args.port, cookie_file, operation, origin, {**payload, "displayName": "Smoke owner"} if operation == "register" else payload)
             if status != expected:
                 raise RuntimeError("IAM registration/login response was unsuccessful")
             token, session_id, user_id = authenticated_response(response, public, args.issuer, args.audience)

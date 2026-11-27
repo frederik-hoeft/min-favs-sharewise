@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.auth;
 
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -154,9 +155,9 @@ class IamAuthenticationIT extends IntegrationTestBase {
             AccountStore accounts = scope.resolve(AccountStore.class);
             UUID id = scope.resolve(Transactions.class).execute(() -> {
                 AccountSnapshot first = accounts.insert(EmailAddress.parse("  Case.IT@Example.org  "),
-                        TEST_ENCODER.encode(PASSWORD)).orElseThrow();
+                        TEST_ENCODER.encode(PASSWORD), DisplayName.from("Test user")).orElseThrow();
                 assertEquals(Optional.empty(), accounts.insert(EmailAddress.parse("case.it@EXAMPLE.org"),
-                        TEST_ENCODER.encode(PASSWORD)));
+                        TEST_ENCODER.encode(PASSWORD), DisplayName.from("Test user")));
                 assertEquals(first, accounts.findByEmail(EmailAddress.parse("CASE.IT@example.org"))
                         .orElseThrow());
                 return TransactionOutcome.commit(first.userId());
@@ -182,7 +183,7 @@ class IamAuthenticationIT extends IntegrationTestBase {
             LoginLockoutPolicy policy = LoginLockoutPolicy.initial();
             UUID id = scope.resolve(Transactions.class).execute(() -> {
                 EmailAddress email = EmailAddress.parse("counter-it@example.org");
-                AccountSnapshot inserted = accounts.insert(email, TEST_ENCODER.encode(PASSWORD))
+                AccountSnapshot inserted = accounts.insert(email, TEST_ENCODER.encode(PASSWORD), DisplayName.from("Test user"))
                         .orElseThrow();
                 AccountSnapshot locked = accounts.findByEmailForUpdate(email).orElseThrow();
                 LoginLockoutPolicy.State old = locked.loginFailures();
@@ -241,7 +242,7 @@ class IamAuthenticationIT extends IntegrationTestBase {
     }
 
     private static RegistrationCommand registration(String email) {
-        return RegistrationCommand.from(email, PASSWORD, PasswordPolicy.initial());
+        return RegistrationCommand.from(email, PASSWORD, "Test user", PasswordPolicy.initial());
     }
 
     private static RegistrationService registrationService(IntegrationTestScope scope, AccessTokenIssuer issuer) {

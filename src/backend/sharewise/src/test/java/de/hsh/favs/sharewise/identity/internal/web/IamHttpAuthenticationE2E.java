@@ -74,17 +74,17 @@ class IamHttpAuthenticationE2E {
             String body = "{\"email\":\"user@example.com\",\"password\":\"correct-password\"}";
 
             HttpResponse<String> missingOrigin = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, initial, false, true);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", initial, false, true);
             assertEquals(403, missingOrigin.statusCode());
             assertEquals("invalid_origin", JsonPath.read(missingOrigin.body(), "$.code"));
             HttpResponse<String> missingCsrf = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, initial, true, false);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", initial, true, false);
             assertEquals(403, missingCsrf.statusCode());
             assertEquals("csrf_invalid", JsonPath.read(missingCsrf.body(), "$.code"));
             assertEquals(0, count(fixture, "identity.users"));
 
             HttpResponse<String> registered = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, initial, true, true);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", initial, true, true);
             assertEquals(201, registered.statusCode(), registered.body());
             String firstToken = JsonPath.read(registered.body(), "$.accessToken");
             String firstRefresh = findCookie(registered, "__Host-sharewise-refresh");
@@ -106,7 +106,7 @@ class IamHttpAuthenticationE2E {
 
             CsrfPair second = csrf(client, base);
             HttpResponse<String> duplicate = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, second, true, true);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", second, true, true);
             assertEquals(409, duplicate.statusCode());
             assertEquals("email_unavailable", JsonPath.read(duplicate.body(), "$.code"));
             assertFalse(duplicate.headers().allValues("Set-Cookie").stream()
@@ -153,7 +153,7 @@ class IamHttpAuthenticationE2E {
             String base = "http://127.0.0.1:" + port;
             String credentials = "{\"email\":\"lifecycle@example.com\",\"password\":\"correct-password\"}";
             HttpResponse<String> login = post(client, base, base, "/api/iam/v1/auth/register",
-                    credentials, csrf(client, base), true, true);
+                    credentials.substring(0, credentials.length() - 1) + ",\"displayName\":\"Test user\"}", csrf(client, base), true, true);
             assertEquals(201, login.statusCode(), login.body());
             String sessionId = JsonPath.read(login.body(), "$.sessionId");
             String loginCookie = findCookie(login, "__Host-sharewise-refresh").split(";", 2)[0];

@@ -4,6 +4,8 @@ import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Sessions.SESSIONS;
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Users.USERS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.UserProfiles.USER_PROFILES;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.Domains;
@@ -27,6 +29,12 @@ class GeneratedIamSchemaTests {
         assertEquals(Integer.class, USERS.FAILED_LOGIN_ATTEMPTS.getType());
         assertEquals(OffsetDateTime.class, SESSIONS.IDLE_EXPIRES_AT.getType());
         assertEquals(byte[].class, REFRESH_TOKENS.VERIFIER_HASH.getType());
+    }
+
+    @Test
+    void generatedDisplayNameIsRequired() {
+        assertFalse(USER_PROFILES.DISPLAY_NAME.getDataType().nullable());
+        assertTrue(USER_PROFILES.getChecks().stream().noneMatch(check -> check.condition().toString().contains("display_name IS NULL")));
     }
 
     @Test

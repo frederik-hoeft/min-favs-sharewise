@@ -5,6 +5,9 @@ import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated
 
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfile;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileStore;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
+import de.hsh.favs.sharewise.identity.internal.profile.PublicProfile;
+import java.util.List;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.Objects;
 import java.util.Optional;
@@ -13,7 +16,7 @@ import org.jooq.DSLContext;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Repository;
 
-/** IAM-owned SQL, including the serialized first-write upsert. */
+/** IAM-owned SQL, including serialized profile updates. */
 @Repository
 @Scope("operation")
 class JooqAccountProfileStore implements AccountProfileStore {
@@ -36,7 +39,7 @@ class JooqAccountProfileStore implements AccountProfileStore {
     }
 
     @Override
-    public Optional<AccountProfile> setDisplayNameIfActive(UUID userId, String displayName) {
+    public Optional<AccountProfile> setDisplayNameIfActive(UUID userId, DisplayName displayName) {
         Objects.requireNonNull(userId, "userId");
         DSLContext db = database.dsl();
         // Lock the authoritative account, preventing a concurrent disable from passing this check.
@@ -46,16 +49,20 @@ class JooqAccountProfileStore implements AccountProfileStore {
         if (email.isEmpty()) {
             return Optional.empty();
         }
-        // The PK arbitrates concurrent first inserts; ON CONFLICT is safe under PostgreSQL.
-        int written = db.insertInto(USER_PROFILES)
-                .set(USER_PROFILES.USER_ID, userId)
-                .set(USER_PROFILES.DISPLAY_NAME, displayName)
-                .onConflict(USER_PROFILES.USER_ID).doUpdate()
-                .set(USER_PROFILES.DISPLAY_NAME, displayName)
+        int written = db.update(USER_PROFILES)
+                .set(USER_PROFILES.DISPLAY_NAME, displayName.value())
+                .where(USER_PROFILES.USER_ID.eq(userId))
                 .execute();
         if (written != 1) {
-            throw new IllegalStateException("IAM profile upsert must affect exactly one row");
+            throw new IllegalStateException("Required IAM profile update must affect exactly one row");
         }
-        return Optional.of(new AccountProfile(userId, email.orElseThrow(), displayName));
+        return Optional.of(new AccountProfile(userId, email.orElseThrow(), displayName.value()));
+    }
+    @Override
+    public List<PublicProfile> lookup(List<UUID> userIds) {
+        return database.dsl().select(USERS.ID, USER_PROFILES.DISPLAY_NAME)
+                .from(USERS).leftJoin(USER_PROFILES).on(USER_PROFILES.USER_ID.eq(USERS.ID))
+                .where(USERS.ID.in(userIds))
+                .fetch(row -> new PublicProfile(row.get(USERS.ID), row.get(USER_PROFILES.DISPLAY_NAME)));
     }
 }

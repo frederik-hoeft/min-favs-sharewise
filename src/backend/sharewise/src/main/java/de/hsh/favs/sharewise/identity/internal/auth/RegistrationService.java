@@ -37,7 +37,7 @@ public final class RegistrationService {
             throw new IllegalStateException("Credential encoder returned no verifier");
         }
         return transactions.execute(() -> {
-            Optional<AccountSnapshot> inserted = accounts.insert(command.email(), encoded);
+            Optional<AccountSnapshot> inserted = accounts.insert(command.email(), encoded, command.displayName());
             if (inserted.isEmpty()) {
                 return TransactionOutcome.abstain(Result.err(RegistrationFailure.EMAIL_UNAVAILABLE));
             }

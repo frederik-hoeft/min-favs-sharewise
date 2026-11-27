@@ -2,7 +2,7 @@ package de.hsh.favs.sharewise.identity.internal.web;
 
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
-import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
+import de.hsh.favs.sharewise.identity.internal.web.dto.RegistrationRequest;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(prefix = "sharewise.iam.auth", name = "enabled", havingValue = "true")
 final class RegistrationCommandFactory
-        implements DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> {
+        implements DomainObjectFactory<RegistrationCommand, RegistrationRequest> {
 
     private final PasswordPolicy policy;
 
@@ -23,10 +23,10 @@ final class RegistrationCommandFactory
     }
 
     @Override
-    public Result<RegistrationCommand, ValidationErrors> createFrom(AuthCredentialsRequest input) {
+    public Result<RegistrationCommand, ValidationErrors> createFrom(RegistrationRequest input) {
         if (input == null) {
             return Result.err(ValidationErrors.single("request", "required", "Credentials are required."));
         }
-        return RegistrationCommand.tryFrom(input.email(), input.password(), policy);
+        return RegistrationCommand.tryFrom(input.email(), input.password(), input.displayName(), policy);
     }
 }

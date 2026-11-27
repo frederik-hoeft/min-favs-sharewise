@@ -3,22 +3,26 @@ package de.hsh.favs.sharewise.identity.internal.profile;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
 
-/** A validated display-name assignment; null explicitly means clear. */
-public final class DisplayNameUpdate {
+/** A mandatory, validated display name. */
+public final class DisplayName {
 
     private final String value;
 
-    private DisplayNameUpdate(String value) {
+    private DisplayName(String value) {
         this.value = value;
+    }
+
+    public static DisplayName from(String value) {
+        return tryFrom(value).fold(name -> name, errors -> { throw new IllegalArgumentException("Invalid display name"); });
     }
 
     public String value() {
         return value;
     }
 
-    public static Result<DisplayNameUpdate, ValidationErrors> tryFrom(String value) {
+    public static Result<DisplayName, ValidationErrors> tryFrom(String value) {
         if (value == null) {
-            return Result.ok(new DisplayNameUpdate(null));
+            return Result.err(ValidationErrors.single("displayName", "required", "Display name is required."));
         }
         int codePoints = value.codePointCount(0, value.length());
         if (codePoints < 1 || codePoints > 80 || !validText(value)) {
@@ -26,7 +30,7 @@ public final class DisplayNameUpdate {
                     "Display name must contain 1–80 Unicode characters, including non-whitespace text, "
                     + "without control characters or line separators."));
         }
-        return Result.ok(new DisplayNameUpdate(value));
+        return Result.ok(new DisplayName(value));
     }
 
     private static boolean validText(String value) {

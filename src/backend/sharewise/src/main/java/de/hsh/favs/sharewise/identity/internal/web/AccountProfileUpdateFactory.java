@@ -1,6 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
-import de.hsh.favs.sharewise.identity.internal.profile.DisplayNameUpdate;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AccountProfileUpdateRequest;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
@@ -12,14 +12,13 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(prefix = "sharewise.iam.auth", name = "enabled", havingValue = "true")
 final class AccountProfileUpdateFactory
-        implements DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> {
+        implements DomainObjectFactory<DisplayName, AccountProfileUpdateRequest> {
 
     @Override
-    public Result<DisplayNameUpdate, ValidationErrors> createFrom(AccountProfileUpdateRequest input) {
-        if (input == null || input.clear() != (input.displayName() == null)) {
-            return Result.err(ValidationErrors.single("clear", "invalid",
-                    "clear must be true exactly when displayName is null."));
+    public Result<DisplayName, ValidationErrors> createFrom(AccountProfileUpdateRequest input) {
+        if (input == null) {
+            return Result.err(ValidationErrors.single("request", "required", "Profile update is required."));
         }
-        return DisplayNameUpdate.tryFrom(input.displayName());
+        return DisplayName.tryFrom(input.displayName());
     }
 }

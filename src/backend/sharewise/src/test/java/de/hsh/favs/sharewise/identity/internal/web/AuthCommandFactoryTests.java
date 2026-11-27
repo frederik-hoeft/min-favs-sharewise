@@ -8,6 +8,7 @@ import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
+import de.hsh.favs.sharewise.identity.internal.web.dto.RegistrationRequest;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
@@ -18,7 +19,7 @@ import org.junit.jupiter.api.Test;
 class AuthCommandFactoryTests {
 
     private static final PasswordPolicy POLICY = PasswordPolicy.initial();
-    private final DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations =
+    private final DomainObjectFactory<RegistrationCommand, RegistrationRequest> registrations =
             new RegistrationCommandFactory(POLICY);
     private final DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins =
             new LoginCommandFactory(POLICY);
@@ -34,7 +35,7 @@ class AuthCommandFactoryTests {
     @Test
     void errorMappingPreservesFieldOrderCodeAndMessages() {
         Result<RegistrationCommand, ValidationErrors> failed = registrations.createFrom(
-                new AuthCredentialsRequest("invalid", "short"));
+                new RegistrationRequest("invalid", "short", "Test user"));
         assertTrue(failed.isFailure());
         RequestValidationException mapped = failed.fold(
                 ignored -> { throw new AssertionError("Expected errors"); },
@@ -51,12 +52,12 @@ class AuthCommandFactoryTests {
     @Test
     void registrationAndLoginUseDistinctPasswordPoliciesAndSameEmailSemantics() {
         AuthCredentialsRequest oldPassword = new AuthCredentialsRequest(" ONE@example.org ", "legacy");
-        assertTrue(registrations.createFrom(oldPassword).isFailure());
+        assertTrue(registrations.createFrom(new RegistrationRequest(oldPassword.email(), oldPassword.password(), "Test user")).isFailure());
         Result<LoginCommand, ValidationErrors> accepted = logins.createFrom(oldPassword);
         assertTrue(accepted.isSuccess());
         assertEquals("one@example.org", accepted.fold(
                 command -> command.email().normalized(), ignored -> "unexpected"));
-        assertTrue(registrations.createFrom(new AuthCredentialsRequest(
-                " ONE@example.org ", "password1")).isSuccess());
+        assertTrue(registrations.createFrom(new RegistrationRequest(
+                " ONE@example.org ", "password1", "Test user")).isSuccess());
     }
 }
