@@ -36,12 +36,14 @@ afterEach(() => { replace.mockReset(); for (const runtime of runtimes.splice(0))
 
 function passwordForm() { return screen.getByRole("form", { name: "Change password" }); }
 function currentInput() { return within(passwordForm()).getByLabelText("Current password") as HTMLInputElement; }
-function newInput() { return within(passwordForm()).getByLabelText(/New password/i) as HTMLInputElement; }
+function newInput() { return within(passwordForm()).getByLabelText("New password") as HTMLInputElement; }
+function confirmInput() { return within(passwordForm()).getByLabelText("Confirm new password") as HTMLInputElement; }
 function changeButton() { return within(passwordForm()).getByRole("button", { name: "Change password" }); }
 async function enterPasswords(current = "old-password", next = "new-password-123") {
   const user = userEvent.setup();
   await user.type(currentInput(), current);
   await user.type(newInput(), next);
+  await user.type(confirmInput(), next);
   return user;
 }
 function passwordPosts(requests: Array<{ path: string; init?: RequestInit }>) {
@@ -59,7 +61,7 @@ describe("Account password-change page", () => {
     expect(profileGrid).toBeTruthy();
     expect(passwordGrid).toBeTruthy();
     expect(profileGrid!.querySelectorAll("input")).toHaveLength(2);
-    expect(passwordGrid!.querySelectorAll("input")).toHaveLength(2);
+    expect(passwordGrid!.querySelectorAll("input")).toHaveLength(3);
     expect(profileForm.querySelector(".mantine-Group-root")).toHaveStyle("--group-justify: flex-end");
     expect(passwordForm().querySelector(".mantine-Group-root")).toHaveStyle("--group-justify: flex-end");
     expect(container.querySelectorAll(".mantine-Card-root")).toHaveLength(2);
@@ -76,6 +78,7 @@ describe("Account password-change page", () => {
     expect(await screen.findByText(/This session stays signed in. Other sessions may remain active until their current access tokens expire/)).toBeInTheDocument();
     expect(currentInput()).toHaveValue("");
     expect(newInput()).toHaveValue("");
+    expect(confirmInput()).toHaveValue("");
     expect(runtime.session.getAccessToken()).toBe("alice-bearer");
     expect(passwordPosts(requests)).toHaveLength(1);
     const submission = passwordPosts(requests)[0];
@@ -85,11 +88,23 @@ describe("Account password-change page", () => {
     expect(screen.getByRole("status", { name: "Password updated" })).toBeInTheDocument();
   });
 
+  it("rejects mismatching confirmation without sending a password mutation", async () => {
+    const { requests } = mount();
+    const user = await enterPasswords();
+    await user.clear(confirmInput());
+    await user.type(confirmInput(), "different-password");
+    await user.click(changeButton());
+    expect(screen.getByText("Passwords must match.")).toBeVisible();
+    expect(confirmInput()).toHaveFocus();
+    expect(passwordPosts(requests)).toHaveLength(0);
+  });
+
   it("submits with the keyboard and announces the result without requiring a pointer", async () => {
     const { requests } = mount();
     const user = userEvent.setup();
     await user.type(currentInput(), "old-password");
-    await user.type(newInput(), "replacement-password{Enter}");
+    await user.type(newInput(), "replacement-password");
+    await user.type(confirmInput(), "replacement-password{Enter}");
     expect(await screen.findByRole("status", { name: "Password updated" })).toHaveFocus();
     expect(passwordPosts(requests)).toHaveLength(1);
   });
@@ -148,6 +163,7 @@ describe("Account password-change page", () => {
     expect(changeButton()).toBeDisabled();
     expect(currentInput()).toHaveValue("");
     expect(newInput()).toHaveValue("");
+    expect(confirmInput()).toHaveValue("");
     expect(screen.queryByRole("link", { name: "Sign in" }) !== null).toBe(signIn);
     fireEvent.submit(passwordForm());
     expect(passwordPosts(requests)).toHaveLength(1);
@@ -165,6 +181,7 @@ describe("Account password-change page", () => {
     expect(screen.getByRole("link", { name: "Sign in instead" })).toHaveAttribute("href", "/auth/login");
     expect(currentInput()).toHaveValue("");
     expect(newInput()).toHaveValue("");
+    expect(confirmInput()).toHaveValue("");
     expect(changeButton()).toBeDisabled();
     fireEvent.submit(passwordForm());
     expect(passwordPosts(requests)).toHaveLength(1);
@@ -213,6 +230,7 @@ describe("Account password-change page", () => {
     await act(async () => runtime.session.accept(authenticationResponse("bob-bearer", undefined, SESSION_TWO)));
     expect(currentInput()).toHaveValue("");
     expect(newInput()).toHaveValue("");
+    expect(confirmInput()).toHaveValue("");
     await act(async () => reply.resolve(new Response(null, { status: 204 })));
     expect(screen.queryByText(/Password changed/)).not.toBeInTheDocument();
     expect(currentInput()).toHaveValue("");

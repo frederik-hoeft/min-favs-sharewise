@@ -200,6 +200,10 @@ describe("GI-FT17 invitation continuation", () => {
     const user = userEvent.setup();
     await user.type(screen.getByRole("textbox", { name: "Email address" }), "person@example.com");
     await user.type(screen.getByLabelText(/^Password/), "correct horse battery staple");
+    if (mode === "register") {
+      await user.type(screen.getByLabelText(/^Display name/), "Test user");
+      await user.type(screen.getByLabelText(/^Confirm password/), "correct horse battery staple");
+    }
     await user.click(screen.getByRole("button", { name: mode === "register" ? "Create account" : "Sign in" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/invite"));
     fake.respond("POST", PREVIEW, json(200, { groupName: "Mallorca 2027" }));

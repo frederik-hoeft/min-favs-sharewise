@@ -37,6 +37,10 @@ function renderAuth(
 async function enterCredentials(user: ReturnType<typeof userEvent.setup>, password = 'correct horse battery staple') {
   await user.type(screen.getByRole('textbox', { name: /email address/i }), 'person@example.com');
   await user.type(screen.getByLabelText(/^Password/), password);
+  if (screen.queryByLabelText(/^Display name/)) {
+    await user.type(screen.getByLabelText(/^Display name/), "Test user");
+    await user.type(screen.getByLabelText(/^Confirm password/), password);
+  }
 }
 
 afterEach(() => {
@@ -97,16 +101,31 @@ describe('registration and login presentation', () => {
     const user = userEvent.setup();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).endsWith('/csrf')) return jsonResponse({ token: 'fresh' });
-      expect(JSON.parse(String(init?.body))).toEqual({ email: 'person@example.com', password: '  correct horse battery staple  ' });
+      expect(JSON.parse(String(init?.body))).toEqual({ email: 'person@example.com', password: '  correct horse battery staple  ', displayName: 'Test user' });
       return jsonResponse(authenticationResponse(), 201);
     });
     const { runtime } = renderAuth('register', fetchImpl as typeof fetch);
     fireEvent.change(screen.getByRole('textbox', { name: /email address/i }), { target: { value: '  person@example.com  ' } });
+    await user.type(screen.getByLabelText(/^Display name/), 'Test user');
     await user.type(screen.getByLabelText(/^Password/), '  correct horse battery staple  ');
+    await user.type(screen.getByLabelText(/^Confirm password/), '  correct horse battery staple  ');
     await user.click(screen.getByRole('button', { name: 'Create account' }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/app'));
     expect(runtime.session.getSnapshot().status).toBe('authenticated');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects mismatching passwords before CSRF or registration traffic', async () => {
+    const user = userEvent.setup();
+    const fetchImpl = vi.fn();
+    renderAuth('register', fetchImpl as typeof fetch);
+    await enterCredentials(user);
+    await user.clear(screen.getByLabelText(/^Confirm password/));
+    await user.type(screen.getByLabelText(/^Confirm password/), 'different');
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(screen.getByText('Passwords must match.')).toBeVisible();
+    expect(screen.getByLabelText(/^Confirm password/)).toHaveFocus();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('allows an existing shorter password on login and supports keyboard submission', async () => {

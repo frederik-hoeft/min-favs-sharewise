@@ -3,6 +3,8 @@ import { hasValidSurrogatePairs } from "@/core/identity/password-validation";
 export interface CredentialErrors {
   readonly email?: string;
   readonly password?: string;
+  readonly displayName?: string;
+  readonly confirmPassword?: string;
 }
 
 /** Client-side hints only. The IAM service remains authoritative for email syntax and policy. */

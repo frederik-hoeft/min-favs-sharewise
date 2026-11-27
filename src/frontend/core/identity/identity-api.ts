@@ -1,5 +1,6 @@
+import { validateDisplayName } from "./display-name.ts";
 import { ApiError, type ApiClient } from '@/lib/api';
-import type { AccountProfile, AuthenticationResponse, ChangePasswordRequest, IdentityCredentials } from './models.ts';
+import type { AccountProfile, AuthenticationResponse, ChangePasswordRequest, IdentityCredentials, RegistrationRequest, PublicProfile } from './models.ts';
 
 const ROOT: string = '/iam/v1';
 export const PASSWORD_CHANGE_PATH: string = '/api/iam/v1/auth/password';
@@ -34,8 +35,8 @@ export class IdentityApi {
         return response.token;
     }
 
-    register(credentials: IdentityCredentials, csrfToken: string): Promise<AuthenticationResponse> {
-        return this.client.post<AuthenticationResponse>(`${ROOT}/auth/register`, credentials, {
+    register(credentials: RegistrationRequest, csrfToken: string): Promise<AuthenticationResponse> {
+        return this.client.post<AuthenticationResponse>(`${ROOT}/auth/register`, { email: credentials.email, password: credentials.password, displayName: credentials.displayName }, {
             headers: { [CSRF_HEADER]: csrfToken },
         });
     }
@@ -45,11 +46,25 @@ export class IdentityApi {
     }
 
     setDisplayName(displayName: string): Promise<AccountProfile> {
-        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName, clear: false });
+        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName });
     }
 
-    clearDisplayName(): Promise<AccountProfile> {
-        return this.client.patch<AccountProfile>(`${ROOT}/account`, { displayName: null, clear: true });
+    async lookupProfiles(userIds: readonly string[], signal: AbortSignal): Promise<readonly PublicProfile[]> {
+        const response: unknown = await this.client.post<unknown>(`${ROOT}/profiles/lookup`, { userIds }, { signal });
+        if (typeof response !== 'object' || response === null || !('profiles' in response) || !Array.isArray(response.profiles)) {
+            throw new ApiError({ status: 0, code: 'invalid_response', title: 'Invalid Profile Response', detail: 'Unable to resolve profiles.' });
+        }
+        const requested: Set<string> = new Set(userIds);
+        const profiles: PublicProfile[] = [];
+        for (const profile of response.profiles as unknown[]) {
+            if (typeof profile !== 'object' || profile === null || !('userId' in profile) || typeof profile.userId !== 'string' ||
+                !requested.delete(profile.userId) || !('displayName' in profile) || typeof profile.displayName !== 'string' ||
+                validateDisplayName(profile.displayName) !== undefined) {
+                throw new ApiError({ status: 0, code: 'invalid_response', title: 'Invalid Profile Response', detail: 'Unable to resolve profiles.' });
+            }
+            profiles.push({ userId: profile.userId, displayName: profile.displayName });
+        }
+        return profiles;
     }
 
     /** The only authenticated /auth mutation: bearer-only, no CSRF bootstrap or response credentials. */
@@ -58,7 +73,7 @@ export class IdentityApi {
     }
 
     login(credentials: IdentityCredentials, csrfToken: string): Promise<AuthenticationResponse> {
-        return this.client.post<AuthenticationResponse>(`${ROOT}/auth/login`, credentials, {
+        return this.client.post<AuthenticationResponse>(`${ROOT}/auth/login`, { email: credentials.email, password: credentials.password }, {
             headers: { [CSRF_HEADER]: csrfToken },
         });
     }

@@ -69,7 +69,7 @@ export function AccountProfileForm() {
     void account.getAccount({ signal: controller.signal }).then((profile) => {
       if (!active) return;
       setView({ attempt: reloadCount, status: "ready", profile });
-      setDraft(profile.displayName ?? "");
+      setDraft(profile.displayName);
       setFieldError(undefined);
       setFeedback(undefined);
     }).catch((error: unknown) => {
@@ -88,30 +88,27 @@ export function AccountProfileForm() {
   }, [account, reloadCount]);
 
   const currentView = view?.attempt === reloadCount ? view : undefined;
-  // An empty or whitespace-only entry clears the optional name; otherwise preserve it exactly.
-  const nextDisplayName = draft.trim().length === 0 ? null : draft;
+  const nextDisplayName = draft;
 
   async function mutate() {
     if (currentView?.status !== "ready" || inFlight.current || feedback?.reloadRequired || fieldError ||
         nextDisplayName === currentView.profile.displayName) return;
 
-    if (nextDisplayName !== null) {
-      const error = validateDisplayName(nextDisplayName);
-      setFieldError(error);
-      if (error) {
-        inputRef.current?.focus();
-        return;
-      }
+    const error = validateDisplayName(nextDisplayName);
+    setFieldError(error);
+    if (error) {
+      inputRef.current?.focus();
+      return;
     }
     inFlight.current = true;
     setPending(true);
     setFieldError(undefined);
     setFeedback(undefined);
     try {
-      const profile = nextDisplayName === null ? await account.clearDisplayName() : await account.setDisplayName(nextDisplayName);
+      const profile = await account.setDisplayName(nextDisplayName);
       setView({ attempt: reloadCount, status: "ready", profile });
-      setDraft(profile.displayName ?? "");
-      setFeedback({ kind: "success", message: nextDisplayName === null ? "Display name cleared." : "Display name updated." });
+      setDraft(profile.displayName);
+      setFeedback({ kind: "success", message: "Display name updated." });
     } catch (error) {
       if (error instanceof ApiError && error.status === 403 && error.code === "account_unavailable") {
         setView({ attempt: reloadCount, status: "unavailable" });
@@ -158,7 +155,7 @@ export function AccountProfileForm() {
       <Stack gap="lg">
         <Stack gap={4}>
           <Title order={2} size="h3">Profile</Title>
-          <Text size="sm" c="dimmed">Your email is read-only. Leave the display name blank to remove it.</Text>
+          <Text size="sm" c="dimmed">Your email is private and read-only. Your display name is visible to signed-in ShareWise users.</Text>
         </Stack>
         {feedback && (
           <Alert color={feedback.kind === "success" ? "indigo" : "red"}
@@ -180,7 +177,7 @@ export function AccountProfileForm() {
                 ref={inputRef}
                 label="Display name"
                 name="displayName"
-                placeholder="No display name"
+                required
                 // A safe native UTF-16 bound plus a scalar-aware guard preserves all 80-character Unicode names.
                 maxLength={MAX_DISPLAY_NAME_CHARACTERS * 2}
                 value={draft}

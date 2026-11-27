@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
 }));
 import { ControlledLocks, SESSION_TWO, authenticationResponse, deferred, jsonResponse, problemResponse } from "../identity/support";
 
-const initial: AccountProfile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: null };
+const initial: AccountProfile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: "Alice" };
 const active: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function renderAccount(fetchImpl: typeof fetch = vi.fn(async () => jsonResponse(initial)) as typeof fetch, signedIn = true) {
   const runtime = createIdentityRuntime({ fetchImpl, locks: () => new ControlledLocks().manager });
@@ -49,7 +49,7 @@ describe("Account profile page", () => {
     expect(screen.queryByText("Sign in required")).not.toBeInTheDocument();
   });
 
-  it("loads an unset profile, keeps email read-only, and saves Unicode without trimming or HTML interpretation", async () => {
+  it("loads a required profile, keeps email read-only, and saves Unicode without trimming or HTML interpretation", async () => {
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       expect(apiTarget(path)).toBe("/api/iam/v1/account");
       return jsonResponse(init?.method === "PATCH" ? { ...initial, displayName: JSON.parse(String(init.body)).displayName } : initial);
@@ -59,8 +59,8 @@ describe("Account profile page", () => {
     const form = await loadedForm();
     expect(within(form).getByRole("textbox", { name: "Email address" })).toHaveAttribute("readonly");
     expect(within(form).getByDisplayValue(initial.email)).toBeInTheDocument();
-    expect(nameInput()).toHaveValue("");
-    expect(nameInput()).toHaveAttribute("placeholder", "No display name");
+    expect(nameInput()).toHaveValue("Alice");
+    expect(nameInput()).toBeRequired();
     // HTML measures UTF-16 units, so its upper bound is twice the API's scalar limit.
     expect(nameInput()).toHaveAttribute("maxlength", "160");
     expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
@@ -68,30 +68,24 @@ describe("Account profile page", () => {
 
     const user = userEvent.setup();
     const text = "  <img src=x onerror=alert(1)> 🦊  ";
+    await user.clear(nameInput());
     await user.type(nameInput(), text);
     await user.click(screen.getByRole("button", { name: "Update display name" }));
     await screen.findByText("Display name updated.");
     expect(nameInput()).toHaveValue(text);
     expect(document.querySelector("img[src='x']")).toBeNull();
     const patch = fetchImpl.mock.calls.find(([, options]) => options?.method === "PATCH");
-    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: text, clear: false });
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: text });
   });
 
-  it.each(["", "  \t  "])("clears an existing display name by updating a blank entry %j", async (blank) => {
-    const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(apiTarget(path)).toBe("/api/iam/v1/account");
-      return jsonResponse(init?.method === "PATCH" ? initial : { ...initial, displayName: "Alice" });
-    });
+  it.each(["", "  \t  "])("rejects clearing a required display name %j", async (blank) => {
+    const fetchImpl = vi.fn(async () => jsonResponse(initial));
     renderAccount(fetchImpl as typeof fetch);
-    await screen.findByDisplayValue("Alice");
-    const user = userEvent.setup();
-    await user.clear(nameInput());
-    if (blank) fireEvent.change(nameInput(), { target: { value: blank } });
-    await user.click(screen.getByRole("button", { name: "Update display name" }));
-    await screen.findByText("Display name cleared.");
-    expect(nameInput()).toHaveValue("");
-    const patch = fetchImpl.mock.calls.find(([, options]) => options?.method === "PATCH");
-    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: null, clear: true });
+    await loadedForm();
+    fireEvent.change(nameInput(), { target: { value: blank } });
+    fireEvent.submit(screen.getByRole("form", { name: "Account profile" }));
+    expect(await screen.findByText(/Enter a name containing non-whitespace text/)).toBeInTheDocument();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it.each(["A\u0001B", "A\u2028", "\ud800"])(
@@ -106,16 +100,6 @@ describe("Account profile page", () => {
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     },
   );
-
-  it("does not send a no-op clear when an unset display name contains only whitespace", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(initial));
-    renderAccount(fetchImpl as typeof fetch);
-    await loadedForm();
-    fireEvent.change(nameInput(), { target: { value: "   " } });
-    expect(screen.getByRole("button", { name: "Update display name" })).toBeDisabled();
-    fireEvent.submit(screen.getByRole("form", { name: "Account profile" }));
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-  });
 
   it("accepts 80 astral Unicode characters and rejects a pasted 81st scalar", async () => {
     const fetchImpl = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) =>
@@ -136,7 +120,7 @@ describe("Account profile page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Update display name" }));
     await screen.findByText("Display name updated.");
     const patch = fetchImpl.mock.calls.find(([, options]) => options?.method === "PATCH");
-    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: exactLimit, clear: false });
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ displayName: exactLimit });
   });
 
   it("rejects overlong ASCII paste without mutating the accepted entry", async () => {
@@ -249,7 +233,7 @@ describe("Account profile page", () => {
       if (url.endsWith("/csrf")) return jsonResponse({ token: "csrf" });
       if (url.endsWith("/refresh")) return refresh.promise;
       if (init?.method === "PATCH") {
-        expect(JSON.parse(String(init.body))).toEqual({ displayName: "Edited", clear: false });
+        expect(JSON.parse(String(init.body))).toEqual({ displayName: "Edited" });
         return (init.headers as Headers).get("Authorization") === "Bearer first-bearer"
           ? problemResponse(401, "invalid_credential") : reply.promise;
       }

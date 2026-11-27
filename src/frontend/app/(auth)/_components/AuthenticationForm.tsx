@@ -13,6 +13,8 @@ import { INVITE_PATH, INVITE_RETURN_QUERY } from "@/lib/navigation/invitation-ro
 import { useInvitationContinuation } from "@/app/invitation-continuation";
 import type { IdentityRuntime } from "@/core/identity";
 import { useIdentity } from "@/app/identity-provider";
+import { validateDisplayName, MAX_DISPLAY_NAME_CHARACTERS } from "@/core/identity/display-name";
+import { validatePasswordConfirmation } from "@/core/identity/password-validation";
 import { validateCredentials, type CredentialErrors } from "./credentials-validation";
 import styles from "./AuthenticationForm.module.scss";
 
@@ -28,9 +30,9 @@ function mapFailure(error: unknown, mode: Mode): { fields: CredentialErrors; mes
     return { fields: { email: 'This email address is unavailable.' } };
   }
   if (error.status === 400) {
-    const fields: { email?: string; password?: string } = {};
+    const fields: { email?: string; password?: string; displayName?: string } = {};
     for (const issue of error.fieldErrors) {
-      if ((issue.field === 'email' || issue.field === 'password') && !fields[issue.field]) {
+      if ((issue.field === 'email' || issue.field === 'password' || (mode === 'register' && issue.field === 'displayName')) && !fields[issue.field]) {
         fields[issue.field] = issue.message || 'Please check this field.';
       }
     }
@@ -56,11 +58,15 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
   const invitationDetour: boolean = invitationPending && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("next") === INVITE_PATH;
   const [email, setEmail]: [string, Dispatch<SetStateAction<string>>] = useState('');
   const [password, setPassword]: [string, Dispatch<SetStateAction<string>>] = useState('');
+  const [displayName, setDisplayName]: [string, Dispatch<SetStateAction<string>>] = useState('');
+  const [confirmPassword, setConfirmPassword]: [string, Dispatch<SetStateAction<string>>] = useState('');
   const [errors, setErrors]: [CredentialErrors, Dispatch<SetStateAction<CredentialErrors>>] = useState<CredentialErrors>({});
   const [message, setMessage]: [string | undefined, Dispatch<SetStateAction<string | undefined>>] = useState<string>();
   const operation: ExclusiveOperation<"authenticate"> = useExclusiveOperation<"authenticate">();
   const pending: boolean = operation.pending !== null;
   const emailRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
+  const displayNameRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
+  const confirmRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
   const passwordRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
   const alertRef: RefObject<HTMLDivElement | null> = useRef<HTMLDivElement>(null);
   const deferredFocus: RefObject<CredentialErrors | undefined> = useRef<CredentialErrors | undefined>(undefined);
@@ -80,7 +86,9 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
 
   function focusFirstError(fields: CredentialErrors) {
     if (fields.email) emailRef.current?.focus();
+    else if (fields.displayName) displayNameRef.current?.focus();
     else if (fields.password) passwordRef.current?.focus();
+    else if (fields.confirmPassword) confirmRef.current?.focus();
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -88,16 +96,17 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
     if (operation.isRunning()) return;
     const trimmedEmail: string = email.trim();
     setEmail(trimmedEmail);
-    const validation: CredentialErrors = validateCredentials(mode, trimmedEmail, password);
+    const validation: CredentialErrors = { ...validateCredentials(mode, trimmedEmail, password),
+      ...(isRegistration ? { displayName: validateDisplayName(displayName), confirmPassword: validatePasswordConfirmation(password, confirmPassword) } : {}) };
     setErrors(validation);
     setMessage(undefined);
-    if (validation.email || validation.password) {
+    if (validation.email || validation.password || validation.displayName || validation.confirmPassword) {
       focusFirstError(validation);
       return;
     }
     const path: string = window.location.pathname + window.location.search;
     const candidate: string | null = new URLSearchParams(window.location.search).get('next');
-    operation.start("authenticate", (): Promise<void> => auth[mode]({ email: trimmedEmail, password }), (outcome: OperationOutcome<void>): void => {
+    operation.start("authenticate", (): Promise<void> => isRegistration ? auth.register({ email: trimmedEmail, password, displayName }) : auth.login({ email: trimmedEmail, password }), (outcome: OperationOutcome<void>): void => {
       // Authentication itself may have committed, but an abandoned form cannot direct navigation.
       if (window.location.pathname + window.location.search !== path) return;
       if (outcome.status === "fulfilled") {
@@ -109,7 +118,7 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
       const failure: ReturnType<typeof mapFailure> = mapFailure(outcome.error, mode);
       setErrors(failure.fields);
       setMessage(failure.message);
-      if (failure.fields.email || failure.fields.password) deferredFocus.current = failure.fields;
+      if (failure.fields.email || failure.fields.password || failure.fields.displayName) deferredFocus.current = failure.fields;
     });
   }
 
@@ -146,6 +155,12 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
                 onChange={(event: ChangeEvent<HTMLInputElement>): void => { setEmail(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, email: undefined })); setMessage(undefined); }}
                 disabled={pending}
               />
+              {isRegistration && <TextInput ref={displayNameRef} label="Display name" name="displayName"
+                autoComplete="nickname" required maxLength={MAX_DISPLAY_NAME_CHARACTERS * 2}
+                description="Visible to signed-in ShareWise users." value={displayName} error={errors.displayName}
+                disabled={pending} onChange={(event: ChangeEvent<HTMLInputElement>): void => {
+                  setDisplayName(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, displayName: undefined })); setMessage(undefined);
+                }} />}
               <PasswordInput
                 ref={passwordRef}
                 label="Password"
@@ -154,10 +169,15 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
                 required
                 value={password}
                 error={errors.password}
-                onChange={(event: ChangeEvent<HTMLInputElement>): void => { setPassword(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, password: undefined })); setMessage(undefined); }}
+                onChange={(event: ChangeEvent<HTMLInputElement>): void => { setPassword(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, password: undefined, confirmPassword: undefined })); setMessage(undefined); }}
                 disabled={pending}
                 description={isRegistration ? 'Use between 8 and 256 characters.' : undefined}
               />
+              {isRegistration && <PasswordInput ref={confirmRef} label="Confirm password" name="confirmPassword"
+                autoComplete="new-password" required maxLength={256} value={confirmPassword} error={errors.confirmPassword}
+                disabled={pending} onChange={(event: ChangeEvent<HTMLInputElement>): void => {
+                  setConfirmPassword(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, confirmPassword: undefined })); setMessage(undefined);
+                }} />}
               <Button type="submit" size="md" fullWidth loading={pending} disabled={pending} className={styles.submit}>
                 {isRegistration ? 'Create account' : 'Sign in'}
               </Button>

@@ -6,6 +6,7 @@ import {
   ControlledLocks, authenticationResponse, credentials, deferred, jsonResponse, problemResponse,
 } from "./support";
 
+const registration = { ...credentials, displayName: "Test user" };
 const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function createRuntime(fetchImpl: typeof fetch, locks: () => LockManager | undefined) {
   const runtime = createIdentityRuntime({ fetchImpl, locks });
@@ -36,11 +37,11 @@ describe("Identity runtime with mock HTTP", () => {
       expect((init?.headers as Headers).get(CSRF_HEADER)).toBe("fresh-csrf");
       expect((init?.headers as Headers).has("Origin")).toBe(false);
       expect((init?.headers as Headers).has("Authorization")).toBe(false);
-      expect(JSON.parse(String(init?.body))).toEqual(credentials);
+      expect(JSON.parse(String(init?.body))).toEqual(operation === "register" ? registration : credentials);
       return jsonResponse(authenticationResponse(), status);
     });
     const runtime = createRuntime(fetchImpl as typeof fetch, () => locks.manager);
-    await runtime.auth[operation](credentials);
+    await (operation === "register" ? runtime.auth.register(registration) : runtime.auth.login(credentials));
     expect(runtime.session.getSnapshot().status).toBe("authenticated");
     expect(runtime.session.getAccessToken()).toBe("opaque.jwt.value");
     expect(events).toEqual([
@@ -113,10 +114,10 @@ describe("Identity runtime with mock HTTP", () => {
       ? jsonResponse({ token: "fresh" })
       : responses.shift()!);
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
-    await expect(runtime.auth.register(credentials)).rejects.toMatchObject({
+    await expect(runtime.auth.register(registration)).rejects.toMatchObject({
       status: 400, code: "validation_failed", fieldErrors: fields,
     } satisfies Partial<ApiError>);
-    await expect(runtime.auth.register(credentials)).rejects.toMatchObject({
+    await expect(runtime.auth.register(registration)).rejects.toMatchObject({
       status: 409, code: "email_unavailable",
     } satisfies Partial<ApiError>);
     expect(runtime.session.getAccessToken()).toBeUndefined();
@@ -173,7 +174,7 @@ describe("Identity runtime with mock HTTP", () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith("/csrf")
       ? jsonResponse({ token: "fresh" }) : response());
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
-    await expect(runtime.auth.register(credentials)).rejects.toMatchObject({
+    await expect(runtime.auth.register(registration)).rejects.toMatchObject({
       status: 0, code: "registration_outcome_unknown",
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -192,7 +193,7 @@ describe("Identity runtime with mock HTTP", () => {
     });
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
     runtime.session.accept(authenticationResponse('old-bearer'));
-    await expect(runtime.auth[operation](credentials)).rejects.toMatchObject({ code });
+    await expect(operation === "register" ? runtime.auth.register(registration) : runtime.auth.login(credentials)).rejects.toMatchObject({ code });
     expect(runtime.session.getSnapshot()).toEqual({ status: 'reauthentication-required', reason: 'uncertain' });
     expect(runtime.session.getAccessToken()).toBeUndefined();
     expect(calls).toEqual(['/api/iam/v1/auth/csrf', `/api/iam/v1/auth/${operation}`]);
@@ -216,7 +217,7 @@ describe("Identity runtime with mock HTTP", () => {
   it("rejects a malformed CSRF response without ever sending credentials", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ unexpected: "value" }));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
-    await expect(runtime.auth.register(credentials)).rejects.toMatchObject({ code: "invalid_csrf_response" });
+    await expect(runtime.auth.register(registration)).rejects.toMatchObject({ code: "invalid_csrf_response" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -260,7 +261,7 @@ describe("Identity runtime with mock HTTP", () => {
       ? pending.promise
       : jsonResponse(authenticationResponse()));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
-    const first = runtime.auth.register(credentials);
+    const first = runtime.auth.register(registration);
     await expect(runtime.auth.login({ email: "different@example.com", password: "different" })).rejects.toMatchObject({
       code: "auth_in_progress",
     });
@@ -288,7 +289,7 @@ describe("Identity runtime with mock HTTP", () => {
     const firstTab = createRuntime(fetchImpl as typeof fetch, () => locks.manager);
     const secondTab = createRuntime(fetchImpl as typeof fetch, () => locks.manager);
     const first = firstTab.auth.login(credentials);
-    const second = secondTab.auth.register(credentials);
+    const second = secondTab.auth.register(registration);
     await vi.waitFor(() => expect(events).toEqual(["csrf-1", "post-csrf-1"]));
     expect(locks.events.filter((event) => event.startsWith("acquired"))).toHaveLength(1);
     expect(csrfNumber).toBe(1);

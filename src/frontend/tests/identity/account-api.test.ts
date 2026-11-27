@@ -4,7 +4,7 @@ import { createIdentityRuntime } from "@/core/identity";
 import { ApiError } from "@/lib/api";
 import { SESSION_ONE, authenticationResponse, jsonResponse, problemResponse } from "./support";
 
-const profile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: null };
+const profile = { userId: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", displayName: "Alice" };
 const runtimes: Array<ReturnType<typeof createIdentityRuntime>> = [];
 function createRuntime(fetchImpl: typeof fetch) {
   const runtime = createIdentityRuntime({ fetchImpl });
@@ -24,16 +24,16 @@ describe("Typed IAM account API", () => {
       });
       expect(init?.cache).toBe("no-store");
       expect((init?.headers as Headers).has("X-XSRF-TOKEN")).toBe(false);
-      return jsonResponse({ ...profile, displayName: calls.length === 2 ? "  Alice 🦊  " : null });
+      return jsonResponse({ ...profile, displayName: calls.length === 2 ? "  Alice 🦊  " : "Alice" });
     });
     const runtime = createRuntime(fetchImpl as typeof fetch);
     expect(await runtime.forSession(SESSION_ONE).account.getAccount()).toEqual(profile);
     expect((await runtime.forSession(SESSION_ONE).account.setDisplayName("  Alice 🦊  ")).displayName).toBe("  Alice 🦊  ");
-    expect((await runtime.forSession(SESSION_ONE).account.clearDisplayName()).displayName).toBeNull();
+    expect((await runtime.forSession(SESSION_ONE).account.setDisplayName("Alice")).displayName).toBe("Alice");
     expect(calls).toEqual([
       { path: "/api/iam/v1/account", method: "GET", authorization: "Bearer account-bearer", body: undefined, credentials: "same-origin" },
-      { path: "/api/iam/v1/account", method: "PATCH", authorization: "Bearer account-bearer", body: JSON.stringify({ displayName: "  Alice 🦊  ", clear: false }), credentials: "same-origin" },
-      { path: "/api/iam/v1/account", method: "PATCH", authorization: "Bearer account-bearer", body: JSON.stringify({ displayName: null, clear: true }), credentials: "same-origin" },
+      { path: "/api/iam/v1/account", method: "PATCH", authorization: "Bearer account-bearer", body: JSON.stringify({ displayName: "  Alice 🦊  " }), credentials: "same-origin" },
+      { path: "/api/iam/v1/account", method: "PATCH", authorization: "Bearer account-bearer", body: JSON.stringify({ displayName: "Alice" }), credentials: "same-origin" },
     ]);
   });
 
@@ -43,7 +43,7 @@ describe("Typed IAM account API", () => {
     const fetchImpl = vi.fn(async () => responses.shift()!);
     const runtime = createRuntime(fetchImpl as typeof fetch);
     await expect(runtime.forSession(SESSION_ONE).account.setDisplayName("x")).rejects.toMatchObject({ status: 400, code: "validation_failed", fieldErrors: fields } satisfies Partial<ApiError>);
-    await expect(runtime.forSession(SESSION_ONE).account.clearDisplayName()).rejects.toMatchObject({ status: 400, code: "malformed_request" } satisfies Partial<ApiError>);
+    await expect(runtime.forSession(SESSION_ONE).account.setDisplayName("Alice")).rejects.toMatchObject({ status: 400, code: "malformed_request" } satisfies Partial<ApiError>);
     await expect(runtime.forSession(SESSION_ONE).account.getAccount()).rejects.toMatchObject({ status: 403, code: "account_unavailable" } satisfies Partial<ApiError>);
   });
 
