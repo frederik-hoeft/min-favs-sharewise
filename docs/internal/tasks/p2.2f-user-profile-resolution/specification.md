@@ -1,6 +1,6 @@
 # P2.2f - Mandatory display names and user profile resolution
 
-**Status:** Proposed specification for maintainer approval. The architectural direction was agreed in task discussion; precise API, migration, cache and presentation contracts below are submitted for review. See the [backlog](../backlog.md) and [implementation plan](plan.md).
+**Status:** Maintainer-approved specification. The architectural direction and precise API, migration, cache and presentation contracts were approved in task discussion. See the [backlog](../backlog.md) and [implementation plan](plan.md).
 
 ## Purpose and scope
 

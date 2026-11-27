@@ -4,7 +4,6 @@ import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,16 +23,15 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
-/** Real PostgreSQL 18 contract for IAM's optional, one-to-one account profile. */
+/** Real PostgreSQL 18 contract for IAM's required, one-to-one account profile. */
 @Tag("e2e")
 class IamProfileSchemaE2E extends E2ETestBase {
 
     @Test
-    void migrationCreatesOptionalProfileWithRuntimeRolePrivileges() {
+    void migrationCreatesNonNullableProfileWithRuntimeRolePrivileges() {
         runTest(fixture -> {
             try (Connection app = fixture.connectAsApplication()) {
                 UUID userId = insertUser(app, "profile@example.com");
-                assertEquals(0, countProfiles(app, userId), "creating an IAM user must not create a profile");
 
                 try (PreparedStatement columns = app.prepareStatement("""
                         select column_name, data_type, is_nullable
@@ -48,7 +46,7 @@ class IamProfileSchemaE2E extends E2ETestBase {
                     assertTrue(rows.next());
                     assertEquals("display_name", rows.getString(1));
                     assertEquals("text", rows.getString(2));
-                    assertEquals("YES", rows.getString(3));
+                    assertEquals("NO", rows.getString(3));
                     assertFalse(rows.next());
                 }
 
@@ -58,9 +56,10 @@ class IamProfileSchemaE2E extends E2ETestBase {
                 assertFalse(hasTablePrivilege(app, "TRUNCATE"));
                 assertSqlState("42501", () -> execute(app, "alter table identity.user_profiles add column forbidden text"));
 
-                insertProfile(app, userId, null);
+                assertSqlState("23502", () -> insertProfile(app, userId, null));
+                insertProfile(app, userId, "Profile");
                 assertEquals(1, countProfiles(app, userId));
-                assertNull(displayName(app, userId));
+                assertEquals("Profile", displayName(app, userId));
                 assertEquals(Keys.USER_PROFILES_PKEY, USER_PROFILES.getPrimaryKey());
                 assertEquals(List.of(Keys.USER_PROFILES__USER_PROFILES_USER_ID_FKEY),
                     USER_PROFILES.getReferences());
@@ -87,7 +86,10 @@ class IamProfileSchemaE2E extends E2ETestBase {
                 assertSqlState("23503", () -> execute(app,
                         "delete from identity.users where id = '" + firstUser + "'"));
                 assertEquals(1, countProfiles(app, firstUser));
-                assertEquals(0, countProfiles(app, secondUser));
+                // Names are presentation data; the key is the account ID.
+                insertProfile(app, secondUser, "First");
+                assertEquals("First", displayName(app, secondUser));
+                assertEquals(1, countProfiles(app, secondUser));
             }
         }, ProductionEntityScanConfiguration.class);
     }
@@ -105,10 +107,14 @@ class IamProfileSchemaE2E extends E2ETestBase {
                     .where(USER_PROFILES.USER_ID.eq(userId))
                     .fetchSingle(USER_PROFILES.DISPLAY_NAME));
 
+                updateDisplayName(app, userId, "🌍".repeat(80));
+                assertEquals("🌍".repeat(80), displayName(app, userId));
+                assertSqlState("23514", () -> updateDisplayName(app, userId, "🌍".repeat(81)));
                 updateDisplayName(app, userId, "x".repeat(80));
                 assertEquals("x".repeat(80), displayName(app, userId));
                 assertSqlState("23514", () -> updateDisplayName(app, userId, "x".repeat(81)));
                 assertSqlState("23514", () -> updateDisplayName(app, userId, ""));
+                assertSqlState("23514", () -> updateDisplayName(app, userId, "   "));
                 assertSqlState("23514", () -> updateDisplayName(app, userId, " \t "));
                 assertSqlState("23514", () -> updateDisplayName(app, userId, "Alice\nBob"));
                 assertSqlState("23514", () -> updateDisplayName(app, userId, "Alice\u0085Bob"));
@@ -116,8 +122,8 @@ class IamProfileSchemaE2E extends E2ETestBase {
                 assertSqlState("23514", () -> updateDisplayName(app, userId, "Alice\u2029Bob"));
                 assertEquals("x".repeat(80), displayName(app, userId));
 
-                updateDisplayName(app, userId, null);
-                assertNull(displayName(app, userId));
+                assertSqlState("23502", () -> updateDisplayName(app, userId, null));
+                assertEquals("x".repeat(80), displayName(app, userId));
             }
         }, ProductionEntityScanConfiguration.class);
     }
