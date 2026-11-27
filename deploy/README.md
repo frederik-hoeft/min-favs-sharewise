@@ -147,6 +147,8 @@ When changing `SHAREWISE_PUBLIC_HOST` or the exposed HTTPS port, also set `SHARE
 
 Group Management uses an independent ES256 key pair, provisioned by the `groups-key-init` service using the same key-init mechanics as IAM. The backend mounts `groups_signing_private` and `groups_verification_public` read-only; the Group public exporter mounts only the public volume. The configured Group issuer, audience and accepted primary IAM issuer must match the intended trust configuration. The default audience for both authorities is `sw-api-v1`; deployments using an older custom audience must coordinate issuer and verifier configuration rather than accepting both implicitly.
 
+Independent signing material is a provisioning requirement for every credential authority, including verification-only keys retained during rotation. Never reuse an IAM key pair for Group or another authority, even under a different issuer, profile or `kid`: possession of the shared private key would permit signing credentials for every authority that trusts it. The default stack provisions separate key pairs; custom deployments must establish and audit that separation when provisioning trust material, including after service extraction. The application validates configured keys within their respective profiles, not deployment-wide key ownership.
+
 For an existing local deployment without Group keys, explicitly authorize initial provisioning in `deploy/.env`:
 
 ```dotenv

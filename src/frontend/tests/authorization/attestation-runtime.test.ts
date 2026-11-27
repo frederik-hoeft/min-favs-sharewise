@@ -45,7 +45,9 @@ class Fixture {
     }
 
     readonly fetch: typeof fetch = async (input, init) => {
-        const target = new URL(String(input), ORIGIN);
+        const target = new URL(String(input));
+        expect(target.origin).toBe(ORIGIN);
+        expect(init?.mode).toBe('same-origin');
         const headers = new Headers(init?.headers);
         const raw = headers.get(ATTESTATION_HEADER);
         expect(raw?.length ?? 0).toBeLessThanOrEqual(MAX_ATTESTATION_HEADER_LENGTH);
@@ -100,6 +102,27 @@ class Fixture {
 }
 
 describe('generic attestation handler and independent caches', () => {
+    it('rejects caller-supplied supplementary headers on managed issuance without dispatch', async () => {
+        const f: Fixture = new Fixture();
+        const issuance: string = '/groups/v1/domain-principal/attestations';
+        const options: { headers: Record<string, string> } = { headers: { [ATTESTATION_HEADER]: 'manual.jwt.value' } };
+        await expect(f.api.post(issuance, { kind: 'membership', scope: 'X' }, options))
+            .rejects.toMatchObject({ code: 'invalid_request_context' });
+        expect(f.traces).toHaveLength(0);
+        await expect(f.api.post(issuance, { kind: 'membership', scope: 'X' })).resolves.toMatchObject({ attestation: expect.any(String) });
+        expect(f.issuanceCount).toBe(1);
+    });
+
+    it('preserves explicit unmanaged credential transport without automatic recovery', async () => {
+        const f: Fixture = new Fixture();
+        await expect(f.api.post('/finance/v1/expenses', {}, { headers: {
+            Authorization: 'Bearer caller', [ATTESTATION_HEADER]: 'manual.jwt.value',
+        } })).rejects.toMatchObject({ status: 401, code: 'invalid_attestation' });
+        expect(f.traces).toHaveLength(1);
+        expect(f.traces[0]).toMatchObject({ bearer: 'Bearer caller', credentials: ['unknown'] });
+        expect(f.issuanceCount).toBe(0);
+    });
+
     it('has three cold, one warm and two cross-endpoint requests; one CC entry serves both RC entries', async () => {
         const f = new Fixture();
         expect(await f.get('/finance/v1/groups/X/expenses')).toBe(3);

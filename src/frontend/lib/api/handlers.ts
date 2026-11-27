@@ -40,6 +40,8 @@ export interface RequestHandler {
 
 export interface ApiRequestHandler {
     readonly kind: HandlerKind;
+    /** Validate caller-provided headers before managed preparation, including primary-only detours. */
+    validateHeaders?(headers: Readonly<Headers>): void;
     /** Called synchronously before body serialization or any credential preparation. */
     begin(context: ApiRequestContext): RequestHandler | undefined;
 }

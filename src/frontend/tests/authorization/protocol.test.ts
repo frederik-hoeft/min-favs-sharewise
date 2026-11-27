@@ -38,7 +38,7 @@ describe('authorization protocol boundary', () => {
     });
     it('uses the opaque credential and bounded advisory expiry without parsing JWT claims', async () => {
         const client = createApiClient([], async (path, init) => {
-            expect(path).toBe('/api/groups/v1/domain-principal/attestations');
+            expect(path).toBe('http://sharewise.invalid/api/groups/v1/domain-principal/attestations');
             expect(init?.body).toBe('{"kind":"membership","scope":"X"}');
             return new Response(JSON.stringify({ attestation: 'x.y.z', expiresAt: '2026-11-26T12:02:00.123456789Z' }), { headers: { 'Content-Type': 'application/json' } });
         });

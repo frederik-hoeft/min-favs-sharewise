@@ -89,6 +89,13 @@ export class AttestationHandler implements ApiRequestHandler {
         return this.caches;
     }
 
+    validateHeaders(headers: Readonly<Headers>): void {
+        if (headers.has(ATTESTATION_HEADER)) {
+            throw new ApiError({ status: 0, code: 'invalid_request_context', title: 'Invalid Request Context',
+                detail: 'Managed requests cannot supply their own supplementary credentials.' });
+        }
+    }
+
     begin(request: ApiRequestContext): RequestHandler | undefined {
         // Standard issuance is primary-only even when called directly; no authority-specific switch.
         if (ISSUANCE_ROUTE.test(request.pathname)) return;
@@ -167,10 +174,6 @@ export class AttestationHandler implements ApiRequestHandler {
         return {
             assertCurrent,
             prepare: (headers: Headers): void => {
-                if (headers.has(ATTESTATION_HEADER)) {
-                    throw new ApiError({ status: 0, code: 'invalid_request_context', title: 'Invalid Request Context',
-                        detail: 'Managed requests cannot supply their own supplementary credentials.' });
-                }
                 assertInterested();
                 if (!bound) {
                     bound = this.current();

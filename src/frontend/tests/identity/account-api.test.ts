@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIdentityRuntime } from "@/core/identity";
 import { ApiError } from "@/lib/api";
@@ -18,7 +19,7 @@ describe("Typed IAM account API", () => {
     const calls: Array<{ path: string; method: string; authorization: string | null; body: string | undefined; credentials: RequestCredentials | undefined }> = [];
     const fetchImpl = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       calls.push({
-        path: String(path), method: init?.method ?? "", authorization: (init?.headers as Headers).get("Authorization"),
+        path: apiTarget(path), method: init?.method ?? "", authorization: (init?.headers as Headers).get("Authorization"),
         body: init?.body?.toString(), credentials: init?.credentials,
       });
       expect(init?.cache).toBe("no-store");

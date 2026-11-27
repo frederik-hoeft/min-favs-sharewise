@@ -9,7 +9,7 @@ const retry = (run: () => Promise<void>) => ({ key: 'primary', run });
 describe("createApiClient", () => {
   it("resolves typed JSON data on 200 OK", async () => {
     const client = createApiClient([], async (input, init) => {
-      expect(input).toBe("/api/system/v1/health");
+      expect(input).toBe("http://sharewise.invalid/api/system/v1/health");
       expect(init?.credentials).toBe("same-origin");
       return new Response(JSON.stringify({ status: "UP" }), {
         status: 200,
@@ -35,7 +35,7 @@ describe("createApiClient", () => {
       expect(recovery).toHaveBeenCalledTimes(1);
       expect(terminal).toHaveBeenCalledTimes(1);
       expect(fetchImpl.mock.calls.map(call => call[0])).toEqual([
-        "/api/groups/v1/groups" + query, "/api/groups/v1/groups" + query,
+        "http://sharewise.invalid/api/groups/v1/groups" + query, "http://sharewise.invalid/api/groups/v1/groups" + query,
       ]);
     },
   );

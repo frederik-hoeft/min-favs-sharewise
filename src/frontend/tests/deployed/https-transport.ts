@@ -72,8 +72,9 @@ export class DeployedHttpsTransport {
     }
 
     readonly fetch: typeof fetch = async (input, init) => {
-        if (typeof input !== 'string' || !input.startsWith('/api/')) throw new Error('Noncanonical E2E request');
-        const url = new URL(input, this.origin);
+        if (typeof input !== 'string') throw new Error('Noncanonical E2E request');
+        const url = new URL(input);
+        if (!url.pathname.startsWith('/api/') || init?.mode !== 'same-origin') throw new Error('Noncanonical E2E request');
         if (url.origin !== this.origin) throw new Error('Cross-origin E2E request');
         const method = init?.method ?? 'GET';
         const headers = new Headers(init?.headers);

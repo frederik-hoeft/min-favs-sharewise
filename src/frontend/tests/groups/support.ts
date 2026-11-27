@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { vi } from "vitest";
 import type { GroupDetails, GroupSummary, GroupWorkspace } from "@/core/groups";
 import { createApiClient, type ApiClient } from "@/lib/api";
@@ -20,7 +21,7 @@ export function scriptedClient() {
   const requests: RecordedRequest[] = [];
   const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = init?.method ?? "GET";
-    const path = String(input);
+    const path = apiTarget(input);
     requests.push({ method, path, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
     const next = queues.get(`${method} ${path}`)?.shift();
     if (!next) throw new Error(`Unexpected request ${method} ${path}`);

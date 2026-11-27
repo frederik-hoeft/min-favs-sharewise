@@ -43,11 +43,11 @@ describe('logical request recovery pipeline', () => {
     it('shares one primary recovery and three supplementary actions with primary-only detours', async () => {
         const { pipeline, refresh, acquire } = handlers();
         const fetchImpl = vi.fn<typeof fetch>(async (path, init) => {
-            if (path === '/api/authority/issue') {
+            if (path === 'http://sharewise.invalid/api/authority/issue') {
                 expect(header(init, 'Supplementary')).toBeNull();
                 return header(init, 'Authorization') === 'Bearer first' ? denial('primary') : ok();
             }
-            expect(path).toBe('/api/business?target=x&stamp=1');
+            expect(path).toBe('http://sharewise.invalid/api/business?target=x&stamp=1');
             expect(init?.method).toBe('POST');
             expect(init?.body).toBe('{"value":42}');
             const presented = header(init, 'Supplementary');
@@ -56,13 +56,13 @@ describe('logical request recovery pipeline', () => {
         await expect(createApiClient(pipeline, fetchImpl).post('/business?target=x&stamp=1', { value: 42 })).resolves.toBeUndefined();
         expect(refresh).toHaveBeenCalledTimes(1);
         expect(acquire.mock.calls).toEqual([['a'], ['b'], ['c']]);
-        expect(fetchImpl.mock.calls.filter(call => call[0] === '/api/business?target=x&stamp=1')).toHaveLength(4);
-        expect(fetchImpl.mock.calls.filter(call => call[0] === '/api/authority/issue')).toHaveLength(4);
+        expect(fetchImpl.mock.calls.filter(call => call[0] === 'http://sharewise.invalid/api/business?target=x&stamp=1')).toHaveLength(4);
+        expect(fetchImpl.mock.calls.filter(call => call[0] === 'http://sharewise.invalid/api/authority/issue')).toHaveLength(4);
     });
 
     it('cannot reset the primary budget through a detour or a replay', async () => {
         const { pipeline, refresh, acquire } = handlers();
-        const fetchImpl = vi.fn<typeof fetch>(async (path, init) => path === '/api/authority/issue'
+        const fetchImpl = vi.fn<typeof fetch>(async (path, init) => path === 'http://sharewise.invalid/api/authority/issue'
             ? denial('primary') : header(init, 'Authorization') === 'Bearer first' ? denial('primary') : denial('need:a'));
         await expect(createApiClient(pipeline, fetchImpl).post('/business', {})).rejects.toMatchObject({ code: 'primary' });
         expect(refresh).toHaveBeenCalledTimes(1);
@@ -74,7 +74,7 @@ describe('logical request recovery pipeline', () => {
         const { pipeline, acquire } = handlers();
         let count = 0;
         const fetchImpl = vi.fn<typeof fetch>(async path => {
-            if (path === '/api/authority/issue') return scenario === 'recursive' ? denial('need:z') : ok();
+            if (path === 'http://sharewise.invalid/api/authority/issue') return scenario === 'recursive' ? denial('need:z') : ok();
             return denial('need:' + (scenario === 'repeat' ? 'a' : ++count));
         });
         await expect(createApiClient(pipeline, fetchImpl).post('/business', {})).rejects.toMatchObject({ status: 401 });
@@ -109,7 +109,7 @@ describe('logical request recovery pipeline', () => {
         });
         const client = createApiClient(pipeline, fetchImpl, 'https://example.test');
         await expect(client.get('/business?q=a b', { redirect: 'follow' })).rejects.toMatchObject({ code: 'invalid_response' });
-        expect(fetchImpl.mock.calls[0]?.[0]).toBe('/api/business?q=a%20b');
+        expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://example.test/api/business?q=a%20b');
         expect(acquire).not.toHaveBeenCalled();
     });
 });

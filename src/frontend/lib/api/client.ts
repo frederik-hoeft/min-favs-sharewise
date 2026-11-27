@@ -112,6 +112,10 @@ export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fet
                 if (state) active.push({ handler, state });
             }
         }
+        // A nonempty managed pipeline always starts with the active primary handler.
+        if (active.length > 0) {
+            for (const handler of pipeline) handler.validateHeaders?.(initialHeaders);
+        }
         if (detour && active.length === 0) throw new ApiError({ status: 0, code: 'invalid_request_context',
             title: 'Invalid Request Context', detail: 'Credential acquisition requires a managed primary credential.' });
         const prepared: BodyInit | undefined = prepareBody(body, initialHeaders);
@@ -151,10 +155,10 @@ export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fet
                 assertAttempt();
                 let response: Response;
                 try {
-                    response = await fetchImpl(target, {
+                    response = await fetchImpl(url.href, {
                         ...requestOptions, method, signal: controller.signal, headers, body: prepared,
                         credentials: options.credentials ?? 'same-origin', cache: options.cache ?? 'no-store',
-                        redirect: 'error',
+                        mode: 'same-origin', redirect: 'error',
                     });
                 } catch (cause: unknown) {
                     assertNotCanceled(requestSignal);

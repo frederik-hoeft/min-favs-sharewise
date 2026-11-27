@@ -4,7 +4,8 @@ import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialValidator;
 import de.hsh.favs.sharewise.shared.infra.claims.CredentialValidationContext;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
-import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRejected;
+import de.hsh.favs.sharewise.shared.infra.claims.CredentialValidationResult;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -15,24 +16,25 @@ final class GroupCredentialValidator implements AuthorizationCredentialValidator
 
     GroupCredentialValidator(GroupMembershipTrust trust) { this.trust = trust; }
 
-    @Override public void validate(CredentialValidationContext context) {
+    @Override public CredentialValidationResult validate(CredentialValidationContext context) {
         Map<UUID, GroupRole> roles = new HashMap<>();
-        for (var candidate : context.credentials()) {
+        for (VerifiedJwtCredentialCandidate candidate : context.credentials()) {
             if (!trust.codec().profile().id().equals(candidate.profile().id())) continue;
             if (!trust.codec().profile().equals(candidate.profile())
                     || !candidate.hasScalarClaim("group_id") || !candidate.hasScalarClaim("role")) {
-                throw new SupplementaryCredentialRejected(candidate);
+                return CredentialValidationResult.rejected(candidate);
             }
             GroupMembershipEvidence assertion;
             try {
                 assertion = GroupMembershipEvidence.parse(candidate.evidence());
             } catch (JwtCredentialException invalid) {
-                throw new SupplementaryCredentialRejected(candidate);
+                return CredentialValidationResult.rejected(candidate);
             }
             GroupRole previous = roles.putIfAbsent(assertion.groupId(), assertion.role());
             if (previous != null && previous != assertion.role()) {
-                throw new SupplementaryCredentialRejected();
+                return CredentialValidationResult.rejected();
             }
         }
+        return CredentialValidationResult.accepted();
     }
 }

@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AUTH_COOKIE_LOCK, AuthCookieLock, CSRF_HEADER, createIdentityRuntime } from "@/core/identity";
 import { ApiError, createApiClient } from "@/lib/api";
@@ -21,7 +22,7 @@ describe("Identity runtime with mock HTTP", () => {
     const locks = new ControlledLocks();
     const events: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+      const url = apiTarget(input);
       events.push(`${init?.method}:${url}`);
       expect(init?.credentials).toBe("same-origin");
       expect(init?.cache).toBe("no-store");
@@ -75,8 +76,8 @@ describe("Identity runtime with mock HTTP", () => {
 
   it("does not publish an old refresh after the same session ID is accepted in a new lifetime", async () => {
     const refresh = deferred<Response>();
-    const fetchImpl = vi.fn<typeof fetch>(async input => String(input).endsWith('/csrf')
-      ? jsonResponse({ token: 'csrf' }) : String(input).endsWith('/refresh')
+    const fetchImpl = vi.fn<typeof fetch>(async input => apiTarget(input).endsWith('/csrf')
+      ? jsonResponse({ token: 'csrf' }) : apiTarget(input).endsWith('/refresh')
         ? refresh.promise : problemResponse(401, 'invalid_credential'));
     const runtime = createRuntime(fetchImpl, () => new ControlledLocks().manager);
     runtime.session.accept(authenticationResponse('old'));
@@ -92,7 +93,7 @@ describe("Identity runtime with mock HTTP", () => {
   it("attaches the current bearer to subsequent domain requests, not anonymous auth requests", async () => {
     const calls: Array<{ path: string; authorization: string | null }> = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push({ path: String(input), authorization: (init?.headers as Headers).get("Authorization") });
+      calls.push({ path: apiTarget(input), authorization: (init?.headers as Headers).get("Authorization") });
       return jsonResponse({ ok: true });
     });
     const runtime = createRuntime(fetchImpl as typeof fetch, () => undefined);
@@ -108,7 +109,7 @@ describe("Identity runtime with mock HTTP", () => {
   it("preserves ProblemDetail validation fields and duplicate-registration code", async () => {
     const fields = [{ field: "email", code: "invalid_email", message: "Invalid email." }];
     const responses = [problemResponse(400, "validation_failed", fields), problemResponse(409, "email_unavailable")];
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/csrf")
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith("/csrf")
       ? jsonResponse({ token: "fresh" })
       : responses.shift()!);
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
@@ -122,7 +123,7 @@ describe("Identity runtime with mock HTTP", () => {
   });
 
   it("returns a generic 401 for denied login, without issuing a bearer", async () => {
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/csrf")
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith("/csrf")
       ? jsonResponse({ token: "fresh" })
       : problemResponse(401, "invalid_credentials"));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
@@ -151,7 +152,7 @@ describe("Identity runtime with mock HTTP", () => {
 
   it("maps network failures without leaving a pending in-tab submission", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith("/csrf")) return jsonResponse({ token: "fresh" });
+      if (apiTarget(input).endsWith("/csrf")) return jsonResponse({ token: "fresh" });
       throw new TypeError("Failed to fetch");
     });
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
@@ -169,7 +170,7 @@ describe("Identity runtime with mock HTTP", () => {
       start(controller) { controller.error(new DOMException("body interrupted", "AbortError")); },
     }), { status: 201, headers: { "content-type": "application/json" } })],
   ])("treats committed registration with %s as uncertain without storing credentials", async (_case, response) => {
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/csrf")
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith("/csrf")
       ? jsonResponse({ token: "fresh" }) : response());
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
     await expect(runtime.auth.register(credentials)).rejects.toMatchObject({
@@ -185,7 +186,7 @@ describe("Identity runtime with mock HTTP", () => {
   ] as const)('discards an existing bearer after a possibly committed %s with gateway %i', async (operation, status, code) => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       return path.endsWith('/csrf') ? jsonResponse({ token: 'fresh' }) : problemResponse(status, 'bad_gateway');
     });
@@ -200,7 +201,7 @@ describe("Identity runtime with mock HTTP", () => {
   it.each([502, 503])('discards the in-memory bearer after a possibly committed logout with gateway %i', async (status) => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       return path.endsWith('/csrf') ? jsonResponse({ token: 'fresh' }) : problemResponse(status, 'bad_gateway');
     });
@@ -255,7 +256,7 @@ describe("Identity runtime with mock HTTP", () => {
 
   it("rejects a second in-tab submission without leaking or sending the second credentials", async () => {
     const pending = deferred<Response>();
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/csrf")
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith("/csrf")
       ? pending.promise
       : jsonResponse(authenticationResponse()));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
@@ -274,7 +275,7 @@ describe("Identity runtime with mock HTTP", () => {
     const events: string[] = [];
     let csrfNumber = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path.endsWith("/csrf")) {
         csrfNumber++;
         events.push(`csrf-${csrfNumber}`);
@@ -313,7 +314,7 @@ describe("Identity runtime with mock HTTP", () => {
   });
 
   it("rejects an invalid successful authentication body without storing it", async () => {
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/csrf")
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith("/csrf")
       ? jsonResponse({ token: "fresh" })
       : jsonResponse({ accessToken: "sensitive-opaque-value", tokenType: "Wrong", expiresAt: "invalid" }));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);
@@ -323,7 +324,7 @@ describe("Identity runtime with mock HTTP", () => {
   });
 
   it("an anonymous login denial does not invalidate a previously accepted bearer", async () => {
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/csrf")
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith("/csrf")
       ? jsonResponse({ token: "fresh" })
       : problemResponse(401, "invalid_credentials"));
     const runtime = createRuntime(fetchImpl as typeof fetch, () => new ControlledLocks().manager);

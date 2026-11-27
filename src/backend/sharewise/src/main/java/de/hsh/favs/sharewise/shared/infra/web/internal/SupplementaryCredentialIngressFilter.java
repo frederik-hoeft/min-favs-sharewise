@@ -7,7 +7,7 @@ import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
 import de.hsh.favs.sharewise.shared.infra.claims.SupplementaryCredentialInputs;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRouter;
-import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRejected;
+import de.hsh.favs.sharewise.shared.infra.claims.internal.SupplementaryCredentialRejected;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

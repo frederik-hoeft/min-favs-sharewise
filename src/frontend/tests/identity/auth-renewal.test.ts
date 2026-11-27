@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthCookieLock, createIdentityRuntime } from '@/core/identity';
 import {
@@ -23,7 +24,7 @@ describe('transparent renewal and restoration', () => {
   it('renews after confirmed ingress 401, keeps cookie requests bearer-free and replays once', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       const headers = init?.headers as Headers;
       calls.push(`${path}:${headers.get('Authorization') ?? 'none'}`);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
@@ -48,7 +49,7 @@ describe('transparent renewal and restoration', () => {
   it('lazily restores a reloaded tab without an expected session and uses the resulting bearer', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) {
@@ -81,8 +82,8 @@ describe('transparent renewal and restoration', () => {
   it('does not dispatch a first-use request or overwrite a replacement login after stale restoration', async () => {
     const refresh = deferred<Response>();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
-      if (String(input) === REFRESH_PATH) return refresh.promise;
+      if (apiTarget(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (apiTarget(input) === REFRESH_PATH) return refresh.promise;
       return jsonResponse({ ok: true });
     });
     const instance = runtime(fetchImpl as typeof fetch);
@@ -122,7 +123,7 @@ describe('transparent renewal and restoration', () => {
 
   it.each([false, true])('keeps a domain session_unavailable denial local (after replay: %s)', async (replay) => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) return jsonResponse(authenticationResponse('renewed'));
       return replay && (init?.headers as Headers).get('Authorization') === 'Bearer old'
@@ -140,7 +141,7 @@ describe('transparent renewal and restoration', () => {
     const refresh = deferred<Response>();
     let refreshCount = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) { refreshCount++; return refresh.promise; }
       return (init?.headers as Headers).get('Authorization') === 'Bearer old'
@@ -189,7 +190,7 @@ describe('transparent renewal and restoration', () => {
   it('permits one replay of a repeatable POST, then terminates on a second 401', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) return jsonResponse(authenticationResponse('new'));
@@ -207,7 +208,7 @@ describe('transparent renewal and restoration', () => {
   it('preserves a newly renewed bearer when the replay returns an application-level 401', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) return jsonResponse(authenticationResponse('new'));
@@ -231,7 +232,7 @@ describe('transparent renewal and restoration', () => {
   ])('does not resubmit a refresh with %s', async (_case, result) => {
     let refreshCount = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) { refreshCount++; return result(); }
       return problemResponse(401, 'invalid_credential');
@@ -252,7 +253,7 @@ describe('renewal failure and caller cancellation', () => {
     let available = false;
     const requests: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = apiTarget(input);
       requests.push(path);
       return path === CSRF_PATH ? jsonResponse({ token: 'csrf' })
         : path === REFRESH_PATH ? jsonResponse(authenticationResponse('restored'))
@@ -272,7 +273,7 @@ describe('renewal failure and caller cancellation', () => {
     let csrfCount = 0;
     let refreshCount = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) {
         csrfCount++;
         if (csrfCount === 1) throw new TypeError('Temporary CSRF connection failure');
@@ -296,7 +297,7 @@ describe('renewal failure and caller cancellation', () => {
     let csrfCount = 0;
     let refreshCount = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) {
         csrfCount++;
         if (csrfCount === 1) throw new TypeError('Temporary CSRF failure');
@@ -321,7 +322,7 @@ describe('renewal failure and caller cancellation', () => {
   it.each([502, 503])('marks a submitted refresh with gateway %i as uncertain without resubmission', async (status) => {
     let rotations = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) { rotations++; return problemResponse(status, 'bad_gateway'); }
       return problemResponse(401, 'invalid_credential');
@@ -341,7 +342,7 @@ describe('renewal failure and caller cancellation', () => {
     const blocker = new AuthCookieLock(() => locks.manager).runExclusive(async () => gate);
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       return path === CSRF_PATH ? jsonResponse({ token: 'csrf' })
         : path === REFRESH_PATH ? jsonResponse(authenticationResponse('new'))
@@ -368,7 +369,7 @@ describe('renewal failure and caller cancellation', () => {
     let firstCsrfAborted = false;
     let csrfCount = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) {
         csrfCount++;
@@ -413,7 +414,7 @@ describe('renewal failure and caller cancellation', () => {
     const calls: string[] = [];
     let csrfCount = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) {
         csrfCount++;
@@ -458,7 +459,7 @@ describe('renewal failure and caller cancellation', () => {
     const refresh = deferred<Response>();
     let submitted = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) { submitted++; return refresh.promise; }
       return (init?.headers as Headers).get('Authorization') === 'Bearer old'
@@ -485,7 +486,7 @@ describe('shared-cookie session contexts', () => {
     let generation = 1;
     let rotations = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) {
         expect(JSON.parse(String(init?.body))).toEqual({ expectedSessionId: SESSION_ONE });
@@ -513,7 +514,7 @@ describe('shared-cookie session contexts', () => {
   it('broadcasts a different login context and blocks stale-tab requests', async () => {
     const channels = new ControlledChannels();
     const locks = new ControlledLocks();
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/csrf')
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => apiTarget(input).endsWith('/csrf')
       ? jsonResponse({ token: 'csrf' }) : jsonResponse(authenticationResponse('bob', undefined, SESSION_TWO)));
     const alice = runtime(fetchImpl as typeof fetch, locks, channels);
     const bob = runtime(fetchImpl as typeof fetch, locks, channels);
@@ -528,7 +529,7 @@ describe('shared-cookie session contexts', () => {
   it('detects a missed broadcast through the authoritative expected-session check', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === REFRESH_PATH) {
@@ -549,7 +550,7 @@ describe('shared-cookie session contexts', () => {
     const locks = new ControlledLocks();
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === LOGOUT_PATH) {
@@ -572,7 +573,7 @@ describe('shared-cookie session contexts', () => {
   it('does not clear or revoke a replacement session on mismatched logout', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
+      const path = apiTarget(input);
       calls.push(path);
       if (path === CSRF_PATH) return jsonResponse({ token: 'csrf' });
       if (path === LOGOUT_PATH) {
@@ -591,8 +592,8 @@ describe('shared-cookie session contexts', () => {
   it.each([401, 409, 502])('does not apply a stale renewal failure (%i) to a replacement login', async (status) => {
     const refresh = deferred<Response>();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
-      if (String(input) === REFRESH_PATH) return refresh.promise;
+      if (apiTarget(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (apiTarget(input) === REFRESH_PATH) return refresh.promise;
       return problemResponse(401, 'invalid_credential');
     });
     const instance = runtime(fetchImpl as typeof fetch);
@@ -610,8 +611,8 @@ describe('shared-cookie session contexts', () => {
   it('cannot revive a terminally invalidated session with a late successful renewal', async () => {
     const refresh = deferred<Response>();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
-      if (String(input) === REFRESH_PATH) return refresh.promise;
+      if (apiTarget(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (apiTarget(input) === REFRESH_PATH) return refresh.promise;
       return problemResponse(401, 'invalid_credential');
     });
     const instance = runtime(fetchImpl as typeof fetch);
@@ -629,8 +630,8 @@ describe('shared-cookie session contexts', () => {
   it('does not silently adopt a different session between renewal and original-request replay', async () => {
     const refresh = deferred<Response>();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
-      if (String(input) === REFRESH_PATH) return refresh.promise;
+      if (apiTarget(input) === CSRF_PATH) return jsonResponse({ token: 'csrf' });
+      if (apiTarget(input) === REFRESH_PATH) return refresh.promise;
       return problemResponse(401, 'invalid_credential');
     });
     const instance = runtime(fetchImpl as typeof fetch);

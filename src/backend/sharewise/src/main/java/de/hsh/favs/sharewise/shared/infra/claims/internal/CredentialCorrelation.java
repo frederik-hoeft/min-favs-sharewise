@@ -6,7 +6,7 @@ import de.hsh.favs.sharewise.shared.infra.claims.CredentialValidationContext;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtPrincipalBinding;
-import de.hsh.favs.sharewise.shared.infra.security.SupplementaryCredentialRejected;
+import de.hsh.favs.sharewise.shared.infra.claims.CredentialValidationResult;
 import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.util.List;
 import java.util.Objects;
@@ -39,7 +39,17 @@ final class CredentialCorrelation {
             }
         }
         CredentialValidationContext context = new CandidateSet(snapshot, primary);
-        validators.orderedStream().forEach(validator -> validator.validate(context));
+        for (AuthorizationCredentialValidator validator : validators.orderedStream().toList()) {
+            CredentialValidationResult result = Objects.requireNonNull(validator.validate(context));
+            if (result instanceof CredentialValidationResult.Rejected rejection) {
+                VerifiedJwtCredentialCandidate rejected = rejection.candidate().orElse(null);
+                if (rejected != null && (rejected.kind() != JwtCredentialProfile.Kind.SUBORDINATE
+                        || snapshot.stream().noneMatch(candidate -> candidate == rejected))) {
+                    throw new IllegalStateException("Validator rejected a candidate outside its supplementary input set");
+                }
+                throw new SupplementaryCredentialRejected(rejected);
+            }
+        }
         return new DefaultAuthorizationContext(snapshot.stream().map(VerifiedJwtCredentialCandidate::evidence).toList());
     }
 
