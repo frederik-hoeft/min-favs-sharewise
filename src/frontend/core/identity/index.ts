@@ -1,6 +1,5 @@
 import { ApiError, createApiClient, scopeApiClient, sessionContextChanged, type ApiClient } from '@/lib/api';
-import { ProfileResolver, type ProfileResolution } from './profile-resolver.ts';
-import type { AccountProfile } from './models.ts';
+import { ProfileResolver } from './profile-resolver.ts';
 import { AuthCoordinator } from './auth-coordinator.ts';
 import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';
@@ -41,7 +40,6 @@ export interface IdentityRuntimeOptions {
     readonly fetchImpl?: typeof fetch;
     readonly origin?: string;
     readonly attestationCaches?: AttestationCacheOptions;
-    readonly profileClock?: () => number;
     /** Lazily evaluated so server prerendering never touches browser-only APIs. */
     readonly locks?: () => LockManager | undefined;
     readonly channel?: () => BroadcastChannel | undefined;
@@ -62,12 +60,6 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
     const api: ApiClient = createApiClient([iamRequestHandler(session, (): AuthCoordinator => auth), attestations], options.fetchImpl ?? fetch, options.origin);
     const identityApi: IdentityApi = new IdentityApi(api);
     const auth: AuthCoordinator = new AuthCoordinator(identityApi, session, cookieLock, channel);
-    let profileCache: { lifetime: number; resolver: ProfileResolver } | undefined;
-    const unsubscribeProfiles: () => void = session.subscribe((): void => {
-        if (profileCache && profileCache.lifetime !== session.getAuthenticatedLifetime()) {
-            profileCache.resolver.close(); profileCache = undefined;
-        }
-    });
     return {
         api, auth, cookieLock, session,
         forSession(sessionId: string): AuthenticatedApis {
@@ -85,22 +77,14 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
                 }
             });
             const scopedIdentity: IdentityApi = new IdentityApi(scopedApi);
-            const resolver: ProfileResolver = profileCache?.lifetime === lifetime && profileCache !== undefined ? profileCache.resolver
-                : new ProfileResolver(scopedIdentity.lookupProfiles.bind(scopedIdentity), assertCurrent, options.profileClock);
-            if (lifetime !== undefined) profileCache = { lifetime, resolver };
-            return { api: scopedApi, security: scopedIdentity,
-                account: { getAccount: scopedIdentity.getAccount.bind(scopedIdentity),
-                    async setDisplayName(name: string): Promise<AccountProfile> {
-                        const profile: AccountProfile = await scopedIdentity.setDisplayName(name);
-                        resolver.remember(profile);
-                        return profile;
-                    } },
-                profiles: { resolve: (ids: readonly string[], signal?: AbortSignal): Promise<ReadonlyMap<string, ProfileResolution>> => resolver.resolve(ids, signal) } };
+            const resolver: ProfileResolver = new ProfileResolver(scopedIdentity.lookupProfiles.bind(scopedIdentity), assertCurrent);
+            return { api: scopedApi, security: scopedIdentity, account: scopedIdentity,
+                profiles: { resolve: resolver.resolve.bind(resolver) } };
 
         },
         authorizationSnapshot: (): AuthorizationSnapshot => attestations.snapshot(),
         connect: () => channel.connect(),
         disconnect: () => channel.disconnect(),
-        dispose: () => { unsubscribeProfiles(); profileCache?.resolver.close(); profileCache = undefined; attestations.dispose(); auth.dispose(); channel.dispose(); session.dispose(); },
+        dispose: () => { attestations.dispose(); auth.dispose(); channel.dispose(); session.dispose(); },
     };
 }

@@ -1,8 +1,8 @@
 # P2.2f - Implementation acceptance
 
-**Status:** Aggregate implementation accepted by the maintainer; documentation reconciled. The implementation is based on main `9a2222e213ad67b56d437664f8a7254901c3d318` and the approved [specification](specification.md). The [plan](plan.md) records the phase checkpoints and the supplied generated-schema handoff. Gate E is accepted and Phase F documentation reconciliation is authorized. Independent review and merge authorization remain pending.
+**Status:** Earlier aggregate checkpoint accepted by the maintainer; documentation reconciled. The independent-review follow-up changes the profile resolution and input policy contracts and awaits renewed acceptance. The implementation is based on main `9a2222e213ad67b56d437664f8a7254901c3d318` and the approved [specification](specification.md). The [plan](plan.md) records the phase checkpoints and the supplied generated-schema handoff. Gate E is accepted and Phase F documentation reconciliation is authorized. Independent review and merge authorization remain pending.
 
-## Evidence available for review
+## Evidence at the previously accepted checkpoint
 
 | Scenario | Locally available evidence | Maintainer acceptance scope |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 | UP-T06 | Deterministic identity and Group component tests pass, including duplicate names, full suffix extension, accessible labels, retry and exact mutation target. | Rendered geometry, contrast and interaction across widths/themes. HSL contrast is additionally checked numerically. |
 | UP-T07 | Deployment contract tests and updated smoke registration/lookup/rename fixtures; 12 authorization E2E cases discovered. | Clean disposable HTTPS smoke, actual deployed authorization E2Es and human browser checks. |
 
-## Integrated verification
+## Previous integrated verification
 
 The supplied offline toolchains and caches were used without dependency substitutions. Archive checksums and wrapper/lockfile hashes matched; the existing Maven POM and npm package descriptor hashes differ from the handoff manifests. OS-level network isolation was not independently established. PostgreSQL and Docker are unavailable locally. Chromium blocked the local static fixture URL by administrator policy before the page loaded; no visual acceptance is claimed.
 
@@ -33,9 +33,9 @@ No dependency changes, new authorization profiles or Group/Finance schema change
 
 The subsequent roster-overflow correction bounds the grid column independently of its content. All 51 targeted identity and Group tests, the static build and static-export probe passed; the maintainer subsequently accepted the responsive long-name correction. No backend or API changes.
 
-## Maintainer acceptance checklist
+## Maintainer acceptance checklist (previous checkpoint)
 
-Acceptance applies to the integrated checkpoint (including the generated IAM metadata), not the migration-only checkpoint. The existing [PostgreSQL test profiles](../../../development/tests.md#run-the-suites) and [code generation freshness check](../../../development.md#database) define the required verification. The maintainer reported the acceptance review passed, explicitly authorized checking the open boxes, reported green CI and confirmed responsiveness in light and dark themes after the roster-overflow fix. All checklist entries below are accepted on that basis. Exact integrated Failsafe counts, CI pipeline identifier, smoke logs and individual scenario observations were not provided; no independent execution or inspection of these results is claimed. The earlier intermediate migration-only E2E failure remains historical evidence, not the integrated acceptance result.
+The checked items below record acceptance of the earlier integrated checkpoint (including the generated IAM metadata), not the migration-only checkpoint or the subsequent review follow-up. The existing [PostgreSQL test profiles](../../../development/tests.md#run-the-suites) and [code generation freshness check](../../../development.md#database) define the required verification. The maintainer reported the acceptance review passed, explicitly authorized checking the open boxes, reported green CI and confirmed responsiveness in light and dark themes after the roster-overflow fix. All checklist entries below are accepted on that basis. Exact integrated Failsafe counts, CI pipeline identifier, smoke logs and individual scenario observations were not provided; no independent execution or inspection of these results is claimed. The earlier intermediate migration-only E2E failure remains historical evidence, not the integrated acceptance result.
 
 - [x] PostgreSQL Integration and E2E pass, including the upgrade scenarios, and jOOQ freshness is confirmed.
 - [x] Required CI pipeline gates pass at the integrated revision.
@@ -46,3 +46,13 @@ Acceptance applies to the integrated checkpoint (including the generated IAM met
 - [x] Maintainer accepts implemented behavior and authorizes Phase F documentation reconciliation. Independent review and explicit merge authorization are separate requirements.
 
 Do not deploy the migration with the old backend/frontend. Stop writers, back up persistent state, migrate and deploy matching application versions as a coordinated release. This is an application-maintained exactly-one profile invariant with database-enforced non-nullability and profile-to-account PK/FK constraints, not a database-enforced reverse foreign key.
+
+## Independent review follow-up
+
+The maintainer approved the stateless resolver and centralized text input policy after independent review. Previous cache-related evidence is historical and does not establish the amended contract. No schema or generated-source change is needed; incompatible development-only data may be reset.
+
+Local follow-up verification with the supplied, checksum-verified offline tooling: 521 backend Unit/Modulith tests passed with all test sources compiled; 442 frontend tests in 33 files passed, along with lint, both TypeScript checks, normal and static builds, and the static-export probe. PostgreSQL, Docker and browser verification remain external acceptance gates. No integrated database or browser result is inferred from the local tests.
+
+- [ ] Rerun PostgreSQL Integration/E2E and CI on the follow-up revision, including Group projections and restrictive input rejection.
+- [ ] Verify deployed HTTPS and browser flows: fresh lookup on workspace entry, view-local retention on failure, cancellation, rename followed by navigation, registration and Group metadata field errors for unsupported Unicode, and mixed-direction accessible member labels.
+- [ ] Independent review confirms the seven findings have been addressed or superseded by the approved contract; maintainer authorizes merge.

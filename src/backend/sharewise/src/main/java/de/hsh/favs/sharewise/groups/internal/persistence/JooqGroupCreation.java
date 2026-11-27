@@ -38,14 +38,14 @@ class JooqGroupCreation implements GroupCreationPort {
         GroupsRecord group = db.insertInto(GROUPS_)
                 .set(GROUPS_.NAME, metadata.name().value())
                 .set(GROUPS_.DESCRIPTION, metadata.description().map(GroupDescription::value).orElse(null))
-                .returning(GROUPS_.ID, GROUPS_.CREATED_AT, GROUPS_.VERSION)
+                .returning(GROUPS_.ID, GROUPS_.NAME, GROUPS_.DESCRIPTION, GROUPS_.CREATED_AT, GROUPS_.VERSION)
                 .fetchSingle();
         db.insertInto(GROUP_MEMBERS)
                 .set(GROUP_MEMBERS.GROUP_ID, group.getId())
                 .set(GROUP_MEMBERS.USER_ID, creatorId)
                 .set(GROUP_MEMBERS.ROLE, GroupProjections.toDatabase(GroupRole.ADMIN))
                 .execute();
-        return new GroupDetails(group.getId(), metadata, group.getCreatedAt().toInstant(), group.getVersion(), 1,
+        return new GroupDetails(group.getId(), group.getName(), group.getDescription(), group.getCreatedAt().toInstant(), group.getVersion(), 1,
                 GroupRole.ADMIN);
     }
 }

@@ -57,6 +57,19 @@ describe("GI-FT17 invitation continuation", () => {
     expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
   });
 
+  it("trusts a textual group name returned by the backend without applying form validation", async () => {
+    const groupName = "A".repeat(65);
+    renderInvite(true, json(200, { groupName }));
+    expect(await screen.findByText(groupName)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Join group" })).toBeEnabled();
+  });
+
+  it("rejects a structurally invalid invitation preview", async () => {
+    renderInvite(true, json(200, { groupName: 42 }));
+    await screen.findByRole("button", { name: "Retry invitation check" });
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+  });
+
   it("preserves the preview and explicit join when using the actual layout skip link", async () => {
     runtime.session.accept(authenticationResponse());
     fake.respond("POST", PREVIEW, json(200, { groupName: "Mallorca 2027" }));

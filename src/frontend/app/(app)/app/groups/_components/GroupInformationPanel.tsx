@@ -9,7 +9,7 @@ import { memberOptions, type MembershipAction, type MembershipOption } from "./m
 import { RoleBadge } from "./RoleBadge";
 import styles from "./GroupInformationPanel.module.scss";
 import { UserIdentity } from "@/components/participants/UserIdentity";
-import { shortUserId, userDisplayLabel } from "@/components/participants/user-presentation";
+import { shortUserId, memberIdentityLabel } from "@/components/participants/user-presentation";
 import type { ProfileResolution } from "@/core/identity";
 
 interface GroupInformationPanelProps {
@@ -56,7 +56,7 @@ export function GroupInformationPanel({ workspace, profiles, secondaryIds, onEdi
                 <UserIdentity userId={member.userId} profile={profile} secondaryId={secondaryId} own={own}
                   nameAccessory={<RoleBadge role={member.role} own={own} />} />
               </Stack>
-              {options.length > 0 ? <MemberMenu label={`Manage member ${userDisplayLabel(profile)} (${secondaryId})`} options={options} disabled={controlsDisabled} onSelect={onMemberAction} /> : null}
+              {options.length > 0 ? <MemberMenu label={`Manage member ${memberIdentityLabel(profile, secondaryId)}`} options={options} disabled={controlsDisabled} onSelect={onMemberAction} /> : null}
             </Group>
           </li>;
         })}

@@ -1,5 +1,5 @@
 /**
- * Client-side mirror of the server's group metadata rules. It gives immediate feedback only;
+ * Basic client-side input hints; the full Unicode policy belongs to the backend. It gives immediate feedback only;
  * the backend validates and normalizes every request again and remains authoritative.
  */
 
@@ -7,7 +7,7 @@ export const GROUP_NAME_MAX_CODE_POINTS = 64;
 export const GROUP_DESCRIPTION_MAX_CODE_POINTS = 512;
 
 export type MetadataField = 'name' | 'description';
-export type MetadataViolation = 'required' | 'too_long' | 'control_character';
+export type MetadataViolation = 'required' | 'too_long' | 'control_character' | 'unsupported_character';
 
 export type MetadataErrors = Partial<Record<MetadataField, MetadataViolation>>;
 
@@ -24,14 +24,14 @@ export function validateGroupMetadata(input: MetadataInput): MetadataErrors {
         errors.name = 'required';
     } else if (codePointCount(name) > GROUP_NAME_MAX_CODE_POINTS) {
         errors.name = 'too_long';
-    } else if (hasControlCharacter(name, false)) {
+    } else if (hasControlCharacter(input.name, false)) {
         errors.name = 'control_character';
     }
 
     const description = stripJavaWhitespace(input.description);
     if (codePointCount(description) > GROUP_DESCRIPTION_MAX_CODE_POINTS) {
         errors.description = 'too_long';
-    } else if (hasControlCharacter(description, true)) {
+    } else if (hasControlCharacter(input.description, true)) {
         errors.description = 'control_character';
     }
     return errors;
@@ -72,7 +72,7 @@ function isJavaWhitespace(codePoint: string): boolean {
 function hasControlCharacter(value: string, allowLineBreaks: boolean): boolean {
     for (let index = 0; index < value.length; index += 1) {
         const code = value.charCodeAt(index);
-        const control = code <= 0x1F || (code >= 0x7F && code <= 0x9F);
+        const control = code <= 0x1F || (code >= 0x7F && code <= 0x9F) || code === 0x2028 || code === 0x2029;
         if (!control) continue;
         const lineBreak = code === 0x0A || (code === 0x0D && value.charCodeAt(index + 1) === 0x0A);
         if (!(allowLineBreaks && lineBreak)) return true;

@@ -1,7 +1,6 @@
 package de.hsh.favs.sharewise.groups.api.v1;
 
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -20,8 +19,7 @@ public record GroupDetailsResponse(UUID id, String name, String description, Ins
         int memberCount, String callerRole) {
 
     static GroupDetailsResponse of(GroupDetails group) {
-        return new GroupDetailsResponse(group.id(), group.metadata().name().value(),
-            group.metadata().description().map(GroupDescription::value).orElse(null), group.createdAt(),
+        return new GroupDetailsResponse(group.id(), group.name(), group.description(), group.createdAt(),
             group.version(), group.memberCount(), GroupRoles.toApi(group.callerRole()));
     }
 }

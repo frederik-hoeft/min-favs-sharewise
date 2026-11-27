@@ -1,4 +1,3 @@
-import { validateDisplayName } from "./display-name.ts";
 import { ApiError, type ApiClient } from '@/lib/api';
 import type { AccountProfile, AuthenticationResponse, ChangePasswordRequest, IdentityCredentials, RegistrationRequest, PublicProfile } from './models.ts';
 
@@ -46,12 +45,10 @@ export class IdentityApi {
     }
 
     async setDisplayName(displayName: string): Promise<AccountProfile> {
-        const profile: AccountProfile = parseAccountProfile(await this.client.patch<unknown>(`${ROOT}/account`, { displayName }));
-        if (profile.displayName !== displayName) throw invalidProfileResponse();
-        return profile;
+        return parseAccountProfile(await this.client.patch<unknown>(`${ROOT}/account`, { displayName }));
     }
 
-    async lookupProfiles(userIds: readonly string[], signal: AbortSignal): Promise<readonly PublicProfile[]> {
+    async lookupProfiles(userIds: readonly string[], signal?: AbortSignal): Promise<readonly PublicProfile[]> {
         const response: unknown = await this.client.post<unknown>(`${ROOT}/profiles/lookup`, { userIds }, { signal });
         if (typeof response !== 'object' || response === null || !('profiles' in response) || !Array.isArray(response.profiles)) {
             throw invalidProfileResponse();
@@ -60,8 +57,7 @@ export class IdentityApi {
         const profiles: PublicProfile[] = [];
         for (const profile of response.profiles as unknown[]) {
             if (typeof profile !== 'object' || profile === null || !('userId' in profile) || typeof profile.userId !== 'string' ||
-                !requested.delete(profile.userId) || !('displayName' in profile) || typeof profile.displayName !== 'string' ||
-                validateDisplayName(profile.displayName) !== undefined) {
+                !requested.delete(profile.userId) || !('displayName' in profile) || typeof profile.displayName !== 'string') {
                 throw invalidProfileResponse();
             }
             profiles.push({ userId: profile.userId, displayName: profile.displayName });
@@ -100,8 +96,8 @@ function invalidProfileResponse(): ApiError {
 function parseAccountProfile(response: unknown): AccountProfile {
     if (typeof response !== 'object' || response === null || !('userId' in response) || typeof response.userId !== 'string' ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(response.userId) ||
-        !('email' in response) || typeof response.email !== 'string' || !response.email ||
-        !('displayName' in response) || typeof response.displayName !== 'string' || validateDisplayName(response.displayName) !== undefined) {
+        !('email' in response) || typeof response.email !== 'string' ||
+        !('displayName' in response) || typeof response.displayName !== 'string') {
         throw invalidProfileResponse();
     }
     return { userId: response.userId, email: response.email, displayName: response.displayName };

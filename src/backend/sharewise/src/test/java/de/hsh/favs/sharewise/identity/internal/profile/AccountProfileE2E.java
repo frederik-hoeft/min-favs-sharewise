@@ -41,9 +41,9 @@ class AccountProfileE2E extends E2ETestBase {
             OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
             assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "Initial name")),
                     get(dispatcher, alice));
-            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "🌍 Alice")),
-                    update(dispatcher, alice, "🌍 Alice"));
-            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "🌍 Alice")),
+            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "𐐀 Alice")),
+                    update(dispatcher, alice, "𐐀 Alice"));
+            assertEquals(Result.ok(new AccountProfile(alice, "Alice@Example.org", "𐐀 Alice")),
                     get(dispatcher, alice));
             assertEquals(Result.ok(new AccountProfile(bob, "bob@example.org", "Initial name")),
                     get(dispatcher, bob));

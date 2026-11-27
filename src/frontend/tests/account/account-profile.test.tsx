@@ -67,7 +67,7 @@ describe("Account profile page", () => {
     expect(screen.queryByRole("button", { name: "Clear display name" })).not.toBeInTheDocument();
 
     const user = userEvent.setup();
-    const text = "  <img src=x onerror=alert(1)> 🦊  ";
+    const text = "  <img src=x onerror=alert(1)> 𐐀  ";
     await user.clear(nameInput());
     await user.type(nameInput(), text);
     await user.click(screen.getByRole("button", { name: "Update display name" }));
@@ -106,7 +106,7 @@ describe("Account profile page", () => {
       jsonResponse(init?.method === "PATCH" ? { ...initial, displayName: JSON.parse(String(init.body)).displayName } : initial));
     renderAccount(fetchImpl as typeof fetch);
     await loadedForm();
-    const exactLimit = "🦊".repeat(80);
+    const exactLimit = "𐐀".repeat(80);
     fireEvent.change(nameInput(), { target: { value: exactLimit } });
     expect(nameInput()).toHaveValue(exactLimit);
     expect(screen.getByRole("button", { name: "Update display name" })).toBeEnabled();

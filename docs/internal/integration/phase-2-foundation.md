@@ -144,7 +144,7 @@ Group Management writes this table through an idempotent provisioning operation 
 | `created_at` | `timestamptz DEFAULT now()` | Creation/sorting metadata (**ER**), not a membership-history journal. |
 | `version` | `bigint DEFAULT 0` | Optimistic concurrency for metadata replacement (**P2.2a extension to the ER**). A replacement names the version it was based on and increments it by exactly one; a stale version gets `409 group_version_conflict`. Membership and invitation changes do not increment this version; the future `membership_revision` has a separate replication contract. |
 
-The ER requires `CHECK (length(btrim(name)) > 0)`; the migration adds `CHECK (version >= 0)`. Group name is not globally unique. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
+The ER requires `CHECK (length(btrim(name)) > 0)`; the migration adds `CHECK (version >= 0)`. Group name is not globally unique. The application applies the [shared text input policy](../../stack/security.md#human-readable-text-validation) on metadata assignment; the database checks are structural, not a duplicate Unicode allowlist. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
 
 ### Group Management: `groups.group_members`
 

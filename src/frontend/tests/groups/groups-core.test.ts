@@ -112,11 +112,11 @@ describe("group metadata validation", () => {
   });
 
   it("counts Unicode code points rather than UTF-16 units", () => {
-    const emoji = "\u{1F3D4}";
-    expect(emoji.length).toBe(2);
-    expect(codePointCount(emoji.repeat(64))).toBe(64);
-    expect(validateGroupMetadata({ name: emoji.repeat(64), description: "" })).toEqual({});
-    expect(validateGroupMetadata({ name: emoji.repeat(65), description: "" })).toEqual({ name: "too_long" });
+    const supplementaryLetter = "\u{10400}";
+    expect(supplementaryLetter.length).toBe(2);
+    expect(codePointCount(supplementaryLetter.repeat(64))).toBe(64);
+    expect(validateGroupMetadata({ name: supplementaryLetter.repeat(64), description: "" })).toEqual({});
+    expect(validateGroupMetadata({ name: supplementaryLetter.repeat(65), description: "" })).toEqual({ name: "too_long" });
   });
 
   it("allows only line breaks as control characters in descriptions", () => {

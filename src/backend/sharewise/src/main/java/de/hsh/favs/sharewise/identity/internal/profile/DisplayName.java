@@ -2,6 +2,7 @@ package de.hsh.favs.sharewise.identity.internal.profile;
 
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.validation.ValidationErrors;
+import de.hsh.favs.sharewise.shared.validation.UnicodeTextValidator;
 
 /** A mandatory, validated display name. */
 public final class DisplayName {
@@ -25,29 +26,12 @@ public final class DisplayName {
             return Result.err(ValidationErrors.single("displayName", "required", "Display name is required."));
         }
         int codePoints = value.codePointCount(0, value.length());
-        if (codePoints < 1 || codePoints > 80 || !validText(value)) {
+        if (codePoints < 1 || codePoints > 80 || UnicodeTextValidator.INSTANCE.validate(value, false).isPresent()
+                || !UnicodeTextValidator.INSTANCE.hasLetterOrNumber(value)) {
             return Result.err(ValidationErrors.single("displayName", "invalid",
-                    "Display name must contain 1–80 Unicode characters, including non-whitespace text, "
-                    + "without control characters or line separators."));
+                    "Enter 1–80 characters of supported text, including a letter or number."));
         }
         return Result.ok(new DisplayName(value));
     }
 
-    private static boolean validText(String value) {
-        for (int index = 0; index < value.length(); index++) {
-            char current = value.charAt(index);
-            if (Character.isHighSurrogate(current)) {
-                if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
-                    return false;
-                }
-                index++;
-            } else if (Character.isLowSurrogate(current)) {
-                return false;
-            }
-        }
-        return value.codePoints().anyMatch(codePoint -> !Character.isWhitespace(codePoint)
-                    && !Character.isSpaceChar(codePoint))
-                && value.codePoints().noneMatch(codePoint -> Character.isISOControl(codePoint)
-                    || codePoint == 0x2028 || codePoint == 0x2029);
-    }
 }

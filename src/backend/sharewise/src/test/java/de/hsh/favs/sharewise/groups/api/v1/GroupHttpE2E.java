@@ -237,10 +237,10 @@ class GroupHttpE2E {
             assertEquals(List.of("Trip|0"), server.groups());
 
             // 64 code points of supplementary characters are 128 UTF-16 units, still a valid name.
-            String emoji = "🎉".repeat(64);
-            HttpResponse<String> longest = server.send("POST", GROUPS, ALICE, json(emoji, " \n\t "));
+            String letters = "𐐀".repeat(64);
+            HttpResponse<String> longest = server.send("POST", GROUPS, ALICE, json(letters, " \n "));
             assertEquals(201, longest.statusCode(), longest.body());
-            assertEquals(emoji, JsonPath.read(longest.body(), "$.name"));
+            assertEquals(letters, JsonPath.read(longest.body(), "$.name"));
             assertNull(JsonPath.read(longest.body(), "$.description"), "a blank description is stored as absent");
             assertEquals(List.of("64|true"), server.rows(
                 "SELECT char_length(name), description IS NULL FROM groups.groups WHERE id = '"

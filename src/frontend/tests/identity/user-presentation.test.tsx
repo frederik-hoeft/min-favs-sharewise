@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { disambiguateUserIds, shortUserId, userAvatarColor, userInitials } from '@/components/participants/user-presentation';
+import { disambiguateUserIds, shortUserId, userAvatarColor, userInitials, memberIdentityLabel } from '@/components/participants/user-presentation';
 import { UserIdentity } from '@/components/participants/UserIdentity';
 import { TestProviders } from '../support/TestProviders';
 
@@ -64,6 +64,11 @@ describe('deterministic identity presentation', () => {
     const compactClass = label.className;
     rerender(<TestProviders><UserIdentity userId={one} profile={{ status: 'resolved', displayName: name }} wrapName /></TestProviders>);
     expect(screen.getByText(name).className).not.toBe(compactClass);
+  });
+
+  it('isolates accessible names and IDs even if a legacy name contains embedded bidi controls', () => {
+    expect(memberIdentityLabel({ status: 'resolved', displayName: 'שלום\u2069\u202eabc' }, '#a8d291cf'))
+      .toBe('\u2068שלוםabc\u2069 (\u2066#a8d291cf\u2069)');
   });
 
   it('presents untrusted text with directional isolation, not raw HTML or color-only cues', () => {

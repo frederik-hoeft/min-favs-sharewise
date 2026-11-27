@@ -34,8 +34,8 @@ class AccountProfileServiceTests {
         AccountProfileService service = service(Optional.of(ALICE), tx, store);
         assertEquals(Result.ok(new AccountProfile(ALICE, "Alice@Example.org", "Alice")), service.get());
         assertEquals(TransactionDecision.ABSTAIN, tx.decision);
-        assertEquals(Result.ok(new AccountProfile(ALICE, "Alice@Example.org", "🌍 Alice")),
-                service.setDisplayName(update("🌍 Alice")));
+        assertEquals(Result.ok(new AccountProfile(ALICE, "Alice@Example.org", "𐐀 Alice")),
+                service.setDisplayName(update("𐐀 Alice")));
         assertEquals(TransactionDecision.COMMIT, tx.decision);
         assertEquals(Result.ok(new AccountProfile(ALICE, "Alice@Example.org", "Alice")),
                 service.setDisplayName(update("Alice")));
@@ -76,10 +76,11 @@ class AccountProfileServiceTests {
     void displayNameValidatesRequiredScalarsAndControlCharactersWithoutNormalizing() {
         assertFalse(DisplayName.tryFrom(null).isSuccess());
         assertEquals(" Å  ", update(" Å  ").value());
-        assertEquals("🌍".repeat(80), update("🌍".repeat(80)).value());
-        for (String invalid : new String[]{"", "  ", "x".repeat(81), "🌍".repeat(81),
+        assertEquals("𐐀".repeat(80), update("𐐀".repeat(80)).value());
+        for (String invalid : new String[]{"", "  ", "x".repeat(81), "𐐀".repeat(81),
                 "Alice\nBob", "Alice\u0085Bob", "Alice\u2028Bob", "Alice\u2029Bob", "\u2003",
-                "\uD83D", "\uDF0D", "\uD83Dx", "x\uDF0D"}) {
+                "\uD83D", "\uDF0D", "\uD83Dx", "x\uDF0D", "A\u200b", "A\u202eB",
+                "\uFEFF", "\u3164", "A\u034f", "🌍", "...", "\u0301"}) {
             Result<DisplayName, ?> result = DisplayName.tryFrom(invalid);
             assertFalse(result.isSuccess(), () -> "Expected denial for " + invalid.codePoints().count());
         }

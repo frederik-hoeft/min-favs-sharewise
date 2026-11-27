@@ -531,7 +531,7 @@ describe("GM-FT05 membership administration", () => {
   const callerPath = `${GROUP}/members/${caller.id}`;
   const noContent = () => new Response(null, { status: 204 });
   const openMenu = async (user: ReturnType<typeof userEvent.setup>, member = target) => {
-    await user.click(await screen.findByRole("button", { name: member.id === caller.id ? "Manage your membership" : `Manage member Member ${member.userId.slice(-8)} (#${member.userId.slice(-8)})` }));
+    await user.click(await screen.findByRole("button", { name: member.id === caller.id ? "Manage your membership" : `Manage member \u2068Member ${member.userId.slice(-8)}\u2069 (\u2066#${member.userId.slice(-8)}\u2069)` }));
   };
   const memberRow = (userId: string) => within(screen.getByRole("list", { name: "Group members" })).getAllByRole("listitem").find(row => row.textContent?.includes(`#${userId.slice(-8)}`))!;
 
@@ -570,7 +570,7 @@ describe("GM-FT05 membership administration", () => {
     fake.respond("DELETE", `${GROUP}/members/${selected.id}`, noContent());
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
-    await user.click(await screen.findByRole("button", { name: `Manage member Thomas Müller (${secondary})` }));
+    await user.click(await screen.findByRole("button", { name: `Manage member \u2068Thomas Müller\u2069 (\u2066${secondary}\u2069)` }));
     expect(screen.getByText("#0193a5c47e1f7c2a9b3d0000a8d291cf")).toBeVisible();
     expect(fake.profileRequests).toEqual([{ method: "POST", path: "/api/iam/v1/profiles/lookup", body: { userIds: members.map(member => member.userId).sort() } }]);
     await user.click(screen.getByRole("menuitem", { name: "Remove member" }));
@@ -580,7 +580,7 @@ describe("GM-FT05 membership administration", () => {
     await user.click(within(dialog).getByRole("button", { name: "Remove member" }));
     await screen.findByText("Membership updated.");
     expect(fake.requests.filter(request => request.method === "DELETE")).toEqual([{ method: "DELETE", path: `${GROUP}/members/${selected.id}`, body: undefined }]);
-    expect(fake.profileRequests).toHaveLength(1);
+    await waitFor(() => expect(fake.profileRequests).toHaveLength(2));
   });
 
   it("keeps administration usable while names load or fail, and retries with distinct missing profiles", async () => {
@@ -591,12 +591,12 @@ describe("GM-FT05 membership administration", () => {
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
     const suffix = `#${target.userId.slice(-8)}`;
-    const loading = await screen.findByRole("button", { name: `Manage member Resolving name… (${suffix})` });
+    const loading = await screen.findByRole("button", { name: `Manage member \u2068Resolving name…\u2069 (\u2066${suffix}\u2069)` });
     expect(loading).toBeEnabled();
     await act(async () => names.resolve(problem(503, "unavailable")));
-    expect(await screen.findByRole("button", { name: `Manage member Name unavailable (${suffix})` })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: `Manage member \u2068Name unavailable\u2069 (\u2066${suffix}\u2069)` })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Retry names" }));
-    expect(await screen.findByRole("button", { name: `Manage member Recovered name (${suffix})` })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: `Manage member \u2068Recovered name\u2069 (\u2066${suffix}\u2069)` })).toBeEnabled();
     expect(screen.getAllByText("Unknown user")).toHaveLength(2);
     expect(fake.profileRequests).toHaveLength(2);
     expect(fake.requests).toHaveLength(1);
@@ -643,7 +643,7 @@ describe("GM-FT05 membership administration", () => {
     await user.click(within(screen.getByRole("dialog", { name: "Remove member?" })).getByRole("button", { name: "Remove member" }));
     expect(await screen.findByText(/That membership is no longer available/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Members (2)" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: `Manage member Member ${target.userId.slice(-8)} (#${target.userId.slice(-8)})` })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `Manage member \u2068Member ${target.userId.slice(-8)}\u2069 (\u2066#${target.userId.slice(-8)}\u2069)` })).not.toBeInTheDocument();
   });
 
   it("reconciles concurrent demotion instead of keeping stale administrator controls", async () => {
@@ -750,7 +750,7 @@ describe("GM-FT05 membership administration", () => {
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
     await user.click(await screen.findByRole("button", { name: "Edit details" }));
-    expect(screen.getByRole("button", { name: `Manage member Member ${target.userId.slice(-8)} (#${target.userId.slice(-8)})` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Manage member \u2068Member ${target.userId.slice(-8)}\u2069 (\u2066#${target.userId.slice(-8)}\u2069)` })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Leave group" })).toBeDisabled();
     const draft = screen.getByRole("textbox", { name: /Name/ });
     await user.type(draft, " draft");

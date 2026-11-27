@@ -76,8 +76,8 @@ class GroupApplicationServiceTests {
         Result<GroupDetails, GroupFailure> result = create(ALICE, new CreateGroupCommand("  Flat share ", " Rent "));
 
         GroupDetails created = assertOk(result);
-        assertEquals(new GroupMetadata(new GroupName("Flat share"), Optional.of(new GroupDescription("Rent"))),
-            created.metadata());
+        assertEquals("Flat share", created.name());
+        assertEquals("Rent", created.description());
         assertEquals(GroupRole.ADMIN, created.callerRole());
         assertEquals(1, created.memberCount());
         assertEquals(0, created.version());
@@ -176,7 +176,8 @@ class GroupApplicationServiceTests {
 
         GroupDetails updated = assertOk(replace(ALICE, group, " Summer trip ", 3));
 
-        assertEquals(new GroupMetadata(new GroupName("Summer trip"), Optional.empty()), updated.metadata());
+        assertEquals("Summer trip", updated.name());
+        assertEquals(null, updated.description());
         assertEquals(4, updated.version());
         assertEquals(4, store.stored(group).orElseThrow().version());
         assertEquals(List.of("lock", "role", "replace"), store.calls());

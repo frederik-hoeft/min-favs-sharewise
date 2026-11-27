@@ -20,7 +20,7 @@ class CredentialCommandValidationTests {
         Result<RegistrationCommand, ValidationErrors> result = RegistrationCommand.tryFrom("bad", "short", null, POLICY);
         assertEquals(java.util.List.of("email", "password", "displayName"), result.fold(
                 ignored -> java.util.List.of(), errors -> errors.errors().stream().map(error -> error.field()).toList()));
-        assertTrue(RegistrationCommand.tryFrom("one@example.org", "password1", "🌍".repeat(80), POLICY).isSuccess());
+        assertTrue(RegistrationCommand.tryFrom("one@example.org", "password1", "𐐀".repeat(80), POLICY).isSuccess());
     }
 
     @Test

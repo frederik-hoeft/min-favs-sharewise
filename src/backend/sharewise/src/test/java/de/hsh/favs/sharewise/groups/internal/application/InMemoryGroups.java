@@ -13,6 +13,7 @@ import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
 import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMembershipPort;
 import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipChangeContext;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
+import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.GroupRole;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -119,7 +120,7 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
             .filter(group -> group.members().containsKey(userId))
             .sorted(Comparator.comparing((StoredGroup group) -> group.metadata().name().value().toLowerCase())
                 .thenComparing(StoredGroup::id))
-            .map(group -> new GroupSummary(group.id(), group.metadata(), group.members().size(),
+            .map(group -> new GroupSummary(group.id(), group.metadata().name().value(), group.metadata().description().map(GroupDescription::value).orElse(null), group.members().size(),
                 group.members().get(userId)))
             .toList());
     }
@@ -240,7 +241,7 @@ final class InMemoryGroups implements GroupUserRegistry, GroupCreationPort, Grou
     }
 
     private static GroupDetails details(StoredGroup group, UUID callerId) {
-        return new GroupDetails(group.id(), group.metadata(), CREATED_AT, group.version(), group.members().size(),
+        return new GroupDetails(group.id(), group.metadata().name().value(), group.metadata().description().map(GroupDescription::value).orElse(null), CREATED_AT, group.version(), group.members().size(),
             group.members().get(callerId));
     }
 

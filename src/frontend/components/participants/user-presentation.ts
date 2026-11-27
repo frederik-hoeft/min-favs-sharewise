@@ -59,3 +59,9 @@ export function userDisplayLabel(profile?: ProfileResolution): string {
   if (profile.status === 'missing') return 'Unknown user';
   return profile.displayName ?? 'Name unavailable';
 }
+
+/** Directionally isolate user-controlled text from the trusted contextual ID in an accessible label. */
+export function memberIdentityLabel(profile: ProfileResolution | undefined, secondaryId: string): string {
+  const name = userDisplayLabel(profile).replace(/\p{Bidi_Control}/gu, '');
+  return `\u2068${name}\u2069 (\u2066${secondaryId}\u2069)`;
+}
