@@ -15,7 +15,7 @@ import type { IdentityRuntime } from "@/core/identity";
 import { useIdentity } from "@/app/identity-provider";
 import { validateDisplayName, MAX_DISPLAY_NAME_CHARACTERS } from "@/core/identity/display-name";
 import { validatePasswordConfirmation } from "@/core/identity/password-validation";
-import { validateCredentials, type CredentialErrors } from "./credentials-validation";
+import { suggestDisplayName, validateCredentials, type CredentialErrors } from "./credentials-validation";
 import styles from "./AuthenticationForm.module.scss";
 
 type Mode = "login" | "register";
@@ -58,7 +58,9 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
   const invitationDetour: boolean = invitationPending && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("next") === INVITE_PATH;
   const [email, setEmail]: [string, Dispatch<SetStateAction<string>>] = useState('');
   const [password, setPassword]: [string, Dispatch<SetStateAction<string>>] = useState('');
-  const [displayName, setDisplayName]: [string, Dispatch<SetStateAction<string>>] = useState('');
+  // Undefined means automatic suggestion; an explicit empty edit is still an edit.
+  const [displayNameOverride, setDisplayNameOverride]: [string | undefined, Dispatch<SetStateAction<string | undefined>>] = useState<string>();
+  const displayName: string = displayNameOverride ?? (isRegistration ? suggestDisplayName(email) : '');
   const [confirmPassword, setConfirmPassword]: [string, Dispatch<SetStateAction<string>>] = useState('');
   const [errors, setErrors]: [CredentialErrors, Dispatch<SetStateAction<CredentialErrors>>] = useState<CredentialErrors>({});
   const [message, setMessage]: [string | undefined, Dispatch<SetStateAction<string | undefined>>] = useState<string>();
@@ -152,14 +154,21 @@ export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
                 required
                 value={email}
                 error={errors.email}
-                onChange={(event: ChangeEvent<HTMLInputElement>): void => { setEmail(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, email: undefined })); setMessage(undefined); }}
+                onChange={(event: ChangeEvent<HTMLInputElement>): void => {
+                  const nextEmail: string = event.currentTarget.value;
+                  const suggestionChanged: boolean = isRegistration && displayNameOverride === undefined && suggestDisplayName(nextEmail) !== displayName;
+                  setEmail(nextEmail);
+                  setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, email: undefined,
+                    ...(suggestionChanged ? { displayName: undefined } : {}) }));
+                  setMessage(undefined);
+                }}
                 disabled={pending}
               />
               {isRegistration && <TextInput ref={displayNameRef} label="Display name" name="displayName"
                 autoComplete="nickname" required maxLength={MAX_DISPLAY_NAME_CHARACTERS * 2}
-                description="Visible to signed-in ShareWise users." value={displayName} error={errors.displayName}
+                description="Suggested from your email. You can change this name, which is visible to signed-in ShareWise users." value={displayName} error={errors.displayName}
                 disabled={pending} onChange={(event: ChangeEvent<HTMLInputElement>): void => {
-                  setDisplayName(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, displayName: undefined })); setMessage(undefined);
+                  setDisplayNameOverride(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, displayName: undefined })); setMessage(undefined);
                 }} />}
               <PasswordInput
                 ref={passwordRef}

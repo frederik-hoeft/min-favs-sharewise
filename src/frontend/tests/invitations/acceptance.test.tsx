@@ -201,6 +201,7 @@ describe("GI-FT17 invitation continuation", () => {
     await user.type(screen.getByRole("textbox", { name: "Email address" }), "person@example.com");
     await user.type(screen.getByLabelText(/^Password/), "correct horse battery staple");
     if (mode === "register") {
+      await user.clear(screen.getByLabelText(/^Display name/));
       await user.type(screen.getByLabelText(/^Display name/), "Test user");
       await user.type(screen.getByLabelText(/^Confirm password/), "correct horse battery staple");
     }

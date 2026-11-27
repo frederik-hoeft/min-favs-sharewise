@@ -1,8 +1,9 @@
+import { luminance } from '@mantine/core';
 import type { ProfileResolution } from '@/core/identity';
 
-// Identity accents are deliberately distinct from action/feedback colors. White initials
-// retain WCAG AA text contrast on these fills in either application color scheme.
-const palette = ['#414a9e', '#733b82', '#9b3655', '#825027', '#534c68', '#3d587d', '#71416b', '#51576a'] as const;
+// White initials must meet WCAG AA in either application theme. Leave a small
+// margin for RGB rounding when the browser renders the HSL color.
+const MAX_AVATAR_LUMINANCE = 1.05 / 4.7 - 0.05;
 
 function hexadecimal(userId: string): string {
   return userId.replaceAll('-', '').toLowerCase();
@@ -12,7 +13,16 @@ function hexadecimal(userId: string): string {
 export function userAvatarColor(userId: string): string {
   let hash = 0x811c9dc5;
   for (const character of hexadecimal(userId)) hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193);
-  return palette[(hash >>> 0) % palette.length];
+  const unsignedHash = hash >>> 0;
+  const hue = unsignedHash % 360;
+  const saturation = 48 + ((unsignedHash >>> 16) % 23);
+  // HSL lightness is not perceptual luminance: yellow/green must be darker
+  // than blue/purple to retain the same contrast against white initials.
+  for (let lightness = 43; lightness > 0; lightness--) {
+    const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    if (luminance(color) <= MAX_AVATAR_LUMINANCE) return color;
+  }
+  return '#000000';
 }
 
 export function shortUserId(userId: string): string {

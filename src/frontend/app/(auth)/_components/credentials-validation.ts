@@ -1,3 +1,4 @@
+import { validateDisplayName } from "@/core/identity/display-name";
 import { hasValidSurrogatePairs } from "@/core/identity/password-validation";
 
 export interface CredentialErrors {
@@ -35,4 +36,10 @@ export function validateCredentials(mode: 'login' | 'register', emailInput: stri
   }
 
   return errors;
+}
+
+/** Suggest only a valid local part; never silently truncate or expose the email domain. */
+export function suggestDisplayName(email: string): string {
+  const localPart: string = email.trim().split('@', 1)[0];
+  return validateDisplayName(localPart) === undefined ? localPart : '';
 }

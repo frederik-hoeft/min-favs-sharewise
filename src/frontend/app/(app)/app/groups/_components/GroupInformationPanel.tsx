@@ -51,11 +51,10 @@ export function GroupInformationPanel({ workspace, profiles, secondaryIds, onEdi
           const profile = profiles.values.get(member.userId);
           const secondaryId = secondaryIds.get(member.userId) ?? shortUserId(member.userId);
           return <li key={member.id}>
-            <Group wrap="nowrap" gap="sm" align="flex-start">
+            <Group wrap="nowrap" gap="sm" align="center">
               <Stack gap={4} flex={1} miw={0}>
-                <UserIdentity userId={member.userId} profile={profile} secondaryId={secondaryId} own={own}>
-                  <RoleBadge role={member.role} own={own} />
-                </UserIdentity>
+                <UserIdentity userId={member.userId} profile={profile} secondaryId={secondaryId} own={own}
+                  nameAccessory={<RoleBadge role={member.role} own={own} />} />
               </Stack>
               {options.length > 0 ? <MemberMenu label={`Manage member ${userDisplayLabel(profile)} (${secondaryId})`} options={options} disabled={controlsDisabled} onSelect={onMemberAction} /> : null}
             </Group>
@@ -64,7 +63,7 @@ export function GroupInformationPanel({ workspace, profiles, secondaryIds, onEdi
       </ul>
       <Divider />
       {group.callerRole === "admin" ? <Button variant="light" fullWidth disabled={controlsDisabled} leftSection={<LinkSimpleIcon aria-hidden="true" />} onClick={onInvitations}>Manage invitation links</Button> : null}
-      {leaveBlocked ? <Text size="xs" c="dimmed">{members.length <= 1 ? "You cannot leave as the only member. Invite another member first." : "You cannot leave as the only administrator. Promote another member first."}</Text> : null}
+      {leaveBlocked ? <Text size="xs" c="dimmed">{members.length <= 1 ? "You cannot leave as the only member. Invite another member first." : "You cannot leave as the only admin. Promote another member first."}</Text> : null}
       <Button variant="subtle" color="red" fullWidth disabled={controlsDisabled || leaveBlocked || !caller} leftSection={<SignOutIcon aria-hidden="true" />} onClick={event => { if (caller) onMemberAction({ kind: "leave", member: caller }, event.currentTarget); }}>Leave group</Button>
     </Stack>
   );
@@ -74,7 +73,7 @@ function MemberMenu({ label, options, disabled, onSelect }: { label: string; opt
   const trigger = useRef<HTMLButtonElement>(null);
   return <Menu position="bottom-end" width="14rem" withinPortal={false}>
     <Menu.Target>
-      <ActionIcon ref={trigger} variant="subtle" color="gray" size="lg" aria-label={label} disabled={disabled}><DotsThreeIcon weight="bold" size="1.25rem" aria-hidden="true" /></ActionIcon>
+      <ActionIcon ref={trigger} variant="subtle" color="gray" size="lg" flex="0 0 auto" aria-label={label} disabled={disabled}><DotsThreeIcon weight="bold" size="1.25rem" aria-hidden="true" /></ActionIcon>
     </Menu.Target>
     <Menu.Dropdown aria-label={label}>
       {options.map(option => <Menu.Item key={option.action.kind} disabled={option.disabled} color={option.danger ? "red" : undefined} onClick={() => onSelect(option.action, trigger.current)}>{option.label}</Menu.Item>)}

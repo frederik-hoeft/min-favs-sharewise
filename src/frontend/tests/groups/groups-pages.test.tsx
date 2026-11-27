@@ -499,7 +499,7 @@ describe("GM-FT03 group details", () => {
 
     await user.click(await screen.findByRole("button", { name: "Edit details" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(await screen.findByText(/no longer an administrator/)).toBeInTheDocument();
+    expect(await screen.findByText(/no longer an admin/)).toBeInTheDocument();
     expect(await screen.findByLabelText("Your role: Member")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
   });
@@ -543,13 +543,13 @@ describe("GM-FT05 membership administration", () => {
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
     await openMenu(user);
-    await user.click(screen.getByRole("menuitem", { name: "Make administrator" }));
-    const dialog = screen.getByRole("dialog", { name: "Make administrator?" });
+    await user.click(screen.getByRole("menuitem", { name: "Make admin" }));
+    const dialog = screen.getByRole("dialog", { name: "Make admin?" });
     expect(within(dialog).getByText(`#${target.userId.slice(-8)}`)).toBeInTheDocument();
     expect(fake.requests).toHaveLength(1);
-    await user.click(within(dialog).getByRole("button", { name: "Make administrator" }));
+    await user.click(within(dialog).getByRole("button", { name: "Make admin" }));
     await screen.findByText("Membership updated.");
-    expect(memberRow(target.userId)).toHaveTextContent("Administrator");
+    expect(memberRow(target.userId)).toHaveTextContent("Admin");
     expect(fake.requests).toEqual([
       { method: "GET", path: WORKSPACE, body: undefined },
       { method: "PUT", path: `${targetPath}/role`, body: { role: "admin" } },
@@ -557,7 +557,7 @@ describe("GM-FT05 membership administration", () => {
     ]);
   });
 
-  it("disambiguates identical names and colors, then removes only the selected membership", async () => {
+  it("disambiguates identical names and colliding suffixes, then removes only the selected membership", async () => {
     search = `id=${GROUP_ID}`;
     const firstId = "0193a5c4-7e1f-7c2a-9b3d-0000a8d291cf";
     const secondId = "8193a5c4-7e1f-7c2a-9b3d-0000a8d291cf";
@@ -610,7 +610,7 @@ describe("GM-FT05 membership administration", () => {
     expect(await screen.findByRole("button", { name: "Leave group" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Manage your membership" })).not.toBeInTheDocument();
     await openMenu(user);
-    expect(screen.getByRole("menuitem", { name: "Make administrator" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Make admin" })).toBeEnabled();
     expect(screen.queryByRole("menuitem", { name: "Transfer administration" })).not.toBeInTheDocument();
   });
 
@@ -653,8 +653,8 @@ describe("GM-FT05 membership administration", () => {
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
     await openMenu(user);
-    await user.click(screen.getByRole("menuitem", { name: "Make administrator" }));
-    await user.click(within(screen.getByRole("dialog", { name: "Make administrator?" })).getByRole("button", { name: "Make administrator" }));
+    await user.click(screen.getByRole("menuitem", { name: "Make admin" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Make admin?" })).getByRole("button", { name: "Make admin" }));
     await screen.findByLabelText("Your role: Member");
     expect(screen.queryByRole("button", { name: /^Manage member/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
@@ -926,7 +926,7 @@ describe("GI-FT16 invitation management", () => {
     const user = userEvent.setup();
     renderPage(<GroupViewPage />);
     await user.click(await screen.findByRole("button", { name: "Manage invitation links" }));
-    expect(await screen.findByText("You are no longer an administrator of this group.")).toBeVisible();
+    expect(await screen.findByText("You are no longer an admin of this group.")).toBeVisible();
     await screen.findByText("Your group workspace");
     expect(screen.queryByRole("button", { name: "Manage invitation links" })).not.toBeInTheDocument();
   });

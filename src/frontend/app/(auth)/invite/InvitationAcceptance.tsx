@@ -60,7 +60,7 @@ export function InvitationAcceptance() {
       <Stack gap="lg">
         <Title order={1}>Join a group</Title>
         {revision === 0 && continuation ? <Group role="status"><Loader size="sm" /><Text>Checking invitation…</Text></Group> : !pending || !continuation ? <>
-          <Text c="dimmed">This invitation is unavailable. Open the original invitation link again, or ask a group administrator for a new one.</Text>
+          <Text c="dimmed">This invitation is unavailable. Open the original invitation link again, or ask a group admin for a new one.</Text>
           <Button component={Link} href={groupRoutes.list} variant="light">Go to your groups</Button>
         </> : state.status === "authenticated" ? <AuthenticatedApisProvider key={lifetime} sessionId={state.sessionId}>
           <JoinGroup key={revision} revision={revision} continuation={continuation} lifetime={lifetime} />

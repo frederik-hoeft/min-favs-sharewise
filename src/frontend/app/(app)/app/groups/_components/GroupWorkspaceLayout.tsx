@@ -30,10 +30,10 @@ export function GroupWorkspaceLayout({ children }: { children: ReactNode }) {
 
 function membershipFailureMessage(problem: GroupProblem): string {
   switch (problem.kind) {
-    case "admin_required": return "You are no longer an administrator of this group. No change was made.";
+    case "admin_required": return "You are no longer an admin of this group. No change was made.";
     case "member_not_found": return "That membership is no longer available. No change was made.";
     case "last_member": return "A group must retain at least one member.";
-    case "last_administrator": return "A group must retain at least one administrator.";
+    case "last_administrator": return "A group must retain at least one admin.";
     case "self_role_change": return "You cannot change your own role.";
     case "invalid": return "The membership request was rejected.";
     default: return "The outcome of the membership change could not be confirmed. Review the current group before trying again.";
@@ -76,7 +76,7 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
   function handleMetadataProblem(problem: GroupProblem) {
     setView("overview");
     if (problem.kind === "admin_required") {
-      setNotice("You are no longer an administrator of this group, so your changes were not saved.");
+      setNotice("You are no longer an admin of this group, so your changes were not saved.");
       void reload();
     } else setPageProblem(problem);
   }
@@ -150,7 +150,7 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
             onProblem={problem => {
               setView("overview");
               if (problem.kind === "admin_required") {
-                setNotice("You are no longer an administrator of this group.");
+                setNotice("You are no longer an admin of this group.");
                 void reload();
               } else setPageProblem(problem);
             }}
