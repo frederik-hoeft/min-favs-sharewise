@@ -178,7 +178,7 @@ The migration enforces `octet_length(verifier_hash) = 32`, `max_uses IS NULL OR 
 
 ### Delivery infrastructure: Spring Modulith registry
 
-The ER intentionally references the [official PostgreSQL schema](https://docs.spring.io/spring-modulith/reference/appendix.html#schemas.postgresql) as `event_publication ...` **without choosing its columns or indexes**. P2.4a selected Spring Modulith 2.2's PostgreSQL schema in the `messaging` namespace, installed by Flyway, with `DELETE` completion mode; the [messaging architecture](../../stack/messaging.md#implemented-configuration) lists privileges and recovery settings. Its record represents a pending delivery **per listener**, distinct from a stable **business event ID** inside the published event contract. Consumer idempotency belongs to `groups.users`/its consumer operation or an explicitly justified Group inbox, not the producer's registry.
+The ER intentionally references the [official PostgreSQL schema](https://docs.spring.io/spring-modulith/reference/appendix.html#schemas.postgresql) as `event_publication ...` **without choosing its columns or indexes**. P2.4a selected Spring Modulith 2.2's PostgreSQL schema in the `messaging` namespace, installed by Flyway, with `DELETE` completion mode; the [messaging architecture](../../architecture/messaging.md) describes privileges and recovery. Its record represents a pending delivery **per listener**, distinct from a stable **business event ID** inside the published event contract. Consumer idempotency belongs to `groups.users`/its consumer operation or an explicitly justified Group inbox, not the producer's registry.
 
 ## What the schema cannot guarantee by itself
 

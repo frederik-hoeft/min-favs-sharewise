@@ -59,7 +59,7 @@ Finance builds its group-scoped serialization on this transaction infrastructure
 
 ## Integration boundaries
 
-The [verified-credential foundation](architecture/authorization.md) verifies primary IAM evidence and exposes operation-scoped identity. The application-root security composition admits requests and IAM owns credential and session behavior. Business authority remains with the resource-owning context, rather than the shared security infrastructure. The [security design](stack/security.md) and [messaging design](stack/messaging.md) describe cross-context integration contracts separately from the runtime architecture.
+The [verified-credential foundation](architecture/authorization.md) verifies primary IAM evidence and exposes operation-scoped identity. The application-root security composition admits requests and IAM owns credential and session behavior. Business authority remains with the resource-owning context, rather than the shared security infrastructure. Contexts exchange business facts through durable application events recorded in the producer's transaction and consumed idempotently in the consumer's own transaction; the [messaging architecture](architecture/messaging.md) describes the implemented registry, delivery and recovery. The [security design](stack/security.md) and [messaging design](stack/messaging.md) describe the target cross-context contracts beyond the current implementation.
 
 ## Infrastructure integration
 

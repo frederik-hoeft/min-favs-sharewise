@@ -25,6 +25,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.configuration.DatabaseFreeContext;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
@@ -53,14 +54,7 @@ import org.springframework.test.web.servlet.MockMvc;
 /** Account API through production Spring authorization, bearer verification and MVC. */
 @ComponentTest
 @SpringBootTest(classes = {ShareWiseApplication.class, IamAccountHttpTests.Fixture.class}, properties = {
-    "spring.autoconfigure.exclude="
-        + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
-        + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
-        + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
-        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration,"
-        // The event publication registry is database-backed infrastructure (P2.4a).
-        + "org.springframework.modulith.events.config.EventPublicationAutoConfiguration,"
-        + "org.springframework.modulith.events.jdbc.JdbcEventPublicationAutoConfiguration",
+    DatabaseFreeContext.EXCLUDE_DATABASE_AUTOCONFIGURATION,
     "spring.main.lazy-initialization=true"
 })
 @AutoConfigureMockMvc

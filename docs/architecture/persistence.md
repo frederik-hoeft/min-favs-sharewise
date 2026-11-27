@@ -14,7 +14,7 @@ A single PostgreSQL database contains the following schemas:
 | `groups` | Group Management's registry of locally known IAM user IDs, groups, memberships and invitations. |
 | `finance` | Finance group roots and retained actor identities. |
 | `files`, `notifications` | Reserved bounded-context namespaces. |
-| `messaging` | Spring Modulith's event publication registry (`event_publication`): shared delivery infrastructure, not business data. See [messaging](../stack/messaging.md#implemented-configuration). |
+| `messaging` | Spring Modulith's event publication registry (`event_publication`): shared delivery infrastructure, not business data. See [messaging](messaging.md). |
 | `flyway` | Flyway's migration history, separate from the context namespaces. |
 
 Schema boundaries make ownership visible in the physical layout, but do not provide database-enforced isolation between contexts: the single runtime database role has privileges across all five context schemas. The backend's [Spring Modulith boundaries](../architecture.md#module-structure-and-published-apis) govern dependencies between application modules; schema separation does not authorize cross-context data access.

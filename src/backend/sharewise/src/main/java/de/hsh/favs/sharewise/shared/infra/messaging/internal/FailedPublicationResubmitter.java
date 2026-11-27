@@ -37,6 +37,17 @@ class FailedPublicationResubmitter {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
+    /**
+     * Deliberately runs without a transaction or operation scope: the job reads and updates only
+     * registry rows, never business data. Each registry access is a short transaction managed by
+     * Spring Modulith's repository ({@code @Transactional} on the JDBC repository), and the claim
+     * of a publication is one conditional {@code UPDATE ... WHERE status <> 'RESUBMITTED'}, so
+     * overlapping runs cannot resubmit the same row twice. The resubmitted listener then runs on
+     * the async executor and opens its own operation scope and {@code Transactions} segment through
+     * its ingress dispatcher, exactly as on first delivery. An outer transaction here would instead
+     * keep the claims uncommitted while listeners run, and listener failures could not be recorded
+     * independently.
+     */
     @Scheduled(fixedDelayString = "${sharewise.events.resubmission.interval:PT1M}",
             initialDelayString = "${sharewise.events.resubmission.interval:PT1M}")
     void resubmitDueFailures() {
