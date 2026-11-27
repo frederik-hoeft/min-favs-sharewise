@@ -2,7 +2,7 @@
 
 ShareWise uses PostgreSQL as its relational database and Flyway migrations as the authority for the physical schema. Spring Boot configures an application `DataSource` and a separate Flyway migration connection with schema-changing privileges. jOOQ and JPA/Hibernate are integrated with Spring's explicit transaction segments through operation-scoped persistence accessors.
 
-The shared persistence infrastructure supplies transaction-bound database access to independently owned business schemas. IAM uses it for accounts, optional profiles, sessions and refresh tokens; Group Management for its registry of locally known IAM users, groups, memberships and invitations; Finance for group-root provisioning and locking. The [application architecture](../architecture.md) explains module ownership, and [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
+The shared persistence infrastructure supplies transaction-bound database access to independently owned business schemas. IAM uses it for accounts, required profiles, sessions and refresh tokens; Group Management for its registry of locally known IAM users, groups, memberships and invitations; Finance for group-root provisioning and locking. The [application architecture](../architecture.md) explains module ownership, and [transaction management](transactions.md) defines transaction decisions, completion and failure semantics.
 
 ## Database topology and ownership
 
@@ -10,7 +10,7 @@ A single PostgreSQL database contains the following schemas:
 
 | Schema | Current responsibility |
 | --- | --- |
-| `identity` | IAM accounts, optional profiles, sessions and refresh tokens. |
+| `identity` | IAM accounts, required profiles, sessions and refresh tokens. |
 | `groups` | Group Management's registry of locally known IAM user IDs, groups, memberships and invitations. |
 | `finance` | Finance group roots and retained actor identities. |
 | `files`, `notifications` | Reserved bounded-context namespaces. |
@@ -65,6 +65,10 @@ flowchart LR
 The returned facades belong to their originating segment and owning operation/thread. They expire when the segment callback exits, even if the operation scope continues and opens another segment. A retained facade or its derived executable query cannot silently acquire the later segment's resources. The guards cover the supported jOOQ/JPA execution paths, not arbitrary JDBC access or references escaped outside them.
 
 jOOQ statements execute against the active transaction, while Hibernate may buffer entity changes until flush and retain managed state in its first-level cache. The two access models can participate in the same Spring transaction, but their caches and write timing do not automatically synchronize. See [transaction management](transactions.md#persistence-participation-and-lifetimes) for segment lifecycle and completion behavior.
+
+## IAM profile persistence
+
+IAM stores presentation data separately from credentials in `identity.user_profiles`. The profile's `user_id` is both its primary key and its foreign key to the IAM account, and `display_name` is non-nullable with text-content and length constraints. Registration creates the account, profile and initial authentication state in one physical transaction. This gives every account exactly one profile as an application-maintained invariant; the PK/FK alone enforce at most one profile per account and do not require a reverse reference. Missing mandatory profiles are integrity failures, not empty names. Account updates serialize with account disablement and change the existing profile rather than creating one on demand. See the [IAM profile disclosure policy](../stack/security.md#user-profile-visibility) for read semantics.
 
 ## Group persistence
 

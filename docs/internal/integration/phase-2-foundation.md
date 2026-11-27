@@ -69,7 +69,7 @@ The [ER PDF](../../assets/er-data-model.pdf) and [SVG](../../assets/er-data-mode
 
 **Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../../data-model-design.md); **Security** comes from [security.md](../../stack/security.md); **Messaging** comes from [messaging.md](../../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
 
-P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; P2.1c added the optional `identity.user_profiles` table and generated IAM jOOQ mapping. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. **`groups.invitations` and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
+P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; IAM also owns `identity.user_profiles` and its generated jOOQ mapping, with required display names and a profile created for each account. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. **`groups.invitations` and the event-publication registry are not yet implemented.** The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
 
 ### IAM: `identity.users`
 
@@ -88,12 +88,12 @@ This is the authoritative account/credential row. Email is normalized in the bac
 
 ### IAM: `identity.user_profiles`
 
-Profile data is separated from credentials. An IAM user has **zero or one** profile row, using `user_id` as both PK and FK. Registration does not create a profile; an authenticated update creates or updates the row as needed. A missing row and a null display name are equivalent to callers. The profile migration enforces the reviewed display-name storage constraints; the complete user-facing validation rule belongs to the [P2.1c specification](../tasks/p2.1c-account-updates/specification.md#profile-storage-and-behavior).
+Profile data is separated from credentials. Registration creates exactly one profile in the account transaction, and authenticated updates modify the existing row. See [IAM profile persistence](../../architecture/persistence.md#iam-profile-persistence) for the application invariant and database constraints, and [profile visibility](../../stack/security.md#user-profile-visibility) for registration, account and public lookup behavior.
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
-| `user_id` (PK, FK → `identity.users.id`) | `uuid` | One-to-zero/one user profile relationship (**Domain, ER**); same-schema FK permits physical integrity. |
-| `display_name` | `text NULL` | Optional user-facing profile name (**ER**; implemented by **P2.1c**); not a registration requirement. |
+| `user_id` (PK, FK → `identity.users.id`) | `uuid` | One profile per account logically; PK/FK enforce zero or one physically (**Domain, ER**). |
+| `display_name` | `text NOT NULL` | Required, non-unique presentation name (**Domain, ER**); registration supplies it. |
 
 ### IAM: `identity.sessions`
 

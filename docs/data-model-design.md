@@ -1,6 +1,6 @@
 # ShareWise domain model and financial history
 
-**Status:** Agreed conceptual model and business contracts. The IAM account, session and optional display-name profile subset, Group Management's group creation, metadata replacement, membership administration and invitations, and the Finance group/actor persistence foundation with its operations for applying Group creation and membership facts are implemented; delivering real Group events to those operations remains future work. The [persistence architecture](architecture/persistence.md#finance-persistence) describes the physical Finance contract and projection operations; the wider business model below defines the target behavior. The [P4.0 design handoff](internal/integration/phase-4-foundation.md) proposes the MVP refinements described below; they require human approval before implementation. Specific policies in [open decisions](#open-decisions) remain unresolved.
+**Status:** Agreed conceptual model and business contracts. The IAM account, session and required display-name profiles, Group Management's group creation, metadata replacement, membership administration and invitations, and the Finance group/actor persistence foundation with its operations for applying Group creation and membership facts are implemented; delivering real Group events to those operations remains future work. The [persistence architecture](architecture/persistence.md#finance-persistence) describes the physical Finance contract and projection operations; the wider business model below defines the target behavior. The [P4.0 design handoff](internal/integration/phase-4-foundation.md) proposes the MVP refinements described below; they require human approval before implementation. Specific policies in [open decisions](#open-decisions) remain unresolved.
 
 ## Domain scope and diagrams
 
@@ -16,13 +16,17 @@ The diagram is a conceptual guide, not a mandate for ORM graph loading, one clas
 
 | Bounded context | Owns | External references |
 | --- | --- | --- |
-| **User & Identity Management** | Generic IAM identity, credentials/refresh tokens and optional, separately stored UserProfile; broader preferences remain conceptual | Other contexts retain stable user IDs, not shared IAM entities |
+| **User & Identity Management** | Generic IAM identity, credentials/refresh tokens and required, separately stored UserProfile; broader preferences remain conceptual | Other contexts retain stable user IDs, not shared IAM entities |
 | **Group Management** | Group metadata, membership, roles, invitations, organizational existence | User IDs and optional File IDs |
 | **Financial Management** | FinancialGroup lifecycle/accounting denomination, FinancialActors, expenses, settlements, allocations, financial change history | Logical group ID from Group Management; File IDs for attachments |
 | **File Management** | Uploaded file bytes/metadata and generic access policies | External authorities may prove resource access, but File does not model groups/expenses |
 | **Notification Management** | Recipient channels, Notification instances/attempts, templates/variables | User identity and external event IDs |
 
 Subdomain classification and bounded contexts are not one-to-one: User & Identity Management encompasses generic identity/access and supporting user profiles. No independent Settlement context is required. Bounded-context references are opaque logical identifiers, **not physical cross-context foreign keys or cascades**. Group Management is authoritative for membership; Finance has a minimal, eventually synchronized representation for its own operations.
+
+### User profiles and identity references
+
+Every IAM account has one profile with a mandatory, mutable and non-unique display name. Names describe people for presentation; they do not identify accounts or authorize actions. IAM resolves stable user IDs to names for authenticated callers, including disabled accounts retained for historical attribution. Other contexts retain IDs rather than copying profile names into their own state. The [IAM disclosure policy](stack/security.md#user-profile-visibility) defines the public-facing projection; the [frontend architecture](architecture/frontend.md#user-profile-resolution-and-presentation) explains how the browser presents it. Financial history identifies actors by their stable IDs, not by snapshots of mutable names. Account deletion and anonymization remain separate lifecycle decisions.
 
 ### Organizational versus financial membership
 
