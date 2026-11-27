@@ -55,4 +55,10 @@ Local follow-up verification with the supplied, checksum-verified offline toolin
 
 - [ ] Rerun PostgreSQL Integration/E2E and CI on the follow-up revision, including Group projections and restrictive input rejection.
 - [ ] Verify deployed HTTPS and browser flows: fresh lookup on workspace entry, view-local retention on failure, cancellation, rename followed by navigation, registration and Group metadata field errors for unsupported Unicode, and mixed-direction accessible member labels.
-- [ ] Independent review confirms the seven findings have been addressed or superseded by the approved contract; maintainer authorizes merge.
+- [ ] Independent review confirms the original seven findings and four subsequent findings are addressed or superseded by the approved contract; maintainer authorizes merge.
+
+## Second independent-review follow-up
+
+The four subsequent findings are addressed by distinguishing the active lookup request from retained view data, restoring exact-value Account PATCH acknowledgment checking without revalidating returned domain text, and adding Group HTTP E2E coverage for restrictive input rejection and read projections of stored text outside the current input policy. The latter scenarios verify unchanged persisted metadata/version after rejection and successful replacement with compliant metadata. No schema or policy change is introduced.
+
+Both frontend regressions failed on the reviewed implementation and pass with the corrections. The focused offline suites passed: 82 frontend tests (identity, Account and Group workspace), 87 backend Unit tests (Group metadata, commands and shared Unicode validation); lint and both TypeScript checks passed. All backend test sources, including the new HTTP E2E cases, compiled. Full backend and frontend reruns reached the local execution timeout without a final suite result; they are not recorded as passes. PostgreSQL execution and renewed deployed/browser acceptance remain external gates. Previous complete-suite evidence applies to the preceding checkpoint only.

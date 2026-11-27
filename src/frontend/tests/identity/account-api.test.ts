@@ -37,7 +37,7 @@ describe("Typed IAM account API", () => {
     ]);
   });
 
-  it("rejects malformed account responses but trusts returned display name strings", async () => {
+  it("rejects malformed account responses and mismatched mutation acknowledgments without revalidating name policy", async () => {
     const displayName = "🦊".repeat(81);
     const responses = [jsonResponse({ ...profile, displayName: null }), jsonResponse({ ...profile, userId: "not-a-uuid" }),
       jsonResponse({ ...profile, displayName }), jsonResponse({ ...profile, displayName: "Server representation" })];
@@ -46,7 +46,7 @@ describe("Typed IAM account API", () => {
     await expect(apis.account.getAccount()).rejects.toMatchObject({ code: "invalid_response" });
     await expect(apis.account.setDisplayName("Renamed")).rejects.toMatchObject({ code: "invalid_response" });
     expect((await apis.account.getAccount()).displayName).toBe(displayName);
-    expect((await apis.account.setDisplayName("Renamed")).displayName).toBe("Server representation");
+    await expect(apis.account.setDisplayName("Renamed")).rejects.toMatchObject({ code: "invalid_response" });
   });
 
   it("looks up fresh names after account updates instead of synchronizing a cache", async () => {

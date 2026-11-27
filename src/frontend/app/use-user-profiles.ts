@@ -1,13 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuthenticatedApis } from './identity-provider';
 import type { AuthenticatedApis, ProfileResolution } from '@/core/identity';
 
-interface Result {
+interface ResolutionRequest {
   readonly owner: AuthenticatedApis['profiles'];
   readonly key: string;
   readonly attempt: number;
+}
+
+interface Result {
+  readonly request: ResolutionRequest;
   readonly values: ReadonlyMap<string, ProfileResolution>;
 }
 
@@ -18,30 +22,32 @@ export function useUserProfiles(userIds: readonly string[]) {
   const { profiles } = useAuthenticatedApis();
   const key = JSON.stringify([...new Set(userIds)].sort());
   const [attempt, setAttempt] = useState(0);
+  // A return to a previous roster is a new request, not the completion of an old one.
+  const request = useMemo<ResolutionRequest>(() => ({ owner: profiles, key, attempt }), [profiles, key, attempt]);
   const [result, setResult] = useState<Result>();
   useEffect(() => {
-    const ids: string[] = JSON.parse(key);
+    const ids: string[] = JSON.parse(request.key);
     if (!ids.length) return;
     const controller = new AbortController();
     function publish(values: ReadonlyMap<string, ProfileResolution>) {
       if (controller.signal.aborted) return;
-      setResult(previous => ({ owner: profiles, key, attempt, values: new Map(ids.map(id => {
+      setResult(previous => ({ request, values: new Map(ids.map(id => {
         const incoming = values.get(id) ?? { status: 'unavailable' as const };
-        const old = previous?.owner === profiles ? previous.values.get(id) : undefined;
+        const old = previous?.request.owner === request.owner ? previous.values.get(id) : undefined;
         const name = old && old.status !== 'missing' ? old.displayName : undefined;
         return [id, incoming.status === 'unavailable' && incoming.displayName === undefined && name !== undefined
           ? { status: 'unavailable', displayName: name } : incoming];
       })) }));
     }
-    void profiles.resolve(ids, controller.signal).then(publish, () => publish(empty));
+    void request.owner.resolve(ids, controller.signal).then(publish, () => publish(empty));
     return () => controller.abort();
-  }, [profiles, key, attempt]);
-  const current = result?.owner === profiles ? result : undefined;
-  const values = current?.key === key ? current.values : current ? new Map(userIds.flatMap(id => {
+  }, [request]);
+  const current = result?.request.owner === profiles ? result : undefined;
+  const values = current?.request.key === key ? current.values : current ? new Map(userIds.flatMap(id => {
     const value = current.values.get(id);
     return value ? [[id, value] as const] : [];
   })) : empty;
-  const loading = userIds.length > 0 && (current?.key !== key || current.attempt !== attempt);
+  const loading = userIds.length > 0 && current?.request !== request;
   const unavailable = [...values.values()].some(value => value.status === 'unavailable');
   return { values, loading, unavailable, retry: () => setAttempt(current => current + 1) };
 }

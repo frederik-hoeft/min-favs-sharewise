@@ -45,7 +45,9 @@ export class IdentityApi {
     }
 
     async setDisplayName(displayName: string): Promise<AccountProfile> {
-        return parseAccountProfile(await this.client.patch<unknown>(`${ROOT}/account`, { displayName }));
+        const profile: AccountProfile = parseAccountProfile(await this.client.patch<unknown>(`${ROOT}/account`, { displayName }));
+        if (profile.displayName !== displayName) throw invalidProfileResponse();
+        return profile;
     }
 
     async lookupProfiles(userIds: readonly string[], signal?: AbortSignal): Promise<readonly PublicProfile[]> {
