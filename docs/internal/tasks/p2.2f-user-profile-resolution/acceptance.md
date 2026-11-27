@@ -31,6 +31,8 @@ The maintainer requested UI refinements during Gate E; the [plan](plan.md#phase-
 
 No dependency changes, new authorization profiles or Group/Finance schema changes were introduced. The supplied jOOQ patch remains unchanged after its separate handoff checkpoint; compilation and metadata assertions are not a substitute for generating against the integrated migrated database.
 
+The subsequent roster-overflow correction bounds the grid column independently of its content. All 51 targeted identity and Group tests, the static build and static-export probe passed; confirm the long-name case in both the desktop aside and mobile Drawer without horizontal scrolling. No backend or API changes.
+
 ## Maintainer acceptance checklist
 
 Use the integrated checkpoint (including the generated IAM metadata), not the migration-only checkpoint. Run the existing [PostgreSQL test profiles](../../../development/tests.md#run-the-suites) and [code generation freshness check](../../../development.md#database) with the normal dev-container or CI configuration. Record the actual Failsafe counts/results for Integration and E2E separately. The independent jOOQ CI job must confirm generated metadata is fresh. In particular, verify the migration rollback and account/profile creation rollback scenarios and the replacement of the obsolete clear-name test.
