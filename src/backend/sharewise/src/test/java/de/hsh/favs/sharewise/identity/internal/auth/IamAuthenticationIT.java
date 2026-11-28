@@ -54,6 +54,8 @@ class IamAuthenticationIT extends IntegrationTestBase {
 
     private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    // Publication is rollback-only here; registry behavior is covered by UserRegisteredPublicationE2E.
+    private static final UserEventPublisher NO_EVENTS = (userId, registeredAt) -> { };
     private static final String PASSWORD = "long-enough-password";
     private static final CredentialEncoder TEST_ENCODER = new TestEncoder();
     private static final AccessTokenIssuer TEST_ISSUER = (userId, sessionId, issuedAt, expiresAt) ->
@@ -249,7 +251,7 @@ class IamAuthenticationIT extends IntegrationTestBase {
         // Phase C has no production service wiring yet. Compose the real Spring-managed
         // operation-scoped stores and transaction manager with explicit test-only crypto.
         return new RegistrationService(scope.resolve(Transactions.class), scope.resolve(AccountStore.class),
-                TEST_ENCODER, initialAuthentication(scope, issuer), CLOCK);
+                TEST_ENCODER, initialAuthentication(scope, issuer), NO_EVENTS, CLOCK);
     }
 
     private static InitialAuthentication initialAuthentication(IntegrationTestScope scope, AccessTokenIssuer issuer) {

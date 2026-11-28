@@ -5,7 +5,7 @@
  * domain values and persistence adapters are internal to the module.
  */
 @ApplicationModule(allowedDependencies = {
-    "identity", "shared::claims", "shared::di", "shared::jooq", "shared::result", "shared::security", "shared::transactions", "shared::validation",
+    "identity", "identity::events", "shared::claims", "shared::di", "shared::jooq", "shared::result", "shared::security", "shared::transactions", "shared::validation",
     "shared::web"})
 package de.hsh.favs.sharewise.groups;
 

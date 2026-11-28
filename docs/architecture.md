@@ -59,7 +59,7 @@ Finance builds its group-scoped serialization on this transaction infrastructure
 
 ## Integration boundaries
 
-The [verified-credential architecture](architecture/verified-credentials.md) establishes operation-scoped identity and admitted evidence. [Distributed authorization](architecture/distributed-authorization.md) defines Group attestations, independent source verification and correlation, semantic authorization, and challenge-driven client recovery. IAM owns credentials and sessions; Group owns membership facts; resource-owning operations enforce their own business invariants. The [security design](stack/security.md) describes IAM and session lifecycle, and the [messaging design](stack/messaging.md) describes asynchronous cross-context integration.
+The [verified-credential architecture](architecture/verified-credentials.md) establishes operation-scoped identity and admitted evidence. [Distributed authorization](architecture/distributed-authorization.md) defines Group attestations, independent source verification and correlation, semantic authorization, and challenge-driven client recovery. IAM owns credentials and sessions; Group owns membership facts; resource-owning operations enforce their own business invariants. Contexts exchange business facts through durable application events recorded in the producer's transaction and consumed idempotently in the consumer's own transaction; the [messaging architecture](architecture/messaging.md) describes the implemented registry, delivery and recovery. The [security design](stack/security.md) describes IAM and session lifecycle, and the [messaging design](stack/messaging.md) describes the target asynchronous integration beyond the current implementation.
 
 ## Infrastructure integration
 

@@ -31,6 +31,7 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
@@ -45,7 +46,9 @@ import org.springframework.context.annotation.Scope;
 @EnableConfigurationProperties(IamAuthenticationSettings.class)
 class IamAuthenticationConfiguration {
 
-    @Bean("iamClock")
+    // Qualifier-only: an unqualified Clock lookup (such as Spring Modulith's event registry) must
+    // not see module clocks, or several modules' clocks would make that lookup ambiguous.
+    @Bean(name = "iamClock", defaultCandidate = false)
     Clock iamClock() {
         return Clock.systemUTC();
     }
@@ -121,11 +124,16 @@ class IamAuthenticationConfiguration {
     }
 
     @Bean
+    UserEventPublisher iamUserEventPublisher(ApplicationEventPublisher events) {
+        return new SpringUserEventPublisher(events);
+    }
+
+    @Bean
     @Scope("operation")
     RegistrationService iamRegistrationService(Transactions transactions, AccountStore accounts,
-            CredentialEncoder credentials, InitialAuthentication authentication,
+            CredentialEncoder credentials, InitialAuthentication authentication, UserEventPublisher events,
             @Qualifier("iamClock") Clock clock) {
-        return new RegistrationService(transactions, accounts, credentials, authentication, clock);
+        return new RegistrationService(transactions, accounts, credentials, authentication, events, clock);
     }
 
     @Bean

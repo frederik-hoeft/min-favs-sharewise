@@ -83,22 +83,21 @@ Local HTTP test clients may inspect the `Secure` cookies, but actual browser coo
 
 ## Provision local Group users
 
-Group Management admits a caller only if their IAM user ID is in its local `groups.users` registry; otherwise every Group request returns `403 group_user_unknown` and the Groups pages show "Account not yet available". Nothing fills that registry automatically yet: IAM-to-Group event delivery (P2.2d) and the lookup on a local miss (P2.2e) are planned. Until then, provision the accounts you test with explicitly. This procedure is a **temporary development stand-in for P2.2d**. It is not a production path and not a Flyway migration, and it becomes unnecessary once registration events reach Group Management.
+Group Management admits a caller only if their IAM user ID is in its local `groups.users` registry; otherwise Group requests return `403 group_user_unknown`. **No manual provisioning is needed any more:** registration publishes `UserRegisteredV1`, and Group's listener adds the user to `groups.users` asynchronously, usually within milliseconds. Accounts that existed before this integration are copied by the bootstrap migration `V202611281010` on the next start. Directly after registration, a Group request can briefly receive `403 group_user_unknown`; retrying succeeds once the event is delivered.
 
-First find the account's IAM user ID. Run the backend with IAM authentication enabled (see the previous section), then register or sign in. The `/api/iam/v1/auth/register` and `/login` responses carry an `accessToken` whose `sub` claim is the user ID; in the browser, copy it from the response in the developer tools' Network tab. Decode it in the dev container:
+To exercise membership administration and invitation acceptance, register two accounts (for example in separate browser profiles), create a group as one, issue an invitation from its group information panel and open the link as the other. Confirm the displayed group name and explicitly join, then use the administrator’s member controls to promote, demote or remove that membership.
 
-```bash
-TOKEN='<accessToken>'
-python3 -c 'import base64, json, sys; p = sys.argv[1].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))["sub"])' "$TOKEN"
-```
+### Inspect and resubmit event publications
 
-Then insert the ID as the **application role** `sharewise_app`, which holds the DML privileges on Group tables; the migration role is reserved for schema changes. In the dev container's PostgreSQL extension, connect to server `postgres`, database `sharewise`, user `sharewise_app` with password `sharewise_app_dev`, and run:
+Pending and failed deliveries are visible in the registry. Completed publications are deleted, so an empty table means everything was delivered. Connect as `sharewise_app` (password `sharewise_app_dev`) to database `sharewise` and run:
 
 ```sql
-INSERT INTO groups.users (id) VALUES ('<user-id>') ON CONFLICT DO NOTHING;
+SELECT listener_id, event_type, status, completion_attempts, publication_date, last_resubmission_date
+FROM messaging.event_publication
+ORDER BY publication_date;
 ```
 
-The statement is idempotent, matching the provisioning operation that P2.2d will call. Provision each test account separately: every registration creates a new user ID, and resetting the database volume removes all provisioned rows. To exercise membership administration and invitation acceptance, create a group as one provisioned account, issue an invitation from its group information panel, and open the link as a different provisioned account (for example in a separate browser profile). Confirm the displayed group name and explicitly join, then use the administrator’s member controls to promote, demote or remove that membership. This exercises the application policies rather than bypassing them with direct membership inserts.
+`FAILED` rows are resubmitted automatically by `FailedPublicationResubmitter` with exponential backoff (see [recovery](architecture/messaging.md#recovery)). To retry sooner, restart the backend: outstanding publications are republished on startup. Rows already in status `RESUBMITTED` are not republished; they become `FAILED` after the 10-minute staleness period and are then retried. Do not delete rows by hand unless the publication is deliberately resolved, as described for renamed or removed listeners.
 
 ## Build, test and run
 

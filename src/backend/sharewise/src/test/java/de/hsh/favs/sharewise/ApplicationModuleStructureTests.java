@@ -85,10 +85,11 @@ class ApplicationModuleStructureTests {
     void groupsDeclaresExactlyItsConsumedContractsAndPublishesAuthorizationApi() {
         ApplicationModule groups = modules.getModuleByName("groups")
                 .orElseThrow(() -> new AssertionError("module 'groups' must exist"));
-        assertEquals(List.of("identity", "shared::claims", "shared::di", "shared::jooq", "shared::result", "shared::security", "shared::transactions",
+        assertEquals(List.of("identity", "identity::events", "shared::claims", "shared::di", "shared::jooq", "shared::result", "shared::security", "shared::transactions",
                 "shared::validation", "shared::web"),
                 ApplicationModuleInformation.of(groups.getBasePackage()).getDeclaredDependencies(),
-                "groups may consume only the IAM identity contract and its declared shared contracts");
+                "groups may consume only the IAM identity contract, IAM integration events (P2.4a) and its declared "
+                + "shared contracts");
         Set<String> publishedTypes = groups.getNamedInterfaces().getUnnamedInterface().asJavaClasses()
                 .map(type -> type.getName())
                 .filter(name -> !name.endsWith(".package-info"))

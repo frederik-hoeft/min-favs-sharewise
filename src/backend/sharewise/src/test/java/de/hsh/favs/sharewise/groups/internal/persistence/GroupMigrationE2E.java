@@ -57,7 +57,8 @@ class GroupMigrationE2E {
                 assertEquals("false|3", scalar(sql, "SELECT deleted::text || '|' || upstream_revision::text FROM finance.actors WHERE group_id = '"
                     + groupId + "' AND user_id = '" + userId + "'"));
 
-                sql.executeUpdate("INSERT INTO groups.users (id) VALUES ('" + userId + "')");
+                // The P2.4a bootstrap migration projects accounts that existed before the Group listener.
+                assertEquals("1", scalar(sql, "SELECT count(*)::text FROM groups.users WHERE id = '" + userId + "'"));
                 sql.executeUpdate("INSERT INTO groups.groups (id, name) VALUES ('" + groupId + "', 'Trip')");
                 sql.executeUpdate("INSERT INTO groups.group_members (group_id, user_id, role) VALUES ('"
                     + groupId + "', '" + userId + "', 'admin')");

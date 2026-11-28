@@ -28,6 +28,7 @@ import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.di.OperationIngressDispatcher;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.configuration.DatabaseFreeContext;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;
@@ -56,11 +57,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 /** HTTP-only security contract: real Spring filters/MVC, no PostgreSQL or fake operation commits. */
 @ComponentTest
 @SpringBootTest(classes = {ShareWiseApplication.class, IamAuthenticationHttpTests.Fixture.class}, properties = {
-    "spring.autoconfigure.exclude="
-        + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
-        + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
-        + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
-        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration",
+    DatabaseFreeContext.EXCLUDE_DATABASE_AUTOCONFIGURATION,
     "spring.main.lazy-initialization=true"
 })
 @AutoConfigureMockMvc

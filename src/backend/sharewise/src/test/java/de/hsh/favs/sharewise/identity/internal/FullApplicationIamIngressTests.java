@@ -21,6 +21,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.configuration.DatabaseFreeContext;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokens;
 import jakarta.servlet.Filter;
@@ -57,11 +58,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @ComponentTest
 @SpringBootTest(classes = {ShareWiseApplication.class, FullApplicationIamIngressTests.Fixture.class}, properties = {
-    "spring.autoconfigure.exclude="
-        + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
-        + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
-        + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
-        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration",
+    DatabaseFreeContext.EXCLUDE_DATABASE_AUTOCONFIGURATION,
     "spring.main.lazy-initialization=true"
 })
 @AutoConfigureMockMvc

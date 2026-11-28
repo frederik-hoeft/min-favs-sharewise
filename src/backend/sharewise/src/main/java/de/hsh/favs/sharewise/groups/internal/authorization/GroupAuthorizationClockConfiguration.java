@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 class GroupAuthorizationClockConfiguration {
-    @Bean("groupAuthorizationClock")
+    // Qualifier-only, like IAM's clock: unqualified Clock lookups must not become ambiguous.
+    @Bean(name = "groupAuthorizationClock", defaultCandidate = false)
     Clock groupAuthorizationClock() { return Clock.systemUTC(); }
 }

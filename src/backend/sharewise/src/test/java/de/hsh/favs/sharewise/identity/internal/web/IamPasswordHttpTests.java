@@ -27,6 +27,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.result.Result;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.configuration.DatabaseFreeContext;
 import jakarta.servlet.http.Cookie;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -56,11 +57,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 /** Password transport via the real bearer, CSRF, Origin and method-authorization chain. */
 @ComponentTest
 @SpringBootTest(classes = {ShareWiseApplication.class, IamPasswordHttpTests.Fixture.class}, properties = {
-    "spring.autoconfigure.exclude="
-        + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
-        + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
-        + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
-        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration",
+    DatabaseFreeContext.EXCLUDE_DATABASE_AUTOCONFIGURATION,
     "spring.main.lazy-initialization=true"
 })
 @AutoConfigureMockMvc

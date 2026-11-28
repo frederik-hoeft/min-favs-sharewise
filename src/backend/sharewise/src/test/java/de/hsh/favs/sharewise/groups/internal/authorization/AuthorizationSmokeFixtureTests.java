@@ -10,6 +10,7 @@ import de.hsh.favs.sharewise.ShareWiseApplication;
 import de.hsh.favs.sharewise.shared.infra.health.ReadinessIndicator;
 import de.hsh.favs.sharewise.shared.infra.web.AttestationTransport;
 import de.hsh.favs.sharewise.shared.test.ComponentTest;
+import de.hsh.favs.sharewise.testsupport.configuration.DatabaseFreeContext;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokens;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -29,11 +30,7 @@ import sharewise.deploymentfixture.AuthorizationSmokeApplication;
 @ComponentTest
 @SpringBootTest(classes = { ShareWiseApplication.class, AuthorizationSmokeApplication.class,
         GroupAuthorizationHttpTests.Fixture.class, GroupAuthorizationHttpTests.MembershipFixture.class }, properties = {
-    "spring.autoconfigure.exclude="
-        + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
-        + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
-        + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
-        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration",
+    DatabaseFreeContext.EXCLUDE_DATABASE_AUTOCONFIGURATION,
     "spring.main.lazy-initialization=true"
 })
 @AutoConfigureMockMvc

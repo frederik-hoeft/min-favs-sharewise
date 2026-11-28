@@ -17,6 +17,7 @@ import de.hsh.favs.sharewise.groups.GroupAuthorizationPort;
 import de.hsh.favs.sharewise.groups.GroupAuthorizationVerificationFailure;
 import de.hsh.favs.sharewise.groups.VerifiedGroupMembership;
 import de.hsh.favs.sharewise.identity.IdentityContext;
+import de.hsh.favs.sharewise.testsupport.configuration.DatabaseFreeContext;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import com.jayway.jsonpath.JsonPath;
@@ -80,11 +81,7 @@ import org.springframework.web.bind.annotation.RestController;
 /** Full production ingress/correlation and semantic Group facade, with independent test keys and a test-only consumer. */
 @ComponentTest
 @SpringBootTest(classes = {ShareWiseApplication.class, GroupAuthorizationHttpTests.Fixture.class, GroupAuthorizationHttpTests.MembershipFixture.class}, properties = {
-    "spring.autoconfigure.exclude="
-        + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
-        + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
-        + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
-        + "org.springframework.boot.jooq.autoconfigure.JooqAutoConfiguration",
+    DatabaseFreeContext.EXCLUDE_DATABASE_AUTOCONFIGURATION,
     "spring.main.lazy-initialization=true"
 })
 @AutoConfigureMockMvc

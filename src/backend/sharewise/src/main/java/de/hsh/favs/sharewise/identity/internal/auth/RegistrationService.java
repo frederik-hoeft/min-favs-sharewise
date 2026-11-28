@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /** IAM registration orchestration, wired as an operation-scoped bean. */
 public final class RegistrationService {
@@ -18,14 +19,17 @@ public final class RegistrationService {
     private final AccountStore accounts;
     private final CredentialEncoder credentials;
     private final InitialAuthentication authentication;
+    private final UserEventPublisher events;
     private final Clock clock;
 
     public RegistrationService(Transactions transactions, AccountStore accounts,
-            CredentialEncoder credentials, InitialAuthentication authentication, Clock clock) {
+            CredentialEncoder credentials, InitialAuthentication authentication, UserEventPublisher events,
+            Clock clock) {
         this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.accounts = Objects.requireNonNull(accounts, "accounts");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
         this.authentication = Objects.requireNonNull(authentication, "authentication");
+        this.events = Objects.requireNonNull(events, "events");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -42,7 +46,10 @@ public final class RegistrationService {
                 return TransactionOutcome.abstain(Result.err(RegistrationFailure.EMAIL_UNAVAILABLE));
             }
             Instant now = clock.instant();
-            AuthenticationResult established = authentication.create(inserted.orElseThrow().userId(), now);
+            UUID userId = inserted.orElseThrow().userId();
+            AuthenticationResult established = authentication.create(userId, now);
+            // Same segment as the account: the delivery obligation commits or rolls back with it.
+            events.userRegistered(userId, now);
             return TransactionOutcome.commit(Result.ok(established));
         });
     }

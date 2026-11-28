@@ -154,11 +154,16 @@ class RelationalCommitFailureE2E extends E2ETestBase {
         }
     }
 
-    /** One-shot faults attached only to this test's real JpaTransactionManager. */
+    /**
+     * One-shot faults attached only to this test's real JpaTransactionManager. A fault fires only
+     * on the thread that armed it, so background transactions of the same context (for example
+     * the event publication staleness monitor) can neither consume nor trigger it.
+     */
     private static final class CommitResponseFaults implements TransactionExecutionListener {
         private enum InjectionPoint { NONE, BEFORE_PHYSICAL_COMMIT, AFTER_PHYSICAL_COMMIT }
 
-        private InjectionPoint point = InjectionPoint.NONE;
+        private volatile InjectionPoint point = InjectionPoint.NONE;
+        private volatile Thread armedThread;
         private IllegalStateException failure;
         private int injectedFailures;
 
@@ -179,13 +184,15 @@ class RelationalCommitFailureE2E extends E2ETestBase {
                 throw new IllegalStateException("Commit fault already armed");
             }
             point = requested;
+            armedThread = Thread.currentThread();
             failure = new IllegalStateException("Simulated lost commit result: " + requested);
             return failure;
         }
 
         @Override
         public void beforeCommit(TransactionExecution transaction) {
-            if (transaction.isNewTransaction() && point == InjectionPoint.BEFORE_PHYSICAL_COMMIT) {
+            if (transaction.isNewTransaction() && point == InjectionPoint.BEFORE_PHYSICAL_COMMIT
+                    && Thread.currentThread() == armedThread) {
                 inject();
             }
         }
@@ -195,7 +202,7 @@ class RelationalCommitFailureE2E extends E2ETestBase {
             // Spring calls this only after its real doCommit path. In particular, never
             // simulate a durable commit if the real database already reported a failure.
             if (transaction.isNewTransaction() && commitFailure == null
-                    && point == InjectionPoint.AFTER_PHYSICAL_COMMIT) {
+                    && point == InjectionPoint.AFTER_PHYSICAL_COMMIT && Thread.currentThread() == armedThread) {
                 inject();
             }
         }
@@ -203,6 +210,7 @@ class RelationalCommitFailureE2E extends E2ETestBase {
         private void inject() {
             IllegalStateException injected = failure;
             point = InjectionPoint.NONE;
+            armedThread = null;
             failure = null;
             injectedFailures++;
             throw injected;
