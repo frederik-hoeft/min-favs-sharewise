@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useAuthenticatedApis } from "@/app/identity-provider";
-import { validatePasswordChange } from "@/core/identity/password-validation";
+import { validatePasswordChange, validatePasswordConfirmation } from "@/core/identity/password-validation";
 import type { PasswordChangeErrors } from "@/core/identity/password-validation";
 import { ApiError } from "@/lib/api";
 
@@ -59,11 +59,13 @@ export function AccountPasswordForm() {
   const { security } = useAuthenticatedApis();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState<PasswordChangeErrors>({});
   const [notice, setNotice] = useState<Notice>();
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
   const currentRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
   const newRef = useRef<HTMLInputElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
   const deferredFocus = useRef<PasswordChangeErrors | undefined>(undefined);
@@ -71,6 +73,7 @@ export function AccountPasswordForm() {
   function focusFirst(fields: PasswordChangeErrors) {
     if (fields.currentPassword) currentRef.current?.focus();
     else if (fields.newPassword) newRef.current?.focus();
+    else if (fields.confirmPassword) confirmRef.current?.focus();
   }
 
   useEffect(() => {
@@ -89,10 +92,10 @@ export function AccountPasswordForm() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current || notice?.blocked) return;
-    const validation = validatePasswordChange(currentPassword, newPassword);
+    const validation: PasswordChangeErrors = { ...validatePasswordChange(currentPassword, newPassword), confirmPassword: validatePasswordConfirmation(newPassword, confirmPassword) };
     setErrors(validation);
     setNotice(undefined);
-    if (validation.currentPassword || validation.newPassword) {
+    if (validation.currentPassword || validation.newPassword || validation.confirmPassword) {
       focusFirst(validation);
       return;
     }
@@ -103,6 +106,7 @@ export function AccountPasswordForm() {
       await security.changePassword({ currentPassword, newPassword });
       setCurrentPassword("");
       setNewPassword("");
+      setConfirmPassword("");
       setErrors({});
       setNotice({ kind: "success", message: "Password changed. This session stays signed in. Other sessions may remain active until their current access tokens expire; they cannot refresh and must then sign in again." });
     } catch (error) {
@@ -113,6 +117,7 @@ export function AccountPasswordForm() {
       if (failure.notice.blocked) {
         setCurrentPassword("");
         setNewPassword("");
+        setConfirmPassword("");
       }
     } finally {
       submitting.current = false;
@@ -158,8 +163,14 @@ export function AccountPasswordForm() {
                 disabled={pending || blocked} error={errors.newPassword}
                 onChange={(event) => {
                   setNewPassword(event.currentTarget.value);
-                  setErrors((previous) => ({ ...previous, newPassword: undefined }));
+                  setErrors((previous) => ({ ...previous, newPassword: undefined, confirmPassword: undefined }));
                   if (!blocked) setNotice(undefined);
+                }} />
+              <PasswordInput ref={confirmRef} name="confirmPassword" label="Confirm new password"
+                value={confirmPassword} maxLength={256} autoComplete="new-password" disabled={pending || blocked}
+                error={errors.confirmPassword} onChange={(event) => {
+                  setConfirmPassword(event.currentTarget.value);
+                  setErrors((previous) => ({ ...previous, confirmPassword: undefined }));
                 }} />
             </SimpleGrid>
             <Group justify="flex-end">

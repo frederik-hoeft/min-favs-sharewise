@@ -26,11 +26,11 @@ public final class AccountProfileService {
         return transactions.execute(() -> TransactionOutcome.abstain(result(profiles.findActive(userId))));
     }
 
-    public Result<AccountProfile, AccountProfileFailure> setDisplayName(DisplayNameUpdate command) {
+    public Result<AccountProfile, AccountProfileFailure> setDisplayName(DisplayName command) {
         Objects.requireNonNull(command, "command");
         UUID userId = identity.requireUserId();
         return transactions.execute(() -> {
-            Optional<AccountProfile> account = profiles.setDisplayNameIfActive(userId, command.value());
+            Optional<AccountProfile> account = profiles.setDisplayNameIfActive(userId, command);
             Result<AccountProfile, AccountProfileFailure> result = result(account);
             return account.isPresent() ? TransactionOutcome.commit(result) : TransactionOutcome.abstain(result);
         });

@@ -18,6 +18,8 @@ import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
 import { useGroupsApi } from "@/app/use-groups-api";
 import { useGroupResource } from "@/app/use-group-resource";
 import styles from "./GroupInformationPanel.module.scss";
+import { useUserProfiles } from "@/app/use-user-profiles";
+import { disambiguateUserIds } from "@/components/participants/user-presentation";
 
 /** Route composition owns the group resource; the shell has no Group Management dependency. */
 export function GroupWorkspaceLayout({ children }: { children: ReactNode }) {
@@ -28,10 +30,10 @@ export function GroupWorkspaceLayout({ children }: { children: ReactNode }) {
 
 function membershipFailureMessage(problem: GroupProblem): string {
   switch (problem.kind) {
-    case "admin_required": return "You are no longer an administrator of this group. No change was made.";
+    case "admin_required": return "You are no longer an admin of this group. No change was made.";
     case "member_not_found": return "That membership is no longer available. No change was made.";
     case "last_member": return "A group must retain at least one member.";
-    case "last_administrator": return "A group must retain at least one administrator.";
+    case "last_administrator": return "A group must retain at least one admin.";
     case "self_role_change": return "You cannot change your own role.";
     case "invalid": return "The membership request was rejected.";
     default: return "The outcome of the membership change could not be confirmed. Review the current group before trying again.";
@@ -58,6 +60,10 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
       canceledFocus.current = null;
     }
   }, [confirmation]);
+  const userIds = state.status === "ready" ? state.data.members.map(member => member.userId) : [];
+  if (confirmation) userIds.push(confirmation.action.member.userId);
+  const profiles = useUserProfiles(userIds);
+  const secondaryIds = disambiguateUserIds(userIds);
   const status = notice ? <Alert variant="light" role="status">{notice}</Alert> : null;
   if (left) return <ApplicationShell><GroupLoadingState label="Returning to your groups…" /></ApplicationShell>;
   if (pageProblem) return <ApplicationShell><Stack>{status}<GroupProblemState problem={pageProblem} /></Stack></ApplicationShell>;
@@ -70,7 +76,7 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
   function handleMetadataProblem(problem: GroupProblem) {
     setView("overview");
     if (problem.kind === "admin_required") {
-      setNotice("You are no longer an administrator of this group, so your changes were not saved.");
+      setNotice("You are no longer an admin of this group, so your changes were not saved.");
       void reload();
     } else setPageProblem(problem);
   }
@@ -108,6 +114,8 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
         label: "Group information",
         content: <GroupWorkspaceAside
           workspace={workspace}
+          profiles={profiles}
+          secondaryIds={secondaryIds}
           editing={view !== "overview"}
           busy={confirmation !== null || operation.pending !== null}
           onEdit={() => {
@@ -142,7 +150,7 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
             onProblem={problem => {
               setView("overview");
               if (problem.kind === "admin_required") {
-                setNotice("You are no longer an administrator of this group.");
+                setNotice("You are no longer an admin of this group.");
                 void reload();
               } else setPageProblem(problem);
             }}
@@ -151,6 +159,8 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
         {confirmation ? <MemberActionConfirmation
           action={confirmation.action}
           own={confirmation.action.member.id === workspace.callerMembershipId}
+          profile={profiles.values.get(confirmation.action.member.userId)}
+          secondaryId={secondaryIds.get(confirmation.action.member.userId)}
           pending={operation.pending !== null}
           onConfirm={confirmMembershipAction}
           onCancel={() => {
@@ -165,8 +175,10 @@ function GroupWorkspaceOwner({ groupId, children }: { groupId: string; children:
 }
 
 /** Integrates a shell-independent information panel with the shell's responsive disclosure. */
-function GroupWorkspaceAside({ workspace, editing, busy, onEdit, onInvitations, onMemberAction }: {
+function GroupWorkspaceAside({ workspace, profiles, secondaryIds, editing, busy, onEdit, onInvitations, onMemberAction }: {
   workspace: GroupWorkspace;
+  profiles: ReturnType<typeof useUserProfiles>;
+  secondaryIds: ReadonlyMap<string, string>;
   editing: boolean;
   busy: boolean;
   onEdit: () => void;
@@ -174,7 +186,7 @@ function GroupWorkspaceAside({ workspace, editing, busy, onEdit, onInvitations, 
   onMemberAction: (action: MembershipAction, restoreFocus: () => void) => void;
 }) {
   const { dismiss, restoreFocus } = useShellAsideControls();
-  return <GroupInformationPanel workspace={workspace} editing={editing} busy={busy}
+  return <GroupInformationPanel workspace={workspace} profiles={profiles} secondaryIds={secondaryIds} editing={editing} busy={busy}
     onEdit={() => { dismiss(); onEdit(); }}
     onInvitations={() => { dismiss(); onInvitations(); }}
     onMemberAction={(action, origin) => { dismiss(); onMemberAction(action, () => restoreFocus(origin)); }}

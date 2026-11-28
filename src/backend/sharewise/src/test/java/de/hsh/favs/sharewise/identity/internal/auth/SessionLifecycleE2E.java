@@ -331,7 +331,7 @@ class SessionLifecycleE2E extends E2ETestBase {
     private static AuthenticationResult register(OperationDispatcher dispatcher) {
         Result<AuthenticationResult, RegistrationFailure> result = dispatcher.dispatch(
                 RegistrationService.class, service -> service.register(RegistrationCommand.from(
-                        "refresh-e2e@example.org", "long-enough-password", PasswordPolicy.initial())));
+                        "refresh-e2e@example.org", "long-enough-password", "Test user", PasswordPolicy.initial())));
         assertTrue(result.isSuccess());
         return ((Result.Ok<AuthenticationResult, RegistrationFailure>) result).value();
     }

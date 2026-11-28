@@ -13,9 +13,14 @@ export function hasValidSurrogatePairs(password: string): boolean {
     return true;
 }
 
+export function validatePasswordConfirmation(password: string, confirmation: string): string | undefined {
+    return password === confirmation && confirmation !== "" ? undefined : "Passwords must match.";
+}
+
 export interface PasswordChangeErrors {
     readonly currentPassword?: string;
     readonly newPassword?: string;
+    readonly confirmPassword?: string;
 }
 
 /** Client hints matching IAM PasswordPolicy.initial(); the backend remains authoritative. */

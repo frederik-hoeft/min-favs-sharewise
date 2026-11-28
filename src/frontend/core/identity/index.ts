@@ -1,4 +1,5 @@
 import { ApiError, createApiClient, scopeApiClient, sessionContextChanged, type ApiClient } from '@/lib/api';
+import { ProfileResolver } from './profile-resolver.ts';
 import { AuthCoordinator } from './auth-coordinator.ts';
 import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';
@@ -12,11 +13,13 @@ export { AUTH_COOKIE_LOCK, AuthCookieLock } from './auth-cookie-lock.ts';
 export { AuthSession } from './auth-session.ts';
 export { CSRF_HEADER, IdentityApi } from './identity-api.ts';
 export { SessionContextChannel, SESSION_CONTEXT_CHANNEL } from './session-context-channel.ts';
-export type { AccountProfile, AuthenticationResponse, AuthState, ChangePasswordRequest, IdentityCredentials, SessionContextEvent } from './models.ts';
+export type { ProfileResolution } from "./profile-resolver.ts";
+export type { AccountProfile, AuthenticationResponse, AuthState, ChangePasswordRequest, IdentityCredentials, RegistrationRequest, PublicProfile, SessionContextEvent } from './models.ts';
 
 export interface AuthenticatedApis {
     readonly api: ApiClient;
-    readonly account: Pick<IdentityApi, 'getAccount' | 'setDisplayName' | 'clearDisplayName'>;
+    readonly account: Pick<IdentityApi, 'getAccount' | 'setDisplayName'>;
+    readonly profiles: Pick<ProfileResolver, 'resolve'>;
     readonly security: Pick<IdentityApi, 'changePassword'>;
 }
 
@@ -61,10 +64,11 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
         api, auth, cookieLock, session,
         forSession(sessionId: string): AuthenticatedApis {
             const lifetime: number | undefined = session.getSessionId() === sessionId ? session.getAuthenticatedLifetime() : undefined;
+            const assertCurrent: () => void = () => {
+                if (!lifetime || session.getAuthenticatedLifetime() !== lifetime) throw sessionContextChanged();
+            };
             const scopedApi: ApiClient = scopeApiClient(api, (path: string, headers: Headers): void => {
-                if (!lifetime || session.getAuthenticatedLifetime() !== lifetime) {
-                    throw sessionContextChanged();
-                }
+                assertCurrent();
                 if (ANONYMOUS_IDENTITY_PATHS.has(path) || headers.has('Authorization')) {
                     throw new ApiError({
                         status: 0, code: 'invalid_request_context', title: 'Invalid Request Context',
@@ -73,7 +77,10 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions = {}): Ide
                 }
             });
             const scopedIdentity: IdentityApi = new IdentityApi(scopedApi);
-            return { api: scopedApi, account: scopedIdentity, security: scopedIdentity };
+            const resolver: ProfileResolver = new ProfileResolver(scopedIdentity.lookupProfiles.bind(scopedIdentity), assertCurrent);
+            return { api: scopedApi, security: scopedIdentity, account: scopedIdentity,
+                profiles: { resolve: resolver.resolve.bind(resolver) } };
+
         },
         authorizationSnapshot: (): AuthorizationSnapshot => attestations.snapshot(),
         connect: () => channel.connect(),

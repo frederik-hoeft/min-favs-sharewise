@@ -11,6 +11,7 @@ import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationFailure;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationService;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
+import de.hsh.favs.sharewise.identity.internal.web.dto.RegistrationRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthResponse;
 import de.hsh.favs.sharewise.identity.internal.web.dto.CsrfBootstrap;
 import de.hsh.favs.sharewise.identity.internal.web.dto.SessionBindingRequest;
@@ -53,14 +54,14 @@ final class IamAuthenticationController {
     private static final String REFRESH_COOKIE = "__Host-sharewise-refresh";
 
     private final OperationIngressDispatcher ingress;
-    private final DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations;
+    private final DomainObjectFactory<RegistrationCommand, RegistrationRequest> registrations;
     private final DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins;
     private final CsrfTokenRepository csrfTokens;
     private final Clock clock;
 
     IamAuthenticationController(OperationIngressDispatcher ingress,
             @Qualifier("registrationCommandFactory")
-            DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations,
+            DomainObjectFactory<RegistrationCommand, RegistrationRequest> registrations,
             @Qualifier("loginCommandFactory")
             DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins,
             CsrfTokenRepository csrfTokens, @Qualifier("iamClock") Clock clock) {
@@ -83,7 +84,7 @@ final class IamAuthenticationController {
     }
 
     @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<?> register(@RequestBody AuthCredentialsRequest input, HttpServletRequest request,
+    ResponseEntity<?> register(@RequestBody RegistrationRequest input, HttpServletRequest request,
             HttpServletResponse response) {
         RegistrationCommand command = registration(input);
         Result<AuthenticationResult, RegistrationFailure> result = ingress.dispatch(
@@ -184,7 +185,7 @@ final class IamAuthenticationController {
         return value;
     }
 
-    private RegistrationCommand registration(AuthCredentialsRequest input) {
+    private RegistrationCommand registration(RegistrationRequest input) {
         return registrations.createFrom(input).fold(
                 command -> command,
                 errors -> { throw RequestValidationException.from(errors); });

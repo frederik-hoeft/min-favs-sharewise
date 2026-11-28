@@ -243,14 +243,14 @@ class PasswordChangeE2E extends E2ETestBase {
     private static AuthenticationResult register(OperationDispatcher dispatcher) {
         Result<AuthenticationResult, RegistrationFailure> result = dispatcher.dispatch(RegistrationService.class,
                 service -> service.register(RegistrationCommand.from(
-                        "test-password-change@example.org", ORIGINAL, PasswordPolicy.initial())));
+                        "test-password-change@example.org", ORIGINAL, "Test user", PasswordPolicy.initial())));
         return ((Result.Ok<AuthenticationResult, RegistrationFailure>) result).value();
     }
 
     private static AuthenticationResult registerOther(OperationDispatcher dispatcher) {
         Result<AuthenticationResult, RegistrationFailure> result = dispatcher.dispatch(RegistrationService.class,
                 service -> service.register(RegistrationCommand.from(
-                        "other-user@example.org", ORIGINAL, PasswordPolicy.initial())));
+                        "other-user@example.org", ORIGINAL, "Test user", PasswordPolicy.initial())));
         return ((Result.Ok<AuthenticationResult, RegistrationFailure>) result).value();
     }
 

@@ -8,5 +8,6 @@ public record AccountProfile(UUID userId, String email, String displayName) {
     public AccountProfile {
         Objects.requireNonNull(userId, "userId");
         Objects.requireNonNull(email, "email");
+        Objects.requireNonNull(displayName, "Missing mandatory profile");
     }
 }

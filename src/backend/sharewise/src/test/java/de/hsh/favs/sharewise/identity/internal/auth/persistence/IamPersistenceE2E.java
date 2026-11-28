@@ -1,5 +1,6 @@
 package de.hsh.favs.sharewise.identity.internal.auth.persistence;
 
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -84,7 +85,7 @@ class IamPersistenceE2E extends E2ETestBase {
             OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
             dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() -> {
                 AccountSnapshot account = probe.accounts()
-                        .insert(EmailAddress.parse("New@Example.com"), "encoded-password").orElseThrow();
+                        .insert(EmailAddress.parse("New@Example.com"), "encoded-password", DisplayName.from("Test user")).orElseThrow();
                 LoginSession session = probe.sessions().insert(account.userId(), SESSIONS.startAt(NOW));
                 UUID tokenId = probe.refresh().newTokenId();
                 probe.refresh().insert(token(tokenId, session.id(), NOW));
@@ -170,9 +171,9 @@ class IamPersistenceE2E extends E2ETestBase {
             OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
             UUID userId = dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() -> {
                 AccountSnapshot account = probe.accounts().insert(
-                        EmailAddress.parse("EXAMPLE@Example.org"), "hash").orElseThrow();
+                        EmailAddress.parse("EXAMPLE@Example.org"), "hash", DisplayName.from("Test user")).orElseThrow();
                 assertTrue(probe.accounts().insert(
-                        EmailAddress.parse("example@example.org"), "hash2").isEmpty());
+                        EmailAddress.parse("example@example.org"), "hash2", DisplayName.from("Test user")).isEmpty());
                 AccountSnapshot locked = probe.accounts().findByEmailForUpdate(
                         EmailAddress.parse("example@EXAMPLE.ORG")).orElseThrow();
                 assertEquals(account.userId(), locked.userId());
@@ -203,7 +204,7 @@ class IamPersistenceE2E extends E2ETestBase {
             OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
             dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() -> {
                 AccountSnapshot account = probe.accounts()
-                        .insert(EmailAddress.parse("rollback@example.org"), "hash").orElseThrow();
+                        .insert(EmailAddress.parse("rollback@example.org"), "hash", DisplayName.from("Test user")).orElseThrow();
                 LoginSession session = probe.sessions().insert(account.userId(), SESSIONS.startAt(NOW));
                 probe.refresh().insert(token(probe.refresh().newTokenId(), session.id(), NOW));
                 return TransactionOutcome.rollback(null);
@@ -228,7 +229,7 @@ class IamPersistenceE2E extends E2ETestBase {
             assertThrows(RuntimeException.class, () ->
                     dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() -> {
                         AccountSnapshot account = probe.accounts()
-                                .insert(EmailAddress.parse("failed@example.org"), "hash").orElseThrow();
+                                .insert(EmailAddress.parse("failed@example.org"), "hash", DisplayName.from("Test user")).orElseThrow();
                         LoginSession session = probe.sessions().insert(account.userId(), SESSIONS.startAt(NOW));
                         // A valid-length verifier cannot refer to a nonexistent token family.
                         probe.refresh().insert(token(probe.refresh().newTokenId(), UUID.randomUUID(), NOW));
@@ -273,7 +274,7 @@ class IamPersistenceE2E extends E2ETestBase {
         runTest(fixture -> {
             OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
             dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() -> {
-                probe.accounts().insert(EmailAddress.parse("login@example.org"), "hash");
+                probe.accounts().insert(EmailAddress.parse("login@example.org"), "hash", DisplayName.from("Test user"));
                 return TransactionOutcome.commit(null);
             }));
             CountDownLatch firstLocked = new CountDownLatch(1);
@@ -300,7 +301,7 @@ class IamPersistenceE2E extends E2ETestBase {
         return new FutureTask<>(() -> {
             assertTrue(start.await(10, TimeUnit.SECONDS));
             return dispatcher.dispatch(Probe.class, probe -> probe.transactions().execute(() ->
-                    TransactionOutcome.commit(probe.accounts().insert(EmailAddress.parse(email), "hash"))));
+                    TransactionOutcome.commit(probe.accounts().insert(EmailAddress.parse(email), "hash", DisplayName.from("Test user")))));
         });
     }
 

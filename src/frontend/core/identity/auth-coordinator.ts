@@ -3,7 +3,7 @@ import { AuthCookieLock } from './auth-cookie-lock.ts';
 import { AuthSession } from './auth-session.ts';
 import { IdentityApi } from './identity-api.ts';
 import { SessionContextChannel } from './session-context-channel.ts';
-import type { AuthenticationResponse, AuthState, IdentityCredentials, SessionContextEvent } from './models.ts';
+import type { AuthenticationResponse, AuthState, IdentityCredentials, RegistrationRequest, SessionContextEvent } from './models.ts';
 
 type AuthOperation = 'register' | 'login';
 
@@ -56,12 +56,12 @@ export class AuthCoordinator {
         this.unsubscribe = channel.subscribe((event: SessionContextEvent): void => this.onContextEvent(event));
     }
 
-    register(credentials: IdentityCredentials): Promise<void> {
-        return this.authenticate('register', credentials);
+    register(credentials: RegistrationRequest): Promise<void> {
+        return this.authenticate('register', (csrf: string): Promise<AuthenticationResponse> => this.api.register(credentials, csrf));
     }
 
     login(credentials: IdentityCredentials): Promise<void> {
-        return this.authenticate('login', credentials);
+        return this.authenticate('login', (csrf: string): Promise<AuthenticationResponse> => this.api.login(credentials, csrf));
     }
 
     /** Restore once, on first use of an authenticated API or workspace identity. */
@@ -123,14 +123,14 @@ export class AuthCoordinator {
         this.unsubscribe();
     }
 
-    private async authenticate(operation: AuthOperation, credentials: IdentityCredentials): Promise<void> {
+    private async authenticate(operation: AuthOperation, submit: (csrf: string) => Promise<AuthenticationResponse>): Promise<void> {
         if (this.credentialSubmission) throw authError('auth_in_progress', 'Authentication Already In Progress', 'An authentication request is already in progress in this tab.');
         this.credentialSubmission = true;
         try {
             await this.cookieLock.runExclusive(async (): Promise<void> => {
                 const csrf: string = await this.api.getCsrfToken();
                 try {
-                    const response: AuthenticationResponse = await this.api[operation](credentials, csrf);
+                    const response: AuthenticationResponse = await submit(csrf);
                     this.session.accept(response);
                     this.channel.publish({ type: 'login', sessionId: response.sessionId });
                 } catch (error: unknown) {

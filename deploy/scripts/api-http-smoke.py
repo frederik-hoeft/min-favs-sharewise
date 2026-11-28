@@ -174,15 +174,20 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def group_request(host: str, port: str, bearer: str | None, method: str, path: str,
-                  payload: dict | None = None) -> tuple[int, dict | None]:
+def api_request(host: str, port: str, bearer: str | None, method: str, path: str,
+                payload: dict | None = None) -> tuple[int, dict | None]:
     # curl config on stdin keeps credentials and invitation bodies out of process argv.
     config = "" if bearer is None else f"header = {json.dumps('Authorization: Bearer ' + bearer)}\n"
     if payload is not None:
         config += 'header = "Content-Type: application/json"\n'
         config += f"data-binary = {json.dumps(json.dumps(payload))}\n"
     options = edge_options(host, port) + ["--request", method, "--config", "-"]
-    return json_request(options, f"https://{host}:{port}/api/groups/v1{path}", config)
+    return json_request(options, f"https://{host}:{port}/api{path}", config)
+
+
+def group_request(host: str, port: str, bearer: str | None, method: str, path: str,
+                  payload: dict | None = None) -> tuple[int, dict | None]:
+    return api_request(host, port, bearer, method, f"/groups/v1{path}", payload)
 
 
 def provision_group_users(*user_ids: str) -> None:
@@ -273,22 +278,50 @@ def group_lifecycle(host: str, port: str, owner: str, owner_id: str,
             "Group departure did not preserve the remaining administrator")
 
 
+SMOKE_DISPLAY_NAME = "Smoke participant"
+
+
+def profile_lifecycle(host: str, port: str, owner: str, owner_id: str,
+                      guest: str, guest_id: str) -> None:
+    # No Group projection or membership is needed for authenticated-public lookup.
+    route = "/iam/v1/profiles/lookup"
+    unknown = str(uuid.uuid4())
+    payload = {"userIds": [owner_id, guest_id, owner_id, unknown]}
+    status, _ = api_request(host, port, None, "POST", route, payload)
+    require(status == 401, "Anonymous profile lookup was not denied")
+    status, found = api_request(host, port, guest, "POST", route, payload)
+    require(status == 200 and found == {"profiles": [
+        {"userId": owner_id, "displayName": SMOKE_DISPLAY_NAME},
+        {"userId": guest_id, "displayName": SMOKE_DISPLAY_NAME},
+    ]}, "Profile lookup did not preserve distinct IDs, names and the minimal response contract")
+    renamed = "Smoke participant renamed"
+    status, own = api_request(host, port, owner, "PATCH", "/iam/v1/account", {"displayName": renamed})
+    require(status == 200 and isinstance(own, dict) and own.get("userId") == owner_id
+            and own.get("displayName") == renamed, "Own profile rename was unsuccessful")
+    status, found = api_request(host, port, guest, "POST", route, payload)
+    require(status == 200 and found == {"profiles": [
+        {"userId": owner_id, "displayName": renamed},
+        {"userId": guest_id, "displayName": SMOKE_DISPLAY_NAME},
+    ]}, "Renamed profile was not visible through authenticated lookup")
+
+
 def exercise_groups(args: argparse.Namespace, origin: str, public: str, owner: str, owner_id: str) -> None:
     cookie_file = compose_exec("mktemp", "/tmp/sharewise-group-cookie.XXXXXXXX").strip()
     try:
         status, response = mutate(args.host, args.port, cookie_file, "register", origin,
                                   {"email": f"smoke-{secrets.token_hex(12)}@example.invalid",
-                                   "password": secrets.token_urlsafe(32)})
+                                   "password": secrets.token_urlsafe(32), "displayName": SMOKE_DISPLAY_NAME})
         require(status == 201, "Group invitee registration failed")
         guest, session_id, guest_id = authenticated_response(response, public, args.issuer, args.audience)
         require(guest_id != owner_id, "Group smoke requires distinct accounts")
+        profile_lifecycle(args.host, args.port, owner, owner_id, guest, guest_id)
         provision_group_users(owner_id, guest_id)
         group_lifecycle(args.host, args.port, owner, owner_id, guest, guest_id)
         status, body = mutate(args.host, args.port, cookie_file, "logout", origin, {"expectedSessionId": session_id})
         require(status == 204 and body is None and refresh_cookie(cookie_file) is None, "Group invitee logout failed")
     finally:
         compose_exec("rm", "-f", cookie_file)
-    print("Group HTTPS creation, access control, invitation, membership and departure checks passed.")
+    print("Profile HTTPS lookup and rename, Group creation, access control, invitation, membership and departure checks passed.")
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -312,7 +345,7 @@ def main() -> None:
                                 capture_output=True, text=True, check=True).stdout
         registered_user_id = None
         for operation, expected in (("register", 201), ("login", 200)):
-            status, response = mutate(args.host, args.port, cookie_file, operation, origin, payload)
+            status, response = mutate(args.host, args.port, cookie_file, operation, origin, {**payload, "displayName": SMOKE_DISPLAY_NAME} if operation == "register" else payload)
             if status != expected:
                 raise RuntimeError("IAM registration/login response was unsuccessful")
             token, session_id, user_id = authenticated_response(response, public, args.issuer, args.audience)

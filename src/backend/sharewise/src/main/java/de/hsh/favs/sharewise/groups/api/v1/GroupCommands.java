@@ -89,12 +89,14 @@ final class GroupCommands {
                 case REQUIRED -> "Enter a group name.";
                 case TOO_LONG -> "Use at most " + GroupName.MAX_CODE_POINTS + " characters.";
                 case CONTROL_CHARACTER -> "Remove tabs, line breaks and other control characters.";
+                case UNSUPPORTED_CHARACTER -> "Enter supported text containing a letter or number.";
             });
             case DESCRIPTION -> new ValidationError(DESCRIPTION_FIELD, code(violation.reason()),
                 switch (violation.reason()) {
                     case REQUIRED -> "Enter a description.";
                     case TOO_LONG -> "Use at most " + GroupDescription.MAX_CODE_POINTS + " characters.";
                     case CONTROL_CHARACTER -> "Line breaks are allowed; remove tabs and other control characters.";
+                    case UNSUPPORTED_CHARACTER -> "Enter supported text without invisible or decorative characters.";
                 });
         };
     }
@@ -104,6 +106,7 @@ final class GroupCommands {
             case REQUIRED -> "required";
             case TOO_LONG -> "too_long";
             case CONTROL_CHARACTER -> "control_character";
+            case UNSUPPORTED_CHARACTER -> "unsupported_character";
         };
     }
 

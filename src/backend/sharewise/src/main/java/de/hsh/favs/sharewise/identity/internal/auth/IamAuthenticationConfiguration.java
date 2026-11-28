@@ -19,6 +19,7 @@ import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileService;
+import de.hsh.favs.sharewise.identity.internal.profile.ProfileLookupService;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileStore;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -142,6 +143,12 @@ class IamAuthenticationConfiguration {
             AccountStore accounts, SessionLifecycleStore sessions, CredentialEncoder encoder,
             LoginLockoutPolicy lockouts, @Qualifier("iamClock") Clock clock) {
         return new PasswordChangeService(identity, transactions, accounts, sessions, encoder, lockouts, clock);
+    }
+
+    @Bean
+    @Scope("operation")
+    ProfileLookupService iamProfileLookupService(IdentityContext identity, Transactions transactions, AccountProfileStore profiles) {
+        return new ProfileLookupService(identity, transactions, profiles);
     }
 
     @Bean

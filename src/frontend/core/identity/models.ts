@@ -4,6 +4,15 @@ export interface IdentityCredentials {
     readonly password: string;
 }
 
+export interface RegistrationRequest extends IdentityCredentials {
+    readonly displayName: string;
+}
+
+export interface PublicProfile {
+    readonly userId: string;
+    readonly displayName: string;
+}
+
 export interface AuthenticationResponse {
     readonly accessToken: string;
     readonly tokenType: 'Bearer';
@@ -27,7 +36,7 @@ export type SessionContextEvent =
 export interface AccountProfile {
     readonly userId: string;
     readonly email: string;
-    readonly displayName: string | null;
+    readonly displayName: string;
 }
 
 /** Credentials for bearer-authorized password replacement; never persist or log these values. */

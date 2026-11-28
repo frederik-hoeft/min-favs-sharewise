@@ -67,7 +67,7 @@ public class UserProfiles extends TableImpl<UserProfilesRecord> {
     /**
      * The column <code>identity.user_profiles.display_name</code>.
      */
-    public final TableField<UserProfilesRecord, String> DISPLAY_NAME = createField(DSL.name("display_name"), SQLDataType.CLOB, this, "");
+    public final TableField<UserProfilesRecord, String> DISPLAY_NAME = createField(DSL.name("display_name"), SQLDataType.CLOB.nullable(false), this, "");
 
     private UserProfiles(Name alias, Table<UserProfilesRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -161,8 +161,8 @@ public class UserProfiles extends TableImpl<UserProfilesRecord> {
     @Override
     public List<Check<UserProfilesRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("identity_user_profiles_display_name_content"), "(((display_name IS NULL) OR ((display_name ~ '[^[:space:]]'::text) AND (display_name !~ '[[:cntrl:]]'::text) AND (display_name !~ '[-]'::text) AND (strpos(display_name, ' '::text) = 0) AND (strpos(display_name, ' '::text) = 0))))", true),
-            Internal.createCheck(this, DSL.name("identity_user_profiles_display_name_length"), "(((display_name IS NULL) OR ((char_length(display_name) >= 1) AND (char_length(display_name) <= 80))))", true)
+            Internal.createCheck(this, DSL.name("identity_user_profiles_display_name_content"), "(((display_name ~ '[^[:space:]]'::text) AND (display_name !~ '[[:cntrl:]]'::text) AND (display_name !~ '[-]'::text) AND (strpos(display_name, ' '::text) = 0) AND (strpos(display_name, ' '::text) = 0)))", true),
+            Internal.createCheck(this, DSL.name("identity_user_profiles_display_name_length"), "(((char_length(display_name) >= 1) AND (char_length(display_name) <= 80)))", true)
         );
     }
 

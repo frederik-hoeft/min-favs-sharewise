@@ -52,10 +52,13 @@ class GroupAttestationE2E {
             // Seed a revoked IAM session matching the still-valid fixture bearer. Group must
             // not query IAM eligibility while issuing its own current-state assertion.
             IntegrationTestContext.seedCommitted(fixture.database(), connection -> {
-                try (var user = connection.prepareStatement("INSERT INTO identity.users(id,email,normalized_email,password_hash) VALUES (?, 'bob@example.test', 'bob@example.test', 'fixture')");
-                     var session = connection.prepareStatement("INSERT INTO identity.sessions(id,user_id,created_at,idle_expires_at,absolute_expires_at,revoked_at) VALUES (?, ?, '2026-11-20T11:00:00Z', '2026-11-20T13:00:00Z', '2026-11-20T14:00:00Z', '2026-11-20T11:59:59Z')")) {
+                try (java.sql.PreparedStatement user = connection.prepareStatement("INSERT INTO identity.users(id,email,normalized_email,password_hash) VALUES (?, 'bob@example.test', 'bob@example.test', 'fixture')");
+                     java.sql.PreparedStatement profile = connection.prepareStatement("INSERT INTO identity.user_profiles(user_id,display_name) VALUES (?, 'Bob')");
+                     java.sql.PreparedStatement session = connection.prepareStatement("INSERT INTO identity.sessions(id,user_id,created_at,idle_expires_at,absolute_expires_at,revoked_at) VALUES (?, ?, '2026-11-20T11:00:00Z', '2026-11-20T13:00:00Z', '2026-11-20T14:00:00Z', '2026-11-20T11:59:59Z')")) {
                     user.setObject(1, BOB);
                     user.executeUpdate();
+                    profile.setObject(1, BOB);
+                    profile.executeUpdate();
                     session.setObject(1, TestAccessTokens.sessionFor(BOB));
                     session.setObject(2, BOB);
                     session.executeUpdate();

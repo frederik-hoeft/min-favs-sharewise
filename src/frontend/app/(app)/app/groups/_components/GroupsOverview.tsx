@@ -49,7 +49,7 @@ function EmptyGroups() {
       <Stack align="flex-start" gap="sm">
         <UsersThreeIcon size="2rem" aria-hidden="true" />
         <Title order={2} size="h3">No groups yet</Title>
-        <Text c="dimmed" maw="36rem">Create a group to start sharing expenses. You become its administrator.</Text>
+        <Text c="dimmed" maw="36rem">Create a group to start sharing expenses. You become its admin.</Text>
       </Stack>
     </Card>
   );

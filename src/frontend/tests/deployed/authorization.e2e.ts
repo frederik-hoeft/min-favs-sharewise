@@ -25,7 +25,7 @@ class Fixture {
         this.api = this.runtime.api;
     }
     async setup(): Promise<void> {
-        await this.runtime.auth.register(this.credentials);
+        await this.runtime.auth.register({ ...this.credentials, displayName: "Authorization smoke" });
         await this.api.post<void>(`${ROOT}/seed-user`, undefined, { expectedStatus: 204 });
         this.x = (await this.api.post<{ id: string }>(`${GROUPS}/groups`, { name: 'Authorization X' }, { expectedStatus: 201 })).id;
         this.y = (await this.api.post<{ id: string }>(`${GROUPS}/groups`, { name: 'Authorization Y' }, { expectedStatus: 201 })).id;

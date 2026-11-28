@@ -73,6 +73,7 @@ class IamAuthenticationHttpTests {
     private static final String CSRF = "/api/iam/v1/auth/csrf";
     private static final String REFRESH = "/api/iam/v1/auth/refresh";
     private static final String LOGOUT = "/api/iam/v1/auth/logout";
+    private static final String REGISTER_BODY = "{\"email\":\"user@example.com\",\"password\":\"strong-password\",\"displayName\":\"Test user\"}";
     private static final String BODY = "{\"email\":\"user@example.com\",\"password\":\"strong-password\"}";
 
     @Autowired MockMvc mvc;
@@ -98,21 +99,21 @@ class IamAuthenticationHttpTests {
 
     @Test
     void rejectsMissingCsrfOriginAndMismatchedPairBeforeDispatch() throws Exception {
-        mvc.perform(sameOrigin(post(REGISTER).contentType(MediaType.APPLICATION_JSON).content(BODY)))
+        mvc.perform(sameOrigin(post(REGISTER).contentType(MediaType.APPLICATION_JSON).content(REGISTER_BODY)))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("csrf_invalid"));
         MvcResult bootstrap = csrfBootstrap();
         Cookie cookie = requireCookie(bootstrap);
         String token = com.jayway.jsonpath.JsonPath.read(bootstrap.getResponse().getContentAsString(), "$.token");
-        mvc.perform(sameOrigin(post(REGISTER).contentType(MediaType.APPLICATION_JSON).content(BODY))
+        mvc.perform(sameOrigin(post(REGISTER).contentType(MediaType.APPLICATION_JSON).content(REGISTER_BODY))
                     .cookie(cookie).header("X-XSRF-TOKEN", "invalid"))
             .andExpect(status().isForbidden());
         mvc.perform(post(REGISTER).with(secureRequest()).contentType(MediaType.APPLICATION_JSON)
-                    .content(BODY).cookie(cookie).header("X-XSRF-TOKEN", token))
+                    .content(REGISTER_BODY).cookie(cookie).header("X-XSRF-TOKEN", token))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("invalid_origin"));
         mvc.perform(post(REGISTER).with(secureRequest()).header(HttpHeaders.ORIGIN, "https://attacker.example")
-                    .contentType(MediaType.APPLICATION_JSON).content(BODY)
+                    .contentType(MediaType.APPLICATION_JSON).content(REGISTER_BODY)
                     .cookie(cookie).header("X-XSRF-TOKEN", token))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("invalid_origin"));
@@ -146,7 +147,7 @@ class IamAuthenticationHttpTests {
         when(ingress.dispatch(eq(RegistrationService.class), any())).thenReturn(Result.ok(success()));
         MvcResult bootstrap = csrfBootstrap();
         String token = com.jayway.jsonpath.JsonPath.read(bootstrap.getResponse().getContentAsString(), "$.token");
-        MvcResult accepted = mvc.perform(sameOrigin(post(REGISTER).contentType(MediaType.APPLICATION_JSON).content(BODY))
+        MvcResult accepted = mvc.perform(sameOrigin(post(REGISTER).contentType(MediaType.APPLICATION_JSON).content(REGISTER_BODY))
                     .cookie(requireCookie(bootstrap)).header("X-XSRF-TOKEN", token))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.accessToken").value("signed-token"))
@@ -178,7 +179,7 @@ class IamAuthenticationHttpTests {
         String token = com.jayway.jsonpath.JsonPath.read(bootstrap.getResponse().getContentAsString(), "$.token");
         Cookie cookie = requireCookie(bootstrap);
         mvc.perform(sameOrigin(post(REGISTER).contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"email\":\"invalid\",\"password\":\"123\"}"))
+                    .content("{\"email\":\"invalid\",\"password\":\"123\",\"displayName\":\"Test user\"}"))
                     .cookie(cookie).header("X-XSRF-TOKEN", token))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("validation_failed"))

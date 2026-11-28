@@ -1,13 +1,14 @@
 package de.hsh.favs.sharewise.identity.internal.auth.account;
 
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import java.util.Optional;
 import java.util.UUID;
 
 /** Account operations within the caller's active transaction segment. */
 public interface AccountStore {
 
-    /** Insert a new account, or return empty when the canonical email already exists. */
-    Optional<AccountSnapshot> insert(EmailAddress email, String encodedPassword);
+    /** Insert a new account and its required profile atomically in the active segment, or return empty when the canonical email already exists. */
+    Optional<AccountSnapshot> insert(EmailAddress email, String encodedPassword, DisplayName displayName);
 
     /** Snapshot credentials for verification outside a row-locking transaction. */
     Optional<AccountSnapshot> findByEmail(EmailAddress email);

@@ -235,7 +235,7 @@ class IdentityVerificationE2E {
 
     private static AuthenticationResult register(OperationDispatcher dispatcher, String email) {
         return dispatcher.dispatch(RegistrationService.class, service -> service.register(
-                RegistrationCommand.from(email, PASSWORD, PasswordPolicy.initial())))
+                RegistrationCommand.from(email, PASSWORD, "Test user", PasswordPolicy.initial())))
                 .fold(value -> value, failure -> { throw new AssertionError(failure); });
     }
 
