@@ -34,13 +34,13 @@ A published event is a versioned, immutable record in the producing context's `e
 
 Persisted payloads are deserialized strictly: unknown properties fail and record components are required. Adding, removing or renaming a field is therefore a new event version, not an in-place change. Renaming or moving an event class, or renaming or removing a listener ID, first requires draining its outstanding publications. Rows for a listener that no longer exists are never completed; an operator deletes them explicitly as the migration role after confirming that their effect is not needed.
 
-The registry timestamps publications with the application's `Clock` bean, which is the system clock in production. A fixed clock in a test context also fixes the registry's notion of "now", so tests that depend on resubmission age their rows explicitly.
+The registry timestamps publications with an unqualified default `Clock` bean if one exists and otherwise with the system UTC clock. Module clocks such as IAM's and Group's are qualifier-only beans, so production uses the system clock and several modules can define clocks without making that lookup ambiguous. A test that defines a default or primary fixed clock also fixes the registry's notion of "now", so tests that depend on resubmission age their rows explicitly.
 
 ## IAM to Group user projection
 
 The first integration keeps Group Management's local user registry in step with IAM. Registration publishes `UserRegisteredV1(eventId, userId, occurredAt)` on its commit path, inside the registration transaction. Group's listener `groups.iam-user-projection.v1` dispatches `IamUserProjectionService`, which inserts the user ID into `groups.users` with `INSERT … ON CONFLICT DO NOTHING`. Duplicate and concurrent deliveries therefore have the same effect as one, and Group needs no inbox. Until the event is delivered, a Group request from the newly registered user fails with `403 group_user_unknown` and succeeds on retry.
 
-Accounts created before the listener existed are copied once by the bootstrap data migration `platform/V202611251410__platform_bootstrap_group_users_from_identity.sql`, applied while the application is stopped. This deployment-time migration is the only place where one context's data is read for another; at runtime, Group never reads IAM tables.
+Accounts created before the listener existed are copied once by the bootstrap data migration `platform/V202611281010__platform_bootstrap_group_users_from_identity.sql`, applied while the application is stopped. This deployment-time migration is the only place where one context's data is read for another; at runtime, Group never reads IAM tables.
 
 ## Verification
 

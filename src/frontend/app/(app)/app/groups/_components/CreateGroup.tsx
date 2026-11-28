@@ -78,7 +78,7 @@ export function CreateGroup() {
     <Stack gap="xl" maw="40rem">
       <Stack gap="xs">
         <Title order={1}>Create a group</Title>
-        <Text c="dimmed">You become the group&apos;s first member and its administrator.</Text>
+        <Text c="dimmed">You become the group&apos;s first member and its admin.</Text>
       </Stack>
       <Card padding="xl">
         <GroupMetadataForm

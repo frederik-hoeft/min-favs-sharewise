@@ -58,6 +58,7 @@ class IamAuthenticationE2E extends E2ETestBase {
             AuthenticationResult registered = success(dispatcher.dispatch(RegistrationService.class,
                     service -> service.register(registration("User@Example.org"))));
             assertCount(fixture.connectAsApplication(), "identity.users", 1);
+            assertCount(fixture.connectAsApplication(), "identity.user_profiles", 1);
             assertCount(fixture.connectAsApplication(), "identity.sessions", 1);
             assertCount(fixture.connectAsApplication(), "identity.refresh_tokens", 1);
             for (int i = 0; i < 2; i++) {
@@ -97,6 +98,7 @@ class IamAuthenticationE2E extends E2ETestBase {
             assertThrows(IllegalStateException.class, () -> dispatcher.dispatch(RegistrationService.class,
                     service -> service.register(registration("User@example.org"))));
             assertCount(fixture.connectAsApplication(), "identity.users", 0);
+            assertCount(fixture.connectAsApplication(), "identity.user_profiles", 0);
             assertCount(fixture.connectAsApplication(), "identity.sessions", 0);
             assertCount(fixture.connectAsApplication(), "identity.refresh_tokens", 0);
             issuer.fail.set(false);
@@ -106,8 +108,25 @@ class IamAuthenticationE2E extends E2ETestBase {
                     dispatcher.dispatch(RegistrationService.class,
                             service -> service.register(registration("  USER@EXAMPLE.ORG  "))));
             assertCount(fixture.connectAsApplication(), "identity.users", 1);
+            assertCount(fixture.connectAsApplication(), "identity.user_profiles", 1);
             assertCount(fixture.connectAsApplication(), "identity.sessions", 1);
             assertCount(fixture.connectAsApplication(), "identity.refresh_tokens", 1);
+        }, ProductionEntityScanConfiguration.class, Fixtures.class);
+    }
+
+    @Test
+    void failedProfileInsertRollsBackAccountAndAuthentication() {
+        runTest(fixture -> {
+            try (Connection migrator = fixture.database().connectAsMigrator();
+                 java.sql.Statement sql = migrator.createStatement()) {
+                sql.execute("alter table identity.user_profiles add constraint test_profile_rejection check (display_name <> 'Test user')");
+            }
+            OperationDispatcher dispatcher = fixture.context().getBean(OperationDispatcher.class);
+            assertThrows(RuntimeException.class, () -> dispatcher.dispatch(RegistrationService.class,
+                    service -> service.register(registration("User@example.org"))));
+            for (String table : java.util.List.of("identity.users", "identity.user_profiles", "identity.sessions", "identity.refresh_tokens")) {
+                assertCount(fixture.connectAsApplication(), table, 0);
+            }
         }, ProductionEntityScanConfiguration.class, Fixtures.class);
     }
 
@@ -187,7 +206,7 @@ class IamAuthenticationE2E extends E2ETestBase {
     }
 
     private static RegistrationCommand registration(String email) {
-        return RegistrationCommand.from(email, PASSWORD, PasswordPolicy.initial());
+        return RegistrationCommand.from(email, PASSWORD, "Test user", PasswordPolicy.initial());
     }
 
     private static LoginCommand login(String password) {

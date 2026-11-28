@@ -1,8 +1,8 @@
 import { ApiError } from '@/lib/api';
 
 /** All shared-refresh-cookie mutations, including future refresh/logout, use this lock. */
-export const AUTH_COOKIE_LOCK = 'sharewise:iam:refresh-cookie';
-export const AUTH_COOKIE_LOCK_WAIT_MS = 30_000;
+export const AUTH_COOKIE_LOCK: string = 'sharewise:iam:refresh-cookie';
+export const AUTH_COOKIE_LOCK_WAIT_MS: number = 30_000;
 
 function lockUnavailable(): ApiError {
     return new ApiError({
@@ -29,15 +29,15 @@ export class AuthCookieLock {
         }
         if (!lockManager || typeof lockManager.request !== 'function') throw lockUnavailable();
 
-        const acquisition = new AbortController();
-        const deadline = setTimeout(() => acquisition.abort(), AUTH_COOKIE_LOCK_WAIT_MS);
-        let entered = false;
-        const cancelQueued = () => { if (!entered) acquisition.abort(); };
+        const acquisition: AbortController = new AbortController();
+        const deadline: ReturnType<typeof setTimeout> = setTimeout(() => acquisition.abort(), AUTH_COOKIE_LOCK_WAIT_MS);
+        let entered: boolean = false;
+        const cancelQueued: () => void = () => { if (!entered) acquisition.abort(); };
         signal?.addEventListener('abort', cancelQueued, { once: true });
         if (signal?.aborted) acquisition.abort();
         try {
-            const result = await lockManager.request(
-                AUTH_COOKIE_LOCK, { mode: 'exclusive', signal: acquisition.signal }, async (lock) => {
+            const result: Awaited<T> = await lockManager.request(
+                AUTH_COOKIE_LOCK, { mode: 'exclusive', signal: acquisition.signal }, async (lock: Lock | null): Promise<T> => {
                     // A non-conforming lock provider must not run timed-out work later.
                     if (!lock || acquisition.signal.aborted) throw lockUnavailable();
                     entered = true;
@@ -50,7 +50,7 @@ export class AuthCookieLock {
             );
             if (!entered) throw lockUnavailable();
             return result;
-        } catch (error) {
+        } catch (error: unknown) {
             // Preserve transport/validation errors from inside the lock; hide
             // unsupported or failed lock-acquisition diagnostics from the user.
             if (!entered) throw lockUnavailable();

@@ -4,7 +4,7 @@
 
 **Audience:** Teams implementing IAM (P2.1), Group Management (P2.2), and their first durable integration (P2.4a). The purpose is to let each team choose its own internal adapters and vertical slices without independently redefining identity, schema ownership, or the integration lifecycle.
 
-The [domain model](../../data-model-design.md) owns business invariants, the [security design](../../stack/security.md) owns the trust model, and the [messaging design](../../stack/messaging.md) owns delivery guarantees. The [implemented verified-credential architecture](../../architecture/authorization.md) explains the operation identity and evidence foundation; the [domain-context proposal](../../stack/claims-context-proposal.md) covers later Group attestation policies. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
+The [domain model](../../data-model-design.md) owns business invariants, the [security design](../../stack/security.md) owns the trust model, and the [messaging design](../../stack/messaging.md) owns delivery guarantees. The [implemented verified-credential architecture](../../architecture/verified-credentials.md) explains the operation identity and evidence foundation; the [distributed authorization architecture](../../architecture/distributed-authorization.md) covers Group attestation policies. This handoff fixes the *shared assumptions between those designs* and provides a column-level reference for the P2.0c ER artifact; feature specifications still own final DDL and behavior.
 
 ## Boundaries and the first usable application operation
 
@@ -35,7 +35,7 @@ UUID actual = IdentityTestFixture.withUser(userId, () ->
     dispatcher.dispatch(GroupOperation.class, GroupOperation::run));
 ```
 
-The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login, session creation and refresh/logout are implemented, and IAM publishes [live eligibility verification](../../architecture/authorization.md#synchronous-authority-verification); Group does not yet use it for local-miss provisioning. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
+The fixture is in test sources and must be explicitly imported; production has **no fallback identity provider**. Production IAM wiring derives this same interface from verified primary access tokens within the operation scope; initial login, session creation and refresh/logout are implemented, and IAM publishes [live eligibility verification](../../architecture/verified-credentials.md#synchronous-authority-verification); Group does not yet use it for local-miss provisioning. The test fixture supplies **identity**, not a real `groups.users` row: P2.2 separately seeds its closed-world local users and tests membership/role policies against its own repository.
 
 Group creation and invitation redemption use the **authenticated caller ID**, never an arbitrary `user_id` supplied in a request body. Group membership mutations check current Group-owned data, including last-member and last-administrator constraints. A previously issued Group attestation is not authoritative for mutations in Group Management. Future downstream consumers may use short-lived attestations as specified in the [security architecture](../../stack/security.md#issuing-and-using-domain-attestations), but **P2.2a–c do not need to issue or consume them**.
 
@@ -69,7 +69,7 @@ The [ER PDF](../../assets/er-data-model.pdf) and [SVG](../../assets/er-data-mode
 
 **Provenance labels:** **ER** means an exact column/default/limit or check chosen in the P2.0c diagram; **Domain** is a business requirement from [data-model-design.md](../../data-model-design.md); **Security** comes from [security.md](../../stack/security.md); **Messaging** comes from [messaging.md](../../stack/messaging.md); **Backlog** is the concrete Phase 2 delivery contract in [backlog.md](../tasks/backlog.md); **P1.2** is the [implemented persistence foundation](../../architecture/persistence.md). A column can be **ER-selected** even when no earlier document mandates that exact name, length or representation. Teams should not turn that implementation choice into a newly invented product rule.
 
-P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; P2.1c added the optional `identity.user_profiles` table and generated IAM jOOQ mapping. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. P2.2b/c added `groups.invitations`; P2.4a added the `messaging.event_publication` registry and the bootstrap of `groups.users` from `identity.users`. The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
+P1.2 created the PostgreSQL 18 context namespaces and Flyway history with separate migration and runtime roles. P2.1a added `identity.users`, `identity.sessions` and `identity.refresh_tokens`; IAM also owns `identity.user_profiles` and its generated jOOQ mapping, with required display names and a profile created for each account. P2.2a added `groups.users`, `groups.groups` (with the `version` extension described below) and `groups.group_members` and the committed Group jOOQ model. P2.2b/c added `groups.invitations`; P2.4a added the `messaging.event_publication` registry and the bootstrap of `groups.users` from `identity.users`. The reference below retains ER-selected decisions; the committed Flyway migrations and generated jOOQ sources are authoritative for existing IAM and Group DDL.
 
 ### IAM: `identity.users`
 
@@ -88,12 +88,12 @@ This is the authoritative account/credential row. Email is normalized in the bac
 
 ### IAM: `identity.user_profiles`
 
-Profile data is separated from credentials. An IAM user has **zero or one** profile row, using `user_id` as both PK and FK. Registration does not create a profile; an authenticated update creates or updates the row as needed. A missing row and a null display name are equivalent to callers. The profile migration enforces the reviewed display-name storage constraints; the complete user-facing validation rule belongs to the [P2.1c specification](../tasks/p2.1c-account-updates/specification.md#profile-storage-and-behavior).
+Profile data is separated from credentials. Registration creates exactly one profile in the account transaction, and authenticated updates modify the existing row. See [IAM profile persistence](../../architecture/persistence.md#iam-profile-persistence) for the application invariant and database constraints, and [profile visibility](../../stack/security.md#user-profile-visibility) for registration, account and public lookup behavior.
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
-| `user_id` (PK, FK → `identity.users.id`) | `uuid` | One-to-zero/one user profile relationship (**Domain, ER**); same-schema FK permits physical integrity. |
-| `display_name` | `text NULL` | Optional user-facing profile name (**ER**; implemented by **P2.1c**); not a registration requirement. |
+| `user_id` (PK, FK → `identity.users.id`) | `uuid` | One profile per account logically; PK/FK enforce zero or one physically (**Domain, ER**). |
+| `display_name` | `text NOT NULL` | Required, non-unique presentation name (**Domain, ER**); registration supplies it. |
 
 ### IAM: `identity.sessions`
 
@@ -144,7 +144,7 @@ Group Management writes this table through an idempotent provisioning operation 
 | `created_at` | `timestamptz DEFAULT now()` | Creation/sorting metadata (**ER**), not a membership-history journal. |
 | `version` | `bigint DEFAULT 0` | Optimistic concurrency for metadata replacement (**P2.2a extension to the ER**). A replacement names the version it was based on and increments it by exactly one; a stale version gets `409 group_version_conflict`. Membership and invitation changes do not increment this version; the future `membership_revision` has a separate replication contract. |
 
-The ER requires `CHECK (length(btrim(name)) > 0)`; the migration adds `CHECK (version >= 0)`. Group name is not globally unique. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
+The ER requires `CHECK (length(btrim(name)) > 0)`; the migration adds `CHECK (version >= 0)`. Group name is not globally unique. The application applies the [shared text input policy](../../stack/security.md#human-readable-text-validation) on metadata assignment; the database checks are structural, not a duplicate Unicode allowlist. Creating a surviving group and its first administrator must be atomic; the database's single-row checks cannot prove that every group always has a member and administrator.
 
 ### Group Management: `groups.group_members`
 
@@ -166,7 +166,7 @@ Invitation links are **shareable bearer capabilities**, not messages addressed t
 
 | Column in ER | PostgreSQL type / default | Why it exists; provenance |
 | --- | --- | --- |
-| `id` (PK) | `uuid DEFAULT uuidv7()` | Link-record selector; token format `<id>.<base64url(secret)>` (**ER**; see [opaque application tokens](../../architecture/authorization.md#opaque-application-tokens)). |
+| `id` (PK) | `uuid DEFAULT uuidv7()` | Link-record selector; token format `<id>.<base64url(secret)>` (**ER**; see [opaque application tokens](../../architecture/verified-credentials.md#opaque-application-tokens)). |
 | `group_id` (FK → `groups.groups.id`, indexed) | `uuid` | Invitation is owned by one Group; listing and group deletion invalidation (**Domain, ER**). |
 | `verifier_hash` | `bytea` | SHA-256 verifier of 32 CSPRNG secret bytes; link secret may only be returned on creation and must not be stored or logged (**ER** security choice supporting **Backlog P2.2c** forged-link rejection). |
 | `created_at` | `timestamptz DEFAULT now()` | Link creation and expiration baseline (**ER**). |

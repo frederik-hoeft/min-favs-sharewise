@@ -224,6 +224,19 @@ class ProductionNginxTests(unittest.TestCase):
                         "x-forwarded-by", "x-forwarded-protocol"):
             self.assertNotIn(removed, observed)
 
+    def test_api_proxy_preserves_supplementary_credential_field_with_primary_and_cookies(self):
+        # Synthetic transport-sized values, not real credentials. The backend is
+        # responsible for compact JWS parsing and its tighter aggregate bound.
+        supplementary = ",".join("a" * 2000 + ".b.c" for _ in range(4))
+        primary = "Bearer " + "p" * 4096
+        status, _, body = self.request("GET", "/api/groups/v1/__test/transport", headers={
+            "Authorization": primary, "ShareWise-Attestation": supplementary, "Cookie": "session=example"})
+        self.assertEqual(status, 200)
+        observed = {name.lower(): value for name, value in json.loads(body)["headers"].items()}
+        self.assertEqual(observed["authorization"], primary)
+        self.assertEqual(observed["sharewise-attestation"], supplementary)
+        self.assertEqual(observed["cookie"], "session=example")
+
     def test_api_body_size_limit_rejects_regular_and_chunked_requests(self):
         # Nginx is the single enforced body-size boundary for the shipped
         # deployment. Large requests must never be proxied to MVC.

@@ -34,15 +34,25 @@ services:
       SPRING_PROFILES_ACTIVE: production
       SHAREWISE_IAM_AUTH_ENABLED: "true"
       SHAREWISE_IAM_AUTH_ISSUER: ${SHAREWISE_IAM_ISSUER:-https://localhost:8443}
-      SHAREWISE_IAM_AUTH_AUDIENCE: ${SHAREWISE_IAM_AUDIENCE:-sharewise-api}
+      SHAREWISE_IAM_AUTH_AUDIENCE: ${SHAREWISE_IAM_AUDIENCE:-sw-api-v1}
       SHAREWISE_IAM_AUTH_ACTIVE_KEY_ID: ${SHAREWISE_IAM_ACTIVE_KEY_ID:-iam-local-1}
       SHAREWISE_IAM_AUTH_KEYS_0_ID: ${SHAREWISE_IAM_ACTIVE_KEY_ID:-iam-local-1}
       SHAREWISE_IAM_AUTH_KEYS_0_PUBLIC_KEY_FILE: /run/iam/public/active.pem
       SHAREWISE_IAM_AUTH_KEYS_0_PRIVATE_KEY_FILE: /run/iam/private/active.pem
+      SHAREWISE_GROUPS_ATTESTATION_ENABLED: "true"
+      SHAREWISE_GROUPS_ATTESTATION_ISSUER: ${SHAREWISE_GROUPS_ISSUER:-${SHAREWISE_IAM_ISSUER:-https://localhost:8443}/api/groups/v1/domain-principal}
+      SHAREWISE_GROUPS_ATTESTATION_TRUSTED_PRIMARY_ISSUER: ${SHAREWISE_IAM_ISSUER:-https://localhost:8443}
+      SHAREWISE_GROUPS_ATTESTATION_AUDIENCE: ${SHAREWISE_GROUPS_AUDIENCE:-${SHAREWISE_IAM_AUDIENCE:-sw-api-v1}}
+      SHAREWISE_GROUPS_ATTESTATION_ACTIVE_KEY_ID: ${SHAREWISE_GROUPS_ACTIVE_KEY_ID:-groups-local-1}
+      SHAREWISE_GROUPS_ATTESTATION_KEYS_0_ID: ${SHAREWISE_GROUPS_ACTIVE_KEY_ID:-groups-local-1}
+      SHAREWISE_GROUPS_ATTESTATION_KEYS_0_PUBLIC_KEY_FILE: /run/groups/public/active.pem
+      SHAREWISE_GROUPS_ATTESTATION_KEYS_0_PRIVATE_KEY_FILE: /run/groups/private/active.pem
     volumes:
       - backend_secrets:/run/secrets:ro
       - iam_signing_private:/run/iam/private:ro
       - iam_verification_public:/run/iam/public:ro
+      - groups_signing_private:/run/groups/private:ro
+      - groups_verification_public:/run/groups/public:ro
     networks:
       - edge
       - data
@@ -51,6 +61,8 @@ services:
         condition: service_healthy
         restart: true
       iam-key-init:
+        condition: service_completed_successfully
+      groups-key-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent --max-time 5 http://127.0.0.1:8080/api/system/v1/health > /dev/null"]
@@ -126,6 +138,44 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Same provisioning implementation, independent authority and volumes.
+  groups-key-init:
+    image: ${SHAREWISE_GROUPS_KEY_INIT_IMAGE:-sharewise-groups-key-init:local}
+    build:
+      context: iam-key-init
+    entrypoint: ["/usr/local/bin/init-jwt-keys.sh"]
+    restart: "no"
+    network_mode: none
+    read_only: true
+    environment:
+      JWT_KEY_AUTHORITY: groups
+      JWT_KEY_ID: ${SHAREWISE_GROUPS_ACTIVE_KEY_ID:-groups-local-1}
+      JWT_KEY_MODE: ${SHAREWISE_GROUPS_KEY_MODE:-require-existing}
+    volumes:
+      - groups_signing_private:/keys/private
+      - groups_verification_public:/keys/public
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=1m,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+
+  groups-public-export:
+    profiles: [setup]
+    image: alpine:3.24
+    network_mode: none
+    read_only: true
+    volumes:
+      - groups_verification_public:/keys/public:ro
+    entrypoint: ["cat", "/keys/public/active.pem"]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
   # Only public verification material is exposed to this operator-facing service.
   iam-public-export:
     profiles: [setup]
@@ -152,3 +202,5 @@ volumes:
   tls_certs: {}
   iam_signing_private: {}
   iam_verification_public: {}
+  groups_signing_private: {}
+  groups_verification_public: {}

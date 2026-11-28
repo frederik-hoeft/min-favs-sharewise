@@ -1,0 +1,12 @@
+# Explicitly selected by test-compose.sh --browser AFTER the unpublished
+# automated authorization smoke succeeds. Never select for a normal stack.
+services:
+  frontend:
+    image: ${COMPOSE_PROJECT_NAME:?Disposable project required}-frontend-browser:local
+    build:
+      context: ../src/frontend
+      dockerfile: Dockerfile.e2e
+      target: authorization-browser
+    ports:
+      - "127.0.0.1:${SHAREWISE_HTTP_PORT:?Disposable HTTP port required}:80"
+      - "127.0.0.1:${SHAREWISE_HTTPS_PORT:?Disposable HTTPS port required}:443"

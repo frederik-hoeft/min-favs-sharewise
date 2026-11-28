@@ -9,9 +9,10 @@ import de.hsh.favs.sharewise.identity.internal.auth.ChangePasswordCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.LoginCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.RegistrationCommand;
 import de.hsh.favs.sharewise.identity.internal.auth.credential.PasswordPolicy;
-import de.hsh.favs.sharewise.identity.internal.profile.DisplayNameUpdate;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AccountProfileUpdateRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.AuthCredentialsRequest;
+import de.hsh.favs.sharewise.identity.internal.web.dto.RegistrationRequest;
 import de.hsh.favs.sharewise.identity.internal.web.dto.ChangePasswordRequest;
 import de.hsh.favs.sharewise.shared.validation.DomainObjectFactory;
 import org.junit.jupiter.api.Test;
@@ -32,15 +33,15 @@ class AuthFactoryWiringTests {
                 .run(context -> {
                     assertNull(context.getStartupFailure());
                     FactoryConsumer consumer = context.getBean(FactoryConsumer.class);
-                    AuthCredentialsRequest registration = new AuthCredentialsRequest(
-                            "One@example.org", "password1");
+                    RegistrationRequest registration = new RegistrationRequest(
+                            "One@example.org", "password1", "Test user");
                     assertTrue(consumer.registrations.createFrom(registration).isSuccess());
                     assertEquals("one@example.org", consumer.logins.createFrom(
                             new AuthCredentialsRequest("ONE@example.org", "x"))
                             .fold(command -> command.email().normalized(), errors -> "unexpected"));
-                    AccountProfileUpdateRequest update = new AccountProfileUpdateRequest("Alice", false);
+                    AccountProfileUpdateRequest update = new AccountProfileUpdateRequest("Alice");
                     assertEquals("Alice", consumer.updates.createFrom(update)
-                            .fold(DisplayNameUpdate::value, errors -> "unexpected"));
+                            .fold(DisplayName::value, errors -> "unexpected"));
                     assertTrue(consumer.passwordChanges.createFrom(
                             new ChangePasswordRequest("current-password", "new-password")).isSuccess());
                 });
@@ -57,18 +58,18 @@ class AuthFactoryWiringTests {
     }
 
     static final class FactoryConsumer {
-        final DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations;
+        final DomainObjectFactory<RegistrationCommand, RegistrationRequest> registrations;
         final DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins;
-        final DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates;
+        final DomainObjectFactory<DisplayName, AccountProfileUpdateRequest> updates;
         final DomainObjectFactory<ChangePasswordCommand, ChangePasswordRequest> passwordChanges;
 
         FactoryConsumer(
                 @Qualifier("registrationCommandFactory")
-                DomainObjectFactory<RegistrationCommand, AuthCredentialsRequest> registrations,
+                DomainObjectFactory<RegistrationCommand, RegistrationRequest> registrations,
                 @Qualifier("loginCommandFactory")
                 DomainObjectFactory<LoginCommand, AuthCredentialsRequest> logins,
                 @Qualifier("accountProfileUpdateFactory")
-                DomainObjectFactory<DisplayNameUpdate, AccountProfileUpdateRequest> updates,
+                DomainObjectFactory<DisplayName, AccountProfileUpdateRequest> updates,
                 @Qualifier("passwordChangeCommandFactory")
                 DomainObjectFactory<ChangePasswordCommand, ChangePasswordRequest> passwordChanges) {
             this.registrations = registrations;

@@ -10,24 +10,21 @@ import de.hsh.favs.sharewise.identity.internal.auth.session.SessionPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionLifecycleStore;
 import de.hsh.favs.sharewise.identity.internal.auth.session.SessionStore;
 import de.hsh.favs.sharewise.identity.internal.auth.token.AccessTokenIssuer;
-import de.hsh.favs.sharewise.identity.internal.auth.token.IamPemKeyLoader;
+import de.hsh.favs.sharewise.shared.infra.security.JwtPemKeyConfiguration;
 import de.hsh.favs.sharewise.identity.internal.auth.token.PrimaryAccessTokenIssuer;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenParser;
-import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
-import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileService;
+import de.hsh.favs.sharewise.identity.internal.profile.ProfileLookupService;
 import de.hsh.favs.sharewise.identity.internal.profile.AccountProfileStore;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -49,7 +46,9 @@ import org.springframework.context.annotation.Scope;
 @EnableConfigurationProperties(IamAuthenticationSettings.class)
 class IamAuthenticationConfiguration {
 
-    @Bean("iamClock")
+    // Qualifier-only: an unqualified Clock lookup (such as Spring Modulith's event registry) must
+    // not see module clocks, or several modules' clocks would make that lookup ambiguous.
+    @Bean(name = "iamClock", defaultCandidate = false)
     Clock iamClock() {
         return Clock.systemUTC();
     }
@@ -84,28 +83,13 @@ class IamAuthenticationConfiguration {
                 || settings.keys() == null || settings.keys().isEmpty()) {
             throw new IllegalStateException("IAM primary JWT trust and signing configuration is required");
         }
-        List<JwtEcKey> keys = new ArrayList<>();
-        int active = 0;
-        for (IamAuthenticationSettings.Key key : settings.keys()) {
-            if (settings.activeKeyId().equals(key.id())) {
-                active++;
-                keys.add(IamPemKeyLoader.signing(key.id(), key.publicKeyFile(), key.privateKeyFile()));
-            } else {
-                if (key.privateKeyFile() != null && !key.privateKeyFile().isBlank()) {
-                    throw new IllegalStateException("Only the active IAM signing key may contain private material");
-                }
-                keys.add(IamPemKeyLoader.verification(key.id(), key.publicKeyFile()));
-            }
-        }
-        if (active != 1) {
-            throw new IllegalStateException("Exactly one active IAM signing key must be configured");
-        }
         JwtCredentialProfile profile = new JwtCredentialProfile(
                 "iam-access", settings.issuer(), "sw-iam-access+jwt", Set.of(settings.audience()),
                 JwtCredentialProfile.Kind.PRIMARY, Set.of(), settings.session().accessLifetime(),
                 Duration.ofSeconds(30), 4096);
         return new JwtCredentialCodec(profile,
-                new Es256JwtSignatureService(keys, Optional.of(settings.activeKeyId())), clock);
+                JwtPemKeyConfiguration.load(settings.keys().stream().map(key -> new JwtPemKeyConfiguration.Key(
+                    key.id(), key.publicKeyFile(), key.privateKeyFile())).toList(), Optional.of(settings.activeKeyId())), clock);
     }
 
     @Bean
@@ -167,6 +151,12 @@ class IamAuthenticationConfiguration {
             AccountStore accounts, SessionLifecycleStore sessions, CredentialEncoder encoder,
             LoginLockoutPolicy lockouts, @Qualifier("iamClock") Clock clock) {
         return new PasswordChangeService(identity, transactions, accounts, sessions, encoder, lockouts, clock);
+    }
+
+    @Bean
+    @Scope("operation")
+    ProfileLookupService iamProfileLookupService(IdentityContext identity, Transactions transactions, AccountProfileStore profiles) {
+        return new ProfileLookupService(identity, transactions, profiles);
     }
 
     @Bean

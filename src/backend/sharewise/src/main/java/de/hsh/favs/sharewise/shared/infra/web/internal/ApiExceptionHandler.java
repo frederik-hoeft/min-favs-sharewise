@@ -1,6 +1,9 @@
 package de.hsh.favs.sharewise.shared.infra.web.internal;
 
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
+import de.hsh.favs.sharewise.shared.infra.web.AttestationProblems;
+import de.hsh.favs.sharewise.shared.infra.claims.internal.SupplementaryCredentialRejected;
+import jakarta.servlet.http.HttpServletRequest;
 import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
 import java.util.ArrayList;
@@ -87,6 +90,13 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         List<FieldErrorDetail> fieldErrors = extractMethodValidationErrors(exception);
         ProblemDetail problem = ApiProblems.validationFailed(DEFAULT_VALIDATION_DETAIL, fieldErrors);
         return handleExceptionInternal(exception, problem, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    @ExceptionHandler(SupplementaryCredentialRejected.class)
+    ResponseEntity<ProblemDetail> handleSupplementaryRejection(SupplementaryCredentialRejected exception,
+            HttpServletRequest request) {
+        if (!exception.isPreEntry()) return handleUnexpected(exception);
+        return AttestationProblems.invalid(SupplementaryCredentialIngressFilter.rejectedIndex(request, exception));
     }
 
     @ExceptionHandler(Exception.class)

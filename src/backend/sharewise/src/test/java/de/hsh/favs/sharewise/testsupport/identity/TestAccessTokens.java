@@ -37,7 +37,7 @@ public final class TestAccessTokens {
     public static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     /** The trusted primary profile; it mirrors the shape that IAM configures in production. */
     public static final JwtCredentialProfile PROFILE = new JwtCredentialProfile(
-        "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sharewise-api"),
+        "iam-access", "https://iam.sharewise.test", "sw-iam-access+jwt", Set.of("sw-api-v1"),
         JwtCredentialProfile.Kind.PRIMARY, Set.of(), Duration.ofMinutes(5), Duration.ofSeconds(30), 4096);
     public static final String KEY_ID = "test";
 
@@ -79,7 +79,7 @@ public final class TestAccessTokens {
 
     /**
      * A valid access token for the user and raw {@code sid} claim. IAM admits only canonical
-     * session UUIDs, so any other value yields a token that ingress verifies but IAM rejects.
+     * session UUIDs, so any other value yields a signed token that IAM ingress rejects.
      */
     public static String accessToken(UUID user, String sessionId) {
         return PRIMARY.sign(new JwtIssueRequest(user, sessionId, "test-token", NOW.minusSeconds(1),

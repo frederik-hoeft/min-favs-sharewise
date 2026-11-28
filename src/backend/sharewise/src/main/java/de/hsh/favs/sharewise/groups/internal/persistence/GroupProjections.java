@@ -9,12 +9,8 @@ import static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupDetails;
 import de.hsh.favs.sharewise.groups.internal.application.group.GroupSummary;
 import de.hsh.favs.sharewise.groups.internal.application.membership.GroupMember;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.generated.tables.GroupMembers;
-import java.util.Optional;
 import java.util.UUID;
 import org.jooq.Condition;
 import org.jooq.Field;
@@ -71,12 +67,12 @@ final class GroupProjections {
     }
 
     static GroupDetails details(Record row, Field<GroupRole> callerRole, int memberCount) {
-        return new GroupDetails(row.get(GROUPS_.ID), metadata(row), row.get(GROUPS_.CREATED_AT).toInstant(),
+        return new GroupDetails(row.get(GROUPS_.ID), row.get(GROUPS_.NAME), row.get(GROUPS_.DESCRIPTION), row.get(GROUPS_.CREATED_AT).toInstant(),
                 row.get(GROUPS_.VERSION), memberCount, row.get(callerRole));
     }
 
     static GroupSummary summary(Record row, Field<GroupRole> callerRole) {
-        return new GroupSummary(row.get(GROUPS_.ID), metadata(row), row.get(MEMBER_COUNT), row.get(callerRole));
+        return new GroupSummary(row.get(GROUPS_.ID), row.get(GROUPS_.NAME), row.get(GROUPS_.DESCRIPTION), row.get(MEMBER_COUNT), row.get(callerRole));
     }
 
     static de.hsh.favs.sharewise.groups.internal.persistence.generated.enums.GroupRole toDatabase(GroupRole role) {
@@ -94,11 +90,5 @@ final class GroupProjections {
             case member -> GroupRole.MEMBER;
             case admin -> GroupRole.ADMIN;
         };
-    }
-
-    /** Stored values were validated on write; the domain constructors reject anything else. */
-    private static GroupMetadata metadata(Record row) {
-        return new GroupMetadata(new GroupName(row.get(GROUPS_.NAME)),
-                Optional.ofNullable(row.get(GROUPS_.DESCRIPTION)).map(GroupDescription::new));
     }
 }

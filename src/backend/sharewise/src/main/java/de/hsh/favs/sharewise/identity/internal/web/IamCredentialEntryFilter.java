@@ -1,5 +1,8 @@
 package de.hsh.favs.sharewise.identity.internal.web;
 
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
+import de.hsh.favs.sharewise.shared.infra.web.AttestationProblems;
+import de.hsh.favs.sharewise.shared.infra.web.AttestationTransport;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,6 +12,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.List;
+import java.util.OptionalInt;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
@@ -18,7 +22,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /** Applies no-store and strict same-origin checks at the HTTP boundary before credential entry. */
 final class IamCredentialEntryFilter extends OncePerRequestFilter {
 
+    private final HttpProblemWriter problems;
+
+    IamCredentialEntryFilter(HttpProblemWriter problems) {
+        this.problems = java.util.Objects.requireNonNull(problems);
+    }
+
     static final String CSRF_PATH = "/api/iam/v1/auth/csrf";
+    private static final RequestMatcher CSRF_BOOTSTRAP = PathPatternRequestMatcher.withDefaults().matcher(CSRF_PATH);
 
     // Cookie-backed authentication operations only. Bearer-only domain and IAM APIs
     // remain outside this CSRF boundary.
@@ -40,10 +51,9 @@ final class IamCredentialEntryFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI().substring(request.getContextPath().length());
         // The bearer-only password command still needs no-store on validation failures,
         // but it must not acquire the cookie-backed Origin/CSRF requirements.
-        return !CSRF_PATH.equals(path) && !isAuthMutation(request)
+        return !CSRF_BOOTSTRAP.matches(request) && !isAuthMutation(request)
                 && !BEARER_PASSWORD_CHANGE.matches(request);
     }
 
@@ -52,10 +62,17 @@ final class IamCredentialEntryFilter extends OncePerRequestFilter {
             throws IOException, ServletException {
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         response.setHeader(HttpHeaders.PRAGMA, "no-cache");
+        // Cookie-backed entry and CSRF bootstrap are primary-only/anonymous paths.
+        // In particular bootstrap creates a cookie without dispatching an application operation.
+        if ((CSRF_BOOTSTRAP.matches(request) || isAuthMutation(request))
+                && request.getHeader(AttestationTransport.HEADER) != null) {
+            problems.write(response, AttestationProblems.invalid(OptionalInt.empty()));
+            return;
+        }
         // A credential mutation must come from the exact effective request origin.
         // Forwarded headers must only be interpreted by a separately trusted proxy configuration.
         if (isAuthMutation(request) && !isSameOrigin(request)) {
-            IamHttpProblemWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
+            problems.write(response, HttpServletResponse.SC_FORBIDDEN,
                     "invalid_origin", "Origin Verification Failed");
             return;
         }

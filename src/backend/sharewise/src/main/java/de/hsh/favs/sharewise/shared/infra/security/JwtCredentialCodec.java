@@ -8,7 +8,7 @@ import java.util.Objects;
  *
  * <p>The supplied signature service is trusted configuration, never selected
  * from unverified token fields. The codec validates credential semantics after
- * cryptographic verification and before returning evidence to an
+ * cryptographic verification and before returning a candidate to an
  * {@code AuthorizationCredentialProvider}. This does not authorize domain actions
  * or check current account/session persistence.
  *
@@ -56,44 +56,29 @@ public final class JwtCredentialCodec {
     }
 
     /**
-     * Verifies a primary JWT's signature, profile and required IAM identity/session.
+     * Verifies a primary JWT's signature, profile and required primary identity/session.
      *
      * @param token untrusted compact JWS
-     * @return authenticated primary credential proof
+     * @return independently verified primary candidate
      * @throws JwtCredentialException for invalid, untrusted or expired evidence
      */
-    public VerifiedJwtCredential verifyPrimary(String token) {
+    public VerifiedJwtCredentialCandidate verifyPrimary(String token) {
         if (profile.kind() != JwtCredentialProfile.Kind.PRIMARY) {
             throw new JwtCredentialException();
         }
-        return verify(token, null);
+        return verify(token);
     }
 
     /**
-     * Verifies subordinate evidence against an accepted issuer-qualified primary
-     * credential profile and the current primary principal/session.
-     *
-     * @param token untrusted subordinate compact JWS
-     * @param primary previously admitted primary evidence for principal/session binding
-     * @return authenticated and bound subordinate proof, not a domain permission
-     * @throws JwtCredentialException for invalid, expired or unbound evidence
+     * Independently verifies a JWT against this configured profile. Subordinate
+     * candidates still require contextual principal/session correlation.
      */
-    public VerifiedJwtCredential verifySubordinate(String token, VerifiedJwtCredential primary) {
-        if (profile.kind() != JwtCredentialProfile.Kind.SUBORDINATE || primary == null
-            || primary.kind() != JwtCredentialProfile.Kind.PRIMARY
-            || !profile.trustedPrimaryProfiles().contains(new JwtCredentialProfile.Id(
-                primary.credential().origin().issuer(), primary.credential().origin().profile()))) {
-            throw new JwtCredentialException();
-        }
-        return verify(token, primary);
-    }
-
-    private VerifiedJwtCredential verify(String token, VerifiedJwtCredential primary) {
+    public VerifiedJwtCredentialCandidate verify(String token) {
         try {
             if (token == null || token.length() > profile.maximumTokenLength()) {
                 throw new JwtCredentialException();
             }
-            return claims.accept(signature.verify(token, profile.tokenType()), primary);
+            return claims.accept(signature.verify(token, profile.tokenType()));
         } catch (Exception exception) {
             // No library exceptions, untrusted content or key material cross this boundary.
             throw new JwtCredentialException();

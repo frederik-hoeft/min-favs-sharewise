@@ -9,7 +9,7 @@ import { INVITE_PATH, INVITE_RETURN_QUERY, invitationTokenFromFragment } from "@
 import { type InvitationContinuation, useInvitationContinuation } from "@/app/invitation-continuation";
 import { useGroupsApi } from "@/app/use-groups-api";
 import { useGroupResource } from "@/app/use-group-resource";
-import { classifyGroupProblem, isGroupId, validateGroupMetadata } from "@/core/groups";
+import { classifyGroupProblem, isGroupId } from "@/core/groups";
 import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
 import { groupRoutes, groupViewHref } from "@/lib/navigation/group-routes";
 import styles from "../_components/AuthenticationForm.module.scss";
@@ -60,7 +60,7 @@ export function InvitationAcceptance() {
       <Stack gap="lg">
         <Title order={1}>Join a group</Title>
         {revision === 0 && continuation ? <Group role="status"><Loader size="sm" /><Text>Checking invitation…</Text></Group> : !pending || !continuation ? <>
-          <Text c="dimmed">This invitation is unavailable. Open the original invitation link again, or ask a group administrator for a new one.</Text>
+          <Text c="dimmed">This invitation is unavailable. Open the original invitation link again, or ask a group admin for a new one.</Text>
           <Button component={Link} href={groupRoutes.list} variant="light">Go to your groups</Button>
         </> : state.status === "authenticated" ? <AuthenticatedApisProvider key={lifetime} sessionId={state.sessionId}>
           <JoinGroup key={revision} revision={revision} continuation={continuation} lifetime={lifetime} />
@@ -92,7 +92,7 @@ function JoinGroup({ continuation, lifetime, revision }: { continuation: Invitat
     const token = continuation.forSession(lifetime);
     if (!token || session.getAuthenticatedLifetime() !== lifetime || continuation.getSnapshot() !== revision) throw new Error("Invitation session changed");
     const preview = await api.previewInvitation(token);
-    if (typeof preview?.groupName !== "string" || validateGroupMetadata({ name: preview.groupName, description: "" }).name) {
+    if (typeof preview?.groupName !== "string") {
       throw new Error("Invalid invitation preview");
     }
     if (session.getAuthenticatedLifetime() !== lifetime || continuation.getSnapshot() !== revision || continuation.forSession(lifetime) !== token) {

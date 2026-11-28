@@ -1,4 +1,5 @@
-import { ApiError, parseErrorResponse } from './api-error.ts';
+import { ApiError, parseErrorResponse, requestCanceled } from './api-error.ts';
+import { RecoveryBudget, type ApiRequestContext, type ApiRequestHandler, type RequestHandler, type SentRequest, type RecoveryAction } from './handlers.ts';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly body?: unknown;
@@ -8,35 +9,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
     readonly expectedStatus?: number;
 }
 
-export const DEFAULT_API_TIMEOUT_MS = 45_000;
-
-export interface SentRequestContext {
-    /** Session identity captured when the request's bearer was attached. */
-    readonly sessionId?: string;
-    readonly method: string;
-    readonly replayable: boolean;
-    readonly hasExplicitAuthorization: boolean;
-    readonly attempt: 'initial' | 'replay';
-}
-
-/** Route hooks receive the canonical /api pathname, never the query string. */
-export interface ApiClientHooks {
-    /** Capture the initiating session synchronously, before credential preparation. */
-    readonly captureSessionId?: (path: string, headers: Readonly<Headers>) => string | undefined;
-    /** Prepare credentials for an attempt. The signal cancels this caller, not an already-submitted shared refresh. */
-    readonly onRequest?: (path: string, headers: Headers, signal?: AbortSignal) =>
-        Promise<string | undefined | void> | string | undefined | void;
-    /** Only the initial pre-dispatch 401 may request recovery and one replay. */
-    readonly onUnauthorized?: (
-        path: string, failure: ApiError, sentHeaders: Readonly<Headers>, context: SentRequestContext, signal?: AbortSignal
-    ) => Promise<boolean>;
-    /** Observe a replay's terminal 401; never a second recovery opportunity. */
-    readonly onReplayUnauthorized?: (
-        path: string, failure: ApiError, sentHeaders: Readonly<Headers>, context: SentRequestContext
-    ) => Promise<void> | void;
-    /** Guard dispatch and response delivery against a changed session. */
-    readonly assertSessionContext?: (context: SentRequestContext) => void;
-}
+export const DEFAULT_API_TIMEOUT_MS: number = 45_000;
 
 export interface ApiClient {
     request<T>(path: string, options?: ApiRequestOptions): Promise<T>;
@@ -49,15 +22,15 @@ export interface ApiClient {
 
 /** Keep routing policy and HTTP dispatch on the same unambiguous API path. */
 function normalizeApiPath(path: string): { pathname: string; target: string } {
-    const queryIndex = path.indexOf('?');
-    const rawPathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
-    const query = queryIndex === -1 ? '' : path.slice(queryIndex);
-    const rooted = rawPathname.startsWith('/') ? rawPathname : `/${rawPathname}`;
-    const pathname = rooted === '/api' || rooted.startsWith('/api/') ? rooted : `/api${rooted}`;
+    const queryIndex: number = path.indexOf('?');
+    const rawPathname: string = queryIndex === -1 ? path : path.slice(0, queryIndex);
+    const query: string = queryIndex === -1 ? '' : path.slice(queryIndex);
+    const rooted: string = rawPathname.startsWith('/') ? rawPathname : `/${rawPathname}`;
+    const pathname: string = rooted === '/api' || rooted.startsWith('/api/') ? rooted : `/api${rooted}`;
     // Route segments use unreserved ASCII characters. Reject spellings that a
     // browser, proxy or server could decode or normalize to a different route.
     if (!/^\/api(?:\/[A-Za-z0-9._~-]+)*$/.test(pathname) ||
-        pathname.split('/').some(segment => segment === '.' || segment === '..') ||
+        pathname.split('/').some((segment: string): boolean => segment === '.' || segment === '..') ||
         path.includes('#') || /\p{Cc}/u.test(path)) {
         throw new ApiError({
             status: 0, code: 'invalid_api_path', title: 'Invalid API Path',
@@ -67,27 +40,28 @@ function normalizeApiPath(path: string): { pathname: string; target: string } {
     return { pathname, target: pathname + query };
 }
 
-function prepareBody(body: unknown, headers: Headers): { body: BodyInit | undefined; replayable: boolean } {
-    if (body === undefined) return { body: undefined, replayable: true };
+function isReplayableBody(body: unknown): boolean {
+    return !(body instanceof FormData || (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream));
+}
+
+function prepareBody(body: unknown, headers: Headers): BodyInit | undefined {
+    if (body === undefined) return undefined;
     if (body instanceof URLSearchParams) {
         if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/x-www-form-urlencoded;charset=UTF-8');
-        return { body: body.toString(), replayable: true };
+        return body.toString();
     }
-    if (typeof body === 'string' || body instanceof Blob) return { body, replayable: true };
-    if (body instanceof FormData) return { body, replayable: false };
+    if (typeof body === 'string' || body instanceof Blob) return body;
+    if (body instanceof FormData) return body;
     if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) {
-        return { body, replayable: false };
+        return body;
     }
     if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-    return { body: JSON.stringify(body), replayable: true };
+    return JSON.stringify(body);
 }
 
 function assertNotCanceled(signal?: AbortSignal): void {
     if (signal?.aborted) {
-        throw new ApiError({
-            status: 0, code: 'request_aborted', title: 'Request Canceled',
-            detail: 'The request was canceled before completion.',
-        });
+        throw requestCanceled();
     }
 }
 
@@ -98,116 +72,129 @@ function networkError(cause: unknown): ApiError {
     });
 }
 
-export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fetch = fetch): ApiClient {
-    async function executeRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-        const { pathname, target } = normalizeApiPath(path);
-        const requestSignal = options.signal ?? undefined;
-        const initialHeaders = new Headers(options.headers);
-        if (!initialHeaders.has('Accept')) initialHeaders.set('Accept', 'application/json, application/problem+json');
-        // Capture before body serialization or asynchronous credential preparation.
-        // First-use restoration may establish the binding when none exists yet.
-        const initiatingSessionId = hooks.captureSessionId?.(pathname, initialHeaders);
-        const prepared = prepareBody(options.body, initialHeaders);
-        const method = (options.method ?? 'GET').toUpperCase();
-        const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
-        if (!Number.isFinite(timeoutMs) || timeoutMs < 0) throw new RangeError('Invalid HTTP request timeout');
-        const hasExplicitAuthorization = initialHeaders.has('Authorization');
-        const requestOptions = { ...options };
-        delete requestOptions.timeoutMs;
-        delete requestOptions.expectedStatus;
-        delete requestOptions.body;
+interface DetourContext {
+    readonly budget: RecoveryBudget;
+    readonly assertCurrent: () => void;
+}
 
-        function assertBinding(expected: string | undefined, actual: string | undefined): void {
-            if (expected !== undefined && expected !== actual) {
-                throw new ApiError({
-                    status: 0, code: 'session_context_changed', title: 'Sign-in Changed',
-                    detail: 'The active session changed during the request.',
-                });
+/** A primary handler precedes supplementary handlers; anonymous requests have no active primary. */
+export function createApiClient(handlers: readonly ApiRequestHandler[] = [], fetchImpl: typeof fetch = fetch,
+    origin: string = typeof location !== 'undefined' ? location.origin : 'http://sharewise.invalid'): ApiClient {
+    const pipeline: ApiRequestHandler[] = [...handlers];
+    if (pipeline.some((handler: ApiRequestHandler, index: number): boolean => handler.kind === 'primary' && index !== 0)) {
+        throw new Error('Exactly one primary handler may precede supplementary handlers');
+    }
+    const apiOrigin: string = new URL(origin).origin;
+    if (apiOrigin === 'null' || !/^https?:/.test(apiOrigin)) throw new Error('Invalid API origin');
+
+    async function executeRequest<T>(path: string, options: ApiRequestOptions = {}, detour?: DetourContext): Promise<T> {
+        const normalized: ReturnType<typeof normalizeApiPath> = normalizeApiPath(path);
+        // Use the URL serialization used by Fetch, including significant query ordering/empty values.
+        const url: URL = new URL(normalized.target, apiOrigin);
+        const target: string = url.href.slice(apiOrigin.length);
+        const requestSignal: AbortSignal | undefined = options.signal ?? undefined;
+        const initialHeaders: Headers = new Headers(options.headers);
+        if (!initialHeaders.has('Accept')) initialHeaders.set('Accept', 'application/json, application/problem+json');
+        const method: string = (options.method ?? 'GET').toUpperCase();
+        const { timeoutMs: configuredTimeout, expectedStatus, body, ...requestOptions }: ApiRequestOptions = options;
+        const timeoutMs: number = configuredTimeout ?? DEFAULT_API_TIMEOUT_MS;
+        if (!Number.isFinite(timeoutMs) || timeoutMs < 0) throw new RangeError('Invalid HTTP request timeout');
+        const hasExplicitAuthorization: boolean = initialHeaders.has('Authorization');
+        const request: ApiRequestContext = Object.freeze({ origin: apiOrigin, pathname: normalized.pathname,
+            target, method, replayable: isReplayableBody(body), signal: requestSignal });
+        assertNotCanceled(requestSignal);
+        detour?.assertCurrent();
+        const active: { handler: ApiRequestHandler; state: RequestHandler }[] = [];
+        if (!hasExplicitAuthorization) {
+            for (const handler of pipeline) {
+                if (handler.kind === 'supplementary' && (detour || active.length === 0)) continue;
+                const state: RequestHandler | undefined = handler.begin(request);
+                if (state) active.push({ handler, state });
             }
         }
+        // A nonempty managed pipeline always starts with the active primary handler.
+        if (active.length > 0) {
+            for (const handler of pipeline) handler.validateHeaders?.(initialHeaders);
+        }
+        if (detour && active.length === 0) throw new ApiError({ status: 0, code: 'invalid_request_context',
+            title: 'Invalid Request Context', detail: 'Credential acquisition requires a managed primary credential.' });
+        const prepared: BodyInit | undefined = prepareBody(body, initialHeaders);
+        const budget: RecoveryBudget = detour?.budget ?? new RecoveryBudget();
+        const assertCurrent: () => void = () => {
+            detour?.assertCurrent();
+            for (const { state } of active) state.assertCurrent?.();
+        };
+        // Only a recovery action can open a primary-only detour, sharing the outer budget and binding.
+        const primaryOnly: ApiClient = createApiMethods(<R>(path: string, options?: ApiRequestOptions): Promise<R> => {
+            if (detour) throw new Error('Nested credential acquisition is not allowed');
+            return executeRequest<R>(path, options, { budget, assertCurrent });
+        });
 
-        async function attempt(allowRetry: boolean, boundSessionId?: string): Promise<T> {
+        for (let attempt: number = 0; ; attempt++) {
             assertNotCanceled(requestSignal);
-            if (hooks.captureSessionId) assertBinding(boundSessionId, hooks.captureSessionId(pathname, initialHeaders));
-            const headers = new Headers(initialHeaders);
-            const sessionId = hooks.onRequest ? await hooks.onRequest(pathname, headers, requestSignal) : undefined;
-            assertNotCanceled(requestSignal);
-            assertBinding(boundSessionId, typeof sessionId === 'string' ? sessionId : undefined);
-            const context: SentRequestContext = {
-                sessionId: typeof sessionId === 'string' ? sessionId : undefined,
-                method,
-                replayable: prepared.replayable,
-                hasExplicitAuthorization,
-                attempt: allowRetry ? 'initial' : 'replay',
-            };
-            hooks.assertSessionContext?.(context);
-            const controller = new AbortController();
-            const abort = () => controller.abort();
+            assertCurrent();
+            const headers: Headers = new Headers(initialHeaders);
+            for (const { state } of active) {
+                await state.prepare?.(headers);
+                assertNotCanceled(requestSignal);
+                assertCurrent();
+            }
+            const sent: SentRequest = { headers: new Headers(headers), attempt };
+            const controller: AbortController = new AbortController();
+            const abort: () => void = () => controller.abort();
             requestSignal?.addEventListener('abort', abort, { once: true });
             if (requestSignal?.aborted) controller.abort();
-            // A fetch attempt has its own timeout. Renewal may take longer, but must not inherit a stale timer.
-            const timeout = timeoutMs > 0 ? setTimeout(abort, timeoutMs) : undefined;
-            let response: Response;
+            const timeout: ReturnType<typeof setTimeout> | undefined = timeoutMs > 0 ? setTimeout(abort, timeoutMs) : undefined;
+            const assertAttempt: () => void = () => {
+                assertNotCanceled(requestSignal);
+                if (controller.signal.aborted) throw networkError(new Error('HTTP request timed out.'));
+                assertCurrent();
+            };
             let rejection: ApiError;
             try {
-                if (controller.signal.aborted) assertNotCanceled(requestSignal);
+                assertAttempt();
+                let response: Response;
                 try {
-                    response = await fetchImpl(target, {
-                        ...requestOptions,
-                        method,
-                        signal: controller.signal,
-                        headers,
-                        body: prepared.body,
-                        credentials: options.credentials ?? 'same-origin',
-                        cache: options.cache ?? 'no-store',
+                    response = await fetchImpl(url.href, {
+                        ...requestOptions, method, signal: controller.signal, headers, body: prepared,
+                        credentials: options.credentials ?? 'same-origin', cache: options.cache ?? 'no-store',
+                        mode: 'same-origin', redirect: 'error',
                     });
-                } catch (cause) {
-                    if (requestSignal?.aborted) assertNotCanceled(requestSignal);
+                } catch (cause: unknown) {
+                    assertNotCanceled(requestSignal);
                     throw networkError(cause);
                 }
-                if (controller.signal.aborted) {
-                    assertNotCanceled(requestSignal);
-                    throw networkError(new Error('HTTP request timed out.'));
+                assertAttempt();
+                if (response.redirected || (response.url && response.url !== url.href)) {
+                    throw new ApiError({ status: 0, code: 'invalid_response', title: 'Response Unavailable',
+                        detail: 'The response did not originate from the requested API target.' });
                 }
-                if (response.status !== 401) {
-                    if (!response.ok) throw await parseErrorResponse(response);
-                    if (options.expectedStatus !== undefined && response.status !== options.expectedStatus) {
-                        throw new ApiError({
-                            status: 0, code: 'unexpected_response', title: 'Unexpected Response',
-                            detail: 'The server returned an unexpected success status.',
-                        });
+                if (!response.ok) {
+                    rejection = await parseErrorResponse(response);
+                    assertAttempt();
+                    if (response.status !== 401) throw rejection;
+                } else {
+                    if (expectedStatus !== undefined && response.status !== expectedStatus) {
+                        throw new ApiError({ status: 0, code: 'unexpected_response', title: 'Unexpected Response',
+                            detail: 'The server returned an unexpected success status.' });
                     }
                     let value: T;
-                    if (response.status === 204) {
-                        value = undefined as T;
-                    } else {
+                    if (response.status === 204) value = undefined as T;
+                    else {
                         try {
-                            const contentType = response.headers.get('content-type') ?? '';
-                            value = contentType.includes('json')
-                                ? (await response.json()) as T
-                                : (await response.text()) as unknown as T;
+                            value = (response.headers.get('content-type') ?? '').includes('json')
+                                ? (await response.json()) as T : (await response.text()) as unknown as T;
                         } catch {
-                            throw new ApiError({
-                                status: 0, code: 'invalid_response', title: 'Response Unavailable',
-                                detail: 'Unable to read the server response.',
-                            });
+                            throw new ApiError({ status: 0, code: 'invalid_response', title: 'Response Unavailable',
+                                detail: 'Unable to read the server response.' });
                         }
                     }
-                    if (controller.signal.aborted) {
-                        assertNotCanceled(requestSignal);
-                        throw networkError(new Error('HTTP request timed out.'));
-                    }
-                    assertNotCanceled(requestSignal);
-                    hooks.assertSessionContext?.(context);
+                    assertAttempt();
+                    for (const { state } of active) state.onSuccess?.(sent);
                     return value;
                 }
-                rejection = await parseErrorResponse(response);
-                if (controller.signal.aborted) {
-                    assertNotCanceled(requestSignal);
-                    throw networkError(new Error('HTTP request timed out.'));
-                }
-            } catch (error) {
-                hooks.assertSessionContext?.(context);
+            } catch (error: unknown) {
+                assertCurrent();
                 throw error;
             } finally {
                 if (timeout !== undefined) clearTimeout(timeout);
@@ -215,33 +202,37 @@ export function createApiClient(hooks: ApiClientHooks = {}, fetchImpl: typeof fe
             }
 
             assertNotCanceled(requestSignal);
-            // A stale denial must not trigger recovery or invalidate another session.
-            hooks.assertSessionContext?.(context);
-            if (allowRetry && hooks.onUnauthorized) {
-                const shouldRetry = await hooks.onUnauthorized(pathname, rejection, headers, context, requestSignal);
-                assertNotCanceled(requestSignal);
-                if (shouldRetry && prepared.replayable) return attempt(false, context.sessionId);
-            } else if (!allowRetry) {
-                await hooks.onReplayUnauthorized?.(pathname, rejection, headers, context);
+            assertCurrent();
+            let recovered: boolean = false;
+            if (request.replayable) {
+                for (const { handler, state } of active) {
+                    const action: RecoveryAction | undefined = state.recover?.(rejection, sent);
+                    if (!action) continue;
+                    // A classified rejection belongs to one handler. Another handler cannot bypass its budget.
+                    if (budget.reserve(handler.kind, action.key)) {
+                        await action.run(primaryOnly);
+                        assertNotCanceled(requestSignal);
+                        assertCurrent();
+                        recovered = true;
+                    }
+                    break;
+                }
             }
-            assertNotCanceled(requestSignal);
-            // A terminal hook may deliberately invalidate the current bearer (retaining its ID).
-            // Preserve its original denial, but never deliver a denial across a session replacement.
-            if (hooks.captureSessionId) assertBinding(context.sessionId, hooks.captureSessionId(pathname, initialHeaders));
+            if (recovered) continue;
+            // Notification is synchronous; deliberate invalidation can retain the original terminal denial.
+            for (const { state } of active) state.onTerminalFailure?.(rejection, sent, { primaryRecoveryAttempted: budget.primaryRecoveryAttempted });
             throw rejection;
         }
-        return attempt(true, initiatingSessionId);
     }
-
     return createApiMethods(executeRequest);
 }
 
 /** Expose the same transport through a narrower request lifetime. */
 export function scopeApiClient(client: ApiClient, assertRequest: (path: string, headers: Headers) => void): ApiClient {
     return createApiMethods(async <T>(path: string, options?: ApiRequestOptions): Promise<T> => {
-        const { pathname, target } = normalizeApiPath(path);
-        const headers = new Headers(options?.headers);
-        const scopedOptions = { ...options, headers };
+        const { pathname, target }: ReturnType<typeof normalizeApiPath> = normalizeApiPath(path);
+        const headers: Headers = new Headers(options?.headers);
+        const scopedOptions: ApiRequestOptions = { ...options, headers };
         assertRequest(pathname, headers);
         return client.request<T>(target, scopedOptions);
     });

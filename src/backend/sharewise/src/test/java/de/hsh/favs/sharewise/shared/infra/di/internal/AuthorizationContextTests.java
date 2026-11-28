@@ -15,7 +15,21 @@ import de.hsh.favs.sharewise.shared.infra.claims.ClaimOrigin;
 import de.hsh.favs.sharewise.shared.infra.claims.internal.AuthorizationConfiguration;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.di.ServiceScopeFactory;
+import de.hsh.favs.sharewise.shared.infra.security.Es256JwtSignatureService;
+import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
+import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
+import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
+import java.security.KeyPairGenerator;
+import java.security.spec.ECGenParameterSpec;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.UUID;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -44,7 +58,7 @@ class AuthorizationContextTests {
         try (AnnotationConfigApplicationContext spring = newContext(MultipleIssuers.class)) {
             OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
             dispatcher.dispatch(AuthorizationContext.class, context -> {
-                assertEquals(3, context.credentials().size());
+                assertEquals(4, context.credentials().size());
                 assertEquals("issuer-a", context.credentials().getFirst().origin().issuer());
                 List<Claim> roles = context.find("role");
                 assertEquals(List.of("admin", "member", "viewer", "admin"),
@@ -80,7 +94,7 @@ class AuthorizationContextTests {
         try (AnnotationConfigApplicationContext spring = newContext(IdentifiedCredentials.class)) {
             OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
             dispatcher.dispatch(AuthorizationContext.class, context -> {
-                assertEquals("bob", context.findCredential("iam", "access", "unique")
+                assertEquals(USER.toString(), context.findCredential("iam", "access", "unique")
                     .orElseThrow().origin().subject().orElseThrow());
                 assertEquals(Optional.empty(), context.findCredential("other", "access", "unique"));
                 assertThrows(IllegalStateException.class,
@@ -303,13 +317,44 @@ class AuthorizationContextTests {
         return new ClaimData(type, value);
     }
 
-    private static AuthorizationCredential credential(String issuer, String subject, ClaimData... claims) {
-        ClaimOrigin origin = new ClaimOrigin(issuer, "group-attestation", Set.of("sharewise"),
-            Optional.of(subject), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
-        List<Claim> boundClaims = Arrays.stream(claims)
-            .map(data -> new Claim(data.type(), data.value(), origin))
-            .toList();
-        return new AuthorizationCredential(origin, boundClaims);
+    private static final UUID USER = UUID.fromString("12345678-1234-4123-8123-1234567890ab");
+    private static final Instant NOW = Instant.parse("2026-11-20T12:00:00Z");
+    private static final JwtCredentialProfile PRIMARY = profile("primary", "access", true);
+    private static final Es256JwtSignatureService SIGNATURE = signature();
+
+    private static Es256JwtSignatureService signature() {
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+            generator.initialize(new ECGenParameterSpec("secp256r1"));
+            return new Es256JwtSignatureService(List.of(JwtEcKey.signing("fixture", generator.generateKeyPair())),
+                Optional.of("fixture"));
+        } catch (java.security.GeneralSecurityException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static JwtCredentialProfile profile(String issuer, String name, boolean primary) {
+        return new JwtCredentialProfile(name, issuer, "sw-" + name + "+jwt", Set.of("sharewise"),
+            primary ? JwtCredentialProfile.Kind.PRIMARY : JwtCredentialProfile.Kind.SUBORDINATE,
+            primary ? Set.of() : Set.of(PRIMARY.id()), Duration.ofMinutes(5), Duration.ZERO, 4096);
+    }
+
+    private static VerifiedJwtCredentialCandidate credential(JwtCredentialProfile profile, String tokenId,
+                                                              ClaimData... claims) {
+        JwtClaimsSet.Builder builder = JwtClaimsSet.builder().issuer(profile.issuer()).subject(USER.toString())
+            .audience(List.of("sharewise")).issuedAt(NOW).notBefore(NOW).expiresAt(NOW.plusSeconds(60)).id(tokenId);
+        if (profile.kind() == JwtCredentialProfile.Kind.PRIMARY) {
+            builder.claim("sid", "fixture-session");
+        } else {
+            builder.claim("principal_iss", PRIMARY.issuer()).claim("principal_sid", "fixture-session");
+        }
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        for (ClaimData data : claims) {
+            values.computeIfAbsent(data.type(), ignored -> new ArrayList<>()).add(data.value());
+        }
+        values.forEach((name, entries) -> builder.claim(name, entries.size() == 1 ? entries.getFirst() : entries));
+        JwtCredentialCodec codec = new JwtCredentialCodec(profile, SIGNATURE, Clock.fixed(NOW, ZoneOffset.UTC));
+        return codec.verify(SIGNATURE.sign(profile.tokenType(), builder.build()));
     }
 
     private static AnnotationConfigApplicationContext newContext(Class<?>... fixtures) {
@@ -331,30 +376,26 @@ class AuthorizationContextTests {
     @TestConfiguration(proxyBeanMethods = false)
     static class IdentifiedCredentials {
         @Bean @Scope("operation") AuthorizationCredentialProvider provider() {
-            ClaimOrigin duplicated = new ClaimOrigin("iam", "access", Set.of("api"),
-                Optional.of("alice"), Optional.of("duplicated"),
-                Optional.empty(), Optional.empty(), Optional.empty());
-            ClaimOrigin unique = new ClaimOrigin("iam", "access", Set.of("api"),
-                Optional.of("bob"), Optional.of("unique"),
-                Optional.empty(), Optional.empty(), Optional.empty());
+            JwtCredentialProfile profile = profile("iam", "access", false);
             return () -> List.of(
-                new AuthorizationCredential(duplicated, List.of(new Claim("role", "user", duplicated))),
-                new AuthorizationCredential(duplicated, List.of(new Claim("role", "member", duplicated))),
-                new AuthorizationCredential(unique, List.of(new Claim("role", "admin", unique))));
+                credential(profile, "duplicated", claim("role", "user")),
+                credential(profile, "duplicated", claim("role", "member")),
+                credential(profile, "unique", claim("role", "admin")),
+                credential(PRIMARY, "primary"));
         }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class MultipleIssuers {
         @Bean @Order(-1) @Scope("operation") AuthorizationCredentialProvider alpha() {
-            return () -> List.of(credential("issuer-a", "alice", claim("group_id", "group-a"),
+            return () -> List.of(credential(profile("issuer-a", "group-attestation", false), "a", claim("group_id", "group-a"),
                     claim("role", "admin"), claim("role", "member")),
-                credential("issuer-b", "alice", claim("group_id", "group-b"), claim("role", "viewer")));
+                credential(profile("issuer-b", "group-attestation", false), "b", claim("group_id", "group-b"), claim("role", "viewer")));
         }
 
         @Bean @Order(1) @Scope("operation") AuthorizationCredentialProvider beta() {
-            return () -> List.of(credential("issuer-a", "bob", claim("group_id", "group-c"),
-                claim("role", "admin")));
+            return () -> List.of(credential(profile("issuer-a", "group-attestation", false), "c", claim("group_id", "group-c"),
+                claim("role", "admin")), credential(PRIMARY, "primary"));
         }
     }
 
@@ -366,7 +407,7 @@ class AuthorizationContextTests {
             int sequence = probe.instances.incrementAndGet();
             return () -> {
                 probe.credentialsCalls.incrementAndGet();
-                return List.of(credential("issuer", "person", claim("sequence", Integer.toString(sequence))));
+                return List.of(credential(PRIMARY, "sequence-" + sequence, claim("sequence", Integer.toString(sequence))));
             };
         }
     }
@@ -382,7 +423,7 @@ class AuthorizationContextTests {
         @Bean @Order(-1) @Scope("operation") AuthorizationCredentialProvider first(Probe probe) {
             return () -> {
                 probe.credentialsCalls.incrementAndGet();
-                return List.of(credential("issuer", "user", claim("sub", "user")));
+                return List.of(credential(PRIMARY, "first"));
             };
         }
         @Bean @Order(1) @Scope("operation") AuthorizationCredentialProvider invalid() {
@@ -397,7 +438,7 @@ class AuthorizationContextTests {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class NullElementProvider {
-        @Bean @Scope("operation") AuthorizationCredentialProvider invalid() { return () -> Arrays.asList((AuthorizationCredential) null); }
+        @Bean @Scope("operation") AuthorizationCredentialProvider invalid() { return () -> Arrays.asList((VerifiedJwtCredentialCandidate) null); }
     }
 
     @TestConfiguration(proxyBeanMethods = false)

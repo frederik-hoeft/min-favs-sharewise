@@ -1,8 +1,9 @@
 package de.hsh.favs.sharewise.shared.infra.claims.internal;
 
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
-import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredential;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialValidator;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -18,10 +19,21 @@ import org.springframework.context.annotation.Scope;
 public class AuthorizationConfiguration {
 
     @Bean
+    CredentialCorrelation credentialCorrelation(ObjectProvider<AuthorizationCredentialValidator> validators) {
+        return new CredentialCorrelation(validators);
+    }
+
+    @Bean
+    CredentialAdmission authorizationAdmission(ObjectProvider<AuthorizationContext> authorization) {
+        return new CredentialAdmission(authorization);
+    }
+
+    @Bean
     @Scope("operation")
     AuthorizationContext authorizationContext(
         ConfigurableListableBeanFactory beanFactory,
-        ObjectProvider<AuthorizationCredentialProvider> providers
+        ObjectProvider<AuthorizationCredentialProvider> providers,
+        CredentialCorrelation correlation
     ) {
         // Reject incorrectly scoped sources before resolving any of their instances.
         for (String name : beanFactory.getBeanNamesForType(AuthorizationCredentialProvider.class, true, false)) {
@@ -31,15 +43,15 @@ public class AuthorizationConfiguration {
             }
         }
 
-        List<AuthorizationCredential> verified = new ArrayList<>();
+        List<VerifiedJwtCredentialCandidate> candidates = new ArrayList<>();
         providers.orderedStream().forEach(provider -> {
-            List<AuthorizationCredential> contributed = Objects.requireNonNull(provider.credentials(),
+            List<VerifiedJwtCredentialCandidate> contributed = Objects.requireNonNull(provider.credentials(),
                 "Authorization credential provider returned null credentials");
-            for (AuthorizationCredential credential : contributed) {
-                verified.add(Objects.requireNonNull(credential, "Authorization credential provider returned a null credential"));
+            for (VerifiedJwtCredentialCandidate credential : contributed) {
+                candidates.add(Objects.requireNonNull(credential, "Authorization credential provider returned a null credential"));
             }
         });
         // No context is published if any provider resolution, verification or copying fails.
-        return new DefaultAuthorizationContext(verified);
+        return correlation.admit(candidates);
     }
 }

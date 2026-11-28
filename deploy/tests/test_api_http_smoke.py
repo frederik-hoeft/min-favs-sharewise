@@ -83,15 +83,16 @@ class FakeIam:
 
 
 class IamHttpSmokeTests(unittest.TestCase):
-    def run_smoke(self, fake):
+    def run_smoke(self, fake, fixture_status=404):
         with (patch.object(smoke, "compose_exec", side_effect=fake.compose_exec),
               patch.object(smoke, "curl", side_effect=fake.curl),
               patch.object(smoke, "verify_es256", return_value={"sid": SESSION_ID, "sub": SESSION_ID}),
               patch.object(smoke, "exercise_groups") as groups,
+              patch.object(smoke, "json_request", return_value=(fixture_status, {})),
               patch.dict(os.environ, {"COMPOSE_PROJECT_NAME": "sharewise-p26ab-smoke", "COMPOSE_FILE": "compose.yaml"}),
               patch.object(smoke.subprocess, "run", return_value=SimpleNamespace(stdout="public.pem")),
               patch.object(sys, "argv", ["api-http-smoke.py", "--host", "localhost", "--port", "18443",
-                                         "--issuer", "https://localhost:18443", "--audience", "sharewise-api"])):
+                                         "--issuer", "https://localhost:18443", "--audience", "sw-api-v1"])):
             output = io.StringIO()
             try:
                 with contextlib.redirect_stdout(output):
@@ -113,6 +114,10 @@ class IamHttpSmokeTests(unittest.TestCase):
         self.assertNotIn("token-", output)
         self.assertNotIn("cookie-", output)
 
+    def test_production_fixture_route_must_be_absent(self):
+        with self.assertRaisesRegex(RuntimeError, "fixture route exposed"):
+            self.run_smoke(FakeIam(), fixture_status=200)
+
     def test_unchanged_cookie_after_refresh_fails(self):
         with self.assertRaisesRegex(RuntimeError, "did not rotate"):
             self.run_smoke(FakeIam(rotate=False))
@@ -124,7 +129,7 @@ class IamHttpSmokeTests(unittest.TestCase):
     def test_standalone_execution_refuses_non_disposable_project(self):
         with (patch.dict(os.environ, {"COMPOSE_PROJECT_NAME": "sharewise-p26ab-local", "COMPOSE_FILE": "compose.yaml"}),
               patch.object(sys, "argv", ["api-http-smoke.py", "--host", "localhost", "--port", "18443",
-                                         "--issuer", "https://localhost:18443", "--audience", "sharewise-api"]),
+                                         "--issuer", "https://localhost:18443", "--audience", "sw-api-v1"]),
               patch.object(smoke, "compose_exec") as compose):
             with self.assertRaisesRegex(RuntimeError, "disposable Compose project"):
                 smoke.main()
@@ -266,16 +271,42 @@ class GroupHttpSmokeTests(unittest.TestCase):
                 smoke.provision_group_users("not-a-uuid")
             invoke.assert_not_called()
 
+    def test_profile_lifecycle_checks_public_projection_and_rename(self):
+        name = smoke.SMOKE_DISPLAY_NAME
+        old = {"profiles": [{"userId": OWNER_ID, "displayName": name},
+                            {"userId": GUEST_ID, "displayName": name}]}
+        new = {"profiles": [{"userId": OWNER_ID, "displayName": "Smoke participant renamed"},
+                            {"userId": GUEST_ID, "displayName": name}]}
+        renamed = {"userId": OWNER_ID, "displayName": "Smoke participant renamed"}
+        with patch.object(smoke, "api_request", side_effect=[(401, {}), (200, old), (200, renamed), (200, new)]) as request:
+            smoke.profile_lifecycle("localhost", "18443", "owner", OWNER_ID, "guest", GUEST_ID)
+            calls = [call.args for call in request.call_args_list]
+            self.assertEqual([(call[2], call[3], call[4]) for call in calls], [
+                (None, "POST", "/iam/v1/profiles/lookup"),
+                ("guest", "POST", "/iam/v1/profiles/lookup"),
+                ("owner", "PATCH", "/iam/v1/account"),
+                ("guest", "POST", "/iam/v1/profiles/lookup"),
+            ])
+            self.assertEqual(calls[0][5]["userIds"][:3], [OWNER_ID, GUEST_ID, OWNER_ID])
+            self.assertEqual(calls[0][5], calls[1][5])
+            self.assertEqual(calls[1][5], calls[3][5])
+        leaked = {"profiles": [old["profiles"][0] | {"email": "private@example.invalid"}, old["profiles"][1]]}
+        with patch.object(smoke, "api_request", side_effect=[(401, {}), (200, leaked)]):
+            with self.assertRaisesRegex(RuntimeError, "minimal response contract"):
+                smoke.profile_lifecycle("localhost", "18443", "owner", OWNER_ID, "guest", GUEST_ID)
+
     def test_second_account_uses_separate_cookie_jar_and_cleans_up_on_failure(self):
-        args = SimpleNamespace(host="localhost", port="18443", issuer="https://localhost:18443", audience="sharewise-api")
+        args = SimpleNamespace(host="localhost", port="18443", issuer="https://localhost:18443", audience="sw-api-v1")
         with (patch.object(smoke, "compose_exec", return_value="/tmp/guest-jar") as compose,
               patch.object(smoke, "mutate", side_effect=[(201, {}), (204, None)]) as mutate,
               patch.object(smoke, "authenticated_response", return_value=("guest", SESSION_ID, GUEST_ID)),
+              patch.object(smoke, "profile_lifecycle") as profiles,
               patch.object(smoke, "provision_group_users") as provision,
               patch.object(smoke, "refresh_cookie", return_value=None),
               patch.object(smoke, "group_lifecycle") as lifecycle,
               contextlib.redirect_stdout(io.StringIO()) as output):
             smoke.exercise_groups(args, args.issuer, "public.pem", "owner", OWNER_ID)
+            profiles.assert_called_once_with("localhost", "18443", "owner", OWNER_ID, "guest", GUEST_ID)
             provision.assert_called_once_with(OWNER_ID, GUEST_ID)
             lifecycle.assert_called_once_with("localhost", "18443", "owner", OWNER_ID, "guest", GUEST_ID)
             self.assertEqual(mutate.call_args_list[1].args[2:5], ("/tmp/guest-jar", "logout", args.issuer))

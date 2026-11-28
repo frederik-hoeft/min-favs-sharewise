@@ -2,6 +2,12 @@ package de.hsh.favs.sharewise;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import de.hsh.favs.sharewise.groups.GroupAuthorizationContext;
+import de.hsh.favs.sharewise.groups.GroupAuthorizationFailure;
+import de.hsh.favs.sharewise.groups.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupAuthorizationPort;
+import de.hsh.favs.sharewise.groups.GroupAuthorizationVerificationFailure;
+import de.hsh.favs.sharewise.groups.VerifiedGroupMembership;
 import de.hsh.favs.sharewise.identity.IdentityContext;
 import de.hsh.favs.sharewise.identity.IdentityPort;
 import de.hsh.favs.sharewise.identity.IdentityVerificationFailure;
@@ -76,16 +82,24 @@ class ApplicationModuleStructureTests {
     }
 
     @Test
-    void groupsDeclaresExactlyItsConsumedContractsAndPublishesNoTypes() {
+    void groupsDeclaresExactlyItsConsumedContractsAndPublishesAuthorizationApi() {
         ApplicationModule groups = modules.getModuleByName("groups")
                 .orElseThrow(() -> new AssertionError("module 'groups' must exist"));
-        assertEquals(List.of("identity", "identity::events", "shared::di", "shared::jooq", "shared::result",
-                "shared::security", "shared::transactions", "shared::validation", "shared::web"),
+        assertEquals(List.of("identity", "identity::events", "shared::claims", "shared::di", "shared::jooq", "shared::result", "shared::security", "shared::transactions",
+                "shared::validation", "shared::web"),
                 ApplicationModuleInformation.of(groups.getBasePackage()).getDeclaredDependencies(),
                 "groups may consume only the IAM identity contract, IAM integration events (P2.4a) and its declared "
                 + "shared contracts");
-        assertEquals(List.of(), ModulePublications.publishedTypesDirectlyIn(modules, groups.getBasePackage().getName()),
-                "groups publishes no Java API until a consumer needs one");
+        Set<String> publishedTypes = groups.getNamedInterfaces().getUnnamedInterface().asJavaClasses()
+                .map(type -> type.getName())
+                .filter(name -> !name.endsWith(".package-info"))
+                .collect(Collectors.toSet());
+        assertEquals(Set.of(GroupRole.class.getName(), GroupAuthorizationContext.class.getName(),
+                GroupAuthorizationFailure.class.getName(), GroupAuthorizationFailure.Unauthenticated.class.getName(),
+                GroupAuthorizationFailure.AttestationRequired.class.getName(),
+                GroupAuthorizationFailure.InsufficientPermissions.class.getName(), GroupAuthorizationPort.class.getName(),
+                GroupAuthorizationVerificationFailure.class.getName(), VerifiedGroupMembership.class.getName()), publishedTypes,
+                "groups publishes only its organizational authorization contracts");
     }
 
     @Test

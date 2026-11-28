@@ -101,7 +101,7 @@
             <artifactId>spring-modulith-api</artifactId>
         </dependency>
         <!-- Durable event publication registry (P2.4a). Flyway owns its schema; see
-             docs/stack/messaging.md. Versions come from the Spring Modulith BOM. -->
+             docs/architecture/messaging.md. Versions come from the Spring Modulith BOM. -->
         <dependency>
             <groupId>org.springframework.modulith</groupId>
             <artifactId>spring-modulith-events-jdbc</artifactId>

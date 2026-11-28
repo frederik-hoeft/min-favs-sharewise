@@ -108,6 +108,16 @@ class FullApplicationIamIngressTests {
     }
 
     @Test
+    void distributedAuthorizationFixtureIsNotRegisteredInOrdinaryBootContext() throws Exception {
+        assertFalse(handlerMappings.getHandlerMethods().keySet().stream()
+            .flatMap(mapping -> mapping.getPatternValues().stream())
+            .anyMatch(path -> path.startsWith("/api/__test/distributed-authorization")));
+        mvc.perform(post("/api/__test/distributed-authorization/transfer/{source}", ALICE)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token()))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
     void everyProductionApiControllerDeclaresItsAdmissionContract() {
         for (java.util.Map.Entry<org.springframework.web.servlet.mvc.method.RequestMappingInfo,
                 org.springframework.web.method.HandlerMethod> mapping : handlerMappings.getHandlerMethods().entrySet()) {

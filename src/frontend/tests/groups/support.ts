@@ -1,3 +1,4 @@
+import { apiTarget } from "../support/api-target";
 import { vi } from "vitest";
 import type { GroupDetails, GroupSummary, GroupWorkspace } from "@/core/groups";
 import { createApiClient, type ApiClient } from "@/lib/api";
@@ -15,24 +16,29 @@ export type FakeResponse = Response | Error | Promise<Response | Error> | (() =>
  * A real `ApiClient` over a scripted fetch, so tests exercise ProblemDetail parsing too.
  * Responses are queued per "METHOD /path"; every request is recorded.
  */
-export function scriptedClient() {
+export function scriptedClient(withProfiles = false) {
   const queues = new Map<string, FakeResponse[]>();
   const requests: RecordedRequest[] = [];
+  const profileRequests: RecordedRequest[] = [];
   const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = init?.method ?? "GET";
-    const path = String(input);
-    requests.push({ method, path, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
+    const path = apiTarget(input);
+    const request = { method, path, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined };
+    const profileLookup = withProfiles && method === "POST" && path === "/api/iam/v1/profiles/lookup";
+    (profileLookup ? profileRequests : requests).push(request);
     const next = queues.get(`${method} ${path}`)?.shift();
+    if (!next && profileLookup) return json(200, { profiles: (request.body.userIds as string[]).map(userId => ({ userId, displayName: `Member ${userId.slice(-8)}` })) });
     if (!next) throw new Error(`Unexpected request ${method} ${path}`);
     const outcome = await (typeof next === "function" ? next() : next);
     if (outcome instanceof Error) throw outcome;
     return outcome;
   });
-  const client: ApiClient = createApiClient({}, fetchImpl);
+  const client: ApiClient = createApiClient([], fetchImpl);
   return {
     client,
     fetchImpl: fetchImpl as unknown as typeof fetch,
     requests,
+    profileRequests,
     respond(method: string, path: string, ...responses: FakeResponse[]) {
       const key = `${method} ${path}`;
       queues.set(key, [...(queues.get(key) ?? []), ...responses]);

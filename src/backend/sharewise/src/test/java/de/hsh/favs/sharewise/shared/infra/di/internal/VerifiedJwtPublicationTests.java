@@ -6,14 +6,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationContext;
 import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialProvider;
+import de.hsh.favs.sharewise.shared.infra.claims.AuthorizationCredentialValidator;
+import de.hsh.favs.sharewise.shared.infra.claims.CredentialValidationResult;
 import de.hsh.favs.sharewise.shared.infra.claims.internal.AuthorizationConfiguration;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.shared.infra.web.SupplementaryHttpSecurityConfiguration;
+import de.hsh.favs.sharewise.shared.infra.web.HttpProblemWriter;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import tools.jackson.databind.json.JsonMapper;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialException;
+import de.hsh.favs.sharewise.shared.infra.claims.internal.SupplementaryCredentialRejected;
 import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
 import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
 import de.hsh.favs.sharewise.shared.infra.security.JwtEcKey;
-import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredential;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Clock;
@@ -49,8 +57,8 @@ class VerifiedJwtPublicationTests {
             dispatcher.dispatch(AuthorizationContext.class, evidence -> {
                 assertEquals(2, evidence.credentials().size());
                 assertEquals(List.of("admin"), evidence.find("role").stream().map(c -> c.value()).toList());
-                assertEquals(IAM_ISSUER, evidence.credentials().getFirst().origin().issuer());
-                assertEquals("https://groups.sharewise.test", evidence.credentials().getLast().origin().issuer());
+                assertEquals(IAM_ISSUER, evidence.credentials().getLast().origin().issuer());
+                assertEquals("https://groups.sharewise.test", evidence.credentials().getFirst().origin().issuer());
                 assertEquals(USER.toString(), evidence.find("sub").getFirst().value());
                 state.published.incrementAndGet();
                 return null;
@@ -58,12 +66,13 @@ class VerifiedJwtPublicationTests {
             assertEquals(1, state.published.get());
 
             state.subordinateToken = state.group.sign(state.groupIssue("different-session"));
-            BeanCreationException failure = assertThrows(BeanCreationException.class,
+            SupplementaryCredentialRejected failure = assertThrows(SupplementaryCredentialRejected.class,
                 () -> dispatcher.dispatch(AuthorizationContext.class, context -> {
                     state.published.incrementAndGet();
                     return null;
                 }));
-            assertTrue(failure.getMostSpecificCause() instanceof JwtCredentialException);
+            assertTrue(failure.getCause() instanceof JwtCredentialException);
+            assertTrue(failure.isPreEntry());
             assertEquals(1, state.published.get(), "no partial primary-only snapshot may escape");
 
             state.subordinateToken = state.group.sign(state.groupIssue(SESSION));
@@ -75,6 +84,91 @@ class VerifiedJwtPublicationTests {
             assertEquals(2, state.published.get(), "failed operation must not poison next scope");
         }
     }
+
+    @Test
+    void mandatoryCorrelationPrecedesAllDomainValidatorsAndEntryResolution() {
+        try (AnnotationConfigApplicationContext spring = context()) {
+            State state = spring.getBean(State.class);
+            OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
+            state.omitPrimary = true;
+            assertThrows(SupplementaryCredentialRejected.class,
+                () -> dispatcher.dispatch(EffectEntry.class, entry -> entry));
+            state.omitPrimary = false;
+            state.duplicatePrimary = true;
+            assertRejectedBeforeEntry(dispatcher);
+            state.duplicatePrimary = false;
+            assertTrue(state.validatorOrder.isEmpty());
+            assertEquals(0, state.published.get());
+
+            state.rejectByValidator = true;
+            assertRejectedBeforeEntry(dispatcher);
+            assertEquals(List.of("first", "last"), state.validatorOrder);
+            assertEquals(0, state.published.get());
+            state.rejectByValidator = false;
+            dispatcher.dispatch(EffectEntry.class, entry -> entry);
+            assertEquals(1, state.published.get());
+            assertEquals(List.of("first", "last", "first", "last"), state.validatorOrder);
+        }
+    }
+
+    @Test
+    void missingRequiredCorrelationInfrastructureCannotDispatch() {
+        try (AnnotationConfigApplicationContext spring = context()) {
+            State state = spring.getBean(State.class);
+            spring.removeBeanDefinition("credentialCorrelation");
+            OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
+            assertThrows(BeanCreationException.class,
+                () -> dispatcher.dispatch(EffectEntry.class, entry -> entry));
+            assertEquals(0, state.published.get());
+        }
+    }
+
+    @Test
+    void securityCompositionCannotStartWithoutCredentialAdmission() {
+        try (AnnotationConfigApplicationContext spring = new AnnotationConfigApplicationContext()) {
+            State state = new State();
+            state.subordinateToken = state.group.sign(state.groupIssue("different-session"));
+            spring.register(OperationScopeConfiguration.class, AuthorizationConfiguration.class, Fixtures.class,
+                SupplementaryHttpSecurityConfiguration.class);
+            spring.registerBean("httpProblemWriter", HttpProblemWriter.class, () -> new HttpProblemWriter(JsonMapper.builder().build()));
+            spring.addBeanFactoryPostProcessor(factory -> {
+                BeanDefinitionRegistry registry = (BeanDefinitionRegistry) factory;
+                registry.removeBeanDefinition("authorizationAdmission");
+                // The security-enabled composition must reject the missing hook before any dispatch is possible.
+            });
+            spring.getBeanFactory().registerSingleton("state", state);
+            BeanCreationException failure = assertThrows(BeanCreationException.class, spring::refresh);
+            assertTrue(failure.getMostSpecificCause() instanceof NoSuchBeanDefinitionException);
+            assertTrue(failure.getMostSpecificCause().getMessage().contains("CredentialAdmission"));
+            assertEquals(0, state.published.get());
+        }
+    }
+
+    @Test
+    void typedValidatorRejectionPreventsEntryAndUnrelatedCandidateIsNotCertified() {
+        try (AnnotationConfigApplicationContext spring = context()) {
+            State state = spring.getBean(State.class);
+            OperationDispatcher dispatcher = spring.getBean(OperationDispatcher.class);
+            state.rejectTyped = true;
+            SupplementaryCredentialRejected failure = assertThrows(SupplementaryCredentialRejected.class,
+                () -> dispatcher.dispatch(EffectEntry.class, entry -> entry));
+            assertTrue(failure.isPreEntry());
+            assertEquals(state.group.profile(), failure.candidate().orElseThrow().profile());
+            state.rejectPrimary = true;
+            BeanCreationException invalid = assertThrows(BeanCreationException.class,
+                () -> dispatcher.dispatch(EffectEntry.class, entry -> entry));
+            assertTrue(invalid.getMostSpecificCause() instanceof IllegalStateException);
+            assertEquals(0, state.published.get());
+        }
+    }
+
+    private static void assertRejectedBeforeEntry(OperationDispatcher dispatcher) {
+        BeanCreationException failure = assertThrows(BeanCreationException.class,
+            () -> dispatcher.dispatch(EffectEntry.class, entry -> entry));
+        assertTrue(failure.getMostSpecificCause() instanceof JwtCredentialException);
+    }
+
+    static final class EffectEntry { }
 
     private static AnnotationConfigApplicationContext context() {
         AnnotationConfigApplicationContext spring = new AnnotationConfigApplicationContext();
@@ -89,6 +183,12 @@ class VerifiedJwtPublicationTests {
         final String primaryToken;
         final AtomicInteger published = new AtomicInteger();
         volatile String subordinateToken;
+        boolean omitPrimary;
+        boolean duplicatePrimary;
+        boolean rejectByValidator;
+        boolean rejectTyped;
+        boolean rejectPrimary;
+        final java.util.ArrayList<String> validatorOrder = new java.util.ArrayList<>();
 
         State() {
             try {
@@ -126,20 +226,41 @@ class VerifiedJwtPublicationTests {
     static class Fixtures {
         @Bean State state() { return new State(); }
 
-        @Bean @Scope("operation") VerifiedJwtCredential verifiedPrimary(State state) {
-            return state.iam.verifyPrimary(state.primaryToken);
+        @Bean @Order(10) @Scope("operation") AuthorizationCredentialProvider primaryEvidence(State state) {
+            return () -> {
+                if (state.omitPrimary) return List.of();
+                VerifiedJwtCredentialCandidate primary = state.iam.verifyPrimary(state.primaryToken);
+                return state.duplicatePrimary ? List.of(primary, primary) : List.of(primary);
+            };
         }
 
-        @Bean @Order(-10) @Scope("operation") AuthorizationCredentialProvider primaryEvidence(
-            VerifiedJwtCredential verifiedPrimary
-        ) {
-            return () -> List.of(verifiedPrimary.credential());
+        @Bean @Order(-10) @Scope("operation") AuthorizationCredentialProvider subordinateEvidence(State state) {
+            return () -> List.of(state.group.verify(state.subordinateToken));
         }
 
-        @Bean @Order(10) @Scope("operation") AuthorizationCredentialProvider subordinateEvidence(
-            VerifiedJwtCredential verifiedPrimary, State state
-        ) {
-            return () -> List.of(state.group.verifySubordinate(state.subordinateToken, verifiedPrimary).credential());
+        @Bean @Order(-1) AuthorizationCredentialValidator firstValidator(State state) {
+            return context -> {
+                assertEquals(state.iam.profile(), context.primary().orElseThrow().profile());
+                assertEquals(1, context.credentialsFrom(state.group.profile().id()).size());
+                assertThrows(UnsupportedOperationException.class, () -> context.credentials().clear());
+                state.validatorOrder.add("first");
+                return CredentialValidationResult.accepted();
+            };
+        }
+
+        @Bean @Order(1) AuthorizationCredentialValidator lastValidator(State state) {
+            return context -> {
+                state.validatorOrder.add("last");
+                if (state.rejectByValidator) throw new JwtCredentialException();
+                if (state.rejectTyped) return CredentialValidationResult.rejected(state.rejectPrimary
+                    ? context.primary().orElseThrow() : context.credentialsFrom(state.group.profile().id()).getFirst());
+                return CredentialValidationResult.accepted();
+            };
+        }
+
+        @Bean @Scope("operation") EffectEntry effectEntry(State state) {
+            state.published.incrementAndGet();
+            return new EffectEntry();
         }
     }
 }

@@ -9,6 +9,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
+import de.hsh.favs.sharewise.shared.infra.claims.internal.SupplementaryRejectionFixture;
+import de.hsh.favs.sharewise.shared.infra.claims.SupplementaryCredentialInputs;
+import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialCodec;
+import de.hsh.favs.sharewise.shared.infra.security.JwtCredentialProfile;
+import de.hsh.favs.sharewise.shared.infra.security.JwtIssueRequest;
+import de.hsh.favs.sharewise.shared.infra.security.VerifiedJwtCredentialCandidate;
+import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokens;
+import java.time.Duration;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import jakarta.servlet.http.HttpServletRequest;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.shared.infra.web.FieldErrorDetail;
 import de.hsh.favs.sharewise.shared.infra.web.RequestValidationException;
@@ -191,6 +204,45 @@ class ApiExceptionHandlerComponentTests {
         assertFalse(body.contains("IllegalStateException"));
         assertFalse(body.contains("secret_sql_table"));
         assertEquals(1, dispatchCounter.count.get());
+    }
+
+    @Test
+    void lateDirectAndWrappedCredentialRejectionsRemainTerminal() throws Exception {
+        UUID user = UUID.randomUUID();
+        JwtCredentialProfile profile = new JwtCredentialProfile("test-membership", "https://groups.example", "test+jwt",
+            Set.of("sw-api-v1"), JwtCredentialProfile.Kind.SUBORDINATE, Set.of(TestAccessTokens.PROFILE.id()),
+            Duration.ofSeconds(120), Duration.ofSeconds(15), 2048);
+        JwtCredentialCodec codec = TestAccessTokens.codec(profile, TestAccessTokens.CLOCK);
+        VerifiedJwtCredentialCandidate candidate = codec.verify(codec.sign(new JwtIssueRequest(user,
+            TestAccessTokens.sessionFor(user).toString(), "test-credential", TestAccessTokens.NOW, TestAccessTokens.NOW,
+            TestAccessTokens.NOW.plusSeconds(120), Optional.of(TestAccessTokens.PROFILE.issuer()), Map.of())));
+        AtomicInteger effects = new AtomicInteger();
+        MockMvc lateMvc = MockMvcBuilders.standaloneSetup(new LateRejectionController(effects))
+            .setControllerAdvice(new ApiExceptionHandler()).build();
+        for (String wrapped : List.of("false", "true")) {
+            lateMvc.perform(post("/api/sample/v1/late-rejection").param("wrapped", wrapped)
+                    .requestAttr(SupplementaryCredentialIngressFilter.class.getName() + ".verified", new SupplementaryCredentialInputs(List.of(candidate))))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("internal_error"))
+                .andExpect(jsonPath("$.authorization").doesNotExist());
+        }
+        assertEquals(2, effects.get());
+    }
+
+    @TestComponent
+    @RestController
+    static final class LateRejectionController {
+        private final AtomicInteger effects;
+
+        LateRejectionController(AtomicInteger effects) { this.effects = effects; }
+
+        @PostMapping("/api/sample/v1/late-rejection")
+        void mutate(@RequestParam boolean wrapped, HttpServletRequest request) {
+            effects.incrementAndGet();
+            VerifiedJwtCredentialCandidate candidate = SupplementaryCredentialIngressFilter.inputs(request).candidates().getFirst();
+            RuntimeException rejection = SupplementaryRejectionFixture.rejection(candidate);
+            throw wrapped ? new IllegalStateException("late failure", rejection) : rejection;
+        }
     }
 
     static final class DispatchCounter {

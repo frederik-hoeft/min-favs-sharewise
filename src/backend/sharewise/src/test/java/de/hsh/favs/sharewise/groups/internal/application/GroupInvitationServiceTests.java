@@ -14,7 +14,7 @@ import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRe
 import de.hsh.favs.sharewise.groups.internal.application.invitation.InvitationRevocationStatus;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.di.OperationDispatcher;
 import de.hsh.favs.sharewise.shared.infra.security.ApplicationTokenGenerator;
 import de.hsh.favs.sharewise.shared.result.Result;

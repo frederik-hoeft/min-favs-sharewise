@@ -44,7 +44,7 @@ class IamUserProjectionE2E extends E2ETestBase {
 
     private static final String GROUP_LISTENER_ID = "groups.iam-user-projection.v1";
     private static final String BOOTSTRAP_MIGRATION =
-        "db/migration/platform/V202611251410__platform_bootstrap_group_users_from_identity.sql";
+        "db/migration/platform/V202611281010__platform_bootstrap_group_users_from_identity.sql";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
     private static final String PASSWORD = "long-enough-password";
 
@@ -157,7 +157,7 @@ class IamUserProjectionE2E extends E2ETestBase {
         Result<AuthenticationResult, RegistrationFailure> result = fixture.context()
             .getBean(OperationDispatcher.class)
             .dispatch(RegistrationService.class,
-                service -> service.register(RegistrationCommand.from(email, PASSWORD, PasswordPolicy.initial())));
+                service -> service.register(RegistrationCommand.from(email, PASSWORD, "Test user", PasswordPolicy.initial())));
         if (result instanceof Result.Ok<AuthenticationResult, RegistrationFailure> ok) {
             return ok.value().userId();
         }

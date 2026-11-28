@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jayway.jsonpath.JsonPath;
 import de.hsh.favs.sharewise.ShareWiseApplication;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.groups.internal.persistence.GroupTestFixture;
 import de.hsh.favs.sharewise.shared.infra.web.ApiProblems;
 import de.hsh.favs.sharewise.testsupport.identity.TestAccessTokenConfiguration;
@@ -224,6 +224,24 @@ class GroupHttpE2E {
             assertFieldErrors(server.send("PUT", GROUPS + "/" + group, ALICE,
                 json("x".repeat(65), null).replace("}", ", \"expectedVersion\": 0}")), "name:too_long");
 
+            record InvalidMetadata(String name, String description, String fieldError) { }
+            for (InvalidMetadata invalid : List.of(
+                    new InvalidMetadata("Trip\u202e", "Summer", "name:unsupported_character"),
+                    new InvalidMetadata("...", "Summer", "name:unsupported_character"),
+                    new InvalidMetadata("Trip", "Summer\u200b", "description:unsupported_character"),
+                    new InvalidMetadata("\tTrip", "Summer", "name:control_character"),
+                    new InvalidMetadata("Trip\t", "Summer", "name:control_character"),
+                    new InvalidMetadata("Trip", "\tSummer", "description:control_character"),
+                    new InvalidMetadata("Trip", "Summer\t", "description:control_character"))) {
+                assertFieldErrors(server.send("POST", GROUPS, ALICE, json(invalid.name(), invalid.description())),
+                    invalid.fieldError());
+                assertFieldErrors(server.send("PUT", GROUPS + "/" + group, ALICE,
+                    replacementJson(invalid.name(), invalid.description(), 0)), invalid.fieldError());
+            }
+            assertEquals(List.of("Trip|0"), server.groups());
+            assertEquals(List.of(true), server.rows("SELECT description IS NULL FROM groups.groups", row -> row.getBoolean(1)));
+            assertEquals(List.of(1L), server.rows("SELECT count(*) FROM groups.group_members", row -> row.getLong(1)));
+
             for (HttpResponse<String> malformed : List.of(
                     server.send("POST", GROUPS, ALICE, "{\"name\": "),
                     server.send("POST", GROUPS, ALICE, ""),
@@ -237,10 +255,10 @@ class GroupHttpE2E {
             assertEquals(List.of("Trip|0"), server.groups());
 
             // 64 code points of supplementary characters are 128 UTF-16 units, still a valid name.
-            String emoji = "🎉".repeat(64);
-            HttpResponse<String> longest = server.send("POST", GROUPS, ALICE, json(emoji, " \n\t "));
+            String letters = "𐐀".repeat(64);
+            HttpResponse<String> longest = server.send("POST", GROUPS, ALICE, json(letters, " \n "));
             assertEquals(201, longest.statusCode(), longest.body());
-            assertEquals(emoji, JsonPath.read(longest.body(), "$.name"));
+            assertEquals(letters, JsonPath.read(longest.body(), "$.name"));
             assertNull(JsonPath.read(longest.body(), "$.description"), "a blank description is stored as absent");
             assertEquals(List.of("64|true"), server.rows(
                 "SELECT char_length(name), description IS NULL FROM groups.groups WHERE id = '"
@@ -269,6 +287,61 @@ class GroupHttpE2E {
             HttpResponse<String> none = server.send("GET", GROUPS, CAROL, null);
             assertEquals(200, none.statusCode(), none.body());
             assertEquals("{\"items\":[]}", none.body());
+        });
+    }
+
+    @Test
+    void storedMetadataIsReadableWithoutApplyingTheCurrentInputPolicy() throws Exception {
+        withServer(server -> {
+            GroupTestFixture.provision(server.fixture(), ALICE);
+            String group = server.create(ALICE, "Trip");
+            String route = GROUPS + "/" + group;
+            String historicalName = "Summer trip 🌴";
+            String historicalDescription = "Bring sunscreen ☀";
+            // Establish database-valid historical text independently of the current write policy.
+            IntegrationTestContext.seedCommitted(server.fixture().database(), connection -> {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE groups.groups SET name = ?, description = ? WHERE id = ?")) {
+                    statement.setString(1, historicalName);
+                    statement.setString(2, historicalDescription);
+                    statement.setObject(3, UUID.fromString(group));
+                    assertEquals(1, statement.executeUpdate());
+                }
+            });
+
+            HttpResponse<String> listed = server.send("GET", GROUPS, ALICE, null);
+            assertEquals(200, listed.statusCode(), listed.body());
+            assertEquals(List.of(group), JsonPath.read(listed.body(), "$.items[*].id"));
+            assertEquals(historicalName, JsonPath.read(listed.body(), "$.items[0].name"));
+            assertEquals(historicalDescription, JsonPath.read(listed.body(), "$.items[0].description"));
+            HttpResponse<String> details = server.send("GET", route, ALICE, null);
+            assertEquals(200, details.statusCode(), details.body());
+            assertEquals(historicalName, JsonPath.read(details.body(), "$.name"));
+            assertEquals(historicalDescription, JsonPath.read(details.body(), "$.description"));
+            assertEquals(0, (int) JsonPath.read(details.body(), "$.version"));
+            HttpResponse<String> workspace = server.send("GET", route + "/workspace", ALICE, null);
+            assertEquals(200, workspace.statusCode(), workspace.body());
+            assertEquals(historicalName, JsonPath.read(workspace.body(), "$.group.name"));
+            assertEquals(historicalDescription, JsonPath.read(workspace.body(), "$.group.description"));
+
+            assertFieldErrors(server.send("POST", GROUPS, ALICE, json(historicalName, historicalDescription)),
+                "name:unsupported_character", "description:unsupported_character");
+            assertFieldErrors(server.send("PUT", route, ALICE, replacementJson(historicalName, historicalDescription, 0)),
+                "name:unsupported_character", "description:unsupported_character");
+            assertEquals(List.of(historicalName + "|0"), server.groups());
+            assertEquals(List.of(historicalDescription), server.rows("SELECT description FROM groups.groups", row -> row.getString(1)));
+
+            HttpResponse<String> replaced = server.send("PUT", route, ALICE,
+                replacementJson("Summer trip", "Bring sunscreen", 0));
+            assertEquals(200, replaced.statusCode(), replaced.body());
+            assertEquals("Summer trip", JsonPath.read(replaced.body(), "$.name"));
+            assertEquals("Bring sunscreen", JsonPath.read(replaced.body(), "$.description"));
+            assertEquals(1, (int) JsonPath.read(replaced.body(), "$.version"));
+            assertEquals(List.of("Summer trip|1"), server.groups());
+            assertEquals(List.of("Bring sunscreen"), server.rows("SELECT description FROM groups.groups", row -> row.getString(1)));
+            HttpResponse<String> updated = server.send("GET", route, ALICE, null);
+            assertEquals(200, updated.statusCode(), updated.body());
+            assertEquals(replaced.body(), updated.body());
         });
     }
 
@@ -407,6 +480,11 @@ class GroupHttpE2E {
         return description == null
             ? "{\"name\": " + quote(name) + "}"
             : "{\"name\": " + quote(name) + ", \"description\": " + quote(description) + "}";
+    }
+
+    private static String replacementJson(String name, String description, long expectedVersion) {
+        String body = json(name, description);
+        return body.substring(0, body.length() - 1) + ", \"expectedVersion\": " + expectedVersion + "}";
     }
 
     private static String quote(String value) {

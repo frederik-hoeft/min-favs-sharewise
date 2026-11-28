@@ -16,11 +16,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 /** GM-09 / GM-T05: metadata normalization and validation before any database access. */
 class GroupMetadataTests {
 
-    private static final String EMOJI = "😀";
+    private static final String SUPPLEMENTARY_LETTER = "𐐀";
 
     @Test
     void nameIsTrimmed() {
-        assertEquals(Result.ok(new GroupName("Flat share")), GroupName.parse("  Flat share \t"));
+        assertEquals(Result.ok(new GroupName("Flat share")), GroupName.parse("  Flat share  "));
     }
 
     @ParameterizedTest
@@ -32,9 +32,9 @@ class GroupMetadataTests {
 
     @Test
     void nameLengthCountsCodePointsNotUtf16Units() {
-        String sixtyFourEmoji = EMOJI.repeat(GroupName.MAX_CODE_POINTS);
-        assertEquals(128, sixtyFourEmoji.length());
-        assertEquals(Result.ok(new GroupName(sixtyFourEmoji)), GroupName.parse(sixtyFourEmoji));
+        String sixtyFourLetters = SUPPLEMENTARY_LETTER.repeat(GroupName.MAX_CODE_POINTS);
+        assertEquals(128, sixtyFourLetters.length());
+        assertEquals(Result.ok(new GroupName(sixtyFourLetters)), GroupName.parse(sixtyFourLetters));
 
         assertEquals(Result.err(new MetadataViolation(Field.NAME, Reason.TOO_LONG)),
             GroupName.parse("x".repeat(GroupName.MAX_CODE_POINTS + 1)));
@@ -43,9 +43,23 @@ class GroupMetadataTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Line\nbreak", "Tab\there", "Nul\u0000", "Delete\u007f", "C1\u0085"})
+    @ValueSource(strings = {"Line\nbreak", "Tab\there", "\tName", "Name\u2028", "Nul\u0000", "Delete\u007f", "C1\u0085"})
     void nameRejectsControlCharacters(String raw) {
         assertEquals(Result.err(new MetadataViolation(Field.NAME, Reason.CONTROL_CHARACTER)), GroupName.parse(raw));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Trip\u200b", "A\u202eB", "😀", "\u3164", "...", "\u034f", "\u0301A"})
+    void nameRejectsUnsupportedText(String raw) {
+        assertEquals(Result.err(new MetadataViolation(Field.NAME, Reason.UNSUPPORTED_CHARACTER)), GroupName.parse(raw));
+    }
+
+    @Test
+    void descriptionRejectsUnsupportedText() {
+        assertEquals(Result.err(new MetadataViolation(Field.DESCRIPTION, Reason.UNSUPPORTED_CHARACTER)),
+            GroupDescription.parse("Note\u200b"));
+        assertEquals(Result.ok(Optional.of(new GroupDescription("80 € + breakfast"))),
+            GroupDescription.parse("80 € + breakfast"));
     }
 
     @Test
@@ -58,7 +72,7 @@ class GroupMetadataTests {
 
     @ParameterizedTest
     @NullSource
-    @ValueSource(strings = {"", "  ", "\n\t "})
+    @ValueSource(strings = {"", "  ", "\n "})
     void missingOrBlankDescriptionIsAbsent(String raw) {
         assertEquals(Result.ok(Optional.empty()), GroupDescription.parse(raw));
     }
@@ -70,7 +84,7 @@ class GroupMetadataTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Tab\there", "Lone\rreturn", "Nul\u0000", "Escape\u001b"})
+    @ValueSource(strings = {"Tab\there", "\t", "Note\t", "Lone\rreturn", "Nul\u0000", "Escape\u001b"})
     void descriptionRejectsOtherControlCharacters(String raw) {
         assertEquals(Result.err(new MetadataViolation(Field.DESCRIPTION, Reason.CONTROL_CHARACTER)),
             GroupDescription.parse(raw));
@@ -78,7 +92,7 @@ class GroupMetadataTests {
 
     @Test
     void descriptionLengthCountsCodePoints() {
-        String maximum = EMOJI.repeat(GroupDescription.MAX_CODE_POINTS);
+        String maximum = SUPPLEMENTARY_LETTER.repeat(GroupDescription.MAX_CODE_POINTS);
         assertEquals(Result.ok(Optional.of(new GroupDescription(maximum))), GroupDescription.parse(maximum));
         assertEquals(Result.err(new MetadataViolation(Field.DESCRIPTION, Reason.TOO_LONG)),
             GroupDescription.parse("d".repeat(GroupDescription.MAX_CODE_POINTS + 1)));

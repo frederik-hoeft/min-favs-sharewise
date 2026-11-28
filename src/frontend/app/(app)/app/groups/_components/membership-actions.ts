@@ -19,7 +19,7 @@ export function memberOptions(workspace: GroupWorkspace, member: GroupMember, ad
   const role = member.role === "admin" ? "member" : "admin";
   const options: MembershipOption[] = [{
     action: { kind: "role", member, role },
-    label: role === "admin" ? "Make administrator" : "Make member",
+    label: role === "admin" ? "Make admin" : "Make member",
     disabled: finalAdministrator,
   }];
   options.push(

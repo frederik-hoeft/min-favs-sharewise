@@ -1,0 +1,33 @@
+# Disposable frontend test sources, never the static production image.
+FROM node:24-alpine AS test-source
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci --no-audit --no-fund
+COPY . .
+
+# Explicit opt-in browser fixture, using the normal application and HTTPS proxy.
+FROM test-source AS authorization-browser-builder
+RUN mkdir -p 'app/(app)/app/authorization-smoke' \
+    && cp tests/deployed/browser/page.tsx 'app/(app)/app/authorization-smoke/page.tsx' \
+    && SHAREWISE_AUTHORIZATION_DEBUG=1 npm run build:static
+
+FROM nginx:1.30.7-alpine3.24 AS authorization-browser
+ENV NGINX_ENVSUBST_FILTER="^SHAREWISE_"
+COPY nginx/production.conf.template /etc/nginx/templates/default.conf.template
+COPY nginx/15-configure-sharewise.envsh /docker-entrypoint.d/15-configure-sharewise.envsh
+RUN chmod +x /docker-entrypoint.d/15-configure-sharewise.envsh \
+    && mkdir -p /etc/nginx/tls
+COPY --from=authorization-browser-builder /app/.next-export /usr/share/nginx/html
+EXPOSE 80 443
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:8081/health || exit 1
+
+# Default target remains the read-only, non-root automated Node runner.
+FROM test-source AS e2e-runner
+# Vitest 5 persists an API token even when no API listener is enabled.
+# Compose provides a writable tmpfs here; no root filesystem write is required.
+ENV XDG_DATA_HOME=/tmp/sharewise-e2e-data
+USER node
+# Only public trust material is streamed from the invoking checkout.
+CMD ["sh", "-ec", "umask 077; cat > /tmp/sharewise-smoke-ca.pem; test -s /tmp/sharewise-smoke-ca.pem; npm run test:e2e -- --reporter=default --reporter=json --outputFile.json=/tmp/sharewise-e2e.json; node -e 'const r = require(\"/tmp/sharewise-e2e.json\"); if (!r.success || r.numPassedTests < 1) process.exit(1)'"]

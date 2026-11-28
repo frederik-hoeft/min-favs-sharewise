@@ -57,7 +57,7 @@ describe("Session-scoped application APIs", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     await expect(runtime.api.post(path, {})).resolves.toEqual({ ok: true });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0][0]).toBe(`/api${path}`);
+    expect(fetchImpl.mock.calls[0][0]).toBe(`${location.origin}/api${path}`);
     expect((fetchImpl.mock.calls[0][1]?.headers as Headers).has("Authorization")).toBe(false);
     fetchImpl.mockResolvedValueOnce(problemResponse(401, "invalid_credential"));
     await expect(runtime.api.post(path, {})).rejects.toMatchObject({ status: 401, code: "invalid_credential" });

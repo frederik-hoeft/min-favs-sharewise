@@ -57,6 +57,19 @@ describe("GI-FT17 invitation continuation", () => {
     expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
   });
 
+  it("trusts a textual group name returned by the backend without applying form validation", async () => {
+    const groupName = "A".repeat(65);
+    renderInvite(true, json(200, { groupName }));
+    expect(await screen.findByText(groupName)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Join group" })).toBeEnabled();
+  });
+
+  it("rejects a structurally invalid invitation preview", async () => {
+    renderInvite(true, json(200, { groupName: 42 }));
+    await screen.findByRole("button", { name: "Retry invitation check" });
+    expect(screen.queryByRole("button", { name: "Join group" })).not.toBeInTheDocument();
+  });
+
   it("preserves the preview and explicit join when using the actual layout skip link", async () => {
     runtime.session.accept(authenticationResponse());
     fake.respond("POST", PREVIEW, json(200, { groupName: "Mallorca 2027" }));
@@ -200,6 +213,11 @@ describe("GI-FT17 invitation continuation", () => {
     const user = userEvent.setup();
     await user.type(screen.getByRole("textbox", { name: "Email address" }), "person@example.com");
     await user.type(screen.getByLabelText(/^Password/), "correct horse battery staple");
+    if (mode === "register") {
+      await user.clear(screen.getByLabelText(/^Display name/));
+      await user.type(screen.getByLabelText(/^Display name/), "Test user");
+      await user.type(screen.getByLabelText(/^Confirm password/), "correct horse battery staple");
+    }
     await user.click(screen.getByRole("button", { name: mode === "register" ? "Create account" : "Sign in" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/invite"));
     fake.respond("POST", PREVIEW, json(200, { groupName: "Mallorca 2027" }));

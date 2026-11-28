@@ -4,7 +4,7 @@ import de.hsh.favs.sharewise.groups.internal.application.GroupFailure;
 import de.hsh.favs.sharewise.groups.internal.application.GroupOutcomes;
 import de.hsh.favs.sharewise.groups.internal.application.access.CallerAdmission;
 import de.hsh.favs.sharewise.groups.internal.application.access.LockedGroup;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.transactions.Transactions;
 import de.hsh.favs.sharewise.shared.result.Result;
 import java.util.Objects;

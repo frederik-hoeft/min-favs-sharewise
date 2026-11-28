@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -269,7 +270,7 @@ class PasswordChangeServiceTests {
         @Override public Optional<AccountSnapshot> findByEmailForUpdate(EmailAddress email) {
             throw new AssertionError();
         }
-        @Override public Optional<AccountSnapshot> insert(EmailAddress email, String hash) {
+        @Override public Optional<AccountSnapshot> insert(EmailAddress email, String hash, DisplayName displayName) {
             throw new AssertionError();
         }
     }

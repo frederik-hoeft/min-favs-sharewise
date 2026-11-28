@@ -24,7 +24,7 @@ import de.hsh.favs.sharewise.groups.internal.application.membership.MembershipCh
 import de.hsh.favs.sharewise.groups.internal.domain.GroupDescription;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupMetadata;
 import de.hsh.favs.sharewise.groups.internal.domain.GroupName;
-import de.hsh.favs.sharewise.groups.internal.domain.GroupRole;
+import de.hsh.favs.sharewise.groups.GroupRole;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionDecision;
 import de.hsh.favs.sharewise.shared.infra.transactions.TransactionOutcome;
@@ -86,7 +86,8 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 return TransactionOutcome.commit(creation.createWithAdministrator(creator, metadata));
             });
 
-            assertEquals(metadata, created.metadata());
+            assertEquals(metadata.name().value(), created.name());
+            assertEquals(metadata.description().map(GroupDescription::value).orElse(null), created.description());
             assertEquals(0, created.version());
             assertEquals(1, created.memberCount());
             assertEquals(GroupRole.ADMIN, created.callerRole());
@@ -142,7 +143,8 @@ class GroupPersistenceIT extends IntegrationTestBase {
             assertEquals(List.of(GroupRole.ADMIN, GroupRole.ADMIN, GroupRole.MEMBER),
                 aliceGroups.stream().map(GroupSummary::callerRole).toList());
             assertEquals(List.of(1, 1, 2), aliceGroups.stream().map(GroupSummary::memberCount).toList());
-            assertEquals(metadata("beta", "second"), aliceGroups.get(1).metadata());
+            assertEquals("beta", aliceGroups.get(1).name());
+            assertEquals("second", aliceGroups.get(1).description());
             assertEquals(List.of(), lists.get(1));
         });
     }
@@ -367,7 +369,8 @@ class GroupPersistenceIT extends IntegrationTestBase {
                 return TransactionOutcome.commit(mutations.replaceMetadata(locked, admin, metadata("Summer trip", null)));
             });
 
-            assertEquals(metadata("Summer trip", null), updated.metadata());
+            assertEquals("Summer trip", updated.name());
+            assertEquals(null, updated.description());
             assertEquals(1, updated.version());
             assertEquals(2, updated.memberCount());
             assertEquals(GroupRole.ADMIN, updated.callerRole());
@@ -450,7 +453,7 @@ class GroupPersistenceIT extends IntegrationTestBase {
             JooqAccess jooq = scope.resolve(JooqAccess.class);
             transactions.execute(() -> {
                 DSLContext db = jooq.dsl();
-                String name = "🚀".repeat(64);
+                String name = "𐐀".repeat(64);
                 for (String description : List.of("a\nb", "a\r\nb", "é".repeat(512))) {
                     assertEquals(1, db.execute("INSERT INTO groups.groups (name, description) VALUES (?, ?)",
                         name, description));

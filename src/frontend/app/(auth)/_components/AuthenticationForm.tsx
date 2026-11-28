@@ -5,14 +5,17 @@ import { WarningCircleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
-import { useExclusiveOperation } from "@/lib/hooks/use-exclusive-operation";
+import type { ChangeEvent, Dispatch, FormEvent, ReactElement, RefObject, SetStateAction } from "react";
+import { useExclusiveOperation, type ExclusiveOperation, type OperationOutcome } from "@/lib/hooks/use-exclusive-operation";
 import { ApiError } from "@/lib/api";
 import { safeAppReturnPath } from "@/lib/navigation/return-path";
 import { INVITE_PATH, INVITE_RETURN_QUERY } from "@/lib/navigation/invitation-routes";
 import { useInvitationContinuation } from "@/app/invitation-continuation";
+import type { IdentityRuntime } from "@/core/identity";
 import { useIdentity } from "@/app/identity-provider";
-import { validateCredentials, type CredentialErrors } from "./credentials-validation";
+import { validateDisplayName, MAX_DISPLAY_NAME_CHARACTERS } from "@/core/identity/display-name";
+import { validatePasswordConfirmation } from "@/core/identity/password-validation";
+import { suggestDisplayName, validateCredentials, type CredentialErrors } from "./credentials-validation";
 import styles from "./AuthenticationForm.module.scss";
 
 type Mode = "login" | "register";
@@ -27,9 +30,9 @@ function mapFailure(error: unknown, mode: Mode): { fields: CredentialErrors; mes
     return { fields: { email: 'This email address is unavailable.' } };
   }
   if (error.status === 400) {
-    const fields: { email?: string; password?: string } = {};
+    const fields: { email?: string; password?: string; displayName?: string } = {};
     for (const issue of error.fieldErrors) {
-      if ((issue.field === 'email' || issue.field === 'password') && !fields[issue.field]) {
+      if ((issue.field === 'email' || issue.field === 'password' || (mode === 'register' && issue.field === 'displayName')) && !fields[issue.field]) {
         fields[issue.field] = issue.message || 'Please check this field.';
       }
     }
@@ -47,22 +50,28 @@ function mapFailure(error: unknown, mode: Mode): { fields: CredentialErrors; mes
   return { fields: {}, message: 'Unable to complete authentication right now. Please try again.' };
 }
 
-export function AuthenticationForm({ mode }: { mode: Mode }) {
-  const isRegistration = mode === 'register';
-  const router = useRouter();
-  const { auth } = useIdentity();
-  const { pending: invitationPending, continuation } = useInvitationContinuation();
-  const invitationDetour = invitationPending && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("next") === INVITE_PATH;
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<CredentialErrors>({});
-  const [message, setMessage] = useState<string>();
-  const operation = useExclusiveOperation<"authenticate">();
-  const pending = operation.pending !== null;
-  const emailRef = useRef<HTMLInputElement>(null);
-  const passwordRef = useRef<HTMLInputElement>(null);
-  const alertRef = useRef<HTMLDivElement>(null);
-  const deferredFocus = useRef<CredentialErrors | undefined>(undefined);
+export function AuthenticationForm({ mode }: { mode: Mode }): ReactElement {
+  const isRegistration: boolean = mode === 'register';
+  const router: ReturnType<typeof useRouter> = useRouter();
+  const { auth }: Pick<IdentityRuntime, "auth" | "session"> = useIdentity();
+  const { pending: invitationPending, continuation }: ReturnType<typeof useInvitationContinuation> = useInvitationContinuation();
+  const invitationDetour: boolean = invitationPending && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("next") === INVITE_PATH;
+  const [email, setEmail]: [string, Dispatch<SetStateAction<string>>] = useState('');
+  const [password, setPassword]: [string, Dispatch<SetStateAction<string>>] = useState('');
+  // Undefined means automatic suggestion; an explicit empty edit is still an edit.
+  const [displayNameOverride, setDisplayNameOverride]: [string | undefined, Dispatch<SetStateAction<string | undefined>>] = useState<string>();
+  const displayName: string = displayNameOverride ?? (isRegistration ? suggestDisplayName(email) : '');
+  const [confirmPassword, setConfirmPassword]: [string, Dispatch<SetStateAction<string>>] = useState('');
+  const [errors, setErrors]: [CredentialErrors, Dispatch<SetStateAction<CredentialErrors>>] = useState<CredentialErrors>({});
+  const [message, setMessage]: [string | undefined, Dispatch<SetStateAction<string | undefined>>] = useState<string>();
+  const operation: ExclusiveOperation<"authenticate"> = useExclusiveOperation<"authenticate">();
+  const pending: boolean = operation.pending !== null;
+  const emailRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
+  const displayNameRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
+  const confirmRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
+  const passwordRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
+  const alertRef: RefObject<HTMLDivElement | null> = useRef<HTMLDivElement>(null);
+  const deferredFocus: RefObject<CredentialErrors | undefined> = useRef<CredentialErrors | undefined>(undefined);
 
   useEffect(() => {
     if (message && !pending) alertRef.current?.focus();
@@ -79,36 +88,39 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
 
   function focusFirstError(fields: CredentialErrors) {
     if (fields.email) emailRef.current?.focus();
+    else if (fields.displayName) displayNameRef.current?.focus();
     else if (fields.password) passwordRef.current?.focus();
+    else if (fields.confirmPassword) confirmRef.current?.focus();
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (operation.isRunning()) return;
-    const trimmedEmail = email.trim();
+    const trimmedEmail: string = email.trim();
     setEmail(trimmedEmail);
-    const validation = validateCredentials(mode, trimmedEmail, password);
+    const validation: CredentialErrors = { ...validateCredentials(mode, trimmedEmail, password),
+      ...(isRegistration ? { displayName: validateDisplayName(displayName), confirmPassword: validatePasswordConfirmation(password, confirmPassword) } : {}) };
     setErrors(validation);
     setMessage(undefined);
-    if (validation.email || validation.password) {
+    if (validation.email || validation.password || validation.displayName || validation.confirmPassword) {
       focusFirstError(validation);
       return;
     }
-    const path = window.location.pathname + window.location.search;
-    const candidate = new URLSearchParams(window.location.search).get('next');
-    operation.start("authenticate", () => auth[mode]({ email: trimmedEmail, password }), outcome => {
+    const path: string = window.location.pathname + window.location.search;
+    const candidate: string | null = new URLSearchParams(window.location.search).get('next');
+    operation.start("authenticate", (): Promise<void> => isRegistration ? auth.register({ email: trimmedEmail, password, displayName }) : auth.login({ email: trimmedEmail, password }), (outcome: OperationOutcome<void>): void => {
       // Authentication itself may have committed, but an abandoned form cannot direct navigation.
       if (window.location.pathname + window.location.search !== path) return;
       if (outcome.status === "fulfilled") {
-        const next = candidate === INVITE_PATH && continuation?.pending ? INVITE_PATH
+        const next: string = candidate === INVITE_PATH && continuation?.pending ? INVITE_PATH
           : isRegistration ? '/app' : safeAppReturnPath(candidate);
         router.replace(next);
         return;
       }
-      const failure = mapFailure(outcome.error, mode);
+      const failure: ReturnType<typeof mapFailure> = mapFailure(outcome.error, mode);
       setErrors(failure.fields);
       setMessage(failure.message);
-      if (failure.fields.email || failure.fields.password) deferredFocus.current = failure.fields;
+      if (failure.fields.email || failure.fields.password || failure.fields.displayName) deferredFocus.current = failure.fields;
     });
   }
 
@@ -142,9 +154,22 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
                 required
                 value={email}
                 error={errors.email}
-                onChange={(event) => { setEmail(event.currentTarget.value); setErrors((current) => ({ ...current, email: undefined })); setMessage(undefined); }}
+                onChange={(event: ChangeEvent<HTMLInputElement>): void => {
+                  const nextEmail: string = event.currentTarget.value;
+                  const suggestionChanged: boolean = isRegistration && displayNameOverride === undefined && suggestDisplayName(nextEmail) !== displayName;
+                  setEmail(nextEmail);
+                  setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, email: undefined,
+                    ...(suggestionChanged ? { displayName: undefined } : {}) }));
+                  setMessage(undefined);
+                }}
                 disabled={pending}
               />
+              {isRegistration && <TextInput ref={displayNameRef} label="Display name" name="displayName"
+                autoComplete="nickname" required maxLength={MAX_DISPLAY_NAME_CHARACTERS * 2}
+                description="Suggested from your email. You can change this name, which is visible to signed-in ShareWise users." value={displayName} error={errors.displayName}
+                disabled={pending} onChange={(event: ChangeEvent<HTMLInputElement>): void => {
+                  setDisplayNameOverride(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, displayName: undefined })); setMessage(undefined);
+                }} />}
               <PasswordInput
                 ref={passwordRef}
                 label="Password"
@@ -153,10 +178,15 @@ export function AuthenticationForm({ mode }: { mode: Mode }) {
                 required
                 value={password}
                 error={errors.password}
-                onChange={(event) => { setPassword(event.currentTarget.value); setErrors((current) => ({ ...current, password: undefined })); setMessage(undefined); }}
+                onChange={(event: ChangeEvent<HTMLInputElement>): void => { setPassword(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, password: undefined, confirmPassword: undefined })); setMessage(undefined); }}
                 disabled={pending}
                 description={isRegistration ? 'Use between 8 and 256 characters.' : undefined}
               />
+              {isRegistration && <PasswordInput ref={confirmRef} label="Confirm password" name="confirmPassword"
+                autoComplete="new-password" required maxLength={256} value={confirmPassword} error={errors.confirmPassword}
+                disabled={pending} onChange={(event: ChangeEvent<HTMLInputElement>): void => {
+                  setConfirmPassword(event.currentTarget.value); setErrors((current: CredentialErrors): CredentialErrors => ({ ...current, confirmPassword: undefined })); setMessage(undefined);
+                }} />}
               <Button type="submit" size="md" fullWidth loading={pending} disabled={pending} className={styles.submit}>
                 {isRegistration ? 'Create account' : 'Sign in'}
               </Button>

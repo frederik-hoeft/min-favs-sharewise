@@ -10,8 +10,8 @@ import java.util.Set;
 /**
  * Immutable provenance metadata associated with one authorization credential.
  *
- * <p>Instantiation alone does not establish trust. Only a trusted {@link AuthorizationCredentialProvider}
- * can publish verified credentials into an operation's {@link AuthorizationContext}.
+ * <p>Instantiation alone does not establish trust. Only source verification followed by contextual admission
+ * can publish credentials into an operation's {@link AuthorizationContext}.
  *
  * @param issuer trusted issuer identifier
  * @param profile verified credential profile (such as an IAM access token)

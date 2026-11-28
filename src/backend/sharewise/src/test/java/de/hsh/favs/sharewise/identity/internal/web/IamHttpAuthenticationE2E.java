@@ -56,7 +56,7 @@ class IamHttpAuthenticationE2E {
         Map<String, Object> settings = Map.of(
                 "sharewise.iam.auth.enabled", "true",
                 "sharewise.iam.auth.issuer", "https://iam.sharewise.test",
-                "sharewise.iam.auth.audience", "sharewise-api",
+                "sharewise.iam.auth.audience", "sw-api-v1",
                 "sharewise.iam.auth.active-key-id", "e2e",
                 "sharewise.iam.auth.keys[0].id", "e2e",
                 "sharewise.iam.auth.keys[0].public-key-file", publicKey.toString(),
@@ -74,17 +74,17 @@ class IamHttpAuthenticationE2E {
             String body = "{\"email\":\"user@example.com\",\"password\":\"correct-password\"}";
 
             HttpResponse<String> missingOrigin = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, initial, false, true);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", initial, false, true);
             assertEquals(403, missingOrigin.statusCode());
             assertEquals("invalid_origin", JsonPath.read(missingOrigin.body(), "$.code"));
             HttpResponse<String> missingCsrf = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, initial, true, false);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", initial, true, false);
             assertEquals(403, missingCsrf.statusCode());
             assertEquals("csrf_invalid", JsonPath.read(missingCsrf.body(), "$.code"));
             assertEquals(0, count(fixture, "identity.users"));
 
             HttpResponse<String> registered = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, initial, true, true);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", initial, true, true);
             assertEquals(201, registered.statusCode(), registered.body());
             String firstToken = JsonPath.read(registered.body(), "$.accessToken");
             String firstRefresh = findCookie(registered, "__Host-sharewise-refresh");
@@ -96,7 +96,7 @@ class IamHttpAuthenticationE2E {
             assertFalse(registered.body().contains(firstRefresh.split("=", 2)[1].split(";", 2)[0]));
             assertEquals("no-store", registered.headers().firstValue("Cache-Control").orElseThrow());
             JwtCredentialCodec verifier = fixture.context().getBean("iamPrimaryJwtCredentialCodec", JwtCredentialCodec.class);
-            assertEquals("https://iam.sharewise.test", verifier.verifyPrimary(firstToken).credential().origin().issuer());
+            assertEquals("https://iam.sharewise.test", verifier.verifyPrimary(firstToken).evidence().origin().issuer());
             assertEquals(1, count(fixture, "identity.users"));
             assertEquals(1, count(fixture, "identity.sessions"));
             assertEquals(1, count(fixture, "identity.refresh_tokens"));
@@ -106,7 +106,7 @@ class IamHttpAuthenticationE2E {
 
             CsrfPair second = csrf(client, base);
             HttpResponse<String> duplicate = post(client, base, origin, "/api/iam/v1/auth/register",
-                    body, second, true, true);
+                    body.substring(0, body.length() - 1) + ",\"displayName\":\"Test user\"}", second, true, true);
             assertEquals(409, duplicate.statusCode());
             assertEquals("email_unavailable", JsonPath.read(duplicate.body(), "$.code"));
             assertFalse(duplicate.headers().allValues("Set-Cookie").stream()
@@ -140,7 +140,7 @@ class IamHttpAuthenticationE2E {
         Map<String, Object> settings = Map.of(
                 "sharewise.iam.auth.enabled", "true",
                 "sharewise.iam.auth.issuer", "https://iam.sharewise.test",
-                "sharewise.iam.auth.audience", "sharewise-api",
+                "sharewise.iam.auth.audience", "sw-api-v1",
                 "sharewise.iam.auth.active-key-id", "e2e",
                 "sharewise.iam.auth.keys[0].id", "e2e",
                 "sharewise.iam.auth.keys[0].public-key-file", publicKey.toString(),
@@ -153,7 +153,7 @@ class IamHttpAuthenticationE2E {
             String base = "http://127.0.0.1:" + port;
             String credentials = "{\"email\":\"lifecycle@example.com\",\"password\":\"correct-password\"}";
             HttpResponse<String> login = post(client, base, base, "/api/iam/v1/auth/register",
-                    credentials, csrf(client, base), true, true);
+                    credentials.substring(0, credentials.length() - 1) + ",\"displayName\":\"Test user\"}", csrf(client, base), true, true);
             assertEquals(201, login.statusCode(), login.body());
             String sessionId = JsonPath.read(login.body(), "$.sessionId");
             String loginCookie = findCookie(login, "__Host-sharewise-refresh").split(";", 2)[0];
@@ -185,7 +185,7 @@ class IamHttpAuthenticationE2E {
             String renewedBearer = JsonPath.read(refresh.body(), "$.accessToken");
             assertEquals("https://iam.sharewise.test", fixture.context()
                     .getBean("iamPrimaryJwtCredentialCodec", JwtCredentialCodec.class)
-                    .verifyPrimary(renewedBearer).credential().origin().issuer());
+                    .verifyPrimary(renewedBearer).evidence().origin().issuer());
             String rotatedCookie = findCookie(refresh, "__Host-sharewise-refresh").split(";", 2)[0];
             assertNotEquals(loginCookie, rotatedCookie);
             assertDeletedCookie(refresh, "__Host-sharewise-csrf");

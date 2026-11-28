@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -69,7 +70,7 @@ class AuthenticationWorkflowTests {
         Rig rig = new Rig();
         rig.register.register(registration());
         Result<AuthenticationResult, RegistrationFailure> duplicate = rig.register.register(
-                RegistrationCommand.from("  USER@example.org  ", CORRECT, PASSWORDS));
+                RegistrationCommand.from("  USER@example.org  ", CORRECT, "Test user", PASSWORDS));
         assertEquals(Result.err(RegistrationFailure.EMAIL_UNAVAILABLE), duplicate);
         assertEquals(1, rig.sessions.created.size());
         assertEquals(1, rig.tokens.created.size());
@@ -197,7 +198,7 @@ class AuthenticationWorkflowTests {
     }
 
     private static RegistrationCommand registration() {
-        return RegistrationCommand.from("User@example.org", CORRECT, PASSWORDS);
+        return RegistrationCommand.from("User@example.org", CORRECT, "Test user", PASSWORDS);
     }
 
     private static LoginCommand login(String password) {
@@ -311,7 +312,7 @@ class AuthenticationWorkflowTests {
         boolean failCompareAndSet;
 
         @Override
-        public Optional<AccountSnapshot> insert(EmailAddress requested, String hash) {
+        public Optional<AccountSnapshot> insert(EmailAddress requested, String hash, DisplayName displayName) {
             if (email != null && email.equals(requested)) {
                 return Optional.empty();
             }

@@ -118,7 +118,7 @@ class UserRegisteredPublicationE2E extends E2ETestBase {
     private static Result<AuthenticationResult, RegistrationFailure> register(IntegrationTestContext fixture,
             String email) {
         return fixture.context().getBean(OperationDispatcher.class).dispatch(RegistrationService.class,
-                service -> service.register(RegistrationCommand.from(email, PASSWORD, PasswordPolicy.initial())));
+                service -> service.register(RegistrationCommand.from(email, PASSWORD, "Test user", PasswordPolicy.initial())));
     }
 
     private static AuthenticationResult success(Result<AuthenticationResult, RegistrationFailure> result) {

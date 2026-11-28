@@ -22,11 +22,13 @@ const violationMessages: Record<MetadataField, Record<MetadataViolation, string>
     required: "Enter a group name.",
     too_long: `Use at most ${GROUP_NAME_MAX_CODE_POINTS} characters.`,
     control_character: "Remove tabs, line breaks and other control characters.",
+    unsupported_character: "Enter supported text containing a letter or number.",
   },
   description: {
     required: "Enter a description.",
     too_long: `Use at most ${GROUP_DESCRIPTION_MAX_CODE_POINTS} characters.`,
     control_character: "Line breaks are allowed; remove tabs and other control characters.",
+    unsupported_character: "Enter supported text without invisible or decorative characters.",
   },
 };
 

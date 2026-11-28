@@ -3,6 +3,7 @@ package de.hsh.favs.sharewise.identity.internal.auth.persistence;
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.DatabaseTime.dbTime;
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.DatabaseTime.instant;
 import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.Users.USERS;
+import static de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.UserProfiles.USER_PROFILES;
 
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountSnapshot;
 import de.hsh.favs.sharewise.identity.internal.auth.account.AccountStore;
@@ -11,6 +12,7 @@ import de.hsh.favs.sharewise.identity.internal.auth.account.LoginLockoutPolicy;
 import de.hsh.favs.sharewise.identity.internal.auth.persistence.generated.tables.records.UsersRecord;
 import de.hsh.favs.sharewise.shared.infra.persistence.jooq.JooqAccess;
 import java.util.Objects;
+import de.hsh.favs.sharewise.identity.internal.profile.DisplayName;
 import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
@@ -29,20 +31,27 @@ class JooqAccountStore implements AccountStore {
     }
 
     @Override
-    public Optional<AccountSnapshot> insert(EmailAddress email, String encodedPassword) {
+    public Optional<AccountSnapshot> insert(EmailAddress email, String encodedPassword, DisplayName displayName) {
         Objects.requireNonNull(email, "email");
+        Objects.requireNonNull(displayName, "displayName");
         if (Objects.requireNonNull(encodedPassword, "encodedPassword").isBlank()) {
             throw new IllegalArgumentException("Encoded password must not be blank");
         }
         DSLContext db = database.dsl();
         // The unique constraint is the arbiter, including under concurrent registrations.
         // ON CONFLICT avoids aborting a transaction for an expected duplicate email.
-        return db.insertInto(USERS)
+        Optional<AccountSnapshot> account = db.insertInto(USERS)
                 .columns(USERS.EMAIL, USERS.NORMALIZED_EMAIL, USERS.PASSWORD_HASH)
                 .values(email.display(), email.normalized(), encodedPassword)
                 .onConflict(USERS.NORMALIZED_EMAIL).doNothing()
                 .returning()
                 .fetchOptional(JooqAccountStore::account);
+        if (account.isPresent() && db.insertInto(USER_PROFILES)
+                .set(USER_PROFILES.USER_ID, account.orElseThrow().userId())
+                .set(USER_PROFILES.DISPLAY_NAME, displayName.value()).execute() != 1) {
+            throw new IllegalStateException("Required IAM profile was not inserted");
+        }
+        return account;
     }
 
     @Override

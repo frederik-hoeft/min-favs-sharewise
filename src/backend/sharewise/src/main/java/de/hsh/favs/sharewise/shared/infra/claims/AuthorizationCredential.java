@@ -7,7 +7,7 @@ import java.util.Objects;
  * Application-level representation of one verified credential and its ordered claims.
  *
  * <p>Verification and any required binding to the current primary identity must
- * precede publication by an {@link AuthorizationCredentialProvider}. Constructing
+ * precede publication in an {@link AuthorizationContext}. Constructing
  * this record only validates structure; it does not establish trust or grant
  * permission to perform a business operation.
  *
