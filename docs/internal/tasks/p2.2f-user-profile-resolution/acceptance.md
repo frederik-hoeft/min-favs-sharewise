@@ -53,9 +53,9 @@ The maintainer approved the stateless resolver and centralized text input policy
 
 Local follow-up verification with the supplied, checksum-verified offline tooling: 521 backend Unit/Modulith tests passed with all test sources compiled; 442 frontend tests in 33 files passed, along with lint, both TypeScript checks, normal and static builds, and the static-export probe. PostgreSQL, Docker and browser verification remain external acceptance gates. No integrated database or browser result is inferred from the local tests.
 
-- [ ] Rerun PostgreSQL Integration/E2E and CI on the follow-up revision, including Group projections and restrictive input rejection.
-- [ ] Verify deployed HTTPS and browser flows: fresh lookup on workspace entry, view-local retention on failure, cancellation, rename followed by navigation, registration and Group metadata field errors for unsupported Unicode, and mixed-direction accessible member labels.
-- [ ] Independent review confirms the original seven findings and four subsequent findings are addressed or superseded by the approved contract; maintainer authorizes merge.
+- [x] Rerun PostgreSQL Integration/E2E and CI on the follow-up revision, including Group projections and restrictive input rejection.
+- [x] Verify deployed HTTPS and browser flows: fresh lookup on workspace entry, view-local retention on failure, cancellation, rename followed by navigation, registration and Group metadata field errors for unsupported Unicode, and mixed-direction accessible member labels.
+- [x] Independent review confirms the original seven findings and four subsequent findings are addressed or superseded by the approved contract; maintainer authorizes merge.
 
 ## Second independent-review follow-up
 
